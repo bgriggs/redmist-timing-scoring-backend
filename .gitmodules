@@ -1,3 +1,6 @@
 [submodule "redmist-timing-common"]
 	path = redmist-timing-common
 	url = https://github.com/bgriggs/redmist-timing-common.git
+[submodule "unit-test-helpers"]
+	path = unit-test-helpers
+	url = https://github.com/bgriggs/unit-test-helpers.git
