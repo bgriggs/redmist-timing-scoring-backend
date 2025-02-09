@@ -1,32 +1,26 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.Controllers;
 
 [ApiController]
-[Route("[controller]")]
+[Route("[controller]/[action]")]
+[Authorize]
 public class TimingAndScoringController : ControllerBase
 {
-    private static readonly string[] Summaries = new[]
-    {
-        "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-    };
+    private ILogger Logger { get; }
 
-    private readonly ILogger<TimingAndScoringController> _logger;
-
-    public TimingAndScoringController(ILogger<TimingAndScoringController> logger)
+    public TimingAndScoringController(ILoggerFactory loggerFactory)
     {
-        _logger = logger;
+        Logger = loggerFactory.CreateLogger(GetType().Name);
     }
 
-    [HttpGet(Name = "GetWeatherForecast")]
-    public IEnumerable<WeatherForecast> Get()
+    [HttpGet]
+    [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
+    public Task<Event[]> GetEvents()
     {
-        return Enumerable.Range(1, 5).Select(index => new WeatherForecast
-        {
-            Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            TemperatureC = Random.Shared.Next(-20, 55),
-            Summary = Summaries[Random.Shared.Next(Summaries.Length)]
-        })
-        .ToArray();
+        Logger.LogTrace("GetEvents");
+        return Task.FromResult(new Event[] { new() { EventId = 1, EventName = "Test", EventDate = "2025-01-01" } });
     }
 }
