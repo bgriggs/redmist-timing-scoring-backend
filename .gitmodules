@@ -1,0 +1,3 @@
+[submodule "redmist-timing-common"]
+	path = redmist-timing-common
+	url = https://github.com/bgriggs/redmist-timing-common.git
