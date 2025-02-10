@@ -1,14 +1,18 @@
 ﻿using Microsoft.AspNetCore.SignalR;
+using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
 namespace RedMist.TimingAndScoringService.Hubs;
 
 public class TimingAndScoringHub : Hub
 {
+    private readonly RMDataProcessor rmDataProcessor;
+
     private ILogger Logger { get; }
 
-    public TimingAndScoringHub(ILoggerFactory loggerFactory)
+    public TimingAndScoringHub(ILoggerFactory loggerFactory, RMDataProcessor rmDataProcessor)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
+        this.rmDataProcessor = rmDataProcessor;
     }
 
     public async override Task OnConnectedAsync()
@@ -29,9 +33,10 @@ public class TimingAndScoringHub : Hub
     /// <param name="command">RMonitor command string</param>
     /// <returns></returns>
     /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
-    public Task Send(string command)
+    public Task SendRMonitor(string command)
     {
-        Logger.LogDebug("RX: {0}", command);
+        Logger.LogDebug("RX-RM: {0}", command);
+        rmDataProcessor.ProcessUpdate(command);
         return Task.CompletedTask;
     }
 }

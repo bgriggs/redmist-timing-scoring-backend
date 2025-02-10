@@ -5,8 +5,12 @@ using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
 using Keycloak.AuthServices.Common;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
+using RedLockNet;
+using RedLockNet.SERedis;
+using RedLockNet.SERedis.Configuration;
 using RedMist.TimingAndScoringService.Hubs;
 using StackExchange.Redis;
 
@@ -71,7 +75,12 @@ public class Program
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
         builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 10; c.ConnectTimeout = 10; }));
 
+        builder.Services.AddHybridCache();
         builder.Services.AddSingleton<IDateTimeHelper, DateTimeHelper>();
+        builder.Services.AddTransient<EventDistribution>();
+        builder.Services.AddSingleton<IDistributedLockFactory>(r => RedLockFactory.Create([new RedLockMultiplexer(r.GetRequiredService<IConnectionMultiplexer>())]));
+
+
 
         builder.Services.AddHealthChecks()
             //.AddCheck<StartupHealthCheck>("Startup", tags: ["startup"])
