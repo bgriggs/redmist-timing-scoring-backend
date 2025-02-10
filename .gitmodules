@@ -4,3 +4,6 @@
 [submodule "unit-test-helpers"]
 	path = unit-test-helpers
 	url = https://github.com/bgriggs/unit-test-helpers.git
+[submodule "StackRedis.L1"]
+	path = StackRedis.L1
+	url = https://github.com/bgriggs/StackRedis.L1.git
