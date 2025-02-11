@@ -12,6 +12,8 @@ using RedLockNet;
 using RedLockNet.SERedis;
 using RedLockNet.SERedis.Configuration;
 using RedMist.TimingAndScoringService.Database;
+using RedMist.TimingAndScoringService.EventStatus;
+using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.Hubs;
 using StackExchange.Redis;
 
@@ -82,6 +84,8 @@ public class Program
         builder.Services.AddSingleton<EventDistribution>();
         builder.Services.AddSingleton<IDateTimeHelper, DateTimeHelper>();
         builder.Services.AddSingleton<IDistributedLockFactory>(r => RedLockFactory.Create([new RedLockMultiplexer(r.GetRequiredService<IConnectionMultiplexer>())]));
+        builder.Services.AddTransient<IDataProcessorFactory, DataProcessorFactory>();
+        builder.Services.AddHostedService<EventAggregator>();
 
         builder.Services.AddHealthChecks()
             //.AddCheck<StartupHealthCheck>("Startup", tags: ["startup"])

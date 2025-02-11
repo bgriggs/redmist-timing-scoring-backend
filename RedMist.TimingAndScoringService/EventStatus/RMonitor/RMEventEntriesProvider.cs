@@ -1,6 +1,5 @@
-﻿namespace RedMist.TimingAndScoringService.EventStatus.RMonitor
+﻿namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
+
+public class RmEventEntriesProvider
 {
-    public class RMEventEntriesProvider
-    {
-    }
 }

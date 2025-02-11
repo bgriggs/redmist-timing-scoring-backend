@@ -1,5 +1,5 @@
 ﻿namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
-public class RMCarPositionProvider
+public class RmCarPositionProvider
 {
 }

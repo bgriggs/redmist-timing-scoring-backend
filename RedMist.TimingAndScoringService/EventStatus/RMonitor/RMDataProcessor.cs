@@ -1,9 +1,8 @@
-﻿namespace RedMist.TimingAndScoringService.EventStatus.RMonitor
+﻿namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
+
+public class RmDataProcessor : IDataProcessor
 {
-    public class RMDataProcessor
+    public void ProcessUpdate(string data)
     {
-        public void ProcessUpdate(string data)
-        {
-        }
     }
 }

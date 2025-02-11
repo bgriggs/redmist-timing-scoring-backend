@@ -1,8 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using StackExchange.Redis;
-using System.Diagnostics;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace RedMist.TimingAndScoringService.Hubs;
 
@@ -78,7 +76,7 @@ public class TimingAndScoringHub : Hub
             {
                 var stream = await eventDistribution.GetStreamAsync(eventId.ToString());
                 var db = cacheMux.GetDatabase();
-                await db.StreamAddAsync(stream, "rmonitor", command);
+                await db.StreamAddAsync(stream, string.Format("rmonitor-{0}", eventId), command);
             }
         }
     }
