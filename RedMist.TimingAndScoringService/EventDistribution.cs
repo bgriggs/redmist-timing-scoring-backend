@@ -1,5 +1,8 @@
-﻿using Microsoft.Extensions.Caching.Hybrid;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using RedLockNet;
+using RedMist.TimingAndScoringService.Database;
+using RedMist.TimingAndScoringService.Database.Models;
 using RedMist.TimingAndScoringService.Models;
 using StackExchange.Redis;
 using System.Text.Json;
@@ -14,16 +17,19 @@ public class EventDistribution : BackgroundService
     private readonly HybridCache hcache;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDistributedLockFactory lockFactory;
+    private readonly IDbContextFactory<TsContext> tsContext;
+    private CancellationToken stoppingToken;
 
     private ILogger Logger { get; }
     private readonly string podInstance;
 
-    public EventDistribution(HybridCache hcache, IConnectionMultiplexer cacheMux, ILoggerFactory loggerFactory, 
-        IConfiguration configuration, IDistributedLockFactory lockFactory)
+    public EventDistribution(HybridCache hcache, IConnectionMultiplexer cacheMux, ILoggerFactory loggerFactory,
+        IConfiguration configuration, IDistributedLockFactory lockFactory, IDbContextFactory<TsContext> tsContext)
     {
         this.hcache = hcache;
         this.cacheMux = cacheMux;
         this.lockFactory = lockFactory;
+        this.tsContext = tsContext;
         Logger = loggerFactory.CreateLogger(GetType().Name);
         podInstance = configuration["POD_NAME"] ?? throw new ArgumentNullException("POD_NAME");
     }
@@ -35,6 +41,7 @@ public class EventDistribution : BackgroundService
     /// <returns></returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        this.stoppingToken = stoppingToken;
         var streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, podInstance);
 
         // Create the redis stream and consumer group if they don't exist
@@ -49,7 +56,8 @@ public class EventDistribution : BackgroundService
         using var podLock = await lockFactory.CreateLockAsync(Consts.POD_WORKLOADS, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(200));
         if (podLock.IsAcquired)
         {
-            var workloads = await LoadPodWorkloads();
+            var workloads = await LoadPodWorkloadsAsync();
+            workloads.RemoveAll(x => x.PodName == podInstance);
             workloads.Add(new EventProcessorInstance { PodName = podInstance, Events = [] });
             await db.StringSetAsync(Consts.POD_WORKLOADS, JsonSerializer.Serialize(workloads));
         }
@@ -59,18 +67,18 @@ public class EventDistribution : BackgroundService
             throw new InvalidProgramException();
         }
 
-        // TODO: clean up old streams
+        // TODO: clean up old streams for pods that no longer exist
     }
 
     /// <summary>
     /// Get the stream that should be used for the event processing.
     /// </summary>
     /// <returns>stream key</returns>
-    public async Task<string> GetStream(string eventId, CancellationToken cancellationToken)
+    public async Task<string> GetStreamAsync(string eventId, CancellationToken cancellationToken = default)
     {
         var key = string.Format(Consts.EVENT_TO_POD_KEY, eventId);
         var pod = await hcache.GetOrCreateAsync(key,
-            async cancel => await AllocateNewEventForProcessing(key, eventId),
+            async cancel => await AllocateNewEventForProcessingAsync(key, eventId),
             cancellationToken: cancellationToken
         );
         return string.Format(Consts.EVENT_STATUS_STREAM_KEY, pod);
@@ -80,7 +88,7 @@ public class EventDistribution : BackgroundService
     /// Assigns the event to a pod for processing.
     /// </summary>
     /// <returns>event lookup value</returns>
-    private async Task<string> AllocateNewEventForProcessing(string key, string eventId)
+    private async Task<string> AllocateNewEventForProcessingAsync(string key, string eventId)
     {
         // Create a new processing instance
         Logger.LogInformation("Creating new processing pod for event {0}...", eventId);
@@ -88,8 +96,8 @@ public class EventDistribution : BackgroundService
         using var podLock = await lockFactory.CreateLockAsync(Consts.POD_WORKLOADS, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(50));
         if (podLock.IsAcquired)
         {
-            var workloads = await LoadPodWorkloads();
-            var pod = await AssignWorkloadToBestPod(workloads, eventId);
+            var workloads = await LoadPodWorkloadsAsync();
+            var pod = await AssignWorkloadToBestPodAsync(workloads, eventId);
 
             Logger.LogInformation("Assigning event {0} to pod {1}...", eventId, pod);
             var db = cacheMux.GetDatabase();
@@ -101,7 +109,7 @@ public class EventDistribution : BackgroundService
         return string.Empty;
     }
 
-    private async Task<List<EventProcessorInstance>> LoadPodWorkloads()
+    private async Task<List<EventProcessorInstance>> LoadPodWorkloadsAsync()
     {
         var db = cacheMux.GetDatabase();
         var pwJson = await db.StringGetAsync(Consts.POD_WORKLOADS);
@@ -112,7 +120,7 @@ public class EventDistribution : BackgroundService
         return JsonSerializer.Deserialize<List<EventProcessorInstance>>(pwJson!) ?? [];
     }
 
-    private async Task<string> AssignWorkloadToBestPod(List<EventProcessorInstance> workloads, string eventId)
+    private async Task<string> AssignWorkloadToBestPodAsync(List<EventProcessorInstance> workloads, string eventId)
     {
         // For now, order by least number of events
         var inst = workloads.OrderBy(x => x.Events.Count).First();
@@ -121,5 +129,57 @@ public class EventDistribution : BackgroundService
         var db = cacheMux.GetDatabase();
         await db.StringSetAsync(Consts.POD_WORKLOADS, JsonSerializer.Serialize(workloads));
         return inst.PodName;
+    }
+
+    public async Task<int> GetOrganizationId(string clientId)
+    {
+        var key = string.Format(Consts.CLIENT_ID, clientId);
+        return await hcache.GetOrCreateAsync(key,
+            async cancel => await LoadOrganizationId(clientId),
+            cancellationToken: stoppingToken);
+    }
+
+    private async Task<int> LoadOrganizationId(string clientId)
+    {
+        using var db = await tsContext.CreateDbContextAsync(stoppingToken);
+        var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId, stoppingToken);
+        return org?.Id ?? 0;
+    }
+
+    public async Task<int> GetEventId(int orgId, int eventReference)
+    {
+        var key = string.Format(Consts.EVENT_REF_ID, orgId, eventReference);
+        return await hcache.GetOrCreateAsync(key,
+            async cancel => await LoadEventId(orgId, eventReference),
+            cancellationToken: stoppingToken);
+    }
+
+    private async Task<int> LoadEventId(int orgId, int eventReference)
+    {
+        using var db = await tsContext.CreateDbContextAsync(stoppingToken);
+        var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.EventReferenceId == eventReference, stoppingToken);
+        return ev?.Id ?? 0;
+    }
+
+    public async Task<int> SaveOrUpdateEvent(int orgId, int eventReference, string name)
+    {
+        using var db = await tsContext.CreateDbContextAsync(stoppingToken);
+        var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.EventReferenceId == eventReference, stoppingToken);
+        if (ev == null)
+        {
+            ev = new Event
+            {
+                OrganizationId = orgId,
+                EventReferenceId = eventReference,
+                Name = name
+            };
+            db.Events.Add(ev);
+        }
+        else
+        {
+            ev.Name = name;
+        }
+        await db.SaveChangesAsync(stoppingToken);
+        return ev.Id;
     }
 }

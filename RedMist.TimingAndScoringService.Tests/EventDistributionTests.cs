@@ -1,5 +1,8 @@
 ﻿using BigMission.TestHelpers.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Moq;
+using RedMist.TimingAndScoringService.Database;
 using RedMist.TimingAndScoringService.Models;
 using System.Text.Json;
 
@@ -10,6 +13,7 @@ namespace RedMist.TimingAndScoringService.Tests
     {
         private IConfiguration configuration;
         private DebugLoggerFactory lf;
+        private Mock<IDbContextFactory<TsContext>> dbContextFactoryMock;
 
         public EventDistributionTests()
         {
@@ -18,6 +22,7 @@ namespace RedMist.TimingAndScoringService.Tests
                 .AddInMemoryCollection(configValues)
                 .Build();
             lf = new DebugLoggerFactory();
+            dbContextFactoryMock = new Mock<IDbContextFactory<TsContext>>();
         }
 
         [TestMethod]
@@ -26,7 +31,7 @@ namespace RedMist.TimingAndScoringService.Tests
             var hcache = new HybridCacheShell();
             var mux = new RedisConnectionMultiplexerShell();
             var disLock = new DistributedLockFactoryShell();
-            var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock);
+            var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock, dbContextFactoryMock.Object);
 
             await eventDist.StartAsync(default);
             var cache = mux.GetDatabase();
@@ -39,13 +44,13 @@ namespace RedMist.TimingAndScoringService.Tests
             var hcache = new HybridCacheShell();
             var mux = new RedisConnectionMultiplexerShell();
             var disLock = new DistributedLockFactoryShell();
-            var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock);
+            var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock, dbContextFactoryMock.Object);
 
             await eventDist.StartAsync(default);
 
             var configValues = new Dictionary<string, string?> { { "POD_NAME", "test2" } };
             configuration = new ConfigurationBuilder().AddInMemoryCollection(configValues).Build();
-            eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock);
+            eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock, dbContextFactoryMock.Object);
             await eventDist.StartAsync(default);
 
             var cache = mux.GetDatabase();
@@ -60,10 +65,10 @@ namespace RedMist.TimingAndScoringService.Tests
             var hcache = new HybridCacheShell();
             var mux = new RedisConnectionMultiplexerShell();
             var disLock = new DistributedLockFactoryShell();
-            var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock);
+            var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock, dbContextFactoryMock.Object);
 
             await eventDist.StartAsync(default);
-            var stream = await eventDist.GetStream("test-event", default);
+            var stream = await eventDist.GetStreamAsync("test-event", default);
 
             var expectedKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, configuration["POD_NAME"]);
             Assert.AreEqual(expectedKey, stream);
@@ -80,17 +85,17 @@ namespace RedMist.TimingAndScoringService.Tests
             var hcache = new HybridCacheShell();
             var mux = new RedisConnectionMultiplexerShell();
             var disLock = new DistributedLockFactoryShell();
-            var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock);
+            var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock, dbContextFactoryMock.Object);
 
             await eventDist.StartAsync(default);
 
             var configValues = new Dictionary<string, string?> { { "POD_NAME", "test2" } };
             configuration = new ConfigurationBuilder().AddInMemoryCollection(configValues).Build();
-            eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock);
+            eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock, dbContextFactoryMock.Object);
             await eventDist.StartAsync(default);
 
-            await eventDist.GetStream("test-event1", default);
-            await eventDist.GetStream("test-event2", default);
+            await eventDist.GetStreamAsync("test-event1", default);
+            await eventDist.GetStreamAsync("test-event2", default);
 
             var cache = mux.GetDatabase();
             var pwJson = await cache.StringGetAsync(Consts.POD_WORKLOADS);
@@ -98,8 +103,8 @@ namespace RedMist.TimingAndScoringService.Tests
             Assert.AreEqual(1, pw![0].Events.Count);
             Assert.AreEqual(1, pw![1].Events.Count);
 
-            await eventDist.GetStream("test-event3", default);
-            await eventDist.GetStream("test-event4", default);
+            await eventDist.GetStreamAsync("test-event3", default);
+            await eventDist.GetStreamAsync("test-event4", default);
 
             pwJson = await cache.StringGetAsync(Consts.POD_WORKLOADS);
             pw = JsonSerializer.Deserialize<List<EventProcessorInstance>>(pwJson!);
@@ -114,11 +119,9 @@ namespace RedMist.TimingAndScoringService.Tests
             var hcache = new HybridCacheShell();
             var mux = new RedisConnectionMultiplexerShell();
             var disLock = new DistributedLockFactoryShell();
-            var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock);
+            var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock, dbContextFactoryMock.Object);
 
-            await eventDist.GetStream("test-event", default);
+            await eventDist.GetStreamAsync("test-event", default);
         }
     }
-
-
 }

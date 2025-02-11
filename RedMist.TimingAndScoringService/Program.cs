@@ -1,16 +1,17 @@
-
 using BigMission.TestHelpers;
 using HealthChecks.UI.Client;
 using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
 using Keycloak.AuthServices.Common;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using RedLockNet;
 using RedLockNet.SERedis;
 using RedLockNet.SERedis.Configuration;
+using RedMist.TimingAndScoringService.Database;
 using RedMist.TimingAndScoringService.Hubs;
 using StackExchange.Redis;
 
@@ -71,16 +72,16 @@ public class Program
         });
 
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
+        builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
         builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 10; c.ConnectTimeout = 10; }));
 
-        builder.Services.AddHybridCache();
+        builder.Services.AddHostedService(s => s.GetRequiredService<EventDistribution>());
+        builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(100), LocalCacheExpiration = TimeSpan.FromDays(100) });
+        builder.Services.AddSingleton<EventDistribution>();
         builder.Services.AddSingleton<IDateTimeHelper, DateTimeHelper>();
-        builder.Services.AddTransient<EventDistribution>();
         builder.Services.AddSingleton<IDistributedLockFactory>(r => RedLockFactory.Create([new RedLockMultiplexer(r.GetRequiredService<IConnectionMultiplexer>())]));
-
-
 
         builder.Services.AddHealthChecks()
             //.AddCheck<StartupHealthCheck>("Startup", tags: ["startup"])
@@ -93,11 +94,6 @@ public class Program
             {
                 options.Configuration.ChannelPrefix = RedisChannel.Literal("timing-scoring");
             });
-
-        builder.Services.AddTransient<IDateTimeHelper, DateTimeHelper>();
-        //builder.Services.AddSingleton<StartupHealthCheck>();
-        //builder.Services.AddSingleton<ServiceTracking>();
-        //builder.Services.AddSingleton<HubConnectionContext>();
 
         var app = builder.Build();
 
