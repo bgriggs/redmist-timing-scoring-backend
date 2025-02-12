@@ -9,7 +9,7 @@ public class EventAggregator : BackgroundService
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDataProcessorFactory dataProcessorFactory;
     public Action<EventStatusUpdateEventArgs<List<TimingCommon.Models.EventStatus>>>? EventStatusUpdated;
-    public Action<EventStatusUpdateEventArgs<List<EventEntries>>>? EventEntriesUpdated;
+    public Action<EventStatusUpdateEventArgs<List<EventEntry>>>? EventEntriesUpdated;
     public Action<EventStatusUpdateEventArgs<List<CarPosition>>>? CarPositionsUpdated;
     private ILogger Logger { get; }
     private readonly string podInstance;
@@ -50,7 +50,7 @@ public class EventAggregator : BackgroundService
 
                         if (!processors.TryGetValue(eventId, out var processor))
                         {
-                            processor = dataProcessorFactory.CreateDataProcessor(type);
+                            processor = dataProcessorFactory.CreateDataProcessor(type, eventId);
                             processors[eventId] = processor;
                         }
 

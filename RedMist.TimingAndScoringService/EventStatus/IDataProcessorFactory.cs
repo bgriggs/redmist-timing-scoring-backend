@@ -2,5 +2,5 @@
 
 public interface IDataProcessorFactory
 {
-    IDataProcessor CreateDataProcessor(string type);
+    IDataProcessor CreateDataProcessor(string type, int eventId);
 }

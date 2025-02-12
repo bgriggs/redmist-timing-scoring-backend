@@ -2,6 +2,11 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
+/// <summary>
+/// Final processed event information to send to clients.
+/// </summary>
+/// <param name="eventId"></param>
+/// <param name="statusJson"></param>
 public class StatusNotification(int eventId, string statusJson) : INotification
 {
     public int EventId { get; set; } = eventId;
