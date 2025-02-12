@@ -4,6 +4,7 @@ using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
 using Keycloak.AuthServices.Common;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.OpenApi.Models;
@@ -86,6 +87,7 @@ public class Program
         builder.Services.AddSingleton<IDistributedLockFactory>(r => RedLockFactory.Create([new RedLockMultiplexer(r.GetRequiredService<IConnectionMultiplexer>())]));
         builder.Services.AddTransient<IDataProcessorFactory, DataProcessorFactory>();
         builder.Services.AddHostedService<EventAggregator>();
+        builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<Program>());
 
         builder.Services.AddHealthChecks()
             //.AddCheck<StartupHealthCheck>("Startup", tags: ["startup"])

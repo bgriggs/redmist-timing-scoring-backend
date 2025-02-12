@@ -2,5 +2,5 @@
 
 public interface IDataProcessor
 {
-    void ProcessUpdate(string data);
+    Task ProcessUpdate(string data, CancellationToken stoppingToken);
 }

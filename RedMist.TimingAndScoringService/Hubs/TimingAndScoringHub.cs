@@ -1,11 +1,13 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using RedMist.TimingAndScoringService.EventStatus;
 using StackExchange.Redis;
 
 namespace RedMist.TimingAndScoringService.Hubs;
 
 [Authorize]
-public class TimingAndScoringHub : Hub
+public class TimingAndScoringHub : Hub, INotificationHandler<StatusNotification>
 {
     private readonly EventDistribution eventDistribution;
     private readonly IConnectionMultiplexer cacheMux;
@@ -47,6 +49,8 @@ public class TimingAndScoringHub : Hub
         }
         return clientId;
     }
+
+    #region Relay
 
     /// <summary>
     /// Receives a sent message from a RMonitor relay.
@@ -94,4 +98,33 @@ public class TimingAndScoringHub : Hub
         var orgId = await eventDistribution.GetOrganizationId(clientId);
         await eventDistribution.SaveOrUpdateEvent(orgId, eventReference, name);
     }
+
+    #endregion
+
+    #region Clients
+
+    /// <summary>
+    /// Receives a status update from an event processor and forwards it to the subscribed client(s).
+    /// </summary>
+    public async Task Handle(StatusNotification notification, CancellationToken cancellationToken)
+    {
+        Logger.LogInformation("StatusNotification: {0}", notification.StatusJson);
+        await Clients.Group(notification.EventId.ToString()).SendAsync("ReceiveMessage", notification.StatusJson);
+    }
+
+    public async Task SubscribeToEvent(int eventId)
+    {
+        var connectionId = Context.ConnectionId;
+        await Groups.AddToGroupAsync(connectionId, eventId.ToString());
+        Logger.LogInformation("Client {0} subscribed to event {1}", connectionId, eventId);
+    }
+
+    public async Task UnsubscribeFromEvent(int eventId)
+    {
+        var connectionId = Context.ConnectionId;
+        await Groups.RemoveFromGroupAsync(connectionId, eventId.ToString());
+        Logger.LogInformation("Client {0} unsubscribed from event {1}", connectionId, eventId);
+    }
+
+    #endregion
 }

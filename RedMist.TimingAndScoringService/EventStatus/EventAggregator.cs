@@ -54,7 +54,7 @@ public class EventAggregator : BackgroundService
                             processors[eventId] = processor;
                         }
 
-                        processor.ProcessUpdate(field.Value.ToString());
+                        await processor.ProcessUpdate(field.Value.ToString(), stoppingToken);
                     }
                     
                 }
