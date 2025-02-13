@@ -16,6 +16,8 @@ public class RmDataProcessor : IDataProcessor
 
     private readonly Dictionary<int, string> classes = [];
     private readonly Dictionary<string, Competitor> competitors = [];
+    private readonly Dictionary<string, RaceInformation> raceInformation = [];
+
     public int EventReference { get; set; }
     public string EventName { get; set; } = string.Empty;
     public string TrackName { get; set; } = string.Empty;
@@ -233,7 +235,18 @@ public class RmDataProcessor : IDataProcessor
     private void ProcessG(string data)
     {
         var parts = data.Split(',');
+        var regNum = parts[2].Replace("\"", "");
+        if (!raceInformation.TryGetValue(regNum, out var raceInfo))
+        {
+            raceInfo = new RaceInformation();
+            raceInformation[regNum] = raceInfo;
+        }
+        raceInfo.ProcessG(parts);
+    }
 
+    public ImmutableDictionary<string, RaceInformation> GetRaceInformation()
+    {
+        return raceInformation.ToImmutableDictionary();
     }
 
     #endregion
