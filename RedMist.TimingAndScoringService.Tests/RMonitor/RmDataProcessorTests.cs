@@ -250,4 +250,23 @@ public class RmDataProcessorTests
     }
 
     #endregion
+
+    #region Practice/qualifying information
+
+    [TestMethod]
+    public async Task ProcessPracticingQualifying_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+
+        await processor.ProcessUpdate("$H,2,\"1234BE\",3,\"00:02:17.872\"");
+        var raceInfo = processor.GetPracticeQualifying();
+        Assert.AreEqual(1, raceInfo.Count);
+        Assert.AreEqual(2, raceInfo["1234BE"].Position);
+        Assert.AreEqual(3, raceInfo["1234BE"].BestLap);
+        Assert.AreEqual("00:02:17.872", raceInfo["1234BE"].BestLapTime);
+        Assert.AreEqual(new DateTime(1, 1, 1, 0, 2, 17, 872).TimeOfDay, raceInfo["1234BE"].BestTimeTimestamp.TimeOfDay);
+    }
+
+    #endregion
 }
