@@ -18,6 +18,7 @@ public class RmDataProcessor : IDataProcessor
     private readonly Dictionary<string, Competitor> competitors = [];
     private readonly Dictionary<string, RaceInformation> raceInformation = [];
     private readonly Dictionary<string, PracticeQualifying> practiceQualifying = [];
+    private readonly Dictionary<string, PassingInformation> passingInformation = [];
 
     public int EventReference { get; set; }
     public string EventName { get; set; } = string.Empty;
@@ -286,7 +287,7 @@ public class RmDataProcessor : IDataProcessor
     private void ProcessI(string data)
     {
         var parts = data.Split(',');
-
+        // todo: reset data
     }
 
     #endregion
@@ -300,7 +301,18 @@ public class RmDataProcessor : IDataProcessor
     private void ProcessJ(string data)
     {
         var parts = data.Split(',');
+        var regNum = parts[1].Replace("\"", "");
+        if (!passingInformation.TryGetValue(regNum, out var pq))
+        {
+            pq = new PassingInformation();
+            passingInformation[regNum] = pq;
+        }
+        pq.ProcessJ(parts);
+    }
 
+    public ImmutableDictionary<string, PassingInformation> GetPassingInformation()
+    {
+        return passingInformation.ToImmutableDictionary();
     }
 
     #endregion

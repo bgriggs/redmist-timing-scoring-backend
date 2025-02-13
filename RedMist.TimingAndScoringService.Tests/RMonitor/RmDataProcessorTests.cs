@@ -269,4 +269,23 @@ public class RmDataProcessorTests
     }
 
     #endregion
+
+    #region Passing information
+
+    [TestMethod]
+    public async Task ProcessPassingInformation_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+
+        await processor.ProcessUpdate("$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"");
+        var raceInfo = processor.GetPassingInformation();
+        Assert.AreEqual(1, raceInfo.Count);
+        Assert.AreEqual("00:02:03.826", raceInfo["1234BE"].LapTime);
+        Assert.AreEqual(new DateTime(1, 1, 1, 0, 2, 3, 826).TimeOfDay, raceInfo["1234BE"].LapTimestamp.TimeOfDay);
+        Assert.AreEqual("01:42:17.672", raceInfo["1234BE"].RaceTime);
+        Assert.AreEqual(new DateTime(1, 1, 1, 1, 42, 17, 672).TimeOfDay, raceInfo["1234BE"].RaceTimestamp.TimeOfDay);
+    }
+
+    #endregion
 }
