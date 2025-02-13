@@ -181,4 +181,32 @@ public class RmDataProcessorTests
     }
 
     #endregion
+
+    #region Setting information
+
+    [TestMethod]
+    public async Task ProcessSeries_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+
+        await processor.ProcessUpdate("$E,\"TRACKNAME\",\"Indianapolis Motor Speedway\"");
+        Assert.AreEqual("Indianapolis Motor Speedway", processor.TrackName);
+        
+        await processor.ProcessUpdate("$E,\"TRACKLENGTH\",\"2.500\"");
+        Assert.AreEqual(2.500, processor.TrackLength, 0.001);
+    }
+
+    [TestMethod]
+    public async Task ProcessSeries_InvalidDesc_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+
+        await processor.ProcessUpdate("$E,\"wefahbt\",\"Indianapolis Motor Speedway\"");
+        Assert.AreEqual("", processor.TrackName);
+        Assert.AreEqual(0, processor.TrackLength, 0.0001);
+    }
+
+    #endregion 
 }
