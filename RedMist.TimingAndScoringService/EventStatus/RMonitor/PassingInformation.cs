@@ -2,10 +2,14 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
-public class PassingInformation
+[Reactive]
+public partial class PassingInformation
 {
+    [IgnoreReactive]
     public string RegistrationNumber { get; set; } = string.Empty;
-    public string LapTime { get; set; } = string.Empty;
+    public partial string LapTime { get; set; } = string.Empty;
+    
+    [IgnoreReactive]
     public DateTime LapTimestamp
     {
         get
@@ -15,7 +19,9 @@ public class PassingInformation
         }
     }
 
-    public string RaceTime { get; set; } = string.Empty;
+    public partial string RaceTime { get; set; } = string.Empty;
+
+    [IgnoreReactive]
     public DateTime RaceTimestamp
     {
         get
@@ -24,6 +30,18 @@ public class PassingInformation
             return result;
         }
     }
+
+    public bool IsDirty { get; set; }
+
+
+    public PassingInformation()
+    {
+        PropertyChanged += (sender, args) =>
+        {
+            IsDirty = true;
+        };
+    }
+
 
     /// <summary>
     /// Processes $J messages.

@@ -1,4 +1,5 @@
 ﻿using MediatR;
+using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
 
@@ -13,7 +14,11 @@ public class RmDataProcessor : IDataProcessor
     private readonly int eventId;
     private readonly IMediator mediator;
     private ILogger Logger { get; }
+    private readonly Debouncer debouncer = new(TimeSpan.FromMilliseconds(100));
+    public Debouncer Debouncer => debouncer;
 
+    private readonly SemaphoreSlim _lock = new(1, 1);
+    public Heartbeat Heartbeat { get; } = new();
     private readonly Dictionary<int, string> classes = [];
     private readonly Dictionary<string, Competitor> competitors = [];
     private readonly Dictionary<string, RaceInformation> raceInformation = [];
@@ -34,79 +39,101 @@ public class RmDataProcessor : IDataProcessor
 
     public async Task ProcessUpdate(string data, CancellationToken stoppingToken = default)
     {
-        // Parse data and send to mediator
-
-        var commands = data.Split('\n');
-        foreach (var command in commands)
+        // Parse data
+        await _lock.WaitAsync(stoppingToken);
+        try
         {
-            try
+            var commands = data.Split('\n');
+            foreach (var command in commands)
             {
-                if (command.StartsWith("$A"))
+                try
                 {
-                    // Competitor information
-                    ProcessA(command);
+                    if (command.StartsWith("$F"))
+                    {
+                        // Heartbeat message
+                        ProcessF(command);
+                    }
+                    else if (command.StartsWith("$A"))
+                    {
+                        // Competitor information
+                        ProcessA(command);
+                    }
+                    else if (command.StartsWith("$COMP"))
+                    {
+                        // Competitor information
+                        ProcessComp(command);
+                    }
+                    else if (command.StartsWith("$B"))
+                    {
+                        // Event information
+                        ProcessB(command);
+                    }
+                    else if (command.StartsWith("$C"))
+                    {
+                        // Class information
+                        ProcessC(command);
+                    }
+                    else if (command.StartsWith("$E"))
+                    {
+                        // Setting (track) information
+                        ProcessE(command);
+                    }
+                    else if (command.StartsWith("$G"))
+                    {
+                        // Race information
+                        ProcessG(command);
+                    }
+                    else if (command.StartsWith("$H"))
+                    {
+                        // Practice/qualifying information
+                        ProcessH(command);
+                    }
+                    else if (command.StartsWith("$I"))
+                    {
+                        // Init record (reset)
+                        ProcessI();
+                    }
+                    else if (command.StartsWith("$J"))
+                    {
+                        // Passing information
+                        ProcessJ(command);
+                    }
+                    else if (command.StartsWith("$COR"))
+                    {
+                        // Corrected Finish Time
+                        ProcessCor(command);
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Unknown command: {0}", command);
+                    }
                 }
-                else if (command.StartsWith("$COMP"))
+                catch (Exception ex)
                 {
-                    // Competitor information
-                    ProcessComp(command);
+                    Logger.LogError(ex, "Error processing command: {0}", command);
                 }
-                else if (command.StartsWith("$B"))
-                {
-                    // Event information
-                    ProcessB(command);
-                }
-                else if (command.StartsWith("$C"))
-                {
-                    // Class information
-                    ProcessC(command);
-                }
-                else if (command.StartsWith("$E"))
-                {
-                    // Setting (track) information
-                    ProcessE(command);
-                }
-                else if (command.StartsWith("$G"))
-                {
-                    // Race information
-                    ProcessG(command);
-                }
-                else if (command.StartsWith("$H"))
-                {
-                    // Practice/qualifying information
-                    ProcessH(command);
-                }
-                else if (command.StartsWith("$I"))
-                {
-                    // Init record (reset)
-                    ProcessI(command);
-                }
-                else if (command.StartsWith("$J"))
-                {
-                    // Passing information
-                    ProcessJ(command);
-                }
-                else if (command.StartsWith("$COR"))
-                {
-                    // Corrected Finish Time
-                    ProcessCor(command);
-                }
-                else
-                {
-                    Logger.LogWarning("Unknown command: {0}", command);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error processing command: {0}", command);
             }
         }
+        finally
+        {
+            _lock.Release();
+        }
 
-        // when shared model is invalidated, save to redis
-        // controller needs to load from redis when a new client connects
-        // send invalidated shared models to clients
-        await mediator.Publish(new StatusNotification(1, data), stoppingToken);
+        await debouncer.ExecuteAsync(() => Task.Run(() => PublishChanges()), stoppingToken);
     }
+
+    #region Heartbeat message
+
+    /// <summary>
+    /// Processes $F –- Heartbeat message
+    /// </summary>
+    /// <example>$F,14,"00:12:45","13:34:23","00:09:47","Green "</example>
+    private void ProcessF(string data)
+    {
+        Heartbeat.ProcessF(data);
+    }
+
+    #endregion
 
     #region Competitors
 
@@ -144,22 +171,24 @@ public class RmDataProcessor : IDataProcessor
 
     public EventEntry[] GetEventEntries()
     {
-        var entries = new List<EventEntry>();
+        return competitors.Select(c => c.Value.ToEventEntry(GetClassName))
+                          .ToArray()!;
+    }
 
-        foreach (var competitor in competitors.Values)
+    public EventEntry[] GetChangedEventEntries()
+    {
+        return competitors.Select(c => c.Value.ToEventEntryWhenDirtyWithReset(GetClassName))
+                          .Where(c => c != null)
+                          .ToArray()!;
+    }
+
+    private string? GetClassName(int classId)
+    {
+        if (classes.TryGetValue(classId, out var className))
         {
-            var entry = competitor.ToEventEntry();
-            if (int.TryParse(entry.Class, out var c))
-            {
-                if (classes.TryGetValue(c, out var className))
-                {
-                    entry.Class = className;
-                }
-            }
-            entries.Add(entry);
+            return className;
         }
-
-        return [.. entries];
+        return null;
     }
 
     #endregion
@@ -284,10 +313,13 @@ public class RmDataProcessor : IDataProcessor
     /// Processes $I messages.
     /// </summary>
     /// <example>$I,"16:36:08.000","12 jan 01"</example>
-    private void ProcessI(string data)
+    private void ProcessI()
     {
-        var parts = data.Split(',');
-        // todo: reset data
+        classes.Clear();
+        competitors.Clear();
+        raceInformation.Clear();
+        practiceQualifying.Clear();
+        passingInformation.Clear();
     }
 
     #endregion
@@ -325,9 +357,82 @@ public class RmDataProcessor : IDataProcessor
     /// <example>$COR,"123BE","658",2,"00:00:35.272","+00:00:00.012"</example>
     private void ProcessCor(string data)
     {
-        var parts = data.Split(',');
-
     }
 
     #endregion
+
+
+
+    private Task PublishChanges()
+    {
+        // Event Status
+        Enum.TryParse(typeof(Flags), Heartbeat.FlagStatus, true, out var flag);
+        flag ??= Flags.Unknown;
+
+        var eventStatus = new TimingCommon.Models.EventStatus 
+        {
+            EventId = eventId.ToString(),
+            Flag = (Flags)flag,
+            LapsToGo = Heartbeat.LapsToGo,
+            TimeToGo = Heartbeat.TimeToGo,
+            TotalTime = Heartbeat.RaceTime
+        };
+
+        // Event Entries
+        var eventEntries = GetChangedEventEntries();
+
+        // Car Positions
+        var carPositions = GetChangedCarPositions();
+
+
+        // when shared model is invalidated, save to redis
+        // controller needs to load from redis when a new client connects
+        // send invalidated shared models to clients
+        // add consolidated payload class
+        //await mediator.Publish(new StatusNotification(1, data), stoppingToken);
+
+        return Task.CompletedTask;
+    }
+
+    public CarPosition[] GetChangedCarPositions()
+    {
+        var carPositions = new List<CarPosition>();
+        foreach (var reg in raceInformation.Keys)
+        {
+            if (!raceInformation.TryGetValue(reg, out var raceInfo))
+            {
+                continue;
+            }
+
+            var carPos = new CarPosition 
+            { 
+                EventId = eventId.ToString(),
+                Number = raceInfo.RegistrationNumber, 
+                OverallPosition = raceInfo.Position,
+                TotalTime = raceInfo.RaceTime,
+                LastLap = raceInfo.Laps
+            };
+
+            if (passingInformation.TryGetValue(reg, out var pass))
+            {
+                if (carPos.TotalTime != pass.RaceTime)
+                {
+                    Logger.LogWarning("Total time mismatch for passingInformation {0}: {1} != {2}", reg, carPos.TotalTime, pass.RaceTime);
+                }
+                carPos.LastTime = pass.LapTime;
+            }
+
+            if (practiceQualifying.TryGetValue(reg, out var pq))
+            {
+                carPos.BestTime = pq.BestLapTime;
+                carPos.BestLap = pq.BestLap;
+                //carPos.IsBestTime = pq.IsBestLap;
+                //carPos.IsBestTimeClass = pq.IsBestLapClass;
+            }
+
+            carPositions.Add(carPos);
+        }
+
+        return [.. carPositions];
+    }
 }

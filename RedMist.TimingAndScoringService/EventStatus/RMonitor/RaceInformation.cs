@@ -2,12 +2,17 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
-public class RaceInformation
+[Reactive]
+public partial class RaceInformation
 {
-    public int Position { get; set; }
+    public partial int Position { get; set; }
+
+    [IgnoreReactive]
     public string RegistrationNumber { get; set; } = string.Empty;
-    public int Laps { get; set; }
-    public string RaceTime { get; set; } = string.Empty;
+    public partial int Laps { get; set; }
+    public partial string RaceTime { get; set; } = string.Empty;
+
+    [IgnoreReactive]
     public DateTime Timestamp
     {
         get 
@@ -16,6 +21,17 @@ public class RaceInformation
             return result;
         }
     }
+    public bool IsDirty { get; set; }
+
+
+    public RaceInformation()
+    {
+        PropertyChanged += (sender, args) =>
+        {
+            IsDirty = true;
+        };
+    }
+
 
     /// <summary>
     /// Processes $G messages.

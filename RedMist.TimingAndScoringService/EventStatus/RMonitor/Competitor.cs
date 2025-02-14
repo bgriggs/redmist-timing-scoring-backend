@@ -2,16 +2,29 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
-public class Competitor
+[Reactive]
+public partial class Competitor
 {
+    [IgnoreReactive]
     public string RegistrationNumber { get; private set; } = string.Empty;
-    public string Number { get; private set; } = string.Empty;
-    public int Transponder { get; private set; }
-    public string FirstName { get; private set; } = string.Empty;
-    public string LastName { get; private set; } = string.Empty;
-    public string Country { get; private set; } = string.Empty;
-    public int ClassNumber { get; private set; }
-    public string AdditionalData { get; private set; } = string.Empty;
+    public partial string Number { get; private set; } = string.Empty;
+    public partial int Transponder { get; private set; }
+    public partial string FirstName { get; private set; } = string.Empty;
+    public partial string LastName { get; private set; } = string.Empty;
+    public partial string Country { get; private set; } = string.Empty;
+    public partial int ClassNumber { get; private set; }
+    public partial string AdditionalData { get; private set; } = string.Empty;
+
+    public bool IsDirty { get; private set; }
+
+    public Competitor()
+    {
+        PropertyChanged += (sender, args) =>
+        {
+            IsDirty = true;
+        };
+    }
+
 
     public void ProcessA(string[] parts)
     {
@@ -37,12 +50,27 @@ public class Competitor
 
     public EventEntry ToEventEntry()
     {
+        return ToEventEntry(_ => null);
+    }
+
+    public EventEntry ToEventEntry(Func<int, string?> getClassName)
+    {
+        var @class = getClassName(ClassNumber);
+        
         return new EventEntry
         {
             Number = Number,
             Name = $"{FirstName} {LastName}".Trim(),
             Team = AdditionalData,
-            Class = ClassNumber.ToString()
+            Class = @class ?? ClassNumber.ToString()
         };
+    }
+
+    public EventEntry? ToEventEntryWhenDirtyWithReset(Func<int, string?> getClassName)
+    {
+        if (!IsDirty)
+            return null;
+        IsDirty = false;
+        return ToEventEntry(getClassName);
     }
 }

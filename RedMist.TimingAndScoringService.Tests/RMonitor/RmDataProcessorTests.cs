@@ -10,6 +10,70 @@ public class RmDataProcessorTests
 {
     private readonly DebugLoggerFactory lf = new();
 
+
+    #region Heartbeat
+
+    [TestMethod]
+    public async Task ProcessF_Parse_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
+
+        Assert.AreEqual(14, processor.Heartbeat.LapsToGo);
+        Assert.AreEqual("00:12:45", processor.Heartbeat.TimeToGo);
+        Assert.AreEqual("13:34:23", processor.Heartbeat.TimeOfDay);
+        Assert.AreEqual("00:09:47", processor.Heartbeat.RaceTime);
+        Assert.AreEqual("Green", processor.Heartbeat.FlagStatus);
+    }
+
+    [TestMethod]
+    public async Task ProcessF_ChangeNotDirty_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
+        Assert.IsTrue(processor.Heartbeat.IsDirty);
+        
+        // Reset the dirty flag manually
+        processor.Heartbeat.IsDirty = false;
+        
+        await processor.ProcessUpdate("$F,14,\"10:12:45\",\"14:34:23\",\"00:03:47\",\"Green \"");
+        Assert.IsFalse(processor.Heartbeat.IsDirty);
+    }
+
+    [TestMethod]
+    public async Task ProcessF_ChangeDirty_Laps_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
+        Assert.IsTrue(processor.Heartbeat.IsDirty);
+
+        // Reset the dirty flag manually
+        processor.Heartbeat.IsDirty = false;
+
+        await processor.ProcessUpdate("$F,15,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
+        Assert.IsTrue(processor.Heartbeat.IsDirty);
+    }
+
+    [TestMethod]
+    public async Task ProcessF_ChangeDirty_Flag_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
+        Assert.IsTrue(processor.Heartbeat.IsDirty);
+
+        // Reset the dirty flag manually
+        processor.Heartbeat.IsDirty = false;
+
+        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Red   \"");
+        Assert.IsTrue(processor.Heartbeat.IsDirty);
+    }
+
+    #endregion
+
     #region Competitor Tests
 
     [TestMethod]
@@ -27,6 +91,27 @@ public class RmDataProcessorTests
         Assert.AreEqual("Formula 300", entry[0].Class);
     }
 
+    [TestMethod]
+    public async Task ProcessA_GetWhenDirty_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+
+        // Disable the debouncer to bypass premature dirty reset
+        processor.Debouncer.IsDisabled = true; 
+
+        await processor.ProcessUpdate("$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5");
+        await processor.ProcessUpdate("$A,\"1234BE1\",\"122\",52474,\"Fred\",\"Johnson\",\"USA\",5");
+        await processor.ProcessUpdate("$C,5,\"Formula 300\"");
+        var entries = processor.GetChangedEventEntries();
+        Assert.AreEqual(2, entries.Length);
+
+        await processor.ProcessUpdate("$A,\"1234BE1\",\"122\",52474,\"Bob\",\"Johnson\",\"USA\",5");
+        entries = processor.GetChangedEventEntries();
+        Assert.AreEqual(1, entries.Length);
+        Assert.AreEqual("Bob Johnson", entries[0].Name);
+    }
+     
     [TestMethod]
     public async Task ProcessA_NoClassMapping_Test()
     {

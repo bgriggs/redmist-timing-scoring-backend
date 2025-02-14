@@ -12,8 +12,8 @@ namespace RedMist.TimingAndScoringService.Tests;
 public sealed class EventDistributionTests
 {
     private IConfiguration configuration;
-    private DebugLoggerFactory lf;
-    private Mock<IDbContextFactory<TsContext>> dbContextFactoryMock;
+    private readonly DebugLoggerFactory lf;
+    private readonly Mock<IDbContextFactory<TsContext>> dbContextFactoryMock;
 
     public EventDistributionTests()
     {

@@ -117,7 +117,7 @@ public class EventDistribution : BackgroundService
         {
             return [];
         }
-        return JsonSerializer.Deserialize<List<EventProcessorInstance>>(pwJson!) ?? [];
+        return JsonSerializer.Deserialize<List<EventProcessorInstance>>(pwJson.ToString()) ?? [];
     }
 
     private async Task<string> AssignWorkloadToBestPodAsync(List<EventProcessorInstance> workloads, string eventId)
