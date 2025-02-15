@@ -2,6 +2,7 @@
 using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
+using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
@@ -11,7 +12,7 @@ namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
 public class RmDataProcessor : IDataProcessor
 {
-    private readonly int eventId;
+    public int EventId { get; private set; }
     private readonly IMediator mediator;
     private ILogger Logger { get; }
     private readonly Debouncer debouncer = new(TimeSpan.FromMilliseconds(100));
@@ -33,7 +34,7 @@ public class RmDataProcessor : IDataProcessor
     public RmDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
-        this.eventId = eventId;
+        EventId = eventId;
         this.mediator = mediator;
     }
 
@@ -119,7 +120,7 @@ public class RmDataProcessor : IDataProcessor
             _lock.Release();
         }
 
-        await debouncer.ExecuteAsync(() => Task.Run(() => PublishChanges()), stoppingToken);
+        await debouncer.ExecuteAsync(() => Task.Run(() => PublishChanges(stoppingToken)), stoppingToken);
     }
 
     #region Heartbeat message
@@ -131,6 +132,21 @@ public class RmDataProcessor : IDataProcessor
     private void ProcessF(string data)
     {
         Heartbeat.ProcessF(data);
+    }
+
+    public TimingCommon.Models.EventStatus GetEventStatus()
+    {
+        Enum.TryParse(typeof(Flags), Heartbeat.FlagStatus, true, out var flag);
+        flag ??= Flags.Unknown;
+
+        return new TimingCommon.Models.EventStatus
+        {
+            EventId = EventId.ToString(),
+            Flag = (Flags)flag,
+            LapsToGo = Heartbeat.LapsToGo,
+            TimeToGo = Heartbeat.TimeToGo,
+            TotalTime = Heartbeat.RaceTime
+        };
     }
 
     #endregion
@@ -208,7 +224,7 @@ public class RmDataProcessor : IDataProcessor
 
     public Event GetEvent()
     {
-        return new Event { EventId = eventId, EventName = EventName };
+        return new Event { EventId = EventId, EventName = EventName };
     }
 
     #endregion
@@ -362,39 +378,44 @@ public class RmDataProcessor : IDataProcessor
     #endregion
 
 
-
-    private Task PublishChanges()
+    private async Task PublishChanges(CancellationToken stoppingToken = default)
     {
-        // Event Status
-        Enum.TryParse(typeof(Flags), Heartbeat.FlagStatus, true, out var flag);
-        flag ??= Flags.Unknown;
+        TimingCommon.Models.EventStatus eventStatus;
+        EventEntry[] eventEntries;
+        CarPosition[] carPositions;
 
-        var eventStatus = new TimingCommon.Models.EventStatus 
+        await _lock.WaitAsync(stoppingToken);
+        try
         {
-            EventId = eventId.ToString(),
-            Flag = (Flags)flag,
-            LapsToGo = Heartbeat.LapsToGo,
-            TimeToGo = Heartbeat.TimeToGo,
-            TotalTime = Heartbeat.RaceTime
+            // Event Status
+            eventStatus = GetEventStatus();
+
+            // Event Entries
+            eventEntries = GetChangedEventEntries();
+
+            // Car Positions
+            carPositions = GetCarPositions(includeChangedOnly: true);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+
+        var payload = new Payload
+        {
+            EventId = EventId,
+            EventStatus = eventStatus,
         };
-
-        // Event Entries
-        var eventEntries = GetChangedEventEntries();
-
-        // Car Positions
-        var carPositions = GetChangedCarPositions();
-
+        payload.EventEntryUpdates.AddRange(eventEntries);
+        payload.CarPositionUpdates.AddRange(carPositions);
 
         // when shared model is invalidated, save to redis
         // controller needs to load from redis when a new client connects
-        // send invalidated shared models to clients
-        // add consolidated payload class
-        //await mediator.Publish(new StatusNotification(1, data), stoppingToken);
-
-        return Task.CompletedTask;
+        var json = JsonSerializer.Serialize(payload);
+        await mediator.Publish(new StatusNotification(EventId, json), stoppingToken);
     }
 
-    public CarPosition[] GetChangedCarPositions()
+    public CarPosition[] GetCarPositions(bool includeChangedOnly = false)
     {
         var carPositions = new List<CarPosition>();
         foreach (var reg in raceInformation.Keys)
@@ -404,10 +425,10 @@ public class RmDataProcessor : IDataProcessor
                 continue;
             }
 
-            var carPos = new CarPosition 
-            { 
-                EventId = eventId.ToString(),
-                Number = raceInfo.RegistrationNumber, 
+            var carPos = new CarPosition
+            {
+                EventId = EventId.ToString(),
+                Number = raceInfo.RegistrationNumber,
                 OverallPosition = raceInfo.Position,
                 TotalTime = raceInfo.RaceTime,
                 LastLap = raceInfo.Laps
@@ -430,9 +451,63 @@ public class RmDataProcessor : IDataProcessor
                 //carPos.IsBestTimeClass = pq.IsBestLapClass;
             }
 
-            carPositions.Add(carPos);
+            if (includeChangedOnly)
+            {
+                if (raceInfo.IsDirty || (pass != null && pass.IsDirty) || (pq != null && pq.IsDirty))
+                {
+                    carPositions.Add(carPos);
+                }
+            }
+            else
+            {
+                carPositions.Add(carPos);
+            }
+
+            raceInfo.IsDirty = false;
+            if (pass != null)
+            {
+                pass.IsDirty = false;
+            }
+            if (pq != null)
+            {
+                pq.IsDirty = false;
+            }
         }
 
         return [.. carPositions];
+    }
+
+    /// <summary>
+    /// Gets full update of current status.
+    /// </summary>
+    public async Task<Payload> GetPayload(CancellationToken stoppingToken = default)
+    {
+        await _lock.WaitAsync(stoppingToken);
+        try
+        {
+            // Event Status
+            var eventStatus = GetEventStatus();
+
+            // Event Entries
+            var eventEntries = GetEventEntries();
+
+            // Car Positions
+            var carPositions = GetCarPositions();
+
+            var payload = new Payload
+            {
+                EventId = EventId,
+                EventName = EventName,
+                EventStatus = eventStatus,
+            };
+            payload.EventEntries.AddRange(eventEntries);
+            payload.CarPositions.AddRange(carPositions);
+
+            return payload;
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 }

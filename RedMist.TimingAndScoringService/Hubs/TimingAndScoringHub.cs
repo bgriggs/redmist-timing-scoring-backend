@@ -6,6 +6,9 @@ using StackExchange.Redis;
 
 namespace RedMist.TimingAndScoringService.Hubs;
 
+/// <summary>
+/// SignalR hub for timing and scoring relay service and UI clients.
+/// </summary>
 [Authorize]
 public class TimingAndScoringHub : Hub, INotificationHandler<StatusNotification>
 {
@@ -33,7 +36,7 @@ public class TimingAndScoringHub : Hub, INotificationHandler<StatusNotification>
         Logger.LogInformation("Client disconnected: {0}", Context.ConnectionId);
     }
 
-    private string? GetClientId() 
+    private string? GetClientId()
     {
         if (Context.User == null)
         {
@@ -109,13 +112,35 @@ public class TimingAndScoringHub : Hub, INotificationHandler<StatusNotification>
     public async Task Handle(StatusNotification notification, CancellationToken cancellationToken)
     {
         Logger.LogInformation("StatusNotification: {0}", notification.StatusJson);
-        await Clients.Group(notification.EventId.ToString()).SendAsync("ReceiveMessage", notification.StatusJson);
+        try
+        {
+            if (!string.IsNullOrEmpty(notification.ConnectionDestination))
+            {
+                await Clients.Client(notification.ConnectionDestination).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
+            }
+            else
+            {
+                await Clients.Group(notification.EventId.ToString()).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error sending status update to client(s): {0}", ex.Message);
+        }
     }
 
     public async Task SubscribeToEvent(int eventId)
     {
         var connectionId = Context.ConnectionId;
         await Groups.AddToGroupAsync(connectionId, eventId.ToString());
+
+        if (eventId > 0)
+        {
+            var stream = await eventDistribution.GetStreamAsync(eventId.ToString());
+            var db = cacheMux.GetDatabase();
+            await db.StreamAddAsync(stream, string.Format("fullstatus-{0}", eventId, connectionId), connectionId);
+        }
+
         Logger.LogInformation("Client {0} subscribed to event {1}", connectionId, eventId);
     }
 

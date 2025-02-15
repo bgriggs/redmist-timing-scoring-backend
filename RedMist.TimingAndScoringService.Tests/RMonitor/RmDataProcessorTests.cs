@@ -10,7 +10,6 @@ public class RmDataProcessorTests
 {
     private readonly DebugLoggerFactory lf = new();
 
-
     #region Heartbeat
 
     [TestMethod]
@@ -34,10 +33,10 @@ public class RmDataProcessorTests
         var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
         await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
         Assert.IsTrue(processor.Heartbeat.IsDirty);
-        
+
         // Reset the dirty flag manually
         processor.Heartbeat.IsDirty = false;
-        
+
         await processor.ProcessUpdate("$F,14,\"10:12:45\",\"14:34:23\",\"00:03:47\",\"Green \"");
         Assert.IsFalse(processor.Heartbeat.IsDirty);
     }
@@ -98,7 +97,7 @@ public class RmDataProcessorTests
         var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
 
         // Disable the debouncer to bypass premature dirty reset
-        processor.Debouncer.IsDisabled = true; 
+        processor.Debouncer.IsDisabled = true;
 
         await processor.ProcessUpdate("$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5");
         await processor.ProcessUpdate("$A,\"1234BE1\",\"122\",52474,\"Fred\",\"Johnson\",\"USA\",5");
@@ -111,7 +110,7 @@ public class RmDataProcessorTests
         Assert.AreEqual(1, entries.Length);
         Assert.AreEqual("Bob Johnson", entries[0].Name);
     }
-     
+
     [TestMethod]
     public async Task ProcessA_NoClassMapping_Test()
     {
@@ -277,7 +276,7 @@ public class RmDataProcessorTests
 
         await processor.ProcessUpdate("$E,\"TRACKNAME\",\"Indianapolis Motor Speedway\"");
         Assert.AreEqual("Indianapolis Motor Speedway", processor.TrackName);
-        
+
         await processor.ProcessUpdate("$E,\"TRACKLENGTH\",\"2.500\"");
         Assert.AreEqual(2.500, processor.TrackLength, 0.001);
     }
@@ -370,6 +369,151 @@ public class RmDataProcessorTests
         Assert.AreEqual(new DateTime(1, 1, 1, 0, 2, 3, 826).TimeOfDay, raceInfo["1234BE"].LapTimestamp.TimeOfDay);
         Assert.AreEqual("01:42:17.672", raceInfo["1234BE"].RaceTime);
         Assert.AreEqual(new DateTime(1, 1, 1, 1, 42, 17, 672).TimeOfDay, raceInfo["1234BE"].RaceTimestamp.TimeOfDay);
+    }
+
+    #endregion
+
+    #region Car Positions
+
+    [TestMethod]
+    public async Task CarPositions_Dirty_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(1, mediatorMock.Object, lf);
+        processor.Debouncer.IsDisabled = true;
+
+        await processor.ProcessUpdate("$B,5,\"Friday free practice\"");
+        await processor.ProcessUpdate("$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5");
+        await processor.ProcessUpdate("$C,5,\"Formula 300\"");
+        await processor.ProcessUpdate("$G,3,\"1234BE\",14,\"01:12:47.872\"");
+        await processor.ProcessUpdate("$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"");
+        await processor.ProcessUpdate("$H,2,\"1234BE\",3,\"00:02:17.872\"");
+
+        var car = processor.GetCarPositions(includeChangedOnly: true);
+        Assert.AreEqual(1, car.Length);
+        Assert.AreEqual("1234BE", car[0].Number);
+        Assert.AreEqual(14, car[0].LastLap);
+        Assert.AreEqual(3, car[0].BestLap);
+        Assert.AreEqual("00:02:17.872", car[0].BestTime);
+        Assert.AreEqual("01:12:47.872", car[0].TotalTime);
+
+        car = processor.GetCarPositions(includeChangedOnly: true);
+        Assert.AreEqual(0, car.Length);
+    }
+
+    [TestMethod]
+    public async Task CarPositions_All_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(1, mediatorMock.Object, lf);
+        processor.Debouncer.IsDisabled = true;
+
+        await processor.ProcessUpdate("$B,5,\"Friday free practice\"");
+        await processor.ProcessUpdate("$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5");
+        await processor.ProcessUpdate("$C,5,\"Formula 300\"");
+        await processor.ProcessUpdate("$G,3,\"1234BE\",14,\"01:12:47.872\"");
+        await processor.ProcessUpdate("$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"");
+        await processor.ProcessUpdate("$H,2,\"1234BE\",3,\"00:02:17.872\"");
+
+        var car = processor.GetCarPositions(includeChangedOnly: false);
+        Assert.AreEqual(1, car.Length);
+
+        car = processor.GetCarPositions(includeChangedOnly: false);
+        Assert.AreEqual(1, car.Length);
+
+        await processor.ProcessUpdate("$G,3,\"1234BE\",15,\"01:12:47.872\"");
+
+        car = processor.GetCarPositions(includeChangedOnly: false);
+        Assert.AreEqual(1, car.Length);
+        Assert.AreEqual(15, car[0].LastLap);
+    }
+
+    #endregion
+
+    #region Payload
+
+    [TestMethod]
+    public async Task Payload_All_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(1, mediatorMock.Object, lf);
+        processor.Debouncer.IsDisabled = true;
+
+        await processor.ProcessUpdate("$B,5,\"Friday free practice\"");
+        await processor.ProcessUpdate("$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5");
+        await processor.ProcessUpdate("$C,5,\"Formula 300\"");
+        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
+        await processor.ProcessUpdate("$G,3,\"1234BE\",14,\"01:12:47.872\"");
+        await processor.ProcessUpdate("$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"");
+        await processor.ProcessUpdate("$H,2,\"1234BE\",3,\"00:02:17.872\"");
+
+        var payload = await processor.GetPayload();
+        Assert.AreEqual("Friday free practice", payload.EventName);
+        Assert.AreEqual(1, payload.CarPositions.Count);
+        Assert.AreEqual("1234BE", payload.CarPositions[0].Number);
+        Assert.AreEqual(1, payload.EventEntries.Count);
+        Assert.AreEqual("12X", payload.EventEntries[0].Number);
+        Assert.AreEqual(TimingCommon.Models.Flags.Green, payload.EventStatus?.Flag);
+        Assert.AreEqual(14, payload.EventStatus?.LapsToGo);
+        Assert.AreEqual("00:12:45", payload.EventStatus?.TimeToGo);
+        Assert.AreEqual("00:09:47", payload.EventStatus?.TotalTime);
+    }
+
+    [TestMethod]
+    public async Task Payload_Flag_Red_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(1, mediatorMock.Object, lf);
+        processor.Debouncer.IsDisabled = true;
+
+        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Red \"");
+
+        var payload = await processor.GetPayload();
+        Assert.AreEqual(TimingCommon.Models.Flags.Red, payload.EventStatus?.Flag);
+    }
+
+    [TestMethod]
+    public async Task Payload_Flag_None_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(1, mediatorMock.Object, lf);
+        processor.Debouncer.IsDisabled = true;
+
+        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"    \"");
+
+        var payload = await processor.GetPayload();
+        Assert.AreEqual(TimingCommon.Models.Flags.Unknown, payload.EventStatus?.Flag);
+    }
+
+    [TestMethod]
+    public async Task Payload_Flag_Malformed_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(1, mediatorMock.Object, lf);
+        processor.Debouncer.IsDisabled = true;
+
+        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"  asdfas  \"");
+
+        var payload = await processor.GetPayload();
+        Assert.AreEqual(TimingCommon.Models.Flags.Unknown, payload.EventStatus?.Flag);
+    }
+
+    [TestMethod]
+    public async Task Payload_Flag_Change_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(1, mediatorMock.Object, lf);
+        processor.Debouncer.IsDisabled = true;
+
+        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Red  \"");
+
+        var payload = await processor.GetPayload();
+        Assert.AreEqual(TimingCommon.Models.Flags.Red, payload.EventStatus?.Flag);
+
+        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Yellow\"");
+
+        payload = await processor.GetPayload();
+        Assert.AreEqual(TimingCommon.Models.Flags.Yellow, payload.EventStatus?.Flag);
     }
 
     #endregion

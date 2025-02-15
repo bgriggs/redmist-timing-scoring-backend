@@ -15,4 +15,6 @@ public class StatusNotification(int eventId, string statusJson) : INotification
     /// Status to send to clients.
     /// </summary>
     public string StatusJson { get; set; } = statusJson;
+
+    public string ConnectionDestination { get; set; } = string.Empty;
 }
