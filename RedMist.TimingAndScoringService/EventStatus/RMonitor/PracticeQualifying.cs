@@ -40,7 +40,7 @@ public partial class PracticeQualifying
     public void ProcessH(string[] parts)
     {
         Position = int.Parse(parts[1]);
-        RegistrationNumber = parts[2].Replace("\"", "");
+        RegistrationNumber = parts[2].Replace("\"", "").Trim();
         BestLap = int.Parse(parts[3]);
         BestLapTime = parts[4].Replace("\"", "").Trim();
     }

@@ -45,7 +45,7 @@ public partial class Competitor
         FirstName = parts[4].Replace("\"", "");
         LastName = parts[5].Replace("\"", "");
         Country = parts[6].Replace("\"", "");
-        AdditionalData = parts[7].Replace("\"", "");
+        AdditionalData = parts[7].Replace("\"", "").Trim();
     }
 
     public EventEntry ToEventEntry()

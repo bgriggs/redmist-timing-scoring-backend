@@ -129,4 +129,91 @@ public class SecondaryProcessorTests
     }
 
     #endregion
+
+    #region Class Positions
+
+    [TestMethod]
+    public void UpdateClassPositions_MultiClass_Test()
+    {
+        var secondaryProcessor = new SecondaryProcessor();
+
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", OverallPosition = 2 };
+        var car3 = new CarPosition { Number = "3", Class = "B", TotalTime = "00:10:02.000", LastLap = 10, LastTime = "00:01:02.000", OverallPosition = 3 };
+        var car4 = new CarPosition { Number = "4", Class = "A", TotalTime = "00:10:03.000", LastLap = 10, LastTime = "00:01:03.000", OverallPosition = 4 };
+        var car5 = new CarPosition { Number = "5", Class = "B", TotalTime = "00:10:04.000", LastLap = 10, LastTime = "00:01:04.000", OverallPosition = 5 };
+
+        secondaryProcessor.UpdateCarPositions([car1, car2, car3, car4, car5]);
+
+        Assert.AreEqual(1, car1.ClassPosition);
+        Assert.AreEqual(2, car2.ClassPosition);
+        Assert.AreEqual(1, car3.ClassPosition);
+        Assert.AreEqual(3, car4.ClassPosition);
+        Assert.AreEqual(2, car5.ClassPosition);
+    }
+
+    #endregion
+
+    #region Best Time
+
+    [TestMethod]
+    public void UpdateBestTime_MultiClass_Test()
+    {
+        var secondaryProcessor = new SecondaryProcessor();
+
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", BestTime = "00:01:00.000" };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", BestTime = "00:02:00.000" };
+        var car3 = new CarPosition { Number = "3", Class = "B", TotalTime = "00:10:02.000", LastLap = 10, LastTime = "00:01:02.000", BestTime = "00:03:00.000" };
+        var car4 = new CarPosition { Number = "4", Class = "A", TotalTime = "00:10:03.000", LastLap = 10, LastTime = "00:01:03.000", BestTime = "00:04:00.000" };
+        var car5 = new CarPosition { Number = "5", Class = "B", TotalTime = "00:10:04.000", LastLap = 10, LastTime = "00:01:04.000", BestTime = "00:05:00.000" };
+
+        secondaryProcessor.UpdateCarPositions([car1, car2, car3, car4, car5]);
+
+        Assert.IsTrue(car1.IsBestTime);
+        Assert.IsTrue(car1.IsBestTimeClass);
+        Assert.IsFalse(car2.IsBestTime);
+        Assert.IsFalse(car2.IsBestTimeClass);
+        Assert.IsFalse(car3.IsBestTime);
+        Assert.IsTrue(car3.IsBestTimeClass);
+        Assert.IsFalse(car4.IsBestTime);
+        Assert.IsFalse(car4.IsBestTimeClass);
+        Assert.IsFalse(car5.IsBestTime);
+        Assert.IsFalse(car5.IsBestTimeClass);
+
+        // Make the last car the best
+        car5.BestTime = "00:00:10.000";
+        secondaryProcessor.UpdateCarPositions([car5]);
+
+        Assert.IsFalse(car1.IsBestTime);
+        Assert.IsTrue(car1.IsBestTimeClass);
+        Assert.IsFalse(car2.IsBestTime);
+        Assert.IsFalse(car2.IsBestTimeClass);
+        Assert.IsFalse(car3.IsBestTime);
+        Assert.IsFalse(car3.IsBestTimeClass);
+        Assert.IsFalse(car4.IsBestTime);
+        Assert.IsFalse(car4.IsBestTimeClass);
+        Assert.IsTrue(car5.IsBestTime);
+        Assert.IsTrue(car5.IsBestTimeClass);
+    }
+
+    [TestMethod]
+    public void UpdateBestTime_ZeroTime_SkipToNext_Test()
+    {
+        var secondaryProcessor = new SecondaryProcessor();
+
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", BestTime = "00:00:00.000" };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", BestTime = "00:02:00.000" };
+        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:10:02.000", LastLap = 10, LastTime = "00:01:02.000", BestTime = "00:03:00.000" };
+
+        secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
+
+        Assert.IsFalse(car1.IsBestTime);
+        Assert.IsFalse(car1.IsBestTimeClass);
+        Assert.IsTrue(car2.IsBestTime);
+        Assert.IsTrue(car2.IsBestTimeClass);
+        Assert.IsFalse(car3.IsBestTime);
+        Assert.IsFalse(car3.IsBestTimeClass);
+    }
+
+    #endregion
 }

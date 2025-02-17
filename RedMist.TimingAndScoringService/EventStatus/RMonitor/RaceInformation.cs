@@ -54,6 +54,6 @@ public partial class RaceInformation
         {
             Laps = 0;
         }
-        RaceTime = parts[4].Replace("\"", "");
+        RaceTime = parts[4].Replace("\"", "").Trim();
     }
 }

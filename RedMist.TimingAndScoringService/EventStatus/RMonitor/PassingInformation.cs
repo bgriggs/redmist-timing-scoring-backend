@@ -49,8 +49,8 @@ public partial class PassingInformation
     /// <example>$J,"1234BE","00:02:03.826","01:42:17.672"</example>
     public void ProcessJ(string[] parts)
     {
-        RegistrationNumber = parts[1].Replace("\"", "");
-        LapTime = parts[2].Replace("\"", "");
-        RaceTime = parts[3].Replace("\"", "");
+        RegistrationNumber = parts[1].Replace("\"", "").Trim();
+        LapTime = parts[2].Replace("\"", "").Trim();
+        RaceTime = parts[3].Replace("\"", "").Trim();
     }
 }

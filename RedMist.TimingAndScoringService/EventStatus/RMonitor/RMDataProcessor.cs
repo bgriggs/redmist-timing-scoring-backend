@@ -34,6 +34,8 @@ public class RmDataProcessor : IDataProcessor
     public string TrackName { get; set; } = string.Empty;
     public double TrackLength { get; set; }
 
+    private readonly SecondaryProcessor secondaryProcessor = new();
+
     public RmDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -536,6 +538,8 @@ public class RmDataProcessor : IDataProcessor
                 pq.IsDirty = false;
             }
         }
+
+        carPositions = secondaryProcessor.UpdateCarPositions(carPositions);
 
         return [.. carPositions];
     }

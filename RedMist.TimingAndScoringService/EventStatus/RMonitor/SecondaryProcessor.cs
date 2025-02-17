@@ -16,9 +16,7 @@ public class SecondaryProcessor
 
     public List<CarPosition> UpdateCarPositions(List<CarPosition> positions)
     {
-        // Diff, gap in class and overall
         // Best TIme
-        // Class positions
         // Fastest
         // Positions gained lost in class and overall
         // stale
@@ -34,12 +32,25 @@ public class SecondaryProcessor
         // Overall Gap and Difference
         var cps = carPositionsLookup.Values.ToList();
         UpdateGapAndDiff(cps, (p, g) => p.OverallGap = g, (p, d) => p.OverallDifference = d);
-        
+
         // Class Gap and Difference
         var classGroups = cps.GroupBy(p => p.Class);
         foreach (var classGroup in classGroups)
         {
             UpdateGapAndDiff([.. classGroup], (p, g) => p.InClassGap = g, (p, d) => p.InClassDifference = d);
+        }
+
+        // Set class positions
+        foreach (var classGroup in classGroups)
+        {
+            UpdateClassPositions([.. classGroup]);
+        }
+
+        // Set best time
+        UpdateBestTime(cps, (p, b) => p.IsBestTime = b);
+        foreach (var classGroup in classGroups)
+        {
+            UpdateBestTime([.. classGroup], (p, b) => p.IsBestTimeClass = b);
         }
 
         return positions;
@@ -88,7 +99,15 @@ public class SecondaryProcessor
                 else
                 {
                     int laps = positionAhead.LastLap - currentPosition.LastLap;
-                    setGap(currentPosition, $"{laps} {GetLapTerm(laps)}");
+                    if (laps < 0)
+                    {
+                        // No gap - car ahead is behind/stale
+                        setGap(currentPosition, string.Empty);
+                    }
+                    else
+                    {
+                        setGap(currentPosition, $"{laps} {GetLapTerm(laps)}");
+                    }
                 }
 
                 // Overall Difference
@@ -100,8 +119,52 @@ public class SecondaryProcessor
                 else
                 {
                     int laps = leader.LastLap - currentPosition.LastLap;
-                    setDiff(currentPosition, $"{laps} {GetLapTerm(laps)}");
+                    if (laps < 0)
+                    {
+                        // No diff - car ahead is behind/stale
+                        setDiff(currentPosition, string.Empty);
+                    }
+                    else
+                    {
+                        setDiff(currentPosition, $"{laps} {GetLapTerm(laps)}");
+                    }
                 }
+            }
+        }
+    }
+
+    private void UpdateClassPositions(List<CarPosition> classCars)
+    {
+        // Class positions
+        var sortedClassGroup = classCars.OrderBy(p => p.OverallPosition).ToList();
+        for (int i = 0; i < sortedClassGroup.Count; i++)
+        {
+            sortedClassGroup[i].ClassPosition = i + 1;
+        }
+    }
+
+    private void UpdateBestTime(List<CarPosition> carPositions, Action<CarPosition, bool> setBest)
+    {
+        if (carPositions.Count == 0)
+            return;
+
+        var bestCar = (from car in carPositions
+                       let time = ParseRMTime(car.BestTime ?? string.Empty)
+                       where time.TimeOfDay != default // Filter out cars with no laps
+                       orderby time
+                       select car)
+                      .FirstOrDefault();
+        
+        if (bestCar != null)
+        {
+            setBest(bestCar, true);
+        }
+
+        foreach (var car in carPositions)
+        {
+            if (car != bestCar)
+            {
+                setBest(car, false);
             }
         }
     }
