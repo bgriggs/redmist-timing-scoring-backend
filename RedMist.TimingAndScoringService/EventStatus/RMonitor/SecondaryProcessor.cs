@@ -10,15 +10,13 @@ public class SecondaryProcessor
 {
     private const string MinTimeFormat = @"m\:ss\.fff";
     private const string SecTimeFormat = @"s\.fff";
+    public const int InvalidPosition = -999;
 
     private readonly Dictionary<string, CarPosition> carPositionsLookup = [];
     //private List<CarPosition> carPositions = [];
 
     public List<CarPosition> UpdateCarPositions(List<CarPosition> positions)
     {
-        // Best TIme
-        // Fastest
-        // Positions gained lost in class and overall
         // stale
 
         foreach (var position in positions)
@@ -52,6 +50,9 @@ public class SecondaryProcessor
         {
             UpdateBestTime([.. classGroup], (p, b) => p.IsBestTimeClass = b);
         }
+
+        // Set position changes, gains/loses
+        UpdatePositionChanges(positions);
 
         return positions;
     }
@@ -168,6 +169,24 @@ public class SecondaryProcessor
             }
         }
     }
+
+    private void UpdatePositionChanges(List<CarPosition> carPositions)
+    {
+        foreach (var car in carPositions)
+        {
+            if (car.OverallPosition == 0 || car.ClassPosition == 0 || car.OverallStartingPosition == 0 || car.InClassStartingPosition == 0)
+            {
+                car.OverallPositionsGained = InvalidPosition;
+                car.InClassPositionsGained = InvalidPosition;
+                continue;
+            }
+            
+            car.OverallPositionsGained = car.OverallStartingPosition - car.OverallPosition;
+            car.InClassPositionsGained = car.InClassStartingPosition - car.ClassPosition;
+        }
+    }
+
+
 
     private static DateTime ParseRMTime(string time)
     {
