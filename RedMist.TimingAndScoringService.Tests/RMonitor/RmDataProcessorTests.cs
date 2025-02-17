@@ -385,6 +385,87 @@ public class RmDataProcessorTests
         Assert.AreEqual(0, raceInfo["1234BE"].Laps);
     }
 
+    [TestMethod]
+    public async Task ProcessRaceInfo_StartingPosition_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+
+        await processor.ProcessUpdate("$G,10,\"89\",,\"00:00:00.000\"");
+        await processor.ProcessUpdate("$G,11,\"188\",,\"00:00:00.000\"");
+        await processor.ProcessUpdate("$G,12,\"68\",,\"00:00:00.000\"");
+        var raceInfo = processor.GetOverallStartingPositions();
+        Assert.AreEqual(3, raceInfo.Count);
+    }
+
+    [TestMethod]
+    public async Task ProcessRaceInfo_StartingPosition_NonStarting_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+
+        await processor.ProcessUpdate("$G,10,\"89\",,\"00:00:00.000\"");
+
+        // Invalid
+        await processor.ProcessUpdate("$G,3,\"1234BE\",,\"01:12:47.872\"");
+        await processor.ProcessUpdate("$G,12,\"68\",27,\"00:00:00.000\"");
+
+        var raceInfo = processor.GetOverallStartingPositions();
+        Assert.AreEqual(1, raceInfo.Count);
+    }
+
+    [TestMethod]
+    public async Task ProcessRaceInfo_InClassStartingPosition_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+        await processor.ProcessUpdate("$COMP,\"89\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
+        await processor.ProcessUpdate("$COMP,\"188\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
+        await processor.ProcessUpdate("$COMP,\"68\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
+        await processor.ProcessUpdate("$COMP,\"99\",\"99\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
+        await processor.ProcessUpdate("$COMP,\"100\",\"100\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
+
+        await processor.ProcessUpdate("$G,10,\"89\",,\"00:00:00.000\"");
+        await processor.ProcessUpdate("$G,11,\"188\",,\"00:00:00.000\"");
+        await processor.ProcessUpdate("$G,12,\"68\",,\"00:00:00.000\"");
+        await processor.ProcessUpdate("$G,13,\"99\",,\"00:00:00.000\"");
+        await processor.ProcessUpdate("$G,14,\"100\",,\"00:00:00.000\"");
+
+        var raceInfo = processor.GetInClassStartingPositions();
+        Assert.AreEqual(5, raceInfo.Count);
+        Assert.AreEqual(1, raceInfo["89"]);
+        Assert.AreEqual(2, raceInfo["188"]);
+        Assert.AreEqual(3, raceInfo["68"]);
+        Assert.AreEqual(1, raceInfo["99"]);
+        Assert.AreEqual(2, raceInfo["100"]);
+    }
+
+    [TestMethod]
+    public async Task ProcessRaceInfo_InClassStartingPosition_MissingClassInfo_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+        //await processor.ProcessUpdate("$COMP,\"89\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
+        await processor.ProcessUpdate("$COMP,\"188\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
+        await processor.ProcessUpdate("$COMP,\"68\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
+        await processor.ProcessUpdate("$COMP,\"99\",\"99\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
+        await processor.ProcessUpdate("$COMP,\"100\",\"100\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
+
+        await processor.ProcessUpdate("$G,10,\"89\",,\"00:00:00.000\"");
+        await processor.ProcessUpdate("$G,11,\"188\",,\"00:00:00.000\"");
+        await processor.ProcessUpdate("$G,12,\"68\",,\"00:00:00.000\"");
+        await processor.ProcessUpdate("$G,13,\"99\",,\"00:00:00.000\"");
+        await processor.ProcessUpdate("$G,14,\"100\",,\"00:00:00.000\"");
+
+        var raceInfo = processor.GetInClassStartingPositions();
+        Assert.AreEqual(4, raceInfo.Count);
+        //Assert.AreEqual(1, raceInfo["89"]);
+        Assert.AreEqual(1, raceInfo["188"]);
+        Assert.AreEqual(2, raceInfo["68"]);
+        Assert.AreEqual(1, raceInfo["99"]);
+        Assert.AreEqual(2, raceInfo["100"]);
+    }
+
     #endregion
 
     #region Practice/qualifying information

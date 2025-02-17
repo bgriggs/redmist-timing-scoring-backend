@@ -2,6 +2,7 @@
 using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
@@ -23,6 +24,8 @@ public class RmDataProcessor : IDataProcessor
     private readonly Dictionary<int, string> classes = [];
     private readonly Dictionary<string, Competitor> competitors = [];
     private readonly Dictionary<string, RaceInformation> raceInformation = [];
+    private readonly Dictionary<string, RaceInformation> startingPositions = [];
+    private readonly Dictionary<string, int> inClassStartingPositions = [];
     private readonly Dictionary<string, PracticeQualifying> practiceQualifying = [];
     private readonly Dictionary<string, PassingInformation> passingInformation = [];
 
@@ -283,6 +286,7 @@ public class RmDataProcessor : IDataProcessor
     /// Processes $G messages.
     /// </summary>
     /// <example>$G,3,"1234BE",14,"01:12:47.872"</example>
+    /// <example>$G,10,"89",,"00:00:00.000"</example>
     private void ProcessG(string data)
     {
         var parts = data.Split(',');
@@ -293,11 +297,54 @@ public class RmDataProcessor : IDataProcessor
             raceInformation[regNum] = raceInfo;
         }
         raceInfo.ProcessG(parts);
+
+        // Save off starting positions
+        if (raceInfo.IsStartingPosition)
+        {
+            startingPositions[regNum] = raceInfo;
+            UpdateInClassStartingPositionLookup();
+        }
     }
 
     public ImmutableDictionary<string, RaceInformation> GetRaceInformation()
     {
         return raceInformation.ToImmutableDictionary();
+    }
+
+    public ImmutableDictionary<string, RaceInformation> GetOverallStartingPositions()
+    {
+        return startingPositions.ToImmutableDictionary();
+    }
+
+    private void UpdateInClassStartingPositionLookup()
+    {
+        var entries = new List<(string num, int @class, int pos)>();
+        foreach (var regNum in startingPositions.Keys)
+        {
+            var ri = startingPositions[regNum];
+            if (!competitors.TryGetValue(regNum, out var comp))
+            {
+                Logger.LogWarning("Competitor {0} not found for starting position", regNum);
+                continue;
+            }
+            entries.Add((regNum, comp.ClassNumber, ri.Position));
+        }
+
+        var classGroups = entries.GroupBy(x => x.@class);
+        foreach (var classGroup in classGroups)
+        {
+            var positions = classGroup.OrderBy(x => x.pos).ToList();
+            for (int i = 0; i < positions.Count; i++)
+            {
+                var entry = positions[i];
+                inClassStartingPositions[entry.num] = i + 1;
+            }
+        }
+    }
+
+    public ImmutableDictionary<string, int> GetInClassStartingPositions()
+    {
+        return inClassStartingPositions.ToImmutableDictionary();
     }
 
     #endregion
@@ -435,9 +482,21 @@ public class RmDataProcessor : IDataProcessor
                 Number = raceInfo.RegistrationNumber,
                 OverallPosition = raceInfo.Position,
                 TotalTime = raceInfo.RaceTime,
-                LastLap = raceInfo.Laps
+                LastLap = raceInfo.Laps,
+                Class = GetCarsClass(raceInfo.RegistrationNumber),
             };
 
+            // Starting position
+            if (startingPositions.TryGetValue(reg, out var startingPos))
+            {
+                carPos.OverallStartingPosition = startingPos.Position;
+            }
+            if (inClassStartingPositions.TryGetValue(reg, out var inClassPos))
+            {
+                carPos.InClassStartingPosition = inClassPos;
+            }
+
+            // Last lap time
             if (passingInformation.TryGetValue(reg, out var pass))
             {
                 if (carPos.TotalTime != pass.RaceTime)
@@ -447,12 +506,12 @@ public class RmDataProcessor : IDataProcessor
                 carPos.LastTime = pass.LapTime;
             }
 
+            // Best time
             if (practiceQualifying.TryGetValue(reg, out var pq))
             {
                 carPos.BestTime = pq.BestLapTime;
                 carPos.BestLap = pq.BestLap;
-                //carPos.IsBestTime = pq.IsBestLap;
-                //carPos.IsBestTimeClass = pq.IsBestLapClass;
+                carPos.IsBestTime = carPos.BestLap == carPos.LastLap;
             }
 
             if (includeChangedOnly)
@@ -513,5 +572,15 @@ public class RmDataProcessor : IDataProcessor
         {
             _lock.Release();
         }
+    }
+
+    private string? GetCarsClass(string number)
+    {
+        if (competitors.TryGetValue(number, out var competitor))
+        {
+            classes.TryGetValue(competitor.ClassNumber, out var className);
+            return className;
+        }
+        return null;
     }
 }

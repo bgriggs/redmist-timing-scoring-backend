@@ -1,6 +1,4 @@
 ﻿using MediatR;
-using Microsoft.AspNetCore.SignalR;
-using RedMist.TimingAndScoringService.Hubs;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
@@ -9,6 +7,9 @@ using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
+/// <summary>
+/// Coordinates the receiving of incoming timing data and sending the associated updates.
+/// </summary>
 public class EventAggregator : BackgroundService
 {
     private readonly Dictionary<int, IDataProcessor> processors = [];
@@ -38,12 +39,16 @@ public class EventAggregator : BackgroundService
         var streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, podInstance);
 
         var sub = cacheMux.GetSubscriber();
+
+        // Subscribe for full status requests such as when a new UI connects
         await sub.SubscribeAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal),
             async (channel, value) => await ProcessFullStatusRequest(value.ToString()),
             CommandFlags.FireAndForget);
-
+        
+        // Start a task to send a full update every so often
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
 
+        // Start a task to read timing source data from a stream and process them
         while (!stoppingToken.IsCancellationRequested)
         {
             try
