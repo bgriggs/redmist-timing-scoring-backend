@@ -234,14 +234,28 @@ public class SecondaryProcessorTests
 
         Assert.AreEqual(0, car1.OverallPositionsGained);
         Assert.AreEqual(0, car1.InClassPositionsGained);
+        Assert.IsFalse(car1.IsOverallMostPositionsGained);
+        Assert.IsFalse(car1.IsClassMostPositionsGained);
+        
         Assert.AreEqual(0, car2.OverallPositionsGained);
         Assert.AreEqual(0, car2.InClassPositionsGained);
+        Assert.IsFalse(car2.IsOverallMostPositionsGained);
+        Assert.IsFalse(car2.IsClassMostPositionsGained);
+
         Assert.AreEqual(0, car3.OverallPositionsGained);
         Assert.AreEqual(0, car3.InClassPositionsGained);
+        Assert.IsFalse(car3.IsOverallMostPositionsGained);
+        Assert.IsFalse(car3.IsClassMostPositionsGained);
+
         Assert.AreEqual(0, car4.OverallPositionsGained);
         Assert.AreEqual(0, car4.InClassPositionsGained);
+        Assert.IsFalse(car4.IsOverallMostPositionsGained);
+        Assert.IsFalse(car4.IsClassMostPositionsGained);
+
         Assert.AreEqual(0, car5.OverallPositionsGained);
         Assert.AreEqual(0, car5.InClassPositionsGained);
+        Assert.IsFalse(car5.IsOverallMostPositionsGained);
+        Assert.IsFalse(car5.IsClassMostPositionsGained);
 
         car1.OverallPosition = 2;
         car2.OverallPosition = 1;
@@ -253,14 +267,28 @@ public class SecondaryProcessorTests
 
         Assert.AreEqual(-1, car1.OverallPositionsGained);
         Assert.AreEqual(-1, car1.InClassPositionsGained);
+        Assert.IsFalse(car1.IsOverallMostPositionsGained);
+        Assert.IsFalse(car1.IsClassMostPositionsGained);
+
         Assert.AreEqual(1, car2.OverallPositionsGained);
         Assert.AreEqual(1, car2.InClassPositionsGained);
+        Assert.IsFalse(car2.IsOverallMostPositionsGained);
+        Assert.IsTrue(car2.IsClassMostPositionsGained);
+
         Assert.AreEqual(-1, car3.OverallPositionsGained);
         Assert.AreEqual(0, car3.InClassPositionsGained);
+        Assert.IsFalse(car3.IsOverallMostPositionsGained);
+        Assert.IsFalse(car3.IsClassMostPositionsGained);
+
         Assert.AreEqual(1, car4.OverallPositionsGained);
         Assert.AreEqual(0, car4.InClassPositionsGained);
+        Assert.IsFalse(car4.IsOverallMostPositionsGained);
+        Assert.IsFalse(car4.IsClassMostPositionsGained);
+
         Assert.AreEqual(0, car5.OverallPositionsGained);
         Assert.AreEqual(0, car5.InClassPositionsGained);
+        Assert.IsFalse(car5.IsOverallMostPositionsGained);
+        Assert.IsFalse(car5.IsClassMostPositionsGained);
     }
 
     [TestMethod]
@@ -277,12 +305,59 @@ public class SecondaryProcessorTests
 
         secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
 
-        Assert.AreEqual(SecondaryProcessor.InvalidPosition, car1.OverallPositionsGained);
-        Assert.AreEqual(SecondaryProcessor.InvalidPosition, car1.InClassPositionsGained);
-        Assert.AreEqual(SecondaryProcessor.InvalidPosition, car2.OverallPositionsGained);
-        Assert.AreEqual(SecondaryProcessor.InvalidPosition, car2.InClassPositionsGained);
-        Assert.AreEqual(SecondaryProcessor.InvalidPosition, car3.OverallPositionsGained);
-        Assert.AreEqual(SecondaryProcessor.InvalidPosition, car3.InClassPositionsGained);
+        Assert.AreEqual(CarPosition.InvalidPosition, car1.OverallPositionsGained);
+        Assert.AreEqual(CarPosition.InvalidPosition, car1.InClassPositionsGained);
+        Assert.AreEqual(CarPosition.InvalidPosition, car2.OverallPositionsGained);
+        Assert.AreEqual(CarPosition.InvalidPosition, car2.InClassPositionsGained);
+        Assert.AreEqual(CarPosition.InvalidPosition, car3.OverallPositionsGained);
+        Assert.AreEqual(CarPosition.InvalidPosition, car3.InClassPositionsGained);
+    }
+
+    [TestMethod]
+    public void UpdatePositionsLostGained_Fastest_Reset_Test()
+    {
+        var secondaryProcessor = new SecondaryProcessor();
+
+        // Overall starting position missing
+        var car1 = new CarPosition { Number = "1", Class = "A", OverallPosition = 1, OverallStartingPosition = 1, InClassStartingPosition = 1 };
+        // In class starting position missing
+        var car2 = new CarPosition { Number = "2", Class = "A", OverallPosition = 2, OverallStartingPosition = 2, InClassStartingPosition = 2 };
+        // Overall position missing
+        var car3 = new CarPosition { Number = "3", Class = "A", OverallPosition = 3, OverallStartingPosition = 3, InClassStartingPosition = 3 };
+
+        secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
+
+        Assert.IsFalse(car1.IsOverallMostPositionsGained);
+        Assert.IsFalse(car1.IsClassMostPositionsGained);
+        Assert.IsFalse(car2.IsOverallMostPositionsGained);
+        Assert.IsFalse(car2.IsClassMostPositionsGained);
+        Assert.IsFalse(car3.IsOverallMostPositionsGained);
+        Assert.IsFalse(car3.IsClassMostPositionsGained);
+
+        car1.OverallPosition = 20;
+        car2.OverallPosition = 2;
+        car3.OverallPosition = 1;
+        secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
+
+        Assert.IsFalse(car1.IsOverallMostPositionsGained);
+        Assert.IsFalse(car1.IsClassMostPositionsGained);
+        Assert.IsFalse(car2.IsOverallMostPositionsGained);
+        Assert.IsFalse(car2.IsClassMostPositionsGained);
+        Assert.IsTrue(car3.IsOverallMostPositionsGained);
+        Assert.IsTrue(car3.IsClassMostPositionsGained);
+
+        // Reset the positions
+        car1.OverallPosition = 1;
+        car2.OverallPosition = 2;
+        car3.OverallPosition = 3;
+        secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
+
+        Assert.IsFalse(car1.IsOverallMostPositionsGained);
+        Assert.IsFalse(car1.IsClassMostPositionsGained);
+        Assert.IsFalse(car2.IsOverallMostPositionsGained);
+        Assert.IsFalse(car2.IsClassMostPositionsGained);
+        Assert.IsFalse(car3.IsOverallMostPositionsGained);
+        Assert.IsFalse(car3.IsClassMostPositionsGained);
     }
 
     #endregion

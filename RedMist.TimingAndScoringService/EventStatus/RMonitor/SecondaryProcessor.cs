@@ -10,10 +10,8 @@ public class SecondaryProcessor
 {
     private const string MinTimeFormat = @"m\:ss\.fff";
     private const string SecTimeFormat = @"s\.fff";
-    public const int InvalidPosition = -999;
 
     private readonly Dictionary<string, CarPosition> carPositionsLookup = [];
-    //private List<CarPosition> carPositions = [];
 
     public List<CarPosition> UpdateCarPositions(List<CarPosition> positions)
     {
@@ -176,13 +174,33 @@ public class SecondaryProcessor
         {
             if (car.OverallPosition == 0 || car.ClassPosition == 0 || car.OverallStartingPosition == 0 || car.InClassStartingPosition == 0)
             {
-                car.OverallPositionsGained = InvalidPosition;
-                car.InClassPositionsGained = InvalidPosition;
+                car.OverallPositionsGained = CarPosition.InvalidPosition;
+                car.InClassPositionsGained = CarPosition.InvalidPosition;
                 continue;
             }
             
             car.OverallPositionsGained = car.OverallStartingPosition - car.OverallPosition;
             car.InClassPositionsGained = car.InClassStartingPosition - car.ClassPosition;
+        }
+
+        // Reset most gained flags
+        foreach (var car in carPositionsLookup.Values)
+        {
+            car.IsOverallMostPositionsGained = false;
+            car.IsClassMostPositionsGained = false;
+        }
+
+        var carOverallMostGained = carPositionsLookup.Values.Where(c => c.OverallPositionsGained > 0).OrderByDescending(c => c.OverallPositionsGained);
+        // Check for 1 only since there can be ties. In case of tie, no one gets anything.
+        if (carOverallMostGained.Count() == 1)
+        {
+            carOverallMostGained.First().IsOverallMostPositionsGained = true;
+        }
+
+        var carClassMostGained = carPositionsLookup.Values.Where(c => c.InClassPositionsGained > 0).OrderByDescending(c => c.InClassPositionsGained);
+        if (carClassMostGained.Count() == 1)
+        {
+            carClassMostGained.First().IsClassMostPositionsGained = true;
         }
     }
 
