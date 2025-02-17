@@ -31,10 +31,20 @@ public partial class Heartbeat
     public void ProcessF(string data)
     {
         var parts = data.Split(',');
-        LapsToGo = int.Parse(parts[1]);
-        TimeToGo = parts[2].Replace("\"", "");
-        TimeOfDay = parts[3].Replace("\"", "");
-        RaceTime = parts[4].Replace("\"", "");
+        if (parts.Length != 6)
+            return;
+
+        if (int.TryParse(parts[1], out var ltt))
+        {
+            LapsToGo = ltt;
+        }
+        else
+        {
+            LapsToGo = 0;
+        }
+        TimeToGo = parts[2].Replace("\"", "").Trim();
+        TimeOfDay = parts[3].Replace("\"", "").Trim();
+        RaceTime = parts[4].Replace("\"", "").Trim();
         FlagStatus = parts[5].Replace("\"", "").Trim();
     }
 }

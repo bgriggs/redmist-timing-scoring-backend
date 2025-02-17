@@ -42,6 +42,6 @@ public partial class PracticeQualifying
         Position = int.Parse(parts[1]);
         RegistrationNumber = parts[2].Replace("\"", "");
         BestLap = int.Parse(parts[3]);
-        BestLapTime = parts[4].Replace("\"", "");
+        BestLapTime = parts[4].Replace("\"", "").Trim();
     }
 }

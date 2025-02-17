@@ -2,7 +2,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using RedMist.TimingAndScoringService.EventStatus;
+using RedMist.TimingAndScoringService.Models;
 using StackExchange.Redis;
+using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.Hubs;
 
@@ -10,7 +12,7 @@ namespace RedMist.TimingAndScoringService.Hubs;
 /// SignalR hub for timing and scoring relay service and UI clients.
 /// </summary>
 [Authorize]
-public class TimingAndScoringHub : Hub, INotificationHandler<StatusNotification>
+public class TimingAndScoringHub : Hub//, INotificationHandler<StatusNotification>
 {
     private readonly EventDistribution eventDistribution;
     private readonly IConnectionMultiplexer cacheMux;
@@ -106,28 +108,28 @@ public class TimingAndScoringHub : Hub, INotificationHandler<StatusNotification>
 
     #region Clients
 
-    /// <summary>
-    /// Receives a status update from an event processor and forwards it to the subscribed client(s).
-    /// </summary>
-    public async Task Handle(StatusNotification notification, CancellationToken cancellationToken)
-    {
-        Logger.LogInformation("StatusNotification: {0}", notification.StatusJson);
-        try
-        {
-            if (!string.IsNullOrEmpty(notification.ConnectionDestination))
-            {
-                await Clients.Client(notification.ConnectionDestination).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
-            }
-            else
-            {
-                await Clients.Group(notification.EventId.ToString()).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error sending status update to client(s): {0}", ex.Message);
-        }
-    }
+    ///// <summary>
+    ///// Receives a status update from an event processor and forwards it to the subscribed client(s).
+    ///// </summary>
+    //public async Task Handle(StatusNotification notification, CancellationToken cancellationToken)
+    //{
+    //    Logger.LogInformation("StatusNotification: {0}", notification.StatusJson);
+    //    try
+    //    {
+    //        if (!string.IsNullOrEmpty(notification.ConnectionDestination))
+    //        {
+    //            await Clients.Client(notification.ConnectionDestination).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
+    //        }
+    //        else
+    //        {
+    //            await Clients.Group(notification.EventId.ToString()).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
+    //        }
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        Logger.LogError(ex, "Error sending status update to client(s): {0}", ex.Message);
+    //    }
+    //}
 
     public async Task SubscribeToEvent(int eventId)
     {
@@ -136,9 +138,10 @@ public class TimingAndScoringHub : Hub, INotificationHandler<StatusNotification>
 
         if (eventId > 0)
         {
-            var stream = await eventDistribution.GetStreamAsync(eventId.ToString());
-            var db = cacheMux.GetDatabase();
-            await db.StreamAddAsync(stream, string.Format("fullstatus-{0}", eventId, connectionId), connectionId);
+            var sub = cacheMux.GetSubscriber();
+            var cmd = new SendStatusCommand{ EventId = eventId, ConnectionId = connectionId };
+            var json = JsonSerializer.Serialize(cmd);
+            await sub.PublishAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
         }
 
         Logger.LogInformation("Client {0} subscribed to event {1}", connectionId, eventId);

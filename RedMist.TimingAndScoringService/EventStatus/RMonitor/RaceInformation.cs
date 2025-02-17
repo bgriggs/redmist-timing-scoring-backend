@@ -41,7 +41,14 @@ public partial class RaceInformation
     {
         Position = int.Parse(parts[1]);
         RegistrationNumber = parts[2].Replace("\"", "");
-        Laps = int.Parse(parts[3]);
+        if (int.TryParse(parts[3], out var l))
+        {
+            Laps = l;
+        }
+        else
+        {
+            Laps = 0;
+        }
         RaceTime = parts[4].Replace("\"", "");
     }
 }

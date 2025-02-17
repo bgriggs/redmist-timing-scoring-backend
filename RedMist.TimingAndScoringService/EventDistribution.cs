@@ -37,8 +37,6 @@ public class EventDistribution : BackgroundService
     /// <summary>
     /// Register this new pod with the workload listing.
     /// </summary>
-    /// <param name="stoppingToken"></param>
-    /// <returns></returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         this.stoppingToken = stoppingToken;

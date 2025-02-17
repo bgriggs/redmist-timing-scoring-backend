@@ -47,6 +47,10 @@ public class RmDataProcessor : IDataProcessor
             var commands = data.Split('\n');
             foreach (var command in commands)
             {
+                if (string.IsNullOrWhiteSpace(command))
+                {
+                    continue;
+                }
                 try
                 {
                     if (command.StartsWith("$F"))
@@ -239,7 +243,7 @@ public class RmDataProcessor : IDataProcessor
     {
         var parts = data.Split(',');
         var num = int.Parse(parts[1]);
-        var className = parts[2].Replace("\"", "");
+        var className = parts[2].Replace("\"", "").Trim();
         classes[num] = className;
     }
 
@@ -438,7 +442,7 @@ public class RmDataProcessor : IDataProcessor
             {
                 if (carPos.TotalTime != pass.RaceTime)
                 {
-                    Logger.LogWarning("Total time mismatch for passingInformation {0}: {1} != {2}", reg, carPos.TotalTime, pass.RaceTime);
+                    //Logger.LogWarning("Total time mismatch for passingInformation {0}: {1} != {2}", reg, carPos.TotalTime, pass.RaceTime);
                 }
                 carPos.LastTime = pass.LapTime;
             }

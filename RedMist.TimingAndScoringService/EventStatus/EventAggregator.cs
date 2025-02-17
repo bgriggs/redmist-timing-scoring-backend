@@ -1,4 +1,7 @@
 ﻿using MediatR;
+using Microsoft.AspNetCore.SignalR;
+using RedMist.TimingAndScoringService.Hubs;
+using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
 using System.Diagnostics;
@@ -34,6 +37,11 @@ public class EventAggregator : BackgroundService
         var cache = cacheMux.GetDatabase();
         var streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, podInstance);
 
+        var sub = cacheMux.GetSubscriber();
+        await sub.SubscribeAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal),
+            async (channel, value) => await ProcessFullStatusRequest(value.ToString()),
+            CommandFlags.FireAndForget);
+
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -45,36 +53,29 @@ public class EventAggregator : BackgroundService
                 {
                     foreach (var field in entry.Values)
                     {
-                        // New UI client connected, send full status
-                        if (field.Name.ToString().StartsWith("fullstatus"))
+                        // Process update from timing system
+                        Logger.LogTrace("Event Status Update: {0}", entry.Id);
+
+                        var tags = field.Name.ToString().Split('-');
+                        if (tags.Length < 2)
                         {
-                            await ProcessFullStatusRequest(field.Name.ToString(), field.Value.ToString());
+                            Logger.LogWarning("Invalid event status update: {0}", field.Name);
+                            continue;
                         }
-                        else // Process update from timing system
+                        var type = tags[0];
+                        var eventId = int.Parse(tags[1]);
+
+                        IDataProcessor? processor;
+                        lock (processors)
                         {
-                            Logger.LogTrace("Event Status Update: {0}", entry.Id);
-
-                            var tags = field.Name.ToString().Split('-');
-                            if (tags.Length < 2)
+                            if (!processors.TryGetValue(eventId, out processor))
                             {
-                                Logger.LogWarning("Invalid event status update: {0}", field.Name);
-                                continue;
+                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId);
+                                processors[eventId] = processor;
                             }
-                            var type = tags[0];
-                            var eventId = int.Parse(tags[1]);
-
-                            IDataProcessor? processor;
-                            lock (processors)
-                            {
-                                if (!processors.TryGetValue(eventId, out processor))
-                                {
-                                    processor = dataProcessorFactory.CreateDataProcessor(type, eventId);
-                                    processors[eventId] = processor;
-                                }
-                            }
-
-                            await processor.ProcessUpdate(field.Value.ToString(), stoppingToken);
                         }
+
+                        await processor.ProcessUpdate(field.Value.ToString(), stoppingToken);
                     }
                 }
             }
@@ -85,23 +86,25 @@ public class EventAggregator : BackgroundService
         }
     }
 
-    private async Task ProcessFullStatusRequest(string request, string connectionId)
+    private async Task ProcessFullStatusRequest(string cmdJson)
     {
-        var parts = request.Split('-');
-        int eventId = int.Parse(parts[1]);
+        var cmd = JsonSerializer.Deserialize<SendStatusCommand>(cmdJson);
+        if (cmd == null)
+        {
+            Logger.LogWarning("Invalid command received: {0}", cmdJson);
+            return;
+        }
+
         IDataProcessor? p;
         lock (processors)
         {
-            processors.TryGetValue(eventId, out p);
+            processors.TryGetValue(cmd.EventId, out p);
         }
 
         if (p != null)
         {
-            await SendEventStatus(p, connectionId);
-        }
-        else
-        {
-            Logger.LogWarning("No data processor found for event {0}. Unable to send status to new client connection {1}", eventId, connectionId);
+            Logger.LogInformation("Sending full status update for event {0} to new connection {1}", cmd.EventId, cmd.ConnectionId);
+            await SendEventStatus(p, cmd.ConnectionId);
         }
     }
 
@@ -140,7 +143,7 @@ public class EventAggregator : BackgroundService
     private async Task SendEventStatus(IDataProcessor p, string connectionIdDestination, CancellationToken stoppingToken = default)
     {
         Logger.LogDebug("Getting payload for event {0}...", p.EventId);
-        var payload = p.GetPayload(stoppingToken);
+        var payload = await p.GetPayload(stoppingToken);
         var json = JsonSerializer.Serialize(payload);
         await mediator.Publish(new StatusNotification(p.EventId, json), stoppingToken);
     }

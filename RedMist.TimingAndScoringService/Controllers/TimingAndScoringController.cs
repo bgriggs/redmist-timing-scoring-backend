@@ -24,8 +24,8 @@ public class TimingAndScoringController : ControllerBase
         return Task.FromResult(new Event[] { new() { EventId = 1, EventName = "Test", EventDate = "2025-01-01" } });
     }
 
-    public Task<Payload> GetEventStatus(int eventId)
-    {
-        return Task.FromResult(new Payload());
-    }
+    //public Task<Payload> GetEventStatus(int eventId)
+    //{
+    //    return Task.FromResult(new Payload());
+    //}
 }

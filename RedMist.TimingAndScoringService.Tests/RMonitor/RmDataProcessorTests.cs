@@ -71,6 +71,36 @@ public class RmDataProcessorTests
         Assert.IsTrue(processor.Heartbeat.IsDirty);
     }
 
+    [TestMethod]
+    public async Task ProcessF_Invalid_EmptyLapsToGo_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+        await processor.ProcessUpdate("$F,,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
+
+        Assert.AreEqual(0, processor.Heartbeat.LapsToGo);
+    }
+
+    [TestMethod]
+    public async Task ProcessF_Invalid_CharsLapsToGo_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+        await processor.ProcessUpdate("$F,asdf,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
+
+        Assert.AreEqual(0, processor.Heartbeat.LapsToGo);
+    }
+
+    [TestMethod]
+    public async Task ProcessF_Invalid_MissingFlag_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+        await processor.ProcessUpdate("$F,9999,\"07:50:29\",\"08:09:30\",");
+
+        Assert.AreEqual(0, processor.Heartbeat.LapsToGo);
+    }
+
     #endregion
 
     #region Competitor Tests
@@ -331,6 +361,28 @@ public class RmDataProcessorTests
         await processor.ProcessUpdate("$G,3,\"1234BE\",14,\"01asdf:we12we:47.872\"");
         var raceInfo = processor.GetRaceInformation();
         Assert.AreEqual(default, raceInfo["1234BE"].Timestamp);
+    }
+
+    [TestMethod]
+    public async Task ProcessRaceInfo_Invalid_EmptyLaps_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+
+        await processor.ProcessUpdate("$G,3,\"1234BE\",,\"01:12:47.872\"");
+        var raceInfo = processor.GetRaceInformation();
+        Assert.AreEqual(0, raceInfo["1234BE"].Laps);
+    }
+
+    [TestMethod]
+    public async Task ProcessRaceInfo_Invalid_NonIntLaps_Test()
+    {
+        var mediatorMock = new Mock<IMediator>();
+        var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
+
+        await processor.ProcessUpdate("$G,3,\"1234BE\",asdf,\"01:12:47.872\"");
+        var raceInfo = processor.GetRaceInformation();
+        Assert.AreEqual(0, raceInfo["1234BE"].Laps);
     }
 
     #endregion
