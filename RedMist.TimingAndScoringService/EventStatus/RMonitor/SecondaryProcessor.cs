@@ -190,18 +190,34 @@ public class SecondaryProcessor
             car.IsClassMostPositionsGained = false;
         }
 
-        var carOverallMostGained = carPositionsLookup.Values.Where(c => c.OverallPositionsGained > 0).OrderByDescending(c => c.OverallPositionsGained);
+        var carOverallMostGainedGroups = carPositionsLookup.Values
+            .Where(c => c.OverallPositionsGained > 0)
+            .OrderByDescending(c => c.OverallPositionsGained)
+            .GroupBy(c => c.OverallPositionsGained);
+
         // Check for 1 only since there can be ties. In case of tie, no one gets anything.
-        if (carOverallMostGained.Count() == 1)
+        if (carOverallMostGainedGroups.Any() && carOverallMostGainedGroups.First().Count() == 1)
         {
-            carOverallMostGained.First().IsOverallMostPositionsGained = true;
+            carOverallMostGainedGroups.First().First().IsOverallMostPositionsGained = true;
         }
 
-        var carClassMostGained = carPositionsLookup.Values.Where(c => c.InClassPositionsGained > 0).OrderByDescending(c => c.InClassPositionsGained);
-        if (carClassMostGained.Count() == 1)
+        var classGroups = carPositionsLookup.Values.GroupBy(c => c.Class);
+        foreach (var cg in classGroups)
         {
-            carClassMostGained.First().IsClassMostPositionsGained = true;
+            var carClassMostGainedGroups = cg
+                .Where(c => c.InClassPositionsGained > 0)
+                .OrderByDescending(c => c.InClassPositionsGained)
+                .GroupBy(c => c.OverallPositionsGained);
+            if (carClassMostGainedGroups.Any() && carClassMostGainedGroups.First().Count() == 1)
+            {
+                carClassMostGainedGroups.First().First().IsClassMostPositionsGained = true;
+            }
         }
+    }
+
+    public void Clear()
+    {
+        carPositionsLookup.Clear();
     }
 
 

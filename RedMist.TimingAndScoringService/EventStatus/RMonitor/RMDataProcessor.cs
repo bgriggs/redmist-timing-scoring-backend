@@ -3,6 +3,7 @@ using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
@@ -45,17 +46,16 @@ public class RmDataProcessor : IDataProcessor
 
     public async Task ProcessUpdate(string data, CancellationToken stoppingToken = default)
     {
+        //var sw = Stopwatch.StartNew();
         // Parse data
         await _lock.WaitAsync(stoppingToken);
         try
         {
-            var commands = data.Split('\n');
+            var commands = data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             foreach (var command in commands)
             {
                 if (string.IsNullOrWhiteSpace(command))
-                {
                     continue;
-                }
                 try
                 {
                     if (command.StartsWith("$F"))
@@ -129,7 +129,9 @@ public class RmDataProcessor : IDataProcessor
             _lock.Release();
         }
 
-        await debouncer.ExecuteAsync(() => Task.Run(() => PublishChanges(stoppingToken)), stoppingToken);
+        _ = debouncer.ExecuteAsync(() => Task.Run(() => PublishChanges(stoppingToken)), stoppingToken);
+
+        //Logger.LogInformation("Processed in {0}ms", sw.ElapsedMilliseconds);
     }
 
     #region Heartbeat message
@@ -303,7 +305,10 @@ public class RmDataProcessor : IDataProcessor
         // Save off starting positions
         if (raceInfo.IsStartingPosition)
         {
-            startingPositions[regNum] = raceInfo;
+            // Make a copy for storing off
+            var sp = new RaceInformation();
+            sp.ProcessG(parts);
+            startingPositions[regNum] = sp;
             UpdateInClassStartingPositionLookup();
         }
     }
@@ -389,6 +394,11 @@ public class RmDataProcessor : IDataProcessor
         raceInformation.Clear();
         practiceQualifying.Clear();
         passingInformation.Clear();
+        startingPositions.Clear();
+        inClassStartingPositions.Clear();
+        secondaryProcessor.Clear();
+
+        PublishEventReset();
     }
 
     #endregion
@@ -465,7 +475,14 @@ public class RmDataProcessor : IDataProcessor
         // when shared model is invalidated, save to redis
         // controller needs to load from redis when a new client connects
         var json = JsonSerializer.Serialize(payload);
-        await mediator.Publish(new StatusNotification(EventId, json), stoppingToken);
+        _ = mediator.Publish(new StatusNotification(EventId, json), stoppingToken);
+    }
+
+    public void PublishEventReset(CancellationToken stoppingToken = default)
+    {
+        var payload = new Payload { EventId = EventId, IsReset = true };
+        var json = JsonSerializer.Serialize(payload);
+        _ = mediator.Publish(new StatusNotification(EventId, json), stoppingToken);
     }
 
     public CarPosition[] GetCarPositions(bool includeChangedOnly = false)
