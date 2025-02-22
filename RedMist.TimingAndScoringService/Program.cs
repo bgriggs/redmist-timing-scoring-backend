@@ -81,7 +81,9 @@ public class Program
         builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 10; c.ConnectTimeout = 10; }));
 
         builder.Services.AddHostedService(s => s.GetRequiredService<EventDistribution>());
+#pragma warning disable EXTEXP0018
         builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(100), LocalCacheExpiration = TimeSpan.FromDays(100) });
+#pragma warning restore EXTEXP0018
         builder.Services.AddSingleton<EventDistribution>();
         builder.Services.AddSingleton<IDateTimeHelper, DateTimeHelper>();
         builder.Services.AddSingleton<IDistributedLockFactory>(r => RedLockFactory.Create([new RedLockMultiplexer(r.GetRequiredService<IConnectionMultiplexer>())]));
