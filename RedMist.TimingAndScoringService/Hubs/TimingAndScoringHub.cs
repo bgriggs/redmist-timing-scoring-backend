@@ -1,7 +1,5 @@
-﻿using MediatR;
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.Models;
 using StackExchange.Redis;
 using System.Text.Json;
@@ -12,7 +10,7 @@ namespace RedMist.TimingAndScoringService.Hubs;
 /// SignalR hub for timing and scoring relay service and UI clients.
 /// </summary>
 [Authorize]
-public class TimingAndScoringHub : Hub//, INotificationHandler<StatusNotification>
+public class TimingAndScoringHub : Hub
 {
     private readonly EventDistribution eventDistribution;
     private readonly IConnectionMultiplexer cacheMux;
@@ -55,17 +53,16 @@ public class TimingAndScoringHub : Hub//, INotificationHandler<StatusNotificatio
         return clientId;
     }
 
-    #region Relay
+    #region Relay Clients
 
     /// <summary>
-    /// Receives a sent message from a RMonitor relay.
+    /// Receives a message from an RMonitor relay.
     /// </summary>
+    /// <param name="eventReference">ID received from the timing system</param>
     /// <param name="command">RMonitor command string</param>
-    /// <returns></returns>
     /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
     public async Task SendRMonitor(int eventReference, string command)
     {
-        //Debug.WriteLine($"RX-RM: {command}");
         Logger.LogTrace("RX-RM: {0}", command);
 
         var clientId = GetClientId();
@@ -85,11 +82,18 @@ public class TimingAndScoringHub : Hub//, INotificationHandler<StatusNotificatio
             {
                 var stream = await eventDistribution.GetStreamAsync(eventId.ToString());
                 var db = cacheMux.GetDatabase();
+
+                // Send the command to the service responsible for the specific event
                 await db.StreamAddAsync(stream, string.Format("rmonitor-{0}", eventId), command);
             }
         }
     }
 
+    /// <summary>
+    /// Receive and register a new event from the timing system.
+    /// </summary>
+    /// <param name="eventReference">ID received from the timing system</param>
+    /// <param name="name">Name of the event from the timing system</param>
     public async Task SendEventUpdate(int eventReference, string name)
     {
         Logger.LogTrace("EventUpdate: {0}, {1}", eventReference, name);
@@ -106,31 +110,12 @@ public class TimingAndScoringHub : Hub//, INotificationHandler<StatusNotificatio
 
     #endregion
 
-    #region Clients
+    #region UI Clients
 
-    ///// <summary>
-    ///// Receives a status update from an event processor and forwards it to the subscribed client(s).
-    ///// </summary>
-    //public async Task Handle(StatusNotification notification, CancellationToken cancellationToken)
-    //{
-    //    Logger.LogInformation("StatusNotification: {0}", notification.StatusJson);
-    //    try
-    //    {
-    //        if (!string.IsNullOrEmpty(notification.ConnectionDestination))
-    //        {
-    //            await Clients.Client(notification.ConnectionDestination).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
-    //        }
-    //        else
-    //        {
-    //            await Clients.Group(notification.EventId.ToString()).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
-    //        }
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        Logger.LogError(ex, "Error sending status update to client(s): {0}", ex.Message);
-    //    }
-    //}
-
+    /// <summary>
+    /// UI is registering to receive updates for a specific event.
+    /// </summary>
+    /// <param name="eventId"></param>
     public async Task SubscribeToEvent(int eventId)
     {
         var connectionId = Context.ConnectionId;
@@ -138,9 +123,11 @@ public class TimingAndScoringHub : Hub//, INotificationHandler<StatusNotificatio
 
         if (eventId > 0)
         {
+            // Send a full status update to the client
             var sub = cacheMux.GetSubscriber();
             var cmd = new SendStatusCommand{ EventId = eventId, ConnectionId = connectionId };
             var json = JsonSerializer.Serialize(cmd);
+            // Tell the service responsible for this event to send a full status update
             await sub.PublishAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
         }
 

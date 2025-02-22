@@ -4,7 +4,6 @@ using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
 using Keycloak.AuthServices.Common;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.OpenApi.Models;
@@ -14,7 +13,6 @@ using RedLockNet.SERedis;
 using RedLockNet.SERedis.Configuration;
 using RedMist.TimingAndScoringService.Database;
 using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.Hubs;
 using StackExchange.Redis;
 

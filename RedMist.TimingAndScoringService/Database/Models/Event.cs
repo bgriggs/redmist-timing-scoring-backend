@@ -12,4 +12,5 @@ public class Event
     [MaxLength(512)]
     public string Name { get; set; } = string.Empty;
     public DateTime StartDate { get; set; }
+    public bool EnableSourceDataLogging { get; set; } = true;
 }

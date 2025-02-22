@@ -1,4 +1,8 @@
 ﻿using MediatR;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
+using RedMist.TimingAndScoringService.Database;
+using RedMist.TimingAndScoringService.Database.Models;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
@@ -8,7 +12,7 @@ using System.Text.Json;
 namespace RedMist.TimingAndScoringService.EventStatus;
 
 /// <summary>
-/// Coordinates the receiving of incoming timing data and sending the associated updates.
+/// Coordinates the receiving of incoming timing data and sending the associated updates to UIs.
 /// </summary>
 public class EventAggregator : BackgroundService
 {
@@ -16,6 +20,8 @@ public class EventAggregator : BackgroundService
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDataProcessorFactory dataProcessorFactory;
     private readonly IMediator mediator;
+    private readonly HybridCache hcache;
+    private readonly IDbContextFactory<TsContext> tsContext;
     public Action<EventStatusUpdateEventArgs<List<TimingCommon.Models.EventStatus>>>? EventStatusUpdated;
     public Action<EventStatusUpdateEventArgs<List<EventEntry>>>? EventEntriesUpdated;
     public Action<EventStatusUpdateEventArgs<List<CarPosition>>>? CarPositionsUpdated;
@@ -23,12 +29,14 @@ public class EventAggregator : BackgroundService
     private readonly string podInstance;
 
     public EventAggregator(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IDataProcessorFactory dataProcessorFactory, IMediator mediator)
+        IDataProcessorFactory dataProcessorFactory, IMediator mediator, HybridCache hcache, IDbContextFactory<TsContext> tsContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.dataProcessorFactory = dataProcessorFactory;
         this.mediator = mediator;
+        this.hcache = hcache;
+        this.tsContext = tsContext;
         podInstance = configuration["POD_NAME"] ?? throw new ArgumentNullException("POD_NAME");
     }
 
@@ -44,11 +52,12 @@ public class EventAggregator : BackgroundService
         await sub.SubscribeAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal),
             async (channel, value) => await ProcessFullStatusRequest(value.ToString()),
             CommandFlags.FireAndForget);
-        
+
         // Start a task to send a full update every so often
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
 
-        // Start a task to read timing source data from a stream and process them
+        // Start a task to read timing source data from this service's stream.
+        // The SignalR hub is responsible for sending timing data to the stream.
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -61,12 +70,14 @@ public class EventAggregator : BackgroundService
                         // Process update from timing system
                         Logger.LogTrace("Event Status Update: {0}", entry.Id);
 
+                        // Check the message tag to determine the type of update (e.g. result monitor)
                         var tags = field.Name.ToString().Split('-');
                         if (tags.Length < 2)
                         {
                             Logger.LogWarning("Invalid event status update: {0}", field.Name);
                             continue;
                         }
+
                         var type = tags[0];
                         var eventId = int.Parse(tags[1]);
 
@@ -80,7 +91,9 @@ public class EventAggregator : BackgroundService
                             }
                         }
 
-                        await processor.ProcessUpdate(field.Value.ToString(), stoppingToken);
+                        var data = field.Value.ToString();
+                        _ = Task.Run(() => LogStatusData(eventId, data, stoppingToken), stoppingToken);
+                        await processor.ProcessUpdate(data, stoppingToken);
                     }
                 }
             }
@@ -151,5 +164,44 @@ public class EventAggregator : BackgroundService
         var payload = await p.GetPayload(stoppingToken);
         var json = JsonSerializer.Serialize(payload);
         await mediator.Publish(new StatusNotification(p.EventId, json), stoppingToken);
+    }
+
+    private async Task LogStatusData(int eventId, string data, CancellationToken stoppingToken)
+    {
+        try
+        {
+            var isEnabled = await IsLoggingEnabled(eventId, stoppingToken);
+            if (isEnabled)
+            {
+                using var db = await tsContext.CreateDbContextAsync(stoppingToken);
+                var log = new EventStatusLog
+                {
+                    EventId = eventId,
+                    Timestamp = DateTime.UtcNow,
+                    Data = data,
+                };
+                db.EventStatusLogs.Add(log);
+                await db.SaveChangesAsync(stoppingToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error logging status data for event {0}", eventId);
+        }
+    }
+
+    private async Task<bool> IsLoggingEnabled(int eventId, CancellationToken stoppingToken)
+    {
+        var key = string.Format(Consts.LOG_EVENT_DATA, eventId);
+        return await hcache.GetOrCreateAsync(key,
+            async cancel => await LoadIsEventLoggingEnabled(eventId, stoppingToken),
+            cancellationToken: stoppingToken);
+    }
+
+    private async Task<bool> LoadIsEventLoggingEnabled(int eventId, CancellationToken stoppingToken)
+    {
+        using var db = await tsContext.CreateDbContextAsync(stoppingToken);
+        var isEnabled = await db.Events.Where(x => x.Id == eventId).Select(x => x.EnableSourceDataLogging).FirstOrDefaultAsync(stoppingToken);
+        return isEnabled;
     }
 }

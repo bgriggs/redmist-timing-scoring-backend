@@ -8,4 +8,5 @@ public static class Consts
     public const string CLIENT_ID = "ts-client-{0}";
     public const string EVENT_REF_ID = "org-{0}-eref-{1}";
     public const string SEND_FULL_STATUS = "fullstatus";
+    public const string LOG_EVENT_DATA = "logevt{0}";
 }
