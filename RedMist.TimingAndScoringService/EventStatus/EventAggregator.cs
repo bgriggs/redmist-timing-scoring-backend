@@ -46,7 +46,7 @@ public class EventAggregator : BackgroundService
             CommandFlags.FireAndForget);
         
         // Start a task to send a full update every so often
-        //_ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
+        _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
 
         // Start a task to read timing source data from a stream and process them
         while (!stoppingToken.IsCancellationRequested)
