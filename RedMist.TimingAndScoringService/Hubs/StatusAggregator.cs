@@ -1,13 +1,13 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.SignalR;
-using RedMist.TimingAndScoringService.EventStatus;
+using RedMist.TimingAndScoringService.Models;
 
 namespace RedMist.TimingAndScoringService.Hubs;
 
 /// <summary>
 /// Handles sending status updates to registered hub clients.
 /// </summary>
-public class StatusAggregator: INotificationHandler<StatusNotification>
+public class StatusAggregator : INotificationHandler<StatusNotification>
 {
     private readonly IHubContext<TimingAndScoringHub> hubContext;
     private ILogger Logger { get; }

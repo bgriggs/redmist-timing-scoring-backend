@@ -1,6 +1,7 @@
 ﻿using MediatR;
+using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.EventStatus;
+namespace RedMist.TimingAndScoringService.Models;
 
 /// <summary>
 /// Final processed event information to send to clients.
@@ -10,6 +11,8 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 public class StatusNotification(int eventId, string statusJson) : INotification
 {
     public int EventId { get; set; } = eventId;
+
+    public Payload? Payload { get; set; }
 
     /// <summary>
     /// Status to send to clients.

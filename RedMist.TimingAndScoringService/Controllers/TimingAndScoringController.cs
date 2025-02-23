@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using RedMist.TimingAndScoringService.Database;
 using RedMist.TimingCommon.Models;
+using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.Controllers;
 
@@ -9,23 +12,73 @@ namespace RedMist.TimingAndScoringService.Controllers;
 [Authorize]
 public class TimingAndScoringController : ControllerBase
 {
+    private readonly IDbContextFactory<TsContext> tsContext;
+
     private ILogger Logger { get; }
 
-    public TimingAndScoringController(ILoggerFactory loggerFactory)
+
+    public TimingAndScoringController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
+        this.tsContext = tsContext;
+    }
+
+
+    [HttpGet]
+    [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
+    public async Task<Event[]> LoadEvents(DateTime startDateUtc)
+    {
+        Logger.LogTrace("GetEvents");
+
+        using var context = tsContext.CreateDbContext();
+        var dbEvents = await context.Events.Where(x => x.StartDate >= startDateUtc).ToArrayAsync();
+
+        // Map to Event model
+        List<Event> eventDtos = [];
+        foreach (var dbEvent in dbEvents) {
+            var eventDto = new Event
+            {
+               EventId = dbEvent.Id,
+               EventName = dbEvent.Name,
+               EventDate = dbEvent.StartDate.ToString()
+            };
+            eventDtos.Add(eventDto);
+        }
+
+        return [..eventDtos];
     }
 
     [HttpGet]
     [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
-    public Task<Event[]> GetEvents()
+    public Task<List<CarPosition>> LoadCarLaps(int eventId, string carNumber)
     {
-        Logger.LogTrace("GetEvents");
-        return Task.FromResult(new Event[] { new() { EventId = 1, EventName = "Test", EventDate = "2025-01-01" } });
+        Logger.LogTrace("GetCarPositions for event {0}", eventId);
+        using var context = tsContext.CreateDbContext();
+        var laps = context.CarLapLogs
+            .Where(c => c.EventId == eventId && c.CarNumber == carNumber)
+            .GroupBy(c => c.CarNumber)
+            .Select(g => g.OrderDescending())
+            .First()
+            .ToList();
+
+        var carPositions = new List<CarPosition>();
+        foreach (var lap in laps)
+        {
+            try
+            {
+                var cp = JsonSerializer.Deserialize<CarPosition>(lap.LapData);
+                if (cp != null)
+                {
+                    carPositions.Add(cp);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error deserializing car position data for event {0}, car {1}", eventId, carNumber);
+            }
+        }
+
+        return Task.FromResult(carPositions);
     }
 
-    //public Task<Payload> GetEventStatus(int eventId)
-    //{
-    //    return Task.FromResult(new Payload());
-    //}
 }

@@ -1,9 +1,8 @@
 ﻿using MediatR;
+using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
-using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
@@ -464,6 +463,12 @@ public class RmDataProcessor : IDataProcessor
             _lock.Release();
         }
 
+        // Put flag state on all car positions
+        foreach (var carPosition in carPositions)
+        {
+            carPosition.Flag = eventStatus.Flag;
+        }
+
         var payload = new Payload
         {
             EventId = EventId,
@@ -475,7 +480,7 @@ public class RmDataProcessor : IDataProcessor
         // when shared model is invalidated, save to redis
         // controller needs to load from redis when a new client connects
         var json = JsonSerializer.Serialize(payload);
-        _ = mediator.Publish(new StatusNotification(EventId, json), stoppingToken);
+        _ = mediator.Publish(new StatusNotification(EventId, json) { Payload = payload }, stoppingToken);
     }
 
     public void PublishEventReset(CancellationToken stoppingToken = default)
@@ -577,6 +582,12 @@ public class RmDataProcessor : IDataProcessor
 
             // Car Positions
             var carPositions = GetCarPositions();
+
+            // Put flag state on all car positions
+            foreach (var carPosition in carPositions)
+            {
+                carPosition.Flag = eventStatus.Flag;
+            }
 
             var payload = new Payload
             {

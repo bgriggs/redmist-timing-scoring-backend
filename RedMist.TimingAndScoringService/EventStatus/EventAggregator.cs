@@ -22,6 +22,7 @@ public class EventAggregator : BackgroundService
     private readonly IMediator mediator;
     private readonly HybridCache hcache;
     private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly LapLogger lapLogger;
     public Action<EventStatusUpdateEventArgs<List<TimingCommon.Models.EventStatus>>>? EventStatusUpdated;
     public Action<EventStatusUpdateEventArgs<List<EventEntry>>>? EventEntriesUpdated;
     public Action<EventStatusUpdateEventArgs<List<CarPosition>>>? CarPositionsUpdated;
@@ -29,7 +30,8 @@ public class EventAggregator : BackgroundService
     private readonly string podInstance;
 
     public EventAggregator(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IDataProcessorFactory dataProcessorFactory, IMediator mediator, HybridCache hcache, IDbContextFactory<TsContext> tsContext)
+        IDataProcessorFactory dataProcessorFactory, IMediator mediator, HybridCache hcache, 
+        IDbContextFactory<TsContext> tsContext, LapLogger lapLogger)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
@@ -37,6 +39,7 @@ public class EventAggregator : BackgroundService
         this.mediator = mediator;
         this.hcache = hcache;
         this.tsContext = tsContext;
+        this.lapLogger = lapLogger;
         podInstance = configuration["POD_NAME"] ?? throw new ArgumentNullException("POD_NAME");
     }
 
@@ -163,8 +166,11 @@ public class EventAggregator : BackgroundService
         Logger.LogDebug("Getting payload for event {0}...", p.EventId);
         var payload = await p.GetPayload(stoppingToken);
         var json = JsonSerializer.Serialize(payload);
-        await mediator.Publish(new StatusNotification(p.EventId, json), stoppingToken);
+        await mediator.Publish(new StatusNotification(p.EventId, json) { Payload = payload }, stoppingToken);
     }
+
+
+    #region Event Data Logging
 
     private async Task LogStatusData(int eventId, string data, CancellationToken stoppingToken)
     {
@@ -204,4 +210,6 @@ public class EventAggregator : BackgroundService
         var isEnabled = await db.Events.Where(x => x.Id == eventId).Select(x => x.EnableSourceDataLogging).FirstOrDefaultAsync(stoppingToken);
         return isEnabled;
     }
+
+    #endregion
 }
