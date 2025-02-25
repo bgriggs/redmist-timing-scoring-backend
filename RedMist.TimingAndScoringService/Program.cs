@@ -94,7 +94,7 @@ public class Program
             //.AddCheck<StartupHealthCheck>("Startup", tags: ["startup"])
             .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])
             .AddRedis(redisConn, tags: ["cache", "redis"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);
+            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 7200, name: "Process Allocated Memory", tags: ["memory"]);
 
         builder.Services.AddSignalR(o => o.MaximumParallelInvocationsPerClient = 3)
             .AddStackExchangeRedis(redisConn, options =>

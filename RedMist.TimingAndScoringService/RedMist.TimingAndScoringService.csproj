@@ -6,6 +6,7 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<UserSecretsId>e80f9c37-72e7-4ed1-abaf-51e756863769</UserSecretsId>
 		<LangVersion>preview</LangVersion>
+		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -15,6 +16,7 @@
 		<PackageReference Include="Azure.Identity" Version="1.13.2" />
 		<PackageReference Include="Keycloak.AuthServices.Authorization" Version="2.6.0" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="9.2.0-preview.1.25105.6" />
+		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
 		<PackageReference Include="NLog.Extensions.Hosting" Version="5.4.0" />
 		<PackageReference Include="NLog.Extensions.Logging" Version="5.4.0" />
 		<PackageReference Include="ReactiveGenerator" Version="0.12.0">
