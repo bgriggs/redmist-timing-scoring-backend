@@ -35,31 +35,31 @@ public class TimingAndScoringController : ControllerBase
 
         // Map to Event model
         List<Event> eventDtos = [];
-        foreach (var dbEvent in dbEvents) {
+        foreach (var dbEvent in dbEvents)
+        {
             var eventDto = new Event
             {
-               EventId = dbEvent.Id,
-               EventName = dbEvent.Name,
-               EventDate = dbEvent.StartDate.ToString()
+                EventId = dbEvent.Id,
+                EventName = dbEvent.Name,
+                EventDate = dbEvent.StartDate.ToString()
             };
             eventDtos.Add(eventDto);
         }
 
-        return [..eventDtos];
+        return [.. eventDtos];
     }
 
     [HttpGet]
     [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
-    public Task<List<CarPosition>> LoadCarLaps(int eventId, string carNumber)
+    public async Task<List<CarPosition>> LoadCarLaps(int eventId, string carNumber)
     {
         Logger.LogTrace("GetCarPositions for event {0}", eventId);
         using var context = tsContext.CreateDbContext();
-        var laps = context.CarLapLogs
-            .Where(c => c.EventId == eventId && c.CarNumber == carNumber)
-            .GroupBy(c => c.CarNumber)
-            .Select(g => g.OrderDescending())
-            .First()
-            .ToList();
+        var laps = await context.CarLapLogs
+            .Where(c => c.EventId == eventId && c.CarNumber == carNumber && c.Timestamp == context.CarLapLogs
+                .Where(r => r.Id == c.Id)
+                .Max(r => r.Timestamp)) // When there are multiple of the same lap for the same car, such as from a simulated replay, load the newest one
+            .ToListAsync();
 
         var carPositions = new List<CarPosition>();
         foreach (var lap in laps)
@@ -78,7 +78,7 @@ public class TimingAndScoringController : ControllerBase
             }
         }
 
-        return Task.FromResult(carPositions);
+        return carPositions;
     }
 
 }
