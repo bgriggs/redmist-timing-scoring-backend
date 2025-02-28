@@ -169,13 +169,15 @@ public class EventDistribution : BackgroundService
             {
                 OrganizationId = orgId,
                 EventReferenceId = eventReference,
-                Name = name
+                Name = name,
+                StartDate = DateTime.UtcNow,
             };
             db.Events.Add(ev);
         }
         else
         {
             ev.Name = name;
+            ev.StartDate = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(stoppingToken);
         return ev.Id;
