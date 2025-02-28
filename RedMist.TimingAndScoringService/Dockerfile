@@ -17,7 +17,6 @@ RUN dotnet build "./RedMist.TimingAndScoringService.csproj" -c Release -o /app/b
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish "./RedMist.TimingAndScoringService.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
