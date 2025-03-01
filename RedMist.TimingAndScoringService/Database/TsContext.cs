@@ -10,6 +10,7 @@ public class TsContext : DbContext
     public DbSet<EventStatusLog> EventStatusLogs { get; set; } = null!;
     public DbSet<CarLapLog> CarLapLogs { get; set; } = null!;
     public DbSet<CarLastLap> CarLastLaps { get; set; } = null!;
+    public DbSet<GoogleSheetsConfig> GoogleSheetsConfigs { get; set; } = null!;
 
     public TsContext(DbContextOptions<TsContext> options)
            : base(options) { }

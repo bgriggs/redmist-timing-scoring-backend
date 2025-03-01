@@ -42,6 +42,7 @@
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
+		<PackageReference Include="Google.Apis.Sheets.v4" Version="1.68.0.3624" />
 	</ItemGroup>
 
 	<ItemGroup>

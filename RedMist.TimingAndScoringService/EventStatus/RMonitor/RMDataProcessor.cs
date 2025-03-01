@@ -1,4 +1,5 @@
 ﻿using MediatR;
+using RedMist.TimingAndScoringService.EventStatus.ControlLog;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
@@ -15,6 +16,8 @@ public class RmDataProcessor : IDataProcessor
 {
     public int EventId { get; private set; }
     private readonly IMediator mediator;
+    private readonly IControlLogFactory controlLogFactory;
+
     private ILogger Logger { get; }
     private readonly Debouncer debouncer = new(TimeSpan.FromMilliseconds(100));
     public Debouncer Debouncer => debouncer;
@@ -35,12 +38,14 @@ public class RmDataProcessor : IDataProcessor
     public double TrackLength { get; set; }
 
     private readonly SecondaryProcessor secondaryProcessor = new();
+    private readonly IControlLog? controlLog;
 
     public RmDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
         this.mediator = mediator;
+        this.controlLogFactory = controlLogFactory;
     }
 
     public async Task ProcessUpdate(string data, CancellationToken stoppingToken = default)
@@ -571,6 +576,8 @@ public class RmDataProcessor : IDataProcessor
     /// </summary>
     public async Task<Payload> GetPayload(CancellationToken stoppingToken = default)
     {
+        var payload = new Payload();
+
         await _lock.WaitAsync(stoppingToken);
         try
         {
@@ -589,21 +596,18 @@ public class RmDataProcessor : IDataProcessor
                 carPosition.Flag = eventStatus.Flag;
             }
 
-            var payload = new Payload
-            {
-                EventId = EventId,
-                EventName = EventName,
-                EventStatus = eventStatus,
-            };
+            payload.EventId = EventId;
+            payload.EventName = EventName;
+            payload.EventStatus = eventStatus;
             payload.EventEntries.AddRange(eventEntries);
             payload.CarPositions.AddRange(carPositions);
-
-            return payload;
         }
         finally
         {
             _lock.Release();
         }
+
+        return payload;
     }
 
     private string? GetCarsClass(string number)

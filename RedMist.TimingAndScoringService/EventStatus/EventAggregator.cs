@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.TimingAndScoringService.Database;
 using RedMist.TimingAndScoringService.Database.Models;
+using RedMist.TimingAndScoringService.EventStatus.ControlLog;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
@@ -22,7 +23,7 @@ public class EventAggregator : BackgroundService
     private readonly IMediator mediator;
     private readonly HybridCache hcache;
     private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly LapLogger lapLogger;
+    private readonly IControlLogFactory controlLogFactory;
     public Action<EventStatusUpdateEventArgs<List<TimingCommon.Models.EventStatus>>>? EventStatusUpdated;
     public Action<EventStatusUpdateEventArgs<List<EventEntry>>>? EventEntriesUpdated;
     public Action<EventStatusUpdateEventArgs<List<CarPosition>>>? CarPositionsUpdated;
@@ -30,8 +31,8 @@ public class EventAggregator : BackgroundService
     private readonly string podInstance;
 
     public EventAggregator(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IDataProcessorFactory dataProcessorFactory, IMediator mediator, HybridCache hcache, 
-        IDbContextFactory<TsContext> tsContext, LapLogger lapLogger)
+        IDataProcessorFactory dataProcessorFactory, IMediator mediator, HybridCache hcache,
+        IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
@@ -39,7 +40,7 @@ public class EventAggregator : BackgroundService
         this.mediator = mediator;
         this.hcache = hcache;
         this.tsContext = tsContext;
-        this.lapLogger = lapLogger;
+        this.controlLogFactory = controlLogFactory;
         podInstance = configuration["POD_NAME"] ?? throw new ArgumentNullException("POD_NAME");
     }
 
@@ -165,8 +166,37 @@ public class EventAggregator : BackgroundService
     {
         Logger.LogDebug("Getting payload for event {0}...", p.EventId);
         var payload = await p.GetPayload(stoppingToken);
+        await TryRequestControlLog(payload, stoppingToken);
+
         var json = JsonSerializer.Serialize(payload);
         await mediator.Publish(new StatusNotification(p.EventId, json) { Payload = payload }, stoppingToken);
+    }
+
+    private async Task TryRequestControlLog(Payload payload, CancellationToken stoppingToken = default)
+    {
+        try
+        {
+            Logger.LogDebug($"Checking control log for event {payload.EventId}-{payload.EventName}");
+            using var db = await tsContext.CreateDbContextAsync(stoppingToken);
+            var eventData = await db.Events.FirstOrDefaultAsync(x => x.Id == payload.EventId, stoppingToken);
+            if (eventData != null)
+            {
+                if (!string.IsNullOrEmpty(eventData.ControlLogType))
+                {
+                    var controlLog = controlLogFactory.CreateControlLog(eventData.ControlLogType);
+                    var logEntries = await controlLog.LoadControlLogAsync(eventData.ControlLogParameter, stoppingToken);
+
+                    foreach (var car in payload.CarPositions)
+                    {
+                        car.ControlLog = [.. logEntries.Where(x => string.Compare(x.Car1, car.Number, true) == 0 || string.Compare(x.Car2, car.Number, true) == 0)];
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading control log for event {0}", payload.EventId);
+        }
     }
 
 
