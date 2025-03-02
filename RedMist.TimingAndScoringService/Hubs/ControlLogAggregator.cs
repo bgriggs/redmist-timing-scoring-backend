@@ -26,15 +26,14 @@ public class ControlLogAggregator : INotificationHandler<ControlLogNotification>
         Logger.LogTrace("ControlLogNotification: car {0}", notification.CarNumber);
         try
         {
-            var json = JsonSerializer.Serialize(notification.ControlLogEntries);
             if (!string.IsNullOrEmpty(notification.ConnectionDestination))
             {
-                await hubContext.Clients.Client(notification.ConnectionDestination).SendAsync("ReceiveControlLog", json, cancellationToken);
+                await hubContext.Clients.Client(notification.ConnectionDestination).SendAsync("ReceiveControlLog", notification.ControlLogEntries, cancellationToken);
             }
             else
             {
                 string grpKey = $"{notification.EventId}-{notification.CarNumber}";
-                await hubContext.Clients.Group(grpKey).SendAsync("ReceiveControlLog", json, cancellationToken);
+                await hubContext.Clients.Group(grpKey).SendAsync("ReceiveControlLog", notification.ControlLogEntries, cancellationToken);
             }
         }
         catch (Exception ex)

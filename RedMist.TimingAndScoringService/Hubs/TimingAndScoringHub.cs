@@ -141,7 +141,7 @@ public class TimingAndScoringHub : Hub
         Logger.LogInformation("Client {0} unsubscribed from event {1}", connectionId, eventId);
     }
 
-    public async Task SubscribeToControlLog(int eventId, string carNum)
+    public async Task SubscribeToControlLogs(int eventId, string carNum)
     {
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-{carNum}";
@@ -160,7 +160,7 @@ public class TimingAndScoringHub : Hub
         Logger.LogInformation("Client {0} subscribed to control log for car {1} event {2}", connectionId, carNum, eventId);
     }
 
-    public async Task UnsubscribeControlLog(int eventId, string carNum)
+    public async Task UnsubscribeFromControlLogs(int eventId, string carNum)
     {
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-{carNum}";

@@ -200,9 +200,8 @@ public class EventAggregator : BackgroundService
         {
             var entries = await controlLog.GetCarControlEntries([cmd.CarNumber.ToLower()]);
             Logger.LogInformation("Sending control logs for event {0} car {1} to new connection {1}", cmd.EventId, cmd.CarNumber, cmd.ConnectionId);
-            await mediator.Publish(new ControlLogNotification(
-                cmd.EventId, [.. entries.SelectMany(s => s.Value)])
-            { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
+            var ccl = new CarControlLogs { CarNumber = cmd.CarNumber, ControlLogEntries = [.. entries.SelectMany(s => s.Value)] };
+            await mediator.Publish(new ControlLogNotification(cmd.EventId, ccl) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
         }
     }
 
@@ -222,7 +221,8 @@ public class EventAggregator : BackgroundService
                     var entries = await controlLogs.Value.GetCarControlEntries([.. changedCars]);
                     foreach (var e in entries)
                     {
-                        var notificaiton = new ControlLogNotification(controlLogs.Key, [.. e.Value]) { CarNumber = e.Key };
+                        var ccl = new CarControlLogs { CarNumber = e.Key, ControlLogEntries = e.Value };
+                        var notificaiton = new ControlLogNotification(controlLogs.Key, ccl) { CarNumber = e.Key };
                         _ = mediator.Publish(notificaiton, stoppingToken);
                     }
                 }
