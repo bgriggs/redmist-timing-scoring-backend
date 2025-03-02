@@ -12,11 +12,6 @@ public partial class RaceInformation
     public partial int Laps { get; set; }
     public partial string RaceTime { get; set; } = string.Empty;
 
-    public bool IsStartingPosition
-    {
-        get { return Laps == 0 && RaceTime == "00:00:00.000"; }
-    }
-
     [IgnoreReactive]
     public DateTime Timestamp
     {

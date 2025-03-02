@@ -1,5 +1,4 @@
 ﻿using MediatR;
-using RedMist.TimingAndScoringService.EventStatus.ControlLog;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
@@ -16,7 +15,6 @@ public class RmDataProcessor : IDataProcessor
 {
     public int EventId { get; private set; }
     private readonly IMediator mediator;
-    private readonly IControlLogFactory controlLogFactory;
 
     private ILogger Logger { get; }
     private readonly Debouncer debouncer = new(TimeSpan.FromMilliseconds(100));
@@ -38,14 +36,12 @@ public class RmDataProcessor : IDataProcessor
     public double TrackLength { get; set; }
 
     private readonly SecondaryProcessor secondaryProcessor = new();
-    private readonly IControlLog? controlLog;
 
     public RmDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
         this.mediator = mediator;
-        this.controlLogFactory = controlLogFactory;
     }
 
     public async Task ProcessUpdate(string data, CancellationToken stoppingToken = default)
@@ -307,13 +303,21 @@ public class RmDataProcessor : IDataProcessor
         raceInfo.ProcessG(parts);
 
         // Save off starting positions
-        if (raceInfo.IsStartingPosition)
+        if (raceInfo.Laps == 0)
         {
-            // Make a copy for storing off
-            var sp = new RaceInformation();
-            sp.ProcessG(parts);
-            startingPositions[regNum] = sp;
-            UpdateInClassStartingPositionLookup();
+            Enum.TryParse(typeof(Flags), Heartbeat.FlagStatus, true, out var f);
+            f ??= Flags.Unknown;
+            var flag = (Flags)f;
+
+            // Allow capture of starting positions during lap 0 up to and include the green flag
+            if (flag == Flags.Unknown || flag == Flags.Yellow || flag == Flags.Green)
+            {
+                // Make a copy for storing off
+                var sp = new RaceInformation();
+                sp.ProcessG(parts);
+                startingPositions[regNum] = sp;
+                UpdateInClassStartingPositionLookup();
+            }
         }
     }
 
@@ -393,15 +397,22 @@ public class RmDataProcessor : IDataProcessor
     /// <example>$I,"16:36:08.000","12 jan 01"</example>
     private void ProcessI()
     {
-        classes.Clear();
-        competitors.Clear();
-        raceInformation.Clear();
-        practiceQualifying.Clear();
-        passingInformation.Clear();
-        startingPositions.Clear();
-        inClassStartingPositions.Clear();
-        secondaryProcessor.Clear();
+        Enum.TryParse(typeof(Flags), Heartbeat.FlagStatus, true, out var flag);
+        flag ??= Flags.Unknown;
 
+        // Allow for reset when the event is initializing. Once it has started,
+        // suppress the resets to reduce user confusion
+        if ((Flags)flag == Flags.Unknown)
+        {
+            classes.Clear();
+            competitors.Clear();
+            raceInformation.Clear();
+            practiceQualifying.Clear();
+            passingInformation.Clear();
+            startingPositions.Clear();
+            inClassStartingPositions.Clear();
+            secondaryProcessor.Clear();
+        }
         PublishEventReset();
     }
 
