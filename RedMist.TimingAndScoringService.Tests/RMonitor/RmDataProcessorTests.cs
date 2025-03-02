@@ -405,13 +405,13 @@ public class RmDataProcessorTests
         var processor = new RmDataProcessor(0, mediatorMock.Object, lf);
 
         await processor.ProcessUpdate("$G,10,\"89\",,\"00:00:00.000\"");
+        await processor.ProcessUpdate("$G,3,\"1234BE\",,\"01:12:47.872\""); // Now using laps and flag rather than time
 
         // Invalid
-        await processor.ProcessUpdate("$G,3,\"1234BE\",,\"01:12:47.872\"");
         await processor.ProcessUpdate("$G,12,\"68\",27,\"00:00:00.000\"");
 
         var raceInfo = processor.GetOverallStartingPositions();
-        Assert.AreEqual(1, raceInfo.Count);
+        Assert.AreEqual(2, raceInfo.Count);
     }
 
     [TestMethod]
