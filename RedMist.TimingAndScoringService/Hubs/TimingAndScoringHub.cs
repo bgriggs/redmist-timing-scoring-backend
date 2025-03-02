@@ -120,7 +120,7 @@ public class TimingAndScoringHub : Hub
     {
         var connectionId = Context.ConnectionId;
         await Groups.AddToGroupAsync(connectionId, eventId.ToString());
-
+        
         if (eventId > 0)
         {
             // Send a full status update to the client
@@ -139,6 +139,33 @@ public class TimingAndScoringHub : Hub
         var connectionId = Context.ConnectionId;
         await Groups.RemoveFromGroupAsync(connectionId, eventId.ToString());
         Logger.LogInformation("Client {0} unsubscribed from event {1}", connectionId, eventId);
+    }
+
+    public async Task SubscribeToControlLog(int eventId, string carNum)
+    {
+        var connectionId = Context.ConnectionId;
+        var grpKey = $"{eventId}-{carNum}";
+        await Groups.AddToGroupAsync(connectionId, grpKey);
+
+        if (eventId > 0)
+        {
+            // Send a full status update to the client
+            var sub = cacheMux.GetSubscriber();
+            var cmd = new SendControlLogCommand { EventId = eventId, ConnectionId = connectionId, CarNumber = carNum };
+            var json = JsonSerializer.Serialize(cmd);
+            // Tell the service responsible for this event to send a full status update
+            await sub.PublishAsync(new RedisChannel(Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
+        }
+
+        Logger.LogInformation("Client {0} subscribed to control log for car {1} event {2}", connectionId, carNum, eventId);
+    }
+
+    public async Task UnsubscribeControlLog(int eventId, string carNum)
+    {
+        var connectionId = Context.ConnectionId;
+        var grpKey = $"{eventId}-{carNum}";
+        await Groups.RemoveFromGroupAsync(connectionId, grpKey);
+        Logger.LogInformation("Client {0} unsubscribed from control log for car {1} event {2}", connectionId, carNum, eventId);
     }
 
     #endregion

@@ -18,6 +18,8 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 public class EventAggregator : BackgroundService
 {
     private readonly Dictionary<int, IDataProcessor> processors = [];
+    private readonly Dictionary<int, ControlLogCache> controlLogCaches = [];
+    private readonly ILoggerFactory loggerFactory;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDataProcessorFactory dataProcessorFactory;
     private readonly IMediator mediator;
@@ -35,6 +37,7 @@ public class EventAggregator : BackgroundService
         IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
+        this.loggerFactory = loggerFactory;
         this.cacheMux = cacheMux;
         this.dataProcessorFactory = dataProcessorFactory;
         this.mediator = mediator;
@@ -57,8 +60,15 @@ public class EventAggregator : BackgroundService
             async (channel, value) => await ProcessFullStatusRequest(value.ToString()),
             CommandFlags.FireAndForget);
 
+        // Subscribe to control log requests such as when UI details opens for a car
+        await sub.SubscribeAsync(new RedisChannel(Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal),
+            async (channel, value) => await ProcessControlLogRequest(value.ToString(), stoppingToken),
+            CommandFlags.FireAndForget);
+
         // Start a task to send a full update every so often
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
+        // Start a task to send a control log updates every so often
+        _ = Task.Run(() => SendControlLogUpdates(stoppingToken), stoppingToken);
 
         // Start a task to read timing source data from this service's stream.
         // The SignalR hub is responsible for sending timing data to the stream.
@@ -92,6 +102,10 @@ public class EventAggregator : BackgroundService
                             {
                                 processor = dataProcessorFactory.CreateDataProcessor(type, eventId);
                                 processors[eventId] = processor;
+
+                                // Create a control log cache for the event
+                                var controlLogCache = new ControlLogCache(eventId, loggerFactory, tsContext, controlLogFactory);
+                                controlLogCaches[eventId] = controlLogCache;
                             }
                         }
 
@@ -166,39 +180,62 @@ public class EventAggregator : BackgroundService
     {
         Logger.LogDebug("Getting payload for event {0}...", p.EventId);
         var payload = await p.GetPayload(stoppingToken);
-        await TryRequestControlLog(payload, stoppingToken);
-
         var json = JsonSerializer.Serialize(payload);
         await mediator.Publish(new StatusNotification(p.EventId, json) { Payload = payload }, stoppingToken);
     }
 
-    private async Task TryRequestControlLog(Payload payload, CancellationToken stoppingToken = default)
-    {
-        try
-        {
-            Logger.LogDebug($"Checking control log for event {payload.EventId}-{payload.EventName}");
-            using var db = await tsContext.CreateDbContextAsync(stoppingToken);
-            var eventData = await db.Events.FirstOrDefaultAsync(x => x.Id == payload.EventId, stoppingToken);
-            if (eventData != null)
-            {
-                if (!string.IsNullOrEmpty(eventData.ControlLogType))
-                {
-                    var controlLog = controlLogFactory.CreateControlLog(eventData.ControlLogType);
-                    var logEntries = await controlLog.LoadControlLogAsync(eventData.ControlLogParameter, stoppingToken);
 
-                    foreach (var car in payload.CarPositions)
-                    {
-                        car.ControlLog = [.. logEntries.Where(x => string.Compare(x.Car1, car.Number, true) == 0 || string.Compare(x.Car2, car.Number, true) == 0)];
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
+    #region Control Log
+
+    private async Task ProcessControlLogRequest(string cmdJson, CancellationToken stoppingToken = default)
+    {
+        var cmd = JsonSerializer.Deserialize<SendControlLogCommand>(cmdJson);
+        if (cmd == null)
         {
-            Logger.LogError(ex, "Error loading control log for event {0}", payload.EventId);
+            Logger.LogWarning("Invalid command received: {0}", cmdJson);
+            return;
+        }
+
+        if (controlLogCaches.TryGetValue(cmd.EventId, out var controlLog))
+        {
+            var entries = await controlLog.GetCarControlEntries([cmd.CarNumber.ToLower()]);
+            Logger.LogInformation("Sending control logs for event {0} car {1} to new connection {1}", cmd.EventId, cmd.CarNumber, cmd.ConnectionId);
+            await mediator.Publish(new ControlLogNotification(
+                cmd.EventId, [.. entries.SelectMany(s => s.Value)])
+            { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
         }
     }
 
+    private async Task SendControlLogUpdates(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+            Logger.LogInformation("Requesting control log update...");
+            var sw = Stopwatch.StartNew();
+
+            try
+            {
+                foreach (var controlLogs in controlLogCaches.ToDictionary())
+                {
+                    var changedCars = await controlLogs.Value.RequestControlLogChanges(stoppingToken);
+                    var entries = await controlLogs.Value.GetCarControlEntries([.. changedCars]);
+                    foreach (var e in entries)
+                    {
+                        var notificaiton = new ControlLogNotification(controlLogs.Key, [.. e.Value]) { CarNumber = e.Key };
+                        _ = mediator.Publish(notificaiton, stoppingToken);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error sending full update");
+            }
+            Logger.LogDebug("Full update sent in {0}ms", sw.ElapsedMilliseconds);
+        }
+    }
+
+    #endregion
 
     #region Event Data Logging
 
