@@ -23,16 +23,18 @@ public class ControlLogAggregator : INotificationHandler<ControlLogNotification>
 
     public async Task Handle(ControlLogNotification notification, CancellationToken cancellationToken)
     {
-        Logger.LogTrace("ControlLogNotification: car {0}", notification.CarNumber);
+        
         try
         {
             if (!string.IsNullOrEmpty(notification.ConnectionDestination))
             {
+                Logger.LogTrace("ControlLogNotification: car {0} client {1}", notification.CarNumber, notification.ConnectionDestination);
                 await hubContext.Clients.Client(notification.ConnectionDestination).SendAsync("ReceiveControlLog", notification.ControlLogEntries, cancellationToken);
             }
             else
             {
                 string grpKey = $"{notification.EventId}-{notification.CarNumber}";
+                Logger.LogTrace("ControlLogNotification: car {0} group {1}", notification.CarNumber, grpKey);
                 await hubContext.Clients.Group(grpKey).SendAsync("ReceiveControlLog", notification.ControlLogEntries, cancellationToken);
             }
         }

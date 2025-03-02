@@ -21,15 +21,17 @@ public class StatusAggregator : INotificationHandler<StatusNotification>
 
     public async Task Handle(StatusNotification notification, CancellationToken cancellationToken)
     {
-        Logger.LogTrace("StatusNotification: {0}", notification.StatusJson);
+        
         try
         {
             if (!string.IsNullOrEmpty(notification.ConnectionDestination))
             {
+                Logger.LogTrace("StatusNotification: {0}", notification.ConnectionDestination);
                 await hubContext.Clients.Client(notification.ConnectionDestination).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
             }
             else
             {
+                Logger.LogTrace("StatusNotification Group: {0}", notification.EventId);
                 await hubContext.Clients.Group(notification.EventId.ToString()).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
             }
         }
