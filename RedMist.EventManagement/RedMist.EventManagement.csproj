@@ -9,6 +9,14 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <Compile Remove="WeatherForecast.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Remove="RedMist.EventManagement.http" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.2" />
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
 		<PackageReference Include="NLog.Extensions.Hosting" Version="5.4.0" />
@@ -26,6 +34,10 @@
 		</PackageReference>
 		<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.2" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
 	</ItemGroup>
 
 </Project>

@@ -30,11 +30,14 @@ public class ControlLogCache
         {
             Logger.LogDebug($"Checking control log for event {eventId}");
             using var db = await tsContext.CreateDbContextAsync(stoppingToken);
-            var eventData = await db.Events.FirstOrDefaultAsync(x => x.Id == eventId, stoppingToken);
-            if (eventData != null && !string.IsNullOrEmpty(eventData.ControlLogType))
+            var org = await db.Events.Where(db => db.Id == eventId)
+                .Join(db.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
+                .Select(x => x.o)
+                .FirstOrDefaultAsync(stoppingToken);
+            if (org != null && !string.IsNullOrEmpty(org.ControlLogType))
             {
-                var controlLog = controlLogFactory.CreateControlLog(eventData.ControlLogType);
-                var logEntries = await controlLog.LoadControlLogAsync(eventData.ControlLogParameter, stoppingToken);
+                var controlLog = controlLogFactory.CreateControlLog(org.ControlLogType);
+                var logEntries = await controlLog.LoadControlLogAsync(org.ControlLogParams, stoppingToken);
 
                 var oldLogs = controlLogCache.ToDictionary(x => x.Key, x => x.Value);
                 var car1Grp = logEntries.GroupBy(x => x.Car1);
@@ -61,7 +64,7 @@ public class ControlLogCache
                 var changes = GetChangedCars(oldLogs, controlLogCache);
                 return changes;
             }
-            else if (eventData == null)
+            else if (org == null)
             {
                 Logger.LogWarning($"No event {eventId} found for Control Log in database.");
             }

@@ -30,7 +30,7 @@ public class TimingAndScoringController : ControllerBase
     {
         Logger.LogTrace("GetEvents");
 
-        using var context = tsContext.CreateDbContext();
+        using var context = await tsContext.CreateDbContextAsync();
         var dbEvents = await context.Events.Where(x => x.StartDate >= startDateUtc).ToArrayAsync();
 
         // Map to Event model

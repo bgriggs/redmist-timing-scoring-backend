@@ -152,34 +152,35 @@ public class EventDistribution : BackgroundService
             cancellationToken: stoppingToken);
     }
 
-    private async Task<int> LoadEventId(int orgId, int eventReference)
+    private Task<int> LoadEventId(int orgId, int eventReference)
     {
-        using var db = await tsContext.CreateDbContextAsync(stoppingToken);
-        var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.EventReferenceId == eventReference, stoppingToken);
-        return ev?.Id ?? 0;
+        //using var db = await tsContext.CreateDbContextAsync(stoppingToken);
+        //var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.EventReferenceId == eventReference, stoppingToken);
+        //return ev?.Id ?? 0;
+        return Task.FromResult(0);
     }
 
-    public async Task<int> SaveOrUpdateEvent(int orgId, int eventReference, string name)
-    {
-        using var db = await tsContext.CreateDbContextAsync(stoppingToken);
-        var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.EventReferenceId == eventReference, stoppingToken);
-        if (ev == null)
-        {
-            ev = new Event
-            {
-                OrganizationId = orgId,
-                EventReferenceId = eventReference,
-                Name = name,
-                StartDate = DateTime.UtcNow,
-            };
-            db.Events.Add(ev);
-        }
-        else
-        {
-            ev.Name = name;
-            ev.StartDate = DateTime.UtcNow;
-        }
-        await db.SaveChangesAsync(stoppingToken);
-        return ev.Id;
-    }
+    //public async Task<int> SaveOrUpdateEvent(int orgId, int eventReference, string name)
+    //{
+    //    using var db = await tsContext.CreateDbContextAsync(stoppingToken);
+    //    var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.EventReferenceId == eventReference, stoppingToken);
+    //    if (ev == null)
+    //    {
+    //        ev = new Event
+    //        {
+    //            OrganizationId = orgId,
+    //            EventReferenceId = eventReference,
+    //            Name = name,
+    //            StartDate = DateTime.UtcNow,
+    //        };
+    //        db.Events.Add(ev);
+    //    }
+    //    else
+    //    {
+    //        ev.Name = name;
+    //        ev.StartDate = DateTime.UtcNow;
+    //    }
+    //    await db.SaveChangesAsync(stoppingToken);
+    //    return ev.Id;
+    //}
 }

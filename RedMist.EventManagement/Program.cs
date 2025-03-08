@@ -1,4 +1,3 @@
-
 using HealthChecks.UI.Client;
 using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
@@ -7,6 +6,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
+using RedMist.Database;
 
 namespace RedMist.EventManagement;
 
@@ -38,7 +38,7 @@ public class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(c =>
         {
-            c.SwaggerDoc("v1", new OpenApiInfo { Title = "Timing and Scoring Services", Version = "v1" });
+            c.SwaggerDoc("v1", new OpenApiInfo { Title = "Event Management Services", Version = "v1" });
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
             {
                 Name = "Authorization",
@@ -50,33 +50,33 @@ public class Program
 
             });
             c.AddSecurityRequirement(new OpenApiSecurityRequirement
-        {
             {
-                  new OpenApiSecurityScheme
-                  {
-                      Reference = new OpenApiReference
+                {
+                      new OpenApiSecurityScheme
                       {
-                          Type = ReferenceType.SecurityScheme,
-                          Id = "Bearer"
-                      }
-                  }, []
-            }
-        });
+                          Reference = new OpenApiReference
+                          {
+                              Type = ReferenceType.SecurityScheme,
+                              Id = "Bearer"
+                          }
+                      }, []
+                }
+            });
         });
 
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
-        //builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
+        builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
         builder.Services.AddHealthChecks()
             //.AddCheck<StartupHealthCheck>("Startup", tags: ["startup"])
             .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])
             //.AddRedis(redisConn, tags: ["cache", "redis"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 7200, name: "Process Allocated Memory", tags: ["memory"]);
+            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);
 
-        // Add services to the container.
+        //// Add services to the container.
 
-        builder.Services.AddControllers();
-        // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-        builder.Services.AddOpenApi();
+        //builder.Services.AddControllers();
+        //// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+        //builder.Services.AddOpenApi();
 
         var app = builder.Build();
 

@@ -94,18 +94,19 @@ public class TimingAndScoringHub : Hub
     /// </summary>
     /// <param name="eventReference">ID received from the timing system</param>
     /// <param name="name">Name of the event from the timing system</param>
-    public async Task SendEventUpdate(int eventReference, string name)
+    public Task SendEventUpdate(int eventReference, string name)
     {
         Logger.LogTrace("EventUpdate: {0}, {1}", eventReference, name);
 
         var clientId = GetClientId();
         if (clientId == null)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        var orgId = await eventDistribution.GetOrganizationId(clientId);
-        await eventDistribution.SaveOrUpdateEvent(orgId, eventReference, name);
+        return Task.CompletedTask;
+        //var orgId = await eventDistribution.GetOrganizationId(clientId);
+        //await eventDistribution.SaveOrUpdateEvent(orgId, eventReference, name);
     }
 
     #endregion

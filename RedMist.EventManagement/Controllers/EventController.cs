@@ -1,33 +1,55 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using RedMist.Database;
+using RedMist.TimingCommon.Models.Configuration;
+using System.Security.Claims;
 
-namespace RedMist.EventManagement.Controllers
+namespace RedMist.EventManagement.Controllers;
+
+[ApiController]
+[Route("[controller]/[action]")]
+[Authorize]
+public class EventController : ControllerBase
 {
-    [ApiController]
-    [Route("[controller]")]
-    public class EventController : ControllerBase
+    private readonly IDbContextFactory<TsContext> tsContext;
+
+    private ILogger Logger { get; }
+
+    public EventController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
     {
-        private static readonly string[] Summaries = new[]
-        {
-            "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-        };
+        Logger = loggerFactory.CreateLogger(GetType().Name);
+        this.tsContext = tsContext;
+    }
 
-        private readonly ILogger<EventController> _logger;
+    [HttpGet]
+    [ProducesResponseType<List<EventSummary>>(StatusCodes.Status200OK)]
+    public async Task<List<EventSummary>> LoadEventSummaries()
+    {
+        Logger.LogTrace("LoadEventSummaries");
+        var clientId = User.FindFirstValue("client_id");
+        using var context = await tsContext.CreateDbContextAsync();
+        var dbEvents = await context.Events
+            .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
+            .Where(s => s.o.ClientId == clientId)
+            .OrderByDescending(s => s.e.StartDate)
+            .Select(s => new EventSummary { Id = s.e.Id, Name = s.e.Name, StartDate = s.e.StartDate, IsActive = s.e.IsActive })
+            .ToListAsync();
 
-        public EventController(ILogger<EventController> logger)
-        {
-            _logger = logger;
-        }
+        return dbEvents;
+    }
 
-        [HttpGet(Name = "GetWeatherForecast")]
-        public IEnumerable<WeatherForecast> Get()
-        {
-            return Enumerable.Range(1, 5).Select(index => new WeatherForecast
-            {
-                Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                TemperatureC = Random.Shared.Next(-20, 55),
-                Summary = Summaries[Random.Shared.Next(Summaries.Length)]
-            })
-            .ToArray();
-        }
+    [HttpGet]
+    [ProducesResponseType<Event>(StatusCodes.Status200OK)]
+    public async Task<Event?> LoadEvent(int eventId)
+    {
+        Logger.LogTrace("LoadEvent {event}", eventId);
+        var clientId = User.FindFirstValue("client_id");
+        using var context = await tsContext.CreateDbContextAsync();
+        return await context.Events
+            .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
+            .Where(s => s.o.ClientId == clientId)
+            .Select(s => s.e)
+            .FirstOrDefaultAsync();
     }
 }

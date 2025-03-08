@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RedMist.Database;
 
@@ -11,9 +12,11 @@ using RedMist.Database;
 namespace RedMist.Migrations
 {
     [DbContext(typeof(TsContext))]
-    partial class TsContextModelSnapshot : ModelSnapshot
+    [Migration("20250308035310_EvtSch")]
+    partial class EvtSch
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -157,9 +160,6 @@ namespace RedMist.Migrations
                         .IsRequired()
                         .HasMaxLength(512)
                         .HasColumnType("nvarchar(512)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
 
                     b.Property<string>("Name")
                         .IsRequired()
