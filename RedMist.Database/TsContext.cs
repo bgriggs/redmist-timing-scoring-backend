@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using RedMist.TimingAndScoringService.Database.Models;
+using RedMist.Database.Models;
 
-namespace RedMist.TimingAndScoringService.Database;
+namespace RedMist.Database;
 
 public class TsContext : DbContext
 {

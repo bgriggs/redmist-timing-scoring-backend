@@ -3,28 +3,30 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace RedMist.TimingAndScoringService.Migrations
+namespace RedMist.Migrations
 {
     /// <inheritdoc />
-    public partial class LastLaps : Migration
+    public partial class CarLapLogs : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
-                name: "CarLastLaps",
+                name: "CarLapLogs",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
+                    Id = table.Column<long>(type: "bigint", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     EventId = table.Column<int>(type: "int", nullable: false),
                     CarNumber = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
-                    LastLapNumber = table.Column<int>(type: "int", nullable: false),
-                    LastLapTimestamp = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    Timestamp = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    LapNumber = table.Column<int>(type: "int", nullable: false),
+                    Flag = table.Column<int>(type: "int", nullable: false),
+                    LapData = table.Column<string>(type: "nvarchar(max)", maxLength: 5000, nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_CarLastLaps", x => x.Id);
+                    table.PrimaryKey("PK_CarLapLogs", x => x.Id);
                 });
         }
 
@@ -32,7 +34,7 @@ namespace RedMist.TimingAndScoringService.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "CarLastLaps");
+                name: "CarLapLogs");
         }
     }
 }

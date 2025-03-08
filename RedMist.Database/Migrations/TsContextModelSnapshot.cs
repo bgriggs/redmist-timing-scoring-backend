@@ -3,20 +3,17 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using RedMist.TimingAndScoringService.Database;
+using RedMist.Database;
 
 #nullable disable
 
-namespace RedMist.TimingAndScoringService.Migrations
+namespace RedMist.Migrations
 {
     [DbContext(typeof(TsContext))]
-    [Migration("20250222224105_EventLogging")]
-    partial class EventLogging
+    partial class TsContextModelSnapshot : ModelSnapshot
     {
-        /// <inheritdoc />
-        protected override void BuildTargetModel(ModelBuilder modelBuilder)
+        protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -60,6 +57,33 @@ namespace RedMist.TimingAndScoringService.Migrations
                     b.ToTable("CarLapLogs");
                 });
 
+            modelBuilder.Entity("RedMist.TimingAndScoringService.Database.Models.CarLastLap", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CarNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LastLapNumber")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("LastLapTimestamp")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CarLastLaps");
+                });
+
             modelBuilder.Entity("RedMist.TimingAndScoringService.Database.Models.Event", b =>
                 {
                     b.Property<int>("Id")
@@ -67,6 +91,16 @@ namespace RedMist.TimingAndScoringService.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ControlLogParameter")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("ControlLogType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<bool>("EnableSourceDataLogging")
                         .HasColumnType("bit");
@@ -111,6 +145,24 @@ namespace RedMist.TimingAndScoringService.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("EventStatusLogs");
+                });
+
+            modelBuilder.Entity("RedMist.TimingAndScoringService.Database.Models.GoogleSheetsConfig", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("GoogleSheetsConfigs");
                 });
 
             modelBuilder.Entity("RedMist.TimingAndScoringService.Database.Models.Organization", b =>

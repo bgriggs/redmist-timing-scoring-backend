@@ -1,6 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using RedMist.TimingAndScoringService.Database;
-using RedMist.TimingAndScoringService.Database.Models;
+using RedMist.Database;
+using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
 using System.Text.Json;
 

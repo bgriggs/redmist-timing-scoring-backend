@@ -1,8 +1,8 @@
 ﻿using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
-using RedMist.TimingAndScoringService.Database;
-using RedMist.TimingAndScoringService.Database.Models;
+using RedMist.Database;
+using RedMist.Database.Models;
 using RedMist.TimingAndScoringService.EventStatus.ControlLog;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;

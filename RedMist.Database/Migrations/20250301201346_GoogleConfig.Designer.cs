@@ -5,11 +5,11 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using RedMist.TimingAndScoringService.Database;
+using RedMist.Database;
 
 #nullable disable
 
-namespace RedMist.TimingAndScoringService.Migrations
+namespace RedMist.Migrations
 {
     [DbContext(typeof(TsContext))]
     [Migration("20250301201346_GoogleConfig")]

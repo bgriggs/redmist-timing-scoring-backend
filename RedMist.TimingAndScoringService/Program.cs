@@ -11,7 +11,7 @@ using NLog.Extensions.Logging;
 using RedLockNet;
 using RedLockNet.SERedis;
 using RedLockNet.SERedis.Configuration;
-using RedMist.TimingAndScoringService.Database;
+using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.ControlLog;
 using RedMist.TimingAndScoringService.Hubs;

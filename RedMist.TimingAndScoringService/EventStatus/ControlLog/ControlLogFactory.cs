@@ -1,5 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using RedMist.TimingAndScoringService.Database;
+using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.ControlLog.WrlGoogleSheets;
 
 namespace RedMist.TimingAndScoringService.EventStatus.ControlLog;

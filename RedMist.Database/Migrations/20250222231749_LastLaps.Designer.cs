@@ -5,15 +5,15 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using RedMist.TimingAndScoringService.Database;
+using RedMist.Database;
 
 #nullable disable
 
-namespace RedMist.TimingAndScoringService.Migrations
+namespace RedMist.Migrations
 {
     [DbContext(typeof(TsContext))]
-    [Migration("20250301185933_ControlLog")]
-    partial class ControlLog
+    [Migration("20250222231749_LastLaps")]
+    partial class LastLaps
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -94,16 +94,6 @@ namespace RedMist.TimingAndScoringService.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("ControlLogParameter")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<string>("ControlLogType")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
 
                     b.Property<bool>("EnableSourceDataLogging")
                         .HasColumnType("bit");

@@ -5,15 +5,15 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using RedMist.TimingAndScoringService.Database;
+using RedMist.Database;
 
 #nullable disable
 
-namespace RedMist.TimingAndScoringService.Migrations
+namespace RedMist.Migrations
 {
     [DbContext(typeof(TsContext))]
-    [Migration("20250222231749_LastLaps")]
-    partial class LastLaps
+    [Migration("20250301203419_GoogleConfigLegth")]
+    partial class GoogleConfigLegth
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -95,6 +95,16 @@ namespace RedMist.TimingAndScoringService.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ControlLogParameter")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("ControlLogType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<bool>("EnableSourceDataLogging")
                         .HasColumnType("bit");
 
@@ -138,6 +148,24 @@ namespace RedMist.TimingAndScoringService.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("EventStatusLogs");
+                });
+
+            modelBuilder.Entity("RedMist.TimingAndScoringService.Database.Models.GoogleSheetsConfig", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("GoogleSheetsConfigs");
                 });
 
             modelBuilder.Entity("RedMist.TimingAndScoringService.Database.Models.Organization", b =>

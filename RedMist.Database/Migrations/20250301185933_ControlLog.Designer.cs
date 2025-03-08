@@ -5,15 +5,15 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using RedMist.TimingAndScoringService.Database;
+using RedMist.Database;
 
 #nullable disable
 
-namespace RedMist.TimingAndScoringService.Migrations
+namespace RedMist.Migrations
 {
     [DbContext(typeof(TsContext))]
-    [Migration("20250301203419_GoogleConfigLegth")]
-    partial class GoogleConfigLegth
+    [Migration("20250301185933_ControlLog")]
+    partial class ControlLog
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -148,24 +148,6 @@ namespace RedMist.TimingAndScoringService.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("EventStatusLogs");
-                });
-
-            modelBuilder.Entity("RedMist.TimingAndScoringService.Database.Models.GoogleSheetsConfig", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Json")
-                        .IsRequired()
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("GoogleSheetsConfigs");
                 });
 
             modelBuilder.Entity("RedMist.TimingAndScoringService.Database.Models.Organization", b =>

@@ -2,7 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Moq;
-using RedMist.TimingAndScoringService.Database;
+using RedMist.Database;
 using RedMist.TimingAndScoringService.Models;
 using System.Text.Json;
 

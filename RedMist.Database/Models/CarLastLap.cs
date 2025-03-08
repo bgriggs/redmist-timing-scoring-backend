@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace RedMist.TimingAndScoringService.Database.Models;
+namespace RedMist.Database.Models;
 
 /// <summary>
 /// Book keeping table for the last lap of each car in an event.

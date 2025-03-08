@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using RedMist.TimingAndScoringService.Database;
+using RedMist.Database;
 using RedMist.TimingCommon.Models;
 using System.Text.Json;
 

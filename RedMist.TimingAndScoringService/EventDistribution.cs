@@ -1,8 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using RedLockNet;
-using RedMist.TimingAndScoringService.Database;
-using RedMist.TimingAndScoringService.Database.Models;
+using RedMist.Database;
+using RedMist.Database.Models;
 using RedMist.TimingAndScoringService.Models;
 using StackExchange.Redis;
 using System.Text.Json;

@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace RedMist.TimingAndScoringService.Database.Models;
+namespace RedMist.Database.Models;
 
 public class EventStatusLog
 {
