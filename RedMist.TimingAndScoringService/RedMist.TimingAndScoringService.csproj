@@ -13,7 +13,6 @@
 		<PackageReference Include="MediatR" Version="12.4.1" />
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.2" />
 		<PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="9.0.0" />
-		<PackageReference Include="Azure.Identity" Version="1.13.2" />
 		<PackageReference Include="Keycloak.AuthServices.Authorization" Version="2.6.0" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="9.2.0-preview.1.25105.6" />
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
@@ -23,7 +22,6 @@
 		  <PrivateAssets>all</PrivateAssets>
 		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="StackExchange.Redis" Version="2.8.24" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.System" Version="9.0.0" />
@@ -32,16 +30,6 @@
 		<PackageReference Include="Keycloak.AuthServices.Authentication" Version="2.6.0" />
 		<PackageReference Include="BigMission.TestHelpers" Version="3.0.6" />
 		<PackageReference Include="RedLock.net" Version="2.3.2" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.2" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.2">
-			<PrivateAssets>all</PrivateAssets>
-			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-		</PackageReference>
-		<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.2" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.2">
-			<PrivateAssets>all</PrivateAssets>
-			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-		</PackageReference>
 		<PackageReference Include="Google.Apis.Sheets.v4" Version="1.68.0.3624" />
 	</ItemGroup>
 
