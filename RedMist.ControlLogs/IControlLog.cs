@@ -5,5 +5,5 @@ namespace RedMist.ControlLogs;
 public interface IControlLog
 {
     string Type { get; }
-    Task<IEnumerable<ControlLogEntry>> LoadControlLogAsync(string parameter, CancellationToken stoppingToken = default);
+    Task<(bool success, IEnumerable<ControlLogEntry> logs)> LoadControlLogAsync(string parameter, CancellationToken stoppingToken = default);
 }

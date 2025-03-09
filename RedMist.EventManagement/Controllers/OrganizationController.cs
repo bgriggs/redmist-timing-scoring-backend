@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using RedMist.ControlLogs;
 using RedMist.Database;
+using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using System.Security.Claims;
 
@@ -13,14 +15,16 @@ namespace RedMist.EventManagement.Controllers;
 public class OrganizationController : Controller
 {
     private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly IControlLogFactory controlLogFactory;
 
     private ILogger Logger { get; }
 
 
-    public OrganizationController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
+    public OrganizationController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
+        this.controlLogFactory = controlLogFactory;
     }
 
 
@@ -53,5 +57,21 @@ public class OrganizationController : Controller
             org.X2 = organization.X2;
             await db.SaveChangesAsync();
         }
+    }
+
+    [HttpPost]
+    public async Task<ControlLogStatistics> GetControlLogStatistics(Organization organization)
+    {
+        Logger.LogTrace("GetControlLogStatistics");
+        var cls = new ControlLogStatistics();
+        if (!string.IsNullOrEmpty(organization.ControlLogType))
+        {
+            var cl = controlLogFactory.CreateControlLog(organization.ControlLogType);
+            var logEntries = await cl.LoadControlLogAsync(organization.ControlLogParams);
+            cls.IsConnected = logEntries.success;
+            cls.TotalEntries = logEntries.logs.Count();
+        }
+
+        return cls;
     }
 }

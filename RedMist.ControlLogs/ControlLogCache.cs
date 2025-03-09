@@ -41,8 +41,8 @@ public class ControlLogCache
                 var logEntries = await controlLog.LoadControlLogAsync(org.ControlLogParams, stoppingToken);
 
                 var oldLogs = controlLogCache.ToDictionary(x => x.Key, x => x.Value);
-                var car1Grp = logEntries.GroupBy(x => x.Car1);
-                var car2Grp = logEntries.GroupBy(x => x.Car2);
+                var car1Grp = logEntries.logs.GroupBy(x => x.Car1);
+                var car2Grp = logEntries.logs.GroupBy(x => x.Car2);
 
                 controlLogCache.Clear();
                 foreach (var l in car1Grp)

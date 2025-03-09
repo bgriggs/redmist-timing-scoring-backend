@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
+using RedMist.ControlLogs;
 using RedMist.Database;
 
 namespace RedMist.EventManagement;
@@ -72,11 +73,7 @@ public class Program
             //.AddRedis(redisConn, tags: ["cache", "redis"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);
 
-        //// Add services to the container.
-
-        //builder.Services.AddControllers();
-        //// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-        //builder.Services.AddOpenApi();
+        builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
 
         var app = builder.Build();
 

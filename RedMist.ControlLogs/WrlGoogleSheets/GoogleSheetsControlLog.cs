@@ -41,7 +41,7 @@ public class GoogleSheetsControlLog : IControlLog
     }
 
 
-    public async Task<IEnumerable<ControlLogEntry>> LoadControlLogAsync(string parameter, CancellationToken stoppingToken = default)
+    public async Task<(bool success, IEnumerable<ControlLogEntry> logs)> LoadControlLogAsync(string parameter, CancellationToken stoppingToken = default)
     {
         if (configJson == null)
         {
@@ -50,7 +50,7 @@ public class GoogleSheetsControlLog : IControlLog
             if (eventConfig == null)
             {
                 Logger.LogError("Unable to find control log configuration for sheet {0}", parameter);
-                return [];
+                return (false, []);
             }
             configJson = eventConfig.Json;
         }
@@ -59,7 +59,7 @@ public class GoogleSheetsControlLog : IControlLog
         if (paramParts.Length != 2)
         {
             Logger.LogError("Invalid parameter format for control log: {0}", parameter);
-            return [];
+            return (false, []);
         }
 
         var googleCreds = GoogleCredential.FromJson(configJson);
@@ -81,7 +81,7 @@ public class GoogleSheetsControlLog : IControlLog
             range = $"{range}";
         }
 
-            var log = new List<ControlLogEntry>();
+        var log = new List<ControlLogEntry>();
         try
         {
             var request = vals.Get(paramParts[0], range);
@@ -95,7 +95,7 @@ public class GoogleSheetsControlLog : IControlLog
             }
             if (columnIndexMappings.Count == 0)
             {
-                return [];
+                return (false, []);
             }
 
             // Parse the log, skip the header
@@ -140,8 +140,9 @@ public class GoogleSheetsControlLog : IControlLog
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading control log from Google Sheets: {0}", parameter);
+            return (false, []);
         }
-        return log;
+        return (true, log);
     }
 
     private void InitializeColumnMappings(IList<object> header)
