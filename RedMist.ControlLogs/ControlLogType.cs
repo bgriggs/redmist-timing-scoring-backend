@@ -1,4 +1,4 @@
-﻿namespace RedMist.TimingAndScoringService.EventStatus.ControlLog;
+﻿namespace RedMist.ControlLogs;
 
 public class ControlLogType
 {

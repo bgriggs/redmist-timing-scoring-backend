@@ -2,10 +2,12 @@
 using Google.Apis.Services;
 using Google.Apis.Sheets.v4;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using RedMist.Database;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.EventStatus.ControlLog.WrlGoogleSheets;
+namespace RedMist.ControlLogs.WrlGoogleSheets;
 
 public class GoogleSheetsControlLog : IControlLog
 {

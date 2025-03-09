@@ -1,8 +1,10 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using RedMist.ControlLogs.WrlGoogleSheets;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus.ControlLog.WrlGoogleSheets;
 
-namespace RedMist.TimingAndScoringService.EventStatus.ControlLog;
+namespace RedMist.ControlLogs;
 
 public class ControlLogFactory : IControlLogFactory
 {

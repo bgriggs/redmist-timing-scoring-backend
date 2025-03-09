@@ -1,7 +1,7 @@
 ﻿using RedMist.TimingCommon.Models;
 using System.Reflection;
 
-namespace RedMist.TimingAndScoringService.EventStatus.ControlLog.WrlGoogleSheets;
+namespace RedMist.ControlLogs.WrlGoogleSheets;
 
 /// <summary>
 /// Represents a WRL google sheet column mapping.

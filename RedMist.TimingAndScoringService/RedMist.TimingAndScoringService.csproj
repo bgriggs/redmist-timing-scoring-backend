@@ -30,11 +30,11 @@
 		<PackageReference Include="Keycloak.AuthServices.Authentication" Version="2.6.0" />
 		<PackageReference Include="BigMission.TestHelpers" Version="3.0.6" />
 		<PackageReference Include="RedLock.net" Version="2.3.2" />
-		<PackageReference Include="Google.Apis.Sheets.v4" Version="1.68.0.3624" />
 	</ItemGroup>
 
 	<ItemGroup>
 	  <ProjectReference Include="..\redmist-timing-common\RedMist.TimingCommon\RedMist.TimingCommon.csproj" />
+	  <ProjectReference Include="..\RedMist.ControlLogs\RedMist.ControlLogs.csproj" />
 	  <ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
 	</ItemGroup>
 

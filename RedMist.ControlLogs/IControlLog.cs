@@ -1,6 +1,6 @@
 ﻿using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.EventStatus.ControlLog;
+namespace RedMist.ControlLogs;
 
 public interface IControlLog
 {

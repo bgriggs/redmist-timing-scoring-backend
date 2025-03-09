@@ -1,8 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RedMist.Database;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.EventStatus.ControlLog;
+namespace RedMist.ControlLogs;
 
 public class ControlLogCache
 {
