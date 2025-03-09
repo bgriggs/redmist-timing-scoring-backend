@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace RedMist.Database;
 

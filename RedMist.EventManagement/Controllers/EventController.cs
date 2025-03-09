@@ -52,4 +52,61 @@ public class EventController : ControllerBase
             .Select(s => s.e)
             .FirstOrDefaultAsync();
     }
+
+    [HttpPost]
+    [ProducesResponseType<int>(StatusCodes.Status200OK)]
+    public async Task<int> SaveNewEvent(Event newEvent)
+    {
+        Logger.LogTrace("SaveNewEvent {event}", newEvent.Name);
+        var clientId = User.FindFirstValue("client_id");
+        using var context = await tsContext.CreateDbContextAsync();
+        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId) ?? throw new Exception("Organization not found");
+        newEvent.OrganizationId = org.Id;
+        context.Events.Add(newEvent);
+        await context.SaveChangesAsync();
+        return newEvent.Id;
+    }
+
+    [HttpPost]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task UpdateEvent(Event @event)
+    {
+        Logger.LogTrace("UpdateEvent {event}", @event.Name);
+        var clientId = User.FindFirstValue("client_id");
+        using var context = await tsContext.CreateDbContextAsync();
+        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId) ?? throw new Exception("Organization not found");
+        var dbEvent = await context.Events.FirstOrDefaultAsync(x => x.Id == @event.Id && x.OrganizationId == org.Id);
+        if (dbEvent != null)
+        {
+            dbEvent.Name = @event.Name;
+            dbEvent.StartDate = @event.StartDate;
+            dbEvent.EndDate = @event.EndDate;
+            dbEvent.IsActive = @event.IsActive;
+            dbEvent.EventUrl = @event.EventUrl;
+            dbEvent.Schedule = @event.Schedule;
+            dbEvent.EnableSourceDataLogging = @event.EnableSourceDataLogging;
+            dbEvent.TrackName = @event.TrackName;
+            dbEvent.CourseConfiguration = @event.CourseConfiguration;
+            dbEvent.Distance = @event.Distance;
+            dbEvent.Broadcast = @event.Broadcast;
+            await context.SaveChangesAsync();
+        }
+    }
+
+    [HttpPut]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task UpdateEventStatusActive(int eventId)
+    {
+        Logger.LogTrace("UpdateEventStatusActive {event}", eventId);
+        var clientId = User.FindFirstValue("client_id");
+        using var context = await tsContext.CreateDbContextAsync();
+        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId) ?? throw new Exception("Organization not found");
+        var dbEvent = await context.Events.FirstOrDefaultAsync(x => x.Id == eventId && x.OrganizationId == org.Id);
+        if (dbEvent != null)
+        {
+            await context.Database.ExecuteSqlRawAsync("UPDATE Events SET IsActive=0 WHERE OrganizationId=@p0", org.Id);
+            dbEvent.IsActive = true;
+            await context.SaveChangesAsync();
+        }
+    }
 }

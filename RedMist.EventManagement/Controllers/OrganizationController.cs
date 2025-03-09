@@ -25,7 +25,7 @@ public class OrganizationController : Controller
 
 
     [HttpGet]
-    public async Task<Organization?> GetCurrentOrganization()
+    public async Task<Organization?> LoadOrganization()
     {
         Logger.LogTrace("GetCurrentOrganization");
         var clientId = User.FindFirstValue("client_id");
