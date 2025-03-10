@@ -31,7 +31,7 @@ public class EventController : ControllerBase
         using var context = await tsContext.CreateDbContextAsync();
         var dbEvents = await context.Events
             .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
-            .Where(s => s.o.ClientId == clientId)
+            .Where(s => s.o.ClientId == clientId && !s.e.IsDeleted)
             .OrderByDescending(s => s.e.StartDate)
             .Select(s => new EventSummary { Id = s.e.Id, Name = s.e.Name, StartDate = s.e.StartDate, IsActive = s.e.IsActive })
             .ToListAsync();
@@ -48,7 +48,7 @@ public class EventController : ControllerBase
         using var context = await tsContext.CreateDbContextAsync();
         return await context.Events
             .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
-            .Where(s => s.o.ClientId == clientId)
+            .Where(s => s.o.ClientId == clientId && s.e.Id == eventId && !s.e.IsDeleted)
             .Select(s => s.e)
             .FirstOrDefaultAsync();
     }
@@ -105,8 +105,34 @@ public class EventController : ControllerBase
         if (dbEvent != null)
         {
             await context.Database.ExecuteSqlRawAsync("UPDATE Events SET IsActive=0 WHERE OrganizationId=@p0", org.Id);
-            dbEvent.IsActive = true;
+            await context.Database.ExecuteSqlRawAsync("UPDATE Events SET IsActive=1 WHERE ID=@p0", eventId);
+        }
+    }
+
+    [HttpPut]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task DeleteEvent(int eventId)
+    {
+        Logger.LogTrace("DeleteEvent {event}", eventId);
+        var clientId = User.FindFirstValue("client_id");
+        using var context = await tsContext.CreateDbContextAsync();
+        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId) ?? throw new Exception("Organization not found");
+        var dbEvent = await context.Events.FirstOrDefaultAsync(x => x.Id == eventId && x.OrganizationId == org.Id);
+        if (dbEvent != null)
+        {
+            dbEvent.IsDeleted = true;
             await context.SaveChangesAsync();
+
+            // If the deleted event was active, set the newest event as active
+            if (dbEvent.IsActive)
+            {
+                var newestEvent = await context.Events.OrderByDescending(e => e.StartDate).FirstOrDefaultAsync(e => e.OrganizationId == org.Id && !e.IsDeleted);
+                if (newestEvent != null)
+                {
+                    Logger.LogDebug($"Reassigning active event for organization {org.Id} to event ID {newestEvent.Id}");
+                    await UpdateEventStatusActive(newestEvent.Id);
+                }
+            }
         }
     }
 }
