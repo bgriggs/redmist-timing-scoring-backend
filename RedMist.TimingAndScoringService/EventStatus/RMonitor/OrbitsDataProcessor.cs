@@ -1,4 +1,6 @@
 ﻿using MediatR;
+using Microsoft.EntityFrameworkCore;
+using RedMist.Database;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
@@ -11,9 +13,10 @@ namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 /// Result Monitor data format processor primarily for Orbits data.
 /// </summary>
 /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
-public class RmDataProcessor : IDataProcessor
+public class OrbitsDataProcessor : IDataProcessor
 {
     public int EventId { get; private set; }
+    public int SessionId { get; private set; }
     private readonly IMediator mediator;
 
     private ILogger Logger { get; }
@@ -30,23 +33,29 @@ public class RmDataProcessor : IDataProcessor
     private readonly Dictionary<string, PracticeQualifying> practiceQualifying = [];
     private readonly Dictionary<string, PassingInformation> passingInformation = [];
 
-    public int EventReference { get; set; }
-    public string EventName { get; set; } = string.Empty;
+    public int SessionReference { get; set; }
+    public string SessionName { get; set; } = string.Empty;
     public string TrackName { get; set; } = string.Empty;
     public double TrackLength { get; set; }
 
+    private readonly SessionMonitor sessionMonitor;
     private readonly SecondaryProcessor secondaryProcessor = new();
 
-    public RmDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory)
+
+    public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
         this.mediator = mediator;
+        this.sessionMonitor = sessionMonitor;
     }
 
-    public async Task ProcessUpdate(string data, CancellationToken stoppingToken = default)
+
+    public async Task ProcessUpdate(string data, int sessionId, CancellationToken stoppingToken = default)
     {
         //var sw = Stopwatch.StartNew();
+        await sessionMonitor.ProcessSession(sessionId, stoppingToken);
+
         // Parse data
         await _lock.WaitAsync(stoppingToken);
         try
@@ -134,6 +143,7 @@ public class RmDataProcessor : IDataProcessor
         //Logger.LogInformation("Processed in {0}ms", sw.ElapsedMilliseconds);
     }
 
+    #region Result Monitor
     #region Heartbeat message
 
     /// <summary>
@@ -229,13 +239,13 @@ public class RmDataProcessor : IDataProcessor
     private void ProcessB(string data)
     {
         var parts = data.Split(',');
-        EventReference = int.Parse(parts[1]);
-        EventName = parts[2].Replace("\"", "");
+        SessionReference = int.Parse(parts[1]);
+        SessionName = parts[2].Replace("\"", "");
     }
 
     public Event GetEvent()
     {
-        return new Event { EventId = EventId, EventName = EventName };
+        return new Event { EventId = EventId, EventName = SessionName };
     }
 
     #endregion
@@ -454,7 +464,9 @@ public class RmDataProcessor : IDataProcessor
     }
 
     #endregion
+    #endregion
 
+    #region Status Publishing
 
     private async Task PublishChanges(CancellationToken stoppingToken = default)
     {
@@ -496,14 +508,14 @@ public class RmDataProcessor : IDataProcessor
         // when shared model is invalidated, save to redis
         // controller needs to load from redis when a new client connects
         var json = JsonSerializer.Serialize(payload);
-        _ = mediator.Publish(new StatusNotification(EventId, json) { Payload = payload }, stoppingToken);
+        _ = mediator.Publish(new StatusNotification(EventId, SessionId, json) { Payload = payload }, stoppingToken);
     }
 
     public void PublishEventReset(CancellationToken stoppingToken = default)
     {
         var payload = new Payload { EventId = EventId, IsReset = true };
         var json = JsonSerializer.Serialize(payload);
-        _ = mediator.Publish(new StatusNotification(EventId, json), stoppingToken);
+        _ = mediator.Publish(new StatusNotification(EventId, SessionId, json), stoppingToken);
     }
 
     public CarPosition[] GetCarPositions(bool includeChangedOnly = false)
@@ -608,7 +620,7 @@ public class RmDataProcessor : IDataProcessor
             }
 
             payload.EventId = EventId;
-            payload.EventName = EventName;
+            payload.EventName = SessionName;
             payload.EventStatus = eventStatus;
             payload.EventEntries.AddRange(eventEntries);
             payload.CarPositions.AddRange(carPositions);
@@ -630,4 +642,6 @@ public class RmDataProcessor : IDataProcessor
         }
         return null;
     }
+
+    #endregion
 }

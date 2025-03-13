@@ -11,11 +11,13 @@ public class LogAggregator : INotificationHandler<StatusNotification>
     private readonly LapLogger lapLogger;
     private ILogger Logger { get; }
 
+
     public LogAggregator(ILoggerFactory loggerFactory, LapLogger lapLogger)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.lapLogger = lapLogger;
     }
+
 
     public Task Handle(StatusNotification notification, CancellationToken cancellationToken)
     {
@@ -29,7 +31,7 @@ public class LogAggregator : INotificationHandler<StatusNotification>
             {
                 try
                 {
-                    await lapLogger.LogCarPositionUpdates(notification.EventId, carPositions, cancellationToken);
+                    await lapLogger.LogCarPositionUpdates(notification.EventId, notification.SessionId, carPositions, cancellationToken);
                 }
                 catch (Exception ex)
                 {

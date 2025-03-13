@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RedMist.Database.Models;
+using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -10,7 +11,8 @@ namespace RedMist.Database;
 public class TsContext : DbContext
 {
     public DbSet<Organization> Organizations { get; set; } = null!;
-    public DbSet<Event> Events { get; set; } = null!;
+    public DbSet<TimingCommon.Models.Configuration.Event> Events { get; set; } = null!;
+    public DbSet<Session> Sessions { get; set; } = null!;
     public DbSet<EventStatusLog> EventStatusLogs { get; set; } = null!;
     public DbSet<CarLapLog> CarLapLogs { get; set; } = null!;
     public DbSet<CarLastLap> CarLastLaps { get; set; } = null!;
@@ -25,7 +27,7 @@ public class TsContext : DbContext
         base.OnConfiguring(optionsBuilder);
         if (!optionsBuilder.IsConfigured)
         {
-            optionsBuilder.UseSqlServer("Server=localhost;Database=redmist-timing-dev;User Id=sa;Password=;TrustServerCertificate=True");
+            optionsBuilder.UseSqlServer("Server=localhost;Database=redmist-timing-dev;User Id=sa;Password=ZAQ!2wsx;TrustServerCertificate=True");
         }
     }
 
@@ -57,7 +59,7 @@ public class TsContext : DbContext
             v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
             v => JsonSerializer.Deserialize<BroadcasterConfig>(v, JsonSerializerOptions.Default) ?? new BroadcasterConfig());
 
-        modelBuilder.Entity<Event>()
+        modelBuilder.Entity<TimingCommon.Models.Configuration.Event>()
             .Property(o => o.Broadcast)
             .HasConversion(broadcastConverter!);
 
@@ -65,7 +67,7 @@ public class TsContext : DbContext
             v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
             v => JsonSerializer.Deserialize<EventSchedule>(v, JsonSerializerOptions.Default) ?? new EventSchedule());
 
-        modelBuilder.Entity<Event>()
+        modelBuilder.Entity<TimingCommon.Models.Configuration.Event>()
             .Property(o => o.Schedule)
             .HasConversion(scheduleConverter!);
     }

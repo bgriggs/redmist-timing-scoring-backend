@@ -25,7 +25,7 @@ public class LapLogger
     }
 
 
-    public async Task LogCarPositionUpdates(int eventId, List<CarPosition> carPositions, CancellationToken cancellationToken)
+    public async Task LogCarPositionUpdates(int eventId, int sessionId, List<CarPosition> carPositions, CancellationToken cancellationToken)
     {
         // Get the last laps for all cars in the event
         Dictionary<string, int>? carLastLapLookup;
@@ -36,7 +36,7 @@ public class LapLogger
             {
                 carLastLapLookup = [];
                 eventCarLastLapLookup[eventId] = carLastLapLookup;
-                await InitializeEventLastLaps(eventId, carLastLapLookup, cancellationToken);
+                await InitializeEventLastLaps(eventId, sessionId, carLastLapLookup, cancellationToken);
             }
         }
         finally
@@ -88,7 +88,7 @@ public class LapLogger
                 var lastLapRef = await context.CarLastLaps.FirstOrDefaultAsync(x => x.EventId == eventId && x.CarNumber == log.l.CarNumber, cancellationToken: cancellationToken);
                 if (lastLapRef == null)
                 {
-                    lastLapRef = new CarLastLap { EventId = eventId, CarNumber = log.l.CarNumber, LastLapNumber = log.lastLapNum, LastLapTimestamp = DateTime.UtcNow };
+                    lastLapRef = new CarLastLap { EventId = eventId, SessionId = sessionId, CarNumber = log.l.CarNumber, LastLapNumber = log.lastLapNum, LastLapTimestamp = DateTime.UtcNow };
                     context.CarLastLaps.Add(lastLapRef);
                 }
                 else
@@ -111,10 +111,7 @@ public class LapLogger
     /// Load the last laps for all cars for the event from the database.
     /// This allows the service to recover when it is restarted and the in-memory cache is lost.
     /// </summary>
-    /// <param name="eventId"></param>
-    /// <param name="carLastLapLookup"></param>
-    /// <returns></returns>
-    private async Task InitializeEventLastLaps(int eventId, Dictionary<string, int> carLastLapLookup, CancellationToken cancellationToken)
+    private async Task InitializeEventLastLaps(int eventId, int sessionId, Dictionary<string, int> carLastLapLookup, CancellationToken cancellationToken)
     {
         Logger.LogDebug("Loading last laps for event {0}...", eventId);
         using var context = tsContext.CreateDbContext();

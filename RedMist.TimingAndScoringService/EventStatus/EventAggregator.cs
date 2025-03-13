@@ -4,6 +4,7 @@ using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using RedMist.Database.Models;
+using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
@@ -86,7 +87,7 @@ public class EventAggregator : BackgroundService
 
                         // Check the message tag to determine the type of update (e.g. result monitor)
                         var tags = field.Name.ToString().Split('-');
-                        if (tags.Length < 2)
+                        if (tags.Length < 3)
                         {
                             Logger.LogWarning("Invalid event status update: {0}", field.Name);
                             continue;
@@ -94,13 +95,16 @@ public class EventAggregator : BackgroundService
 
                         var type = tags[0];
                         var eventId = int.Parse(tags[1]);
+                        var sessionId = int.Parse(tags[2]);
 
                         IDataProcessor? processor;
                         lock (processors)
                         {
                             if (!processors.TryGetValue(eventId, out processor))
                             {
-                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId);
+                                // Create a new data processor for this event
+                                var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
+                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor);
                                 processors[eventId] = processor;
 
                                 // Create a control log cache for the event
@@ -110,8 +114,12 @@ public class EventAggregator : BackgroundService
                         }
 
                         var data = field.Value.ToString();
-                        _ = Task.Run(() => LogStatusData(eventId, data, stoppingToken), stoppingToken);
-                        await processor.ProcessUpdate(data, stoppingToken);
+
+                        // Log the data
+                        _ = Task.Run(() => LogStatusData(eventId, sessionId, data, stoppingToken), stoppingToken);
+
+                        // Process the update
+                        await processor.ProcessUpdate(data, sessionId, stoppingToken);
                     }
                 }
             }
@@ -121,6 +129,8 @@ public class EventAggregator : BackgroundService
             }
         }
     }
+
+    #region Event Status Requests
 
     private async Task ProcessFullStatusRequest(string cmdJson)
     {
@@ -181,9 +191,10 @@ public class EventAggregator : BackgroundService
         Logger.LogDebug("Getting payload for event {0}...", p.EventId);
         var payload = await p.GetPayload(stoppingToken);
         var json = JsonSerializer.Serialize(payload);
-        await mediator.Publish(new StatusNotification(p.EventId, json) { Payload = payload }, stoppingToken);
+        await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, json) { Payload = payload }, stoppingToken);
     }
 
+    #endregion
 
     #region Control Log
 
@@ -239,7 +250,7 @@ public class EventAggregator : BackgroundService
 
     #region Event Data Logging
 
-    private async Task LogStatusData(int eventId, string data, CancellationToken stoppingToken)
+    private async Task LogStatusData(int eventId, int sessionId, string data, CancellationToken stoppingToken)
     {
         try
         {
@@ -250,6 +261,7 @@ public class EventAggregator : BackgroundService
                 var log = new EventStatusLog
                 {
                     EventId = eventId,
+                    SessionId = sessionId,
                     Timestamp = DateTime.UtcNow,
                     Data = data,
                 };

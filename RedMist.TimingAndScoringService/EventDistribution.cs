@@ -72,7 +72,7 @@ public class EventDistribution : BackgroundService
     /// Get the stream that should be used for the event processing.
     /// </summary>
     /// <returns>stream key</returns>
-    public async Task<string> GetStreamAsync(string eventId, CancellationToken cancellationToken = default)
+    public async Task<string> GetStreamIdAsync(string eventId, CancellationToken cancellationToken = default)
     {
         var key = string.Format(Consts.EVENT_TO_POD_KEY, eventId);
         var pod = await hcache.GetOrCreateAsync(key,

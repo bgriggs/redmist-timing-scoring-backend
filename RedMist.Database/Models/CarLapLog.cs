@@ -9,6 +9,8 @@ public class CarLapLog
     [Required]
     public int EventId { get; set; }
     [Required]
+    public int SessionId { get; set; }
+    [Required]
     [MaxLength(20)]
     public string CarNumber { get; set; } = string.Empty;
     [Required]

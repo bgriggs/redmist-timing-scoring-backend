@@ -10,4 +10,5 @@ public static class Consts
     public const string SEND_FULL_STATUS = "fullstatus";
     public const string LOG_EVENT_DATA = "logevt{0}";
     public const string SEND_CONTROL_LOG = "controlLog";
+    public const string EVENT_RMON_STREAM_FIELD = "rmonitor-{0}-{1}";
 }

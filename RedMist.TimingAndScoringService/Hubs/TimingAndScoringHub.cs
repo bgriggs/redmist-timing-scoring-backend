@@ -1,6 +1,9 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
+using RedMist.Database;
 using RedMist.TimingAndScoringService.Models;
+using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
 using System.Text.Json;
 
@@ -14,14 +17,17 @@ public class TimingAndScoringHub : Hub
 {
     private readonly EventDistribution eventDistribution;
     private readonly IConnectionMultiplexer cacheMux;
+    private readonly IDbContextFactory<TsContext> tsContext;
 
     private ILogger Logger { get; }
 
-    public TimingAndScoringHub(ILoggerFactory loggerFactory, EventDistribution eventDistribution, IConnectionMultiplexer cacheMux)
+    public TimingAndScoringHub(ILoggerFactory loggerFactory, EventDistribution eventDistribution, IConnectionMultiplexer cacheMux,
+        IDbContextFactory<TsContext> tsContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.eventDistribution = eventDistribution;
         this.cacheMux = cacheMux;
+        this.tsContext = tsContext;
     }
 
     public async override Task OnConnectedAsync()
@@ -58,55 +64,72 @@ public class TimingAndScoringHub : Hub
     /// <summary>
     /// Receives a message from an RMonitor relay.
     /// </summary>
-    /// <param name="eventReference">ID received from the timing system</param>
+    /// <param name="eventId">user select event on the relay</param>
+    /// <param name="sessionId">timing system session</param>
     /// <param name="command">RMonitor command string</param>
     /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
-    public async Task SendRMonitor(int eventReference, string command)
+    public async Task SendRMonitor(int eventId, int sessionId, string command)
     {
-        Logger.LogTrace("RX-RM: {0}", command);
-
-        var clientId = GetClientId();
-        if (clientId == null)
+        Logger.LogTrace("RX-RM: e:{evt} s:{ses} {c}", eventId, sessionId, command);
+        if (eventId > 0)
         {
-            return;
-        }
+            // Security note: not checking that the event/session is valid for the user explicitly here for performance. Security is ensured by the
+            // check in SendSessionChange that the event/session is committed to the database only when it passes the security check.
+            var stream = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+            var cache = cacheMux.GetDatabase();
 
-        var orgId = await eventDistribution.GetOrganizationId(clientId);
-        Logger.LogTrace("SendRMonitor user context clientId found: {0} Org: {1}", clientId, orgId);
-
-        if (eventReference > 0)
-        {
-            var eventId = await eventDistribution.GetEventId(orgId, eventReference);
-
-            if (eventId > 0)
-            {
-                var stream = await eventDistribution.GetStreamAsync(eventId.ToString());
-                var db = cacheMux.GetDatabase();
-
-                // Send the command to the service responsible for the specific event
-                await db.StreamAddAsync(stream, string.Format("rmonitor-{0}", eventId), command);
-            }
+            // Send the command to the service responsible for the specific event
+            await cache.StreamAddAsync(stream, string.Format(Consts.EVENT_RMON_STREAM_FIELD, eventId, sessionId), command);
         }
     }
 
     /// <summary>
-    /// Receive and register a new event from the timing system.
+    /// Receive and register a new session/run from the timing system.
     /// </summary>
-    /// <param name="eventReference">ID received from the timing system</param>
-    /// <param name="name">Name of the event from the timing system</param>
-    public Task SendEventUpdate(int eventReference, string name)
+    /// <param name="sessionId">ID received from the timing system</param>
+    /// <param name="sessionName">Name of the event from the timing system</param>
+    public async Task SendSessionChange(int eventId, int sessionId, string sessionName)
     {
-        Logger.LogTrace("EventUpdate: {0}, {1}", eventReference, name);
+        Logger.LogDebug("SendSessionChange: evt:{eventId} new session:{sessionId}, new name:{sessionName}", eventId, sessionId, sessionName);
 
         var clientId = GetClientId();
         if (clientId == null)
         {
-            return Task.CompletedTask;
+            Logger.LogWarning("SendSessionChange: invalid client id, ignoring message");
+            return;
         }
 
-        return Task.CompletedTask;
-        //var orgId = await eventDistribution.GetOrganizationId(clientId);
-        //await eventDistribution.SaveOrUpdateEvent(orgId, eventReference, name);
+        // Verify that the event is under this client
+        var orgId = await eventDistribution.GetOrganizationId(clientId);
+        using var db = await tsContext.CreateDbContextAsync();
+        var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.Id == eventId);
+        if (ev != null)
+        {
+            Logger.LogTrace("SendSessionChange: success, event {e} found for client {c}", eventId, clientId);
+            var existingSession = await db.Sessions.FirstOrDefaultAsync(x => x.EventId == eventId && x.Id == sessionId);
+            if (existingSession == null)
+            {
+                db.Sessions.Add(new Session
+                {
+                    Id = sessionId,
+                    EventId = eventId,
+                    Name = sessionName,
+                    IsLive = true,
+                    StartTime = DateTime.UtcNow,
+                    LastUpdated = DateTime.UtcNow
+                });
+                await db.SaveChangesAsync();
+                Logger.LogInformation("New session {s} saved for event {e}", sessionId, eventId);
+            }
+            else
+            {
+                Logger.LogInformation("Session {s} already exists for event {e}. No modifications.", sessionId, eventId);
+            }
+        }
+        else
+        {
+            Logger.LogWarning("Event {e} not found for client {c}. Session not registered.", eventId, clientId);
+        }
     }
 
     #endregion
@@ -121,12 +144,12 @@ public class TimingAndScoringHub : Hub
     {
         var connectionId = Context.ConnectionId;
         await Groups.AddToGroupAsync(connectionId, eventId.ToString());
-        
+
         if (eventId > 0)
         {
             // Send a full status update to the client
             var sub = cacheMux.GetSubscriber();
-            var cmd = new SendStatusCommand{ EventId = eventId, ConnectionId = connectionId };
+            var cmd = new SendStatusCommand { EventId = eventId, ConnectionId = connectionId };
             var json = JsonSerializer.Serialize(cmd);
             // Tell the service responsible for this event to send a full status update
             await sub.PublishAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);

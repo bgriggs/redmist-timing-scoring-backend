@@ -31,17 +31,24 @@ public class TimingAndScoringController : ControllerBase
         Logger.LogTrace("GetEvents");
 
         using var context = await tsContext.CreateDbContextAsync();
-        var dbEvents = await context.Events.Where(x => x.StartDate >= startDateUtc).ToArrayAsync();
+        var dbEvents = await context.Events
+            .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
+            .Where(x => x.e.StartDate >= startDateUtc && !x.e.IsDeleted).ToArrayAsync();
 
         // Map to Event model
         List<Event> eventDtos = [];
         foreach (var dbEvent in dbEvents)
         {
+            var sessions = await context.Sessions.Where(x => x.EventId == dbEvent.e.Id).ToArrayAsync();
             var eventDto = new Event
             {
-                EventId = dbEvent.Id,
-                EventName = dbEvent.Name,
-                EventDate = dbEvent.StartDate.ToString()
+                EventId = dbEvent.e.Id,
+                EventName = dbEvent.e.Name,
+                EventDate = dbEvent.e.StartDate.ToString(),
+                Sessions = sessions,
+                OrganizationName = dbEvent.o.Name,
+                OrganizationWebsite = dbEvent.o.Website,
+                OrganizationLogo = dbEvent.o.Logo
             };
             eventDtos.Add(eventDto);
         }

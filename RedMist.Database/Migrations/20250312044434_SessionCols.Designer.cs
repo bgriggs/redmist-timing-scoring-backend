@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RedMist.Database;
 
@@ -11,9 +12,11 @@ using RedMist.Database;
 namespace RedMist.Migrations
 {
     [DbContext(typeof(TsContext))]
-    partial class TsContextModelSnapshot : ModelSnapshot
+    [Migration("20250312044434_SessionCols")]
+    partial class SessionCols
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -57,7 +60,7 @@ namespace RedMist.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("CarLapLogs", (string)null);
+                    b.ToTable("CarLapLogs");
                 });
 
             modelBuilder.Entity("RedMist.Database.Models.CarLastLap", b =>
@@ -87,7 +90,7 @@ namespace RedMist.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("CarLastLaps", (string)null);
+                    b.ToTable("CarLastLaps");
                 });
 
             modelBuilder.Entity("RedMist.Database.Models.EventStatusLog", b =>
@@ -113,7 +116,7 @@ namespace RedMist.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("EventStatusLogs", (string)null);
+                    b.ToTable("EventStatusLogs");
                 });
 
             modelBuilder.Entity("RedMist.Database.Models.GoogleSheetsConfig", b =>
@@ -131,7 +134,7 @@ namespace RedMist.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("GoogleSheetsConfigs", (string)null);
+                    b.ToTable("GoogleSheetsConfigs");
                 });
 
             modelBuilder.Entity("RedMist.TimingCommon.Models.Configuration.Event", b =>
@@ -195,7 +198,7 @@ namespace RedMist.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Events", (string)null);
+                    b.ToTable("Events");
                 });
 
             modelBuilder.Entity("RedMist.TimingCommon.Models.Configuration.Organization", b =>
@@ -246,7 +249,7 @@ namespace RedMist.Migrations
                     b.HasIndex("ClientId")
                         .IsUnique();
 
-                    b.ToTable("Organizations", (string)null);
+                    b.ToTable("Organizations");
                 });
 
             modelBuilder.Entity("RedMist.TimingCommon.Models.Session", b =>
@@ -283,7 +286,7 @@ namespace RedMist.Migrations
 
                     b.HasKey("Id", "EventId");
 
-                    b.ToTable("Sessions", (string)null);
+                    b.ToTable("Sessions");
                 });
 #pragma warning restore 612, 618
         }

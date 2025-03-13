@@ -8,10 +8,10 @@ namespace RedMist.TimingAndScoringService.Models;
 /// </summary>
 /// <param name="eventId"></param>
 /// <param name="statusJson"></param>
-public class StatusNotification(int eventId, string statusJson) : INotification
+public class StatusNotification(int eventId, int sessionId, string statusJson) : INotification
 {
     public int EventId { get; set; } = eventId;
-
+    public int SessionId { get; } = sessionId;
     public Payload? Payload { get; set; }
 
     /// <summary>

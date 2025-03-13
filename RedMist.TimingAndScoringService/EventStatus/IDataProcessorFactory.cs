@@ -1,6 +1,8 @@
-﻿namespace RedMist.TimingAndScoringService.EventStatus;
+﻿using RedMist.TimingAndScoringService.EventStatus.RMonitor;
+
+namespace RedMist.TimingAndScoringService.EventStatus;
 
 public interface IDataProcessorFactory
 {
-    IDataProcessor CreateDataProcessor(string type, int eventId);
+    IDataProcessor CreateDataProcessor(string type, int eventId, SessionMonitor sessionMonitor);
 }

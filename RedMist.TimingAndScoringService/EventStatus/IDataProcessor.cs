@@ -8,6 +8,7 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 public interface IDataProcessor
 {
     int EventId { get; }
-    Task ProcessUpdate(string data, CancellationToken stoppingToken);
+    int SessionId { get; }
+    Task ProcessUpdate(string data, int sessionId, CancellationToken stoppingToken);
     Task<Payload> GetPayload(CancellationToken stoppingToken);
 }

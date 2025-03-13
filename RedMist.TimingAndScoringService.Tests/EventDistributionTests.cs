@@ -68,7 +68,7 @@ public sealed class EventDistributionTests
         var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock, dbContextFactoryMock.Object);
 
         await eventDist.StartAsync(default);
-        var stream = await eventDist.GetStreamAsync("test-event", default);
+        var stream = await eventDist.GetStreamIdAsync("test-event", default);
 
         var expectedKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, configuration["POD_NAME"]);
         Assert.AreEqual(expectedKey, stream);
@@ -94,8 +94,8 @@ public sealed class EventDistributionTests
         eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock, dbContextFactoryMock.Object);
         await eventDist.StartAsync(default);
 
-        await eventDist.GetStreamAsync("test-event1", default);
-        await eventDist.GetStreamAsync("test-event2", default);
+        await eventDist.GetStreamIdAsync("test-event1", default);
+        await eventDist.GetStreamIdAsync("test-event2", default);
 
         var cache = mux.GetDatabase();
         var pwJson = await cache.StringGetAsync(Consts.POD_WORKLOADS);
@@ -103,8 +103,8 @@ public sealed class EventDistributionTests
         Assert.AreEqual(1, pw![0].Events.Count);
         Assert.AreEqual(1, pw![1].Events.Count);
 
-        await eventDist.GetStreamAsync("test-event3", default);
-        await eventDist.GetStreamAsync("test-event4", default);
+        await eventDist.GetStreamIdAsync("test-event3", default);
+        await eventDist.GetStreamIdAsync("test-event4", default);
 
         pwJson = await cache.StringGetAsync(Consts.POD_WORKLOADS);
         pw = JsonSerializer.Deserialize<List<EventProcessorInstance>>(pwJson!);
@@ -121,6 +121,6 @@ public sealed class EventDistributionTests
         var disLock = new DistributedLockFactoryShell();
         var eventDist = new EventDistribution(hcache, mux, lf, configuration, disLock, dbContextFactoryMock.Object);
 
-        await eventDist.GetStreamAsync("test-event", default);
+        await eventDist.GetStreamIdAsync("test-event", default);
     }
 }

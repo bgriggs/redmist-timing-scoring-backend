@@ -10,6 +10,8 @@ public class CarLastLap
 {
     public int Id { get; set; }
     public int EventId { get; set; }
+    [Required]
+    public int SessionId { get; set; }
     [MaxLength(20)]
     public string CarNumber { get; set; } = string.Empty;
     public int LastLapNumber { get; set; }
