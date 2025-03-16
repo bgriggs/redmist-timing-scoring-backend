@@ -1,10 +1,9 @@
 ﻿using MediatR;
-using Microsoft.EntityFrameworkCore;
-using RedMist.Database;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
@@ -53,7 +52,7 @@ public class OrbitsDataProcessor : IDataProcessor
 
     public async Task ProcessUpdate(string data, int sessionId, CancellationToken stoppingToken = default)
     {
-        //var sw = Stopwatch.StartNew();
+        var sw = Stopwatch.StartNew();
         await sessionMonitor.ProcessSession(sessionId, stoppingToken);
 
         // Parse data
@@ -140,7 +139,7 @@ public class OrbitsDataProcessor : IDataProcessor
 
         _ = debouncer.ExecuteAsync(() => Task.Run(() => PublishChanges(stoppingToken)), stoppingToken);
 
-        //Logger.LogInformation("Processed in {0}ms", sw.ElapsedMilliseconds);
+        Logger.LogInformation("Processed in {0}ms", sw.ElapsedMilliseconds);
     }
 
     #region Result Monitor
@@ -505,7 +504,7 @@ public class OrbitsDataProcessor : IDataProcessor
         payload.EventEntryUpdates.AddRange(eventEntries);
         payload.CarPositionUpdates.AddRange(carPositions);
 
-        // when shared model is invalidated, save to redis
+        // Todo: when shared model is invalidated, save to redis
         // controller needs to load from redis when a new client connects
         var json = JsonSerializer.Serialize(payload);
         _ = mediator.Publish(new StatusNotification(EventId, SessionId, json) { Payload = payload }, stoppingToken);
@@ -630,6 +629,7 @@ public class OrbitsDataProcessor : IDataProcessor
             _lock.Release();
         }
 
+        sessionMonitor.LastPayload = payload;
         return payload;
     }
 

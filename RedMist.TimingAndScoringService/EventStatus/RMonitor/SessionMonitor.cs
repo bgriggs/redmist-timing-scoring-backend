@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using RedMist.Database;
+using RedMist.Database.Models;
 using RedMist.TimingAndScoringService.Utilities;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
@@ -14,6 +16,7 @@ public class SessionMonitor
     private Timer? finalizeSessionTimer;
     private readonly int eventId;
     private readonly IDbContextFactory<TsContext> tsContext;
+    public Payload? LastPayload { get; set; }
 
 
     public SessionMonitor(int eventId, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory)
@@ -28,7 +31,7 @@ public class SessionMonitor
     {
         if (SessionId == sessionId)
         {
-            await lastUpdatedDebouncer.ExecuteAsync(() => SaveLastUpdatedTimestampUpdate(eventId, sessionId, stoppingToken), stoppingToken);
+            _ = lastUpdatedDebouncer.ExecuteAsync(() => SaveLastUpdatedTimestampUpdate(eventId, sessionId, stoppingToken), stoppingToken);
             ResetFinalizeSessionTimer();
         }
         else // New session
@@ -85,6 +88,19 @@ public class SessionMonitor
             {
                 session.IsLive = false;
                 session.EndTime = DateTime.UtcNow;
+
+                if (LastPayload != null)
+                {
+                    var result = new SessionResult
+                    {
+                        EventId = eventId,
+                        SessionId = SessionId,
+                        Start = session.StartTime,
+                        Payload = LastPayload
+                    };
+                    db.SessionResults.Add(result);
+                }
+
                 db.SaveChanges();
             }
         }

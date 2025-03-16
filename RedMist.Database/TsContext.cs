@@ -4,7 +4,6 @@ using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace RedMist.Database;
 
@@ -17,7 +16,7 @@ public class TsContext : DbContext
     public DbSet<CarLapLog> CarLapLogs { get; set; } = null!;
     public DbSet<CarLastLap> CarLastLaps { get; set; } = null!;
     public DbSet<GoogleSheetsConfig> GoogleSheetsConfigs { get; set; } = null!;
-
+    public DbSet<SessionResult> SessionResults { get; set; } = null!;
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }
 
@@ -27,7 +26,7 @@ public class TsContext : DbContext
         base.OnConfiguring(optionsBuilder);
         if (!optionsBuilder.IsConfigured)
         {
-            optionsBuilder.UseSqlServer("Server=localhost;Database=redmist-timing-dev;User Id=sa;Password=ZAQ!2wsx;TrustServerCertificate=True");
+            optionsBuilder.UseSqlServer("Server=localhost;Database=redmist-timing-dev;User Id=sa;Password=;TrustServerCertificate=True");
         }
     }
 
@@ -70,5 +69,13 @@ public class TsContext : DbContext
         modelBuilder.Entity<TimingCommon.Models.Configuration.Event>()
             .Property(o => o.Schedule)
             .HasConversion(scheduleConverter!);
+
+        var payloadConverter = new ValueConverter<Payload, string>(
+            v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
+            v => JsonSerializer.Deserialize<Payload>(v, JsonSerializerOptions.Default) ?? new Payload());
+
+        modelBuilder.Entity<SessionResult>()
+            .Property(o => o.Payload)
+            .HasConversion(payloadConverter!);
     }
 }

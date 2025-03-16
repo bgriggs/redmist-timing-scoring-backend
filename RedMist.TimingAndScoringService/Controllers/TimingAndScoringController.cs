@@ -45,10 +45,16 @@ public class TimingAndScoringController : ControllerBase
                 EventId = dbEvent.e.Id,
                 EventName = dbEvent.e.Name,
                 EventDate = dbEvent.e.StartDate.ToString(),
+                EventUrl = dbEvent.e.EventUrl,
                 Sessions = sessions,
                 OrganizationName = dbEvent.o.Name,
                 OrganizationWebsite = dbEvent.o.Website,
-                OrganizationLogo = dbEvent.o.Logo
+                OrganizationLogo = dbEvent.o.Logo,
+                TrackName = dbEvent.e.TrackName,
+                CourseConfiguration = dbEvent.e.CourseConfiguration,
+                Distance = dbEvent.e.Distance,
+                Broadcast = dbEvent.e.Broadcast,
+                Schedule = dbEvent.e.Schedule
             };
             eventDtos.Add(eventDto);
         }
@@ -88,4 +94,13 @@ public class TimingAndScoringController : ControllerBase
         return carPositions;
     }
 
+    [HttpGet]
+    [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
+    public async Task<Payload?> LoadSessionResults(int eventId, int sessionId)
+    {
+        Logger.LogTrace("GetSessionResults for event {0}, session {1}", eventId, sessionId);
+        using var context = await tsContext.CreateDbContextAsync();
+        var result = await context.SessionResults.FirstOrDefaultAsync(r => r.EventId == eventId && r.SessionId == sessionId);
+        return result?.Payload;
+    }
 }

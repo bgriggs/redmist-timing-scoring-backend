@@ -88,7 +88,8 @@ public class TimingAndScoringHub : Hub
     /// </summary>
     /// <param name="sessionId">ID received from the timing system</param>
     /// <param name="sessionName">Name of the event from the timing system</param>
-    public async Task SendSessionChange(int eventId, int sessionId, string sessionName)
+    /// <param name="timeZoneOffset">Local time zone offset in hours</param>
+    public async Task SendSessionChange(int eventId, int sessionId, string sessionName, double timeZoneOffset)
     {
         Logger.LogDebug("SendSessionChange: evt:{eventId} new session:{sessionId}, new name:{sessionName}", eventId, sessionId, sessionName);
 
@@ -116,7 +117,8 @@ public class TimingAndScoringHub : Hub
                     Name = sessionName,
                     IsLive = true,
                     StartTime = DateTime.UtcNow,
-                    LastUpdated = DateTime.UtcNow
+                    LastUpdated = DateTime.UtcNow,
+                    LocalTimeZoneOffset = timeZoneOffset
                 });
                 await db.SaveChangesAsync();
                 Logger.LogInformation("New session {s} saved for event {e}", sessionId, eventId);
