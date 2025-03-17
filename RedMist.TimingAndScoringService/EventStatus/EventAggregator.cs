@@ -209,9 +209,18 @@ public class EventAggregator : BackgroundService
 
         if (controlLogCaches.TryGetValue(cmd.EventId, out var controlLog))
         {
-            var entries = await controlLog.GetCarControlEntries([cmd.CarNumber.ToLower()]);
+            CarControlLogs ccl;
+            if (string.IsNullOrEmpty(cmd.CarNumber))
+            {
+                var entries = await controlLog.GetControlEntries();
+                ccl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = entries };
+            }
+            else // Specific car
+            {
+                var entries = await controlLog.GetCarControlEntries([cmd.CarNumber.ToLower()]);
+                ccl = new CarControlLogs { CarNumber = cmd.CarNumber, ControlLogEntries = [.. entries.SelectMany(s => s.Value)] };
+            }
             Logger.LogInformation("Sending control logs for event {0} car {1} to new connection {1}", cmd.EventId, cmd.CarNumber, cmd.ConnectionId);
-            var ccl = new CarControlLogs { CarNumber = cmd.CarNumber, ControlLogEntries = [.. entries.SelectMany(s => s.Value)] };
             await mediator.Publish(new ControlLogNotification(cmd.EventId, ccl) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
         }
     }
@@ -228,6 +237,7 @@ public class EventAggregator : BackgroundService
             {
                 foreach (var controlLogs in controlLogCaches.ToDictionary())
                 {
+                    // Single car update
                     var changedCars = await controlLogs.Value.RequestControlLogChanges(stoppingToken);
                     var entries = await controlLogs.Value.GetCarControlEntries([.. changedCars]);
                     foreach (var e in entries)
@@ -236,6 +246,12 @@ public class EventAggregator : BackgroundService
                         var notificaiton = new ControlLogNotification(controlLogs.Key, ccl) { CarNumber = e.Key };
                         _ = mediator.Publish(notificaiton, stoppingToken);
                     }
+
+                    // Full log update
+                    var fullLog = await controlLogs.Value.GetControlEntries();
+                    var fullCcl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = fullLog };
+                    var fullNotificaiton = new ControlLogNotification(controlLogs.Key, fullCcl);
+                    _ = mediator.Publish(fullNotificaiton, stoppingToken);
                 }
             }
             catch (Exception ex)

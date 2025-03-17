@@ -96,6 +96,15 @@ public class TimingAndScoringController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
+    public async Task<List<Session>> LoadSessions(int eventId)
+    {
+        Logger.LogTrace("GetSessions for event {eventId}", eventId);
+        using var context = await tsContext.CreateDbContextAsync();
+        return await context.Sessions.Where(s => s.EventId == eventId).ToListAsync();
+    }
+
+    [HttpGet]
+    [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
     public async Task<Payload?> LoadSessionResults(int eventId, int sessionId)
     {
         Logger.LogTrace("GetSessionResults for event {0}, session {1}", eventId, sessionId);

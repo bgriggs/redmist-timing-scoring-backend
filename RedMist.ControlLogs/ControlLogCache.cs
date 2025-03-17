@@ -171,4 +171,17 @@ public class ControlLogCache
         }
         return entries;
     }
+
+    public async Task<List<ControlLogEntry>> GetControlEntries()
+    {
+        await cacheLock.WaitAsync();
+        try
+        {
+            return [.. controlLogCache.Values.SelectMany(x => x)];
+        }
+        finally
+        {
+            cacheLock.Release();
+        }
+    }
 }

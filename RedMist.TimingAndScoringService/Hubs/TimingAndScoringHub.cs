@@ -100,37 +100,44 @@ public class TimingAndScoringHub : Hub
             return;
         }
 
-        // Verify that the event is under this client
-        var orgId = await eventDistribution.GetOrganizationId(clientId);
-        using var db = await tsContext.CreateDbContextAsync();
-        var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.Id == eventId);
-        if (ev != null)
+        try
         {
-            Logger.LogTrace("SendSessionChange: success, event {e} found for client {c}", eventId, clientId);
-            var existingSession = await db.Sessions.FirstOrDefaultAsync(x => x.EventId == eventId && x.Id == sessionId);
-            if (existingSession == null)
+            // Verify that the event is under this client
+            var orgId = await eventDistribution.GetOrganizationId(clientId);
+            using var db = await tsContext.CreateDbContextAsync();
+            var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.Id == eventId);
+            if (ev != null)
             {
-                db.Sessions.Add(new Session
+                Logger.LogTrace("SendSessionChange: success, event {e} found for client {c}", eventId, clientId);
+                var existingSession = await db.Sessions.FirstOrDefaultAsync(x => x.EventId == eventId && x.Id == sessionId);
+                if (existingSession == null)
                 {
-                    Id = sessionId,
-                    EventId = eventId,
-                    Name = sessionName,
-                    IsLive = true,
-                    StartTime = DateTime.UtcNow,
-                    LastUpdated = DateTime.UtcNow,
-                    LocalTimeZoneOffset = timeZoneOffset
-                });
-                await db.SaveChangesAsync();
-                Logger.LogInformation("New session {s} saved for event {e}", sessionId, eventId);
+                    db.Sessions.Add(new Session
+                    {
+                        Id = sessionId,
+                        EventId = eventId,
+                        Name = sessionName,
+                        IsLive = true,
+                        StartTime = DateTime.UtcNow,
+                        LastUpdated = DateTime.UtcNow,
+                        LocalTimeZoneOffset = timeZoneOffset
+                    });
+                    await db.SaveChangesAsync();
+                    Logger.LogInformation("New session {s} saved for event {e}", sessionId, eventId);
+                }
+                else
+                {
+                    Logger.LogInformation("Session {s} already exists for event {e}. No modifications.", sessionId, eventId);
+                }
             }
             else
             {
-                Logger.LogInformation("Session {s} already exists for event {e}. No modifications.", sessionId, eventId);
+                Logger.LogWarning("Event {e} not found for client {c}. Session not registered.", eventId, clientId);
             }
         }
-        else
+        catch (Exception ex)
         {
-            Logger.LogWarning("Event {e} not found for client {c}. Session not registered.", eventId, clientId);
+            Logger.LogError(ex, "Error processing SendSessionChange");
         }
     }
 
@@ -167,7 +174,34 @@ public class TimingAndScoringHub : Hub
         Logger.LogInformation("Client {0} unsubscribed from event {1}", connectionId, eventId);
     }
 
-    public async Task SubscribeToControlLogs(int eventId, string carNum)
+    public async Task SubscribeToControlLogs(int eventId)
+    {
+        var connectionId = Context.ConnectionId;
+        var grpKey = $"{eventId}-cl";
+        await Groups.AddToGroupAsync(connectionId, grpKey);
+
+        if (eventId > 0)
+        {
+            // Send a full status update to the client
+            var sub = cacheMux.GetSubscriber();
+            var cmd = new SendControlLogCommand { EventId = eventId, ConnectionId = connectionId, CarNumber = string.Empty };
+            var json = JsonSerializer.Serialize(cmd);
+            // Tell the service responsible for this event to send a full status update
+            await sub.PublishAsync(new RedisChannel(Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
+        }
+
+        Logger.LogInformation("Client {connectionId} subscribed to control log for event {eventId}", connectionId, eventId);
+    }
+
+    public async Task UnsubscribeFromControlLogs(int eventId)
+    {
+        var connectionId = Context.ConnectionId;
+        var grpKey = $"{eventId}-cl";
+        await Groups.RemoveFromGroupAsync(connectionId, grpKey);
+        Logger.LogInformation("Client {connectionId} unsubscribed from control log for event {eventId}", connectionId, eventId);
+    }
+
+    public async Task SubscribeToCarControlLogs(int eventId, string carNum)
     {
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-{carNum}";
@@ -186,7 +220,7 @@ public class TimingAndScoringHub : Hub
         Logger.LogInformation("Client {0} subscribed to control log for car {1} event {2}", connectionId, carNum, eventId);
     }
 
-    public async Task UnsubscribeFromControlLogs(int eventId, string carNum)
+    public async Task UnsubscribeFromCarControlLogs(int eventId, string carNum)
     {
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-{carNum}";
