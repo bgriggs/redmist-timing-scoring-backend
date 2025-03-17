@@ -229,7 +229,7 @@ public class EventAggregator : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
             Logger.LogInformation("Requesting control log update...");
             var sw = Stopwatch.StartNew();
 

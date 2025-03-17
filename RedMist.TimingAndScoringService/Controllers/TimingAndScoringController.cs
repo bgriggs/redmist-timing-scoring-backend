@@ -54,7 +54,8 @@ public class TimingAndScoringController : ControllerBase
                 CourseConfiguration = dbEvent.e.CourseConfiguration,
                 Distance = dbEvent.e.Distance,
                 Broadcast = dbEvent.e.Broadcast,
-                Schedule = dbEvent.e.Schedule
+                Schedule = dbEvent.e.Schedule,
+                HasControlLog = !string.IsNullOrEmpty(dbEvent.o.ControlLogType)
             };
             eventDtos.Add(eventDto);
         }
