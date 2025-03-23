@@ -8,7 +8,7 @@ public partial class Competitor
     [IgnoreReactive]
     public string RegistrationNumber { get; private set; } = string.Empty;
     public partial string Number { get; private set; } = string.Empty;
-    public partial int Transponder { get; private set; }
+    public partial uint Transponder { get; private set; }
     public partial string FirstName { get; private set; } = string.Empty;
     public partial string LastName { get; private set; } = string.Empty;
     public partial string Country { get; private set; } = string.Empty;
@@ -30,7 +30,7 @@ public partial class Competitor
     {
         RegistrationNumber = parts[1].Replace("\"", "");
         Number = parts[2].Replace("\"", "");
-        Transponder = int.Parse(parts[3]);
+        Transponder = uint.Parse(parts[3]);
         FirstName = parts[4].Replace("\"", "");
         LastName = parts[5].Replace("\"", "");
         Country = parts[6].Replace("\"", "");

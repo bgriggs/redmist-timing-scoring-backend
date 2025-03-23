@@ -9,6 +9,6 @@ public interface IDataProcessor
 {
     int EventId { get; }
     int SessionId { get; }
-    Task ProcessUpdate(string data, int sessionId, CancellationToken stoppingToken);
+    Task ProcessUpdate(string type, string data, int sessionId, CancellationToken stoppingToken);
     Task<Payload> GetPayload(CancellationToken stoppingToken);
 }

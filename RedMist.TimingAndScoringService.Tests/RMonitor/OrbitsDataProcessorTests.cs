@@ -1,10 +1,10 @@
 ﻿using BigMission.TestHelpers.Testing;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Internal;
 using Moq;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
+using RedMist.TimingAndScoringService.EventStatus.X2;
 
 namespace RedMist.TimingAndScoringService.Tests.RMonitor;
 
@@ -20,8 +20,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf, new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf, new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
 
         Assert.AreEqual(14, processor.Heartbeat.LapsToGo);
         Assert.AreEqual("00:12:45", processor.Heartbeat.TimeToGo);
@@ -35,14 +36,15 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
         Assert.IsTrue(processor.Heartbeat.IsDirty);
 
         // Reset the dirty flag manually
         processor.Heartbeat.IsDirty = false;
 
-        await processor.ProcessUpdate("$F,14,\"10:12:45\",\"14:34:23\",\"00:03:47\",\"Green \"", 0);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"10:12:45\",\"14:34:23\",\"00:03:47\",\"Green \"", 0);
         Assert.IsFalse(processor.Heartbeat.IsDirty);
     }
 
@@ -51,14 +53,15 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
         Assert.IsTrue(processor.Heartbeat.IsDirty);
 
         // Reset the dirty flag manually
         processor.Heartbeat.IsDirty = false;
 
-        await processor.ProcessUpdate("$F,15,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
+        await processor.ProcessUpdate("rmonitor", "$F,15,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
         Assert.IsTrue(processor.Heartbeat.IsDirty);
     }
 
@@ -67,14 +70,15 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
         Assert.IsTrue(processor.Heartbeat.IsDirty);
 
         // Reset the dirty flag manually
         processor.Heartbeat.IsDirty = false;
 
-        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Red   \"", 0);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Red   \"", 0);
         Assert.IsTrue(processor.Heartbeat.IsDirty);
     }
 
@@ -83,8 +87,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$F,,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$F,,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
 
         Assert.AreEqual(0, processor.Heartbeat.LapsToGo);
     }
@@ -94,8 +99,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$F,asdf,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$F,asdf,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
 
         Assert.AreEqual(0, processor.Heartbeat.LapsToGo);
     }
@@ -105,8 +111,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$F,9999,\"07:50:29\",\"08:09:30\",", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$F,9999,\"07:50:29\",\"08:09:30\",", 0);
 
         Assert.AreEqual(0, processor.Heartbeat.LapsToGo);
     }
@@ -120,9 +127,10 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
-        await processor.ProcessUpdate("$C,5,\"Formula 300\"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
+        await processor.ProcessUpdate("rmonitor", "$C,5,\"Formula 300\"", 0);
         var entry = processor.GetEventEntries();
 
         Assert.AreEqual("12X", entry[0].Number);
@@ -136,18 +144,19 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
         // Disable the debouncer to bypass premature dirty reset
         processor.Debouncer.IsDisabled = true;
 
-        await processor.ProcessUpdate("$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
-        await processor.ProcessUpdate("$A,\"1234BE1\",\"122\",52474,\"Fred\",\"Johnson\",\"USA\",5", 0);
-        await processor.ProcessUpdate("$C,5,\"Formula 300\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
+        await processor.ProcessUpdate("rmonitor", "$A,\"1234BE1\",\"122\",52474,\"Fred\",\"Johnson\",\"USA\",5", 0);
+        await processor.ProcessUpdate("rmonitor", "$C,5,\"Formula 300\"", 0);
         var entries = processor.GetChangedEventEntries();
         Assert.AreEqual(2, entries.Length);
 
-        await processor.ProcessUpdate("$A,\"1234BE1\",\"122\",52474,\"Bob\",\"Johnson\",\"USA\",5", 0);
+        await processor.ProcessUpdate("rmonitor", "$A,\"1234BE1\",\"122\",52474,\"Bob\",\"Johnson\",\"USA\",5", 0);
         entries = processor.GetChangedEventEntries();
         Assert.AreEqual(1, entries.Length);
         Assert.AreEqual("Bob Johnson", entries[0].Name);
@@ -158,8 +167,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
         var entry = processor.GetEventEntries();
 
         Assert.AreEqual("5", entry[0].Class);
@@ -170,9 +180,10 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$COMP,\"1234BE\",\"12X\",5,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
-        await processor.ProcessUpdate("$C,5,\"Formula 300\"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$COMP,\"1234BE\",\"12X\",5,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$C,5,\"Formula 300\"", 0);
         var entry = processor.GetEventEntries();
 
         Assert.AreEqual("12X", entry[0].Number);
@@ -186,8 +197,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$COMP,\"1234BE\",\"12X\",5,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$COMP,\"1234BE\",\"12X\",5,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
         var entry = processor.GetEventEntries();
 
         Assert.AreEqual("5", entry[0].Class);
@@ -202,8 +214,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$B,5,\"Friday free practice\"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$B,5,\"Friday free practice\"", 0);
         var @event = processor.GetEvent();
 
         Assert.AreEqual("Friday free practice", @event.EventName);
@@ -214,8 +227,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$B,asdf,\"Friday free practice\"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$B,asdf,\"Friday free practice\"", 0);
         var @event = processor.GetEvent();
 
         Assert.AreEqual("", @event.EventName);
@@ -226,8 +240,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$B,2", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$B,2", 0);
         var @event = processor.GetEvent();
 
         Assert.AreEqual("", @event.EventName);
@@ -242,8 +257,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$C,5,\"Formula 300\"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$C,5,\"Formula 300\"", 0);
         var classes = processor.GetClasses();
 
         Assert.AreEqual(1, classes.Count);
@@ -255,8 +271,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$C,1,\"GTU\"\n$C,2,\"GTO\"\n$C,3,\"GP1\"\n$C,4,\"GP2\"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$C,1,\"GTU\"\n$C,2,\"GTO\"\n$C,3,\"GP1\"\n$C,4,\"GP2\"", 0);
         var classes = processor.GetClasses();
 
         Assert.AreEqual(4, classes.Count);
@@ -271,11 +288,12 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$C,1,\"GTU\"", 0);
-        await processor.ProcessUpdate("$C,2,\"GTO\"", 0);
-        await processor.ProcessUpdate("$C,3,\"GP1\"", 0);
-        await processor.ProcessUpdate("$C,4,\"GP2\"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$C,1,\"GTU\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$C,2,\"GTO\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$C,3,\"GP1\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$C,4,\"GP2\"", 0);
         var classes = processor.GetClasses();
 
         Assert.AreEqual(4, classes.Count);
@@ -290,8 +308,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$C,1", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$C,1", 0);
         var classes = processor.GetClasses();
         Assert.AreEqual(0, classes.Count);
     }
@@ -301,8 +320,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$C,a", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$C,a", 0);
         var classes = processor.GetClasses();
         Assert.AreEqual(0, classes.Count);
     }
@@ -312,8 +332,9 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$Casdkjnalmngka", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$Casdkjnalmngka", 0);
         var classes = processor.GetClasses();
         Assert.AreEqual(0, classes.Count);
     }
@@ -327,12 +348,13 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
-        await processor.ProcessUpdate("$E,\"TRACKNAME\",\"Indianapolis Motor Speedway\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$E,\"TRACKNAME\",\"Indianapolis Motor Speedway\"", 0);
         Assert.AreEqual("Indianapolis Motor Speedway", processor.TrackName);
 
-        await processor.ProcessUpdate("$E,\"TRACKLENGTH\",\"2.500\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$E,\"TRACKLENGTH\",\"2.500\"", 0);
         Assert.AreEqual(2.500, processor.TrackLength, 0.001);
     }
 
@@ -341,9 +363,10 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
-        await processor.ProcessUpdate("$E,\"wefahbt\",\"Indianapolis Motor Speedway\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$E,\"wefahbt\",\"Indianapolis Motor Speedway\"", 0);
         Assert.AreEqual("", processor.TrackName);
         Assert.AreEqual(0, processor.TrackLength, 0.0001);
     }
@@ -357,9 +380,10 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
-        await processor.ProcessUpdate("$G,3,\"1234BE\",14,\"01:12:47.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",14,\"01:12:47.872\"", 0);
         var raceInfo = processor.GetRaceInformation();
         Assert.AreEqual(1, raceInfo.Count);
         Assert.AreEqual(3, raceInfo["1234BE"].Position);
@@ -373,9 +397,10 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
-        await processor.ProcessUpdate("$G,3,\"1234BE\",14,", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",14,", 0);
         var raceInfo = processor.GetRaceInformation();
         Assert.AreEqual(default, raceInfo["1234BE"].Timestamp);
     }
@@ -385,9 +410,10 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
-        await processor.ProcessUpdate("$G,3,\"1234BE\",14,\"01asdf:we12we:47.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",14,\"01asdf:we12we:47.872\"", 0);
         var raceInfo = processor.GetRaceInformation();
         Assert.AreEqual(default, raceInfo["1234BE"].Timestamp);
     }
@@ -397,9 +423,10 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
-        await processor.ProcessUpdate("$G,3,\"1234BE\",,\"01:12:47.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",,\"01:12:47.872\"", 0);
         var raceInfo = processor.GetRaceInformation();
         Assert.AreEqual(0, raceInfo["1234BE"].Laps);
     }
@@ -409,9 +436,10 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
-        await processor.ProcessUpdate("$G,3,\"1234BE\",asdf,\"01:12:47.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",asdf,\"01:12:47.872\"", 0);
         var raceInfo = processor.GetRaceInformation();
         Assert.AreEqual(0, raceInfo["1234BE"].Laps);
     }
@@ -421,11 +449,12 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
-        await processor.ProcessUpdate("$G,10,\"89\",,\"00:00:00.000\"", 0);
-        await processor.ProcessUpdate("$G,11,\"188\",,\"00:00:00.000\"", 0);
-        await processor.ProcessUpdate("$G,12,\"68\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,10,\"89\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,11,\"188\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,12,\"68\",,\"00:00:00.000\"", 0);
         var raceInfo = processor.GetOverallStartingPositions();
         Assert.AreEqual(3, raceInfo.Count);
     }
@@ -435,13 +464,14 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
-        await processor.ProcessUpdate("$G,10,\"89\",,\"00:00:00.000\"", 0);
-        await processor.ProcessUpdate("$G,3,\"1234BE\",,\"01:12:47.872\"", 0); // Now using laps and flag rather than time
+        await processor.ProcessUpdate("rmonitor", "$G,10,\"89\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",,\"01:12:47.872\"", 0); // Now using laps and flag rather than time
 
         // Invalid
-        await processor.ProcessUpdate("$G,12,\"68\",27,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,12,\"68\",27,\"00:00:00.000\"", 0);
 
         var raceInfo = processor.GetOverallStartingPositions();
         Assert.AreEqual(2, raceInfo.Count);
@@ -452,18 +482,19 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        await processor.ProcessUpdate("$COMP,\"89\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
-        await processor.ProcessUpdate("$COMP,\"188\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
-        await processor.ProcessUpdate("$COMP,\"68\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
-        await processor.ProcessUpdate("$COMP,\"99\",\"99\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
-        await processor.ProcessUpdate("$COMP,\"100\",\"100\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        await processor.ProcessUpdate("rmonitor", "$COMP,\"89\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$COMP,\"188\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$COMP,\"68\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$COMP,\"99\",\"99\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$COMP,\"100\",\"100\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
 
-        await processor.ProcessUpdate("$G,10,\"89\",,\"00:00:00.000\"", 0);
-        await processor.ProcessUpdate("$G,11,\"188\",,\"00:00:00.000\"", 0);
-        await processor.ProcessUpdate("$G,12,\"68\",,\"00:00:00.000\"", 0);
-        await processor.ProcessUpdate("$G,13,\"99\",,\"00:00:00.000\"", 0);
-        await processor.ProcessUpdate("$G,14,\"100\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,10,\"89\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,11,\"188\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,12,\"68\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,13,\"99\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,14,\"100\",,\"00:00:00.000\"", 0);
 
         var raceInfo = processor.GetInClassStartingPositions();
         Assert.AreEqual(5, raceInfo.Count);
@@ -479,18 +510,19 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
-        //await processor.ProcessUpdate("$COMP,\"89\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
-        await processor.ProcessUpdate("$COMP,\"188\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
-        await processor.ProcessUpdate("$COMP,\"68\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
-        await processor.ProcessUpdate("$COMP,\"99\",\"99\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
-        await processor.ProcessUpdate("$COMP,\"100\",\"100\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
+        //await processor.ProcessUpdate("rmonitor", "$COMP,\"89\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
+        await processor.ProcessUpdate("rmonitor", "$COMP,\"188\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$COMP,\"68\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$COMP,\"99\",\"99\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$COMP,\"100\",\"100\",2,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
 
-        await processor.ProcessUpdate("$G,10,\"89\",,\"00:00:00.000\"", 0);
-        await processor.ProcessUpdate("$G,11,\"188\",,\"00:00:00.000\"", 0);
-        await processor.ProcessUpdate("$G,12,\"68\",,\"00:00:00.000\"", 0);
-        await processor.ProcessUpdate("$G,13,\"99\",,\"00:00:00.000\"", 0);
-        await processor.ProcessUpdate("$G,14,\"100\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,10,\"89\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,11,\"188\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,12,\"68\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,13,\"99\",,\"00:00:00.000\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,14,\"100\",,\"00:00:00.000\"", 0);
 
         var raceInfo = processor.GetInClassStartingPositions();
         Assert.AreEqual(4, raceInfo.Count);
@@ -510,9 +542,10 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
-        await processor.ProcessUpdate("$H,2,\"1234BE\",3,\"00:02:17.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$H,2,\"1234BE\",3,\"00:02:17.872\"", 0);
         var raceInfo = processor.GetPracticeQualifying();
         Assert.AreEqual(1, raceInfo.Count);
         Assert.AreEqual(2, raceInfo["1234BE"].Position);
@@ -530,9 +563,10 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
 
-        await processor.ProcessUpdate("$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 0);
         var raceInfo = processor.GetPassingInformation();
         Assert.AreEqual(1, raceInfo.Count);
         Assert.AreEqual("00:02:03.826", raceInfo["1234BE"].LapTime);
@@ -550,15 +584,16 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
         processor.Debouncer.IsDisabled = true;
 
-        await processor.ProcessUpdate("$B,5,\"Friday free practice\"", 0);
-        await processor.ProcessUpdate("$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
-        await processor.ProcessUpdate("$C,5,\"Formula 300\"", 0);
-        await processor.ProcessUpdate("$G,3,\"1234BE\",14,\"01:12:47.872\"", 0);
-        await processor.ProcessUpdate("$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 0);
-        await processor.ProcessUpdate("$H,2,\"1234BE\",3,\"00:02:17.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$B,5,\"Friday free practice\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
+        await processor.ProcessUpdate("rmonitor", "$C,5,\"Formula 300\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",14,\"01:12:47.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$H,2,\"1234BE\",3,\"00:02:17.872\"", 0);
 
         var car = processor.GetCarPositions(includeChangedOnly: true);
         Assert.AreEqual(1, car.Length);
@@ -577,15 +612,16 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
         processor.Debouncer.IsDisabled = true;
 
-        await processor.ProcessUpdate("$B,5,\"Friday free practice\"", 0);
-        await processor.ProcessUpdate("$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
-        await processor.ProcessUpdate("$C,5,\"Formula 300\"", 0);
-        await processor.ProcessUpdate("$G,3,\"1234BE\",14,\"01:12:47.872\"", 0);
-        await processor.ProcessUpdate("$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 0);
-        await processor.ProcessUpdate("$H,2,\"1234BE\",3,\"00:02:17.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$B,5,\"Friday free practice\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
+        await processor.ProcessUpdate("rmonitor", "$C,5,\"Formula 300\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",14,\"01:12:47.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$H,2,\"1234BE\",3,\"00:02:17.872\"", 0);
 
         var car = processor.GetCarPositions(includeChangedOnly: false);
         Assert.AreEqual(1, car.Length);
@@ -593,7 +629,7 @@ public class OrbitsDataProcessorTests
         car = processor.GetCarPositions(includeChangedOnly: false);
         Assert.AreEqual(1, car.Length);
 
-        await processor.ProcessUpdate("$G,3,\"1234BE\",15,\"01:12:47.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",15,\"01:12:47.872\"", 0);
 
         car = processor.GetCarPositions(includeChangedOnly: false);
         Assert.AreEqual(1, car.Length);
@@ -609,16 +645,17 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
         processor.Debouncer.IsDisabled = true;
 
-        await processor.ProcessUpdate("$B,5,\"Friday free practice\"", 0);
-        await processor.ProcessUpdate("$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
-        await processor.ProcessUpdate("$C,5,\"Formula 300\"", 0);
-        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
-        await processor.ProcessUpdate("$G,3,\"1234BE\",14,\"01:12:47.872\"", 0);
-        await processor.ProcessUpdate("$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 0);
-        await processor.ProcessUpdate("$H,2,\"1234BE\",3,\"00:02:17.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$B,5,\"Friday free practice\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
+        await processor.ProcessUpdate("rmonitor", "$C,5,\"Formula 300\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
+        await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",14,\"01:12:47.872\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$H,2,\"1234BE\",3,\"00:02:17.872\"", 0);
 
         var payload = await processor.GetPayload();
         Assert.AreEqual("Friday free practice", payload.EventName);
@@ -637,10 +674,11 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
         processor.Debouncer.IsDisabled = true;
 
-        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Red \"", 0);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Red \"", 0);
 
         var payload = await processor.GetPayload();
         Assert.AreEqual(TimingCommon.Models.Flags.Red, payload.EventStatus?.Flag);
@@ -651,10 +689,11 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
         processor.Debouncer.IsDisabled = true;
 
-        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"    \"", 0);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"    \"", 0);
 
         var payload = await processor.GetPayload();
         Assert.AreEqual(TimingCommon.Models.Flags.Unknown, payload.EventStatus?.Flag);
@@ -665,10 +704,11 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
         processor.Debouncer.IsDisabled = true;
 
-        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"  asdfas  \"", 0);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"  asdfas  \"", 0);
 
         var payload = await processor.GetPayload();
         Assert.AreEqual(TimingCommon.Models.Flags.Unknown, payload.EventStatus?.Flag);
@@ -679,15 +719,16 @@ public class OrbitsDataProcessorTests
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object));
+        var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor);
         processor.Debouncer.IsDisabled = true;
 
-        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Red  \"", 0);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Red  \"", 0);
 
         var payload = await processor.GetPayload();
         Assert.AreEqual(TimingCommon.Models.Flags.Red, payload.EventStatus?.Flag);
 
-        await processor.ProcessUpdate("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Yellow\"", 0);
+        await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Yellow\"", 0);
 
         payload = await processor.GetPayload();
         Assert.AreEqual(TimingCommon.Models.Flags.Yellow, payload.EventStatus?.Flag);

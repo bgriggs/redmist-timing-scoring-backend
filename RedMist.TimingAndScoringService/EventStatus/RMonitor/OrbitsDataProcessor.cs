@@ -1,7 +1,9 @@
 ﻿using MediatR;
+using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
+using RedMist.TimingCommon.Models.X2;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json;
@@ -38,24 +40,93 @@ public class OrbitsDataProcessor : IDataProcessor
     public double TrackLength { get; set; }
 
     private readonly SessionMonitor sessionMonitor;
+    private readonly PitProcessor pitProcessor;
+    private readonly HashSet<uint> lastTransponderPassings = new();
     private readonly SecondaryProcessor secondaryProcessor = new();
 
 
-    public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor)
+    public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor, PitProcessor pitProcessor)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
         this.mediator = mediator;
         this.sessionMonitor = sessionMonitor;
+        this.pitProcessor = pitProcessor;
     }
 
 
-    public async Task ProcessUpdate(string data, int sessionId, CancellationToken stoppingToken = default)
+    public async Task ProcessUpdate(string type, string data, int sessionId, CancellationToken stoppingToken = default)
     {
         var sw = Stopwatch.StartNew();
         await sessionMonitor.ProcessSession(sessionId, stoppingToken);
 
-        // Parse data
+        // Parse RMonitor data
+        if (type == "rmonitor")
+        {
+            await ProcessResultMonitor(data, stoppingToken);
+        }
+        // Passings
+        else if (type == "x2pass")
+        {
+            ProcessPassings(data, stoppingToken);
+        }
+        // Loops
+        else if (type == "x2loop")
+        {
+            ProcessLoops(data, stoppingToken);
+        }
+
+        Logger.LogInformation("Processed {type} in {time}ms", type, sw.ElapsedMilliseconds);
+    }
+
+    private void ProcessPassings(string data, CancellationToken stoppingToken)
+    {
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var passings = JsonSerializer.Deserialize<List<Passing>>(data);
+                if (passings != null)
+                {
+                    _ = mediator.Publish(new X2PassingsNotification(passings), stoppingToken);
+                    pitProcessor.UpdatePassings(passings);
+
+                    lock (lastTransponderPassings)
+                    {
+                        foreach (var passing in passings)
+                        {
+                            lastTransponderPassings.Add(passing.TransponderId);
+                        }
+                    }
+
+                    _ = debouncer.ExecuteAsync(() => Task.Run(() => PublishChanges(stoppingToken)), stoppingToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error processing X2 passings data");
+            }
+        }, stoppingToken);
+    }
+
+    private void ProcessLoops(string data, CancellationToken stoppingToken)
+    {
+        try
+        {
+            var loops = JsonSerializer.Deserialize<List<Loop>>(data);
+            if (loops != null)
+            {
+                _ = mediator.Publish(new X2LoopsNotification(loops), stoppingToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing X2 loop data");
+        }
+    }
+
+    private async Task ProcessResultMonitor(string data, CancellationToken stoppingToken)
+    {
         await _lock.WaitAsync(stoppingToken);
         try
         {
@@ -138,8 +209,6 @@ public class OrbitsDataProcessor : IDataProcessor
         }
 
         _ = debouncer.ExecuteAsync(() => Task.Run(() => PublishChanges(stoppingToken)), stoppingToken);
-
-        Logger.LogInformation("Processed in {0}ms", sw.ElapsedMilliseconds);
     }
 
     #region Result Monitor
@@ -484,6 +553,9 @@ public class OrbitsDataProcessor : IDataProcessor
 
             // Car Positions
             carPositions = GetCarPositions(includeChangedOnly: true);
+
+            // Loop data (pit)
+            pitProcessor.ApplyTransponderPassing(carPositions);
         }
         finally
         {
@@ -520,6 +592,12 @@ public class OrbitsDataProcessor : IDataProcessor
     public CarPosition[] GetCarPositions(bool includeChangedOnly = false)
     {
         var carPositions = new List<CarPosition>();
+        List<uint> dirtyTransponderPassings;
+        lock (lastTransponderPassings)
+        {
+            dirtyTransponderPassings = [.. lastTransponderPassings];
+        }
+
         foreach (var reg in raceInformation.Keys)
         {
             if (!raceInformation.TryGetValue(reg, out var raceInfo))
@@ -536,6 +614,12 @@ public class OrbitsDataProcessor : IDataProcessor
                 LastLap = raceInfo.Laps,
                 Class = GetCarsClass(raceInfo.RegistrationNumber),
             };
+
+            // Transponder
+            if (competitors.TryGetValue(reg, out var competitor))
+            {
+                carPos.TransponderId = competitor.Transponder;
+            }
 
             // Starting position
             if (startingPositions.TryGetValue(reg, out var startingPos))
@@ -567,7 +651,7 @@ public class OrbitsDataProcessor : IDataProcessor
 
             if (includeChangedOnly)
             {
-                if (raceInfo.IsDirty || (pass != null && pass.IsDirty) || (pq != null && pq.IsDirty))
+                if (raceInfo.IsDirty || (pass != null && pass.IsDirty) || (pq != null && pq.IsDirty) || dirtyTransponderPassings.Contains(carPos.TransponderId))
                 {
                     carPositions.Add(carPos);
                 }
@@ -590,6 +674,14 @@ public class OrbitsDataProcessor : IDataProcessor
 
         carPositions = secondaryProcessor.UpdateCarPositions(carPositions);
 
+        lock (lastTransponderPassings)
+        {
+            foreach (var transponder in dirtyTransponderPassings)
+            {
+                lastTransponderPassings.Remove(transponder);
+            }
+        }
+
         return [.. carPositions];
     }
 
@@ -611,6 +703,9 @@ public class OrbitsDataProcessor : IDataProcessor
 
             // Car Positions
             var carPositions = GetCarPositions();
+
+            // Loop data (pit)
+            pitProcessor.ApplyTransponderPassing(carPositions);
 
             // Put flag state on all car positions
             foreach (var carPosition in carPositions)

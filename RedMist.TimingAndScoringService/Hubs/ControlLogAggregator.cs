@@ -1,7 +1,6 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.SignalR;
 using RedMist.TimingAndScoringService.Models;
-using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.Hubs;
 

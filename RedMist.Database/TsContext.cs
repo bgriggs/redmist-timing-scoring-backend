@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
+using RedMist.TimingCommon.Models.X2;
 using System.Text.Json;
 
 namespace RedMist.Database;
@@ -17,6 +18,9 @@ public class TsContext : DbContext
     public DbSet<CarLastLap> CarLastLaps { get; set; } = null!;
     public DbSet<GoogleSheetsConfig> GoogleSheetsConfigs { get; set; } = null!;
     public DbSet<SessionResult> SessionResults { get; set; } = null!;
+    public DbSet<Loop> X2Loops { get; set; } = null!;
+    public DbSet<Passing> X2Passings { get; set; } = null!;
+
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }
 
@@ -46,6 +50,7 @@ public class TsContext : DbContext
             .Property(o => o.Orbits)
             .HasConversion(orbitsConverter!);
 
+        // X2
         var x2Converter = new ValueConverter<X2Configuration, string>(
             v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
             v => JsonSerializer.Deserialize<X2Configuration>(v, JsonSerializerOptions.Default) ?? new X2Configuration());
@@ -54,6 +59,7 @@ public class TsContext : DbContext
             .Property(o => o.X2)
             .HasConversion(x2Converter!);
 
+        // Broadcast
         var broadcastConverter = new ValueConverter<BroadcasterConfig, string>(
             v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
             v => JsonSerializer.Deserialize<BroadcasterConfig>(v, JsonSerializerOptions.Default) ?? new BroadcasterConfig());
@@ -62,6 +68,7 @@ public class TsContext : DbContext
             .Property(o => o.Broadcast)
             .HasConversion(broadcastConverter!);
 
+        // Schedule
         var scheduleConverter = new ValueConverter<EventSchedule, string>(
             v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
             v => JsonSerializer.Deserialize<EventSchedule>(v, JsonSerializerOptions.Default) ?? new EventSchedule());
@@ -70,6 +77,16 @@ public class TsContext : DbContext
             .Property(o => o.Schedule)
             .HasConversion(scheduleConverter!);
 
+        // Loops
+        var loopMetadataConverter = new ValueConverter<List<LoopMetadata>, string>(
+            v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
+            v => JsonSerializer.Deserialize<List<LoopMetadata>>(v, JsonSerializerOptions.Default) ?? new List<LoopMetadata>());
+
+        modelBuilder.Entity<TimingCommon.Models.Configuration.Event>()
+            .Property(o => o.LoopsMetadata)
+            .HasConversion(loopMetadataConverter!);
+
+        // SessionResult Payload
         var payloadConverter = new ValueConverter<Payload, string>(
             v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
             v => JsonSerializer.Deserialize<Payload>(v, JsonSerializerOptions.Default) ?? new Payload());

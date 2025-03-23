@@ -4,8 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
+using RedMist.TimingCommon.Models.X2;
 using StackExchange.Redis;
+using System.IO;
 using System.Text.Json;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace RedMist.TimingAndScoringService.Hubs;
 
@@ -75,11 +78,11 @@ public class TimingAndScoringHub : Hub
         {
             // Security note: not checking that the event/session is valid for the user explicitly here for performance. Security is ensured by the
             // check in SendSessionChange that the event/session is committed to the database only when it passes the security check.
-            var stream = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+            var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
             var cache = cacheMux.GetDatabase();
 
             // Send the command to the service responsible for the specific event
-            await cache.StreamAddAsync(stream, string.Format(Consts.EVENT_RMON_STREAM_FIELD, eventId, sessionId), command);
+            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_RMON_STREAM_FIELD, eventId, sessionId), command);
         }
     }
 
@@ -139,6 +142,86 @@ public class TimingAndScoringHub : Hub
         {
             Logger.LogError(ex, "Error processing SendSessionChange");
         }
+    }
+
+    /// <summary>
+    /// Sends a list of X2 passing data associated with a specific event and session.
+    /// </summary>
+    /// <param name="eventId">Identifies the specific event for which the passing data is being sent.</param>
+    /// <param name="sessionId">Specifies the session related to the event for which the passings are recorded.</param>
+    /// <param name="passings">Contains the list of passing data that needs to be sent to the service.</param>
+    public async Task SendPassings(int eventId, int sessionId, List<Passing> passings)
+    {
+        Logger.LogTrace("SendPassings: evt:{eventId} passings:{passings.Count}", eventId, passings.Count);
+
+        var clientId = GetClientId();
+        if (clientId == null)
+        {
+            Logger.LogWarning("SendPassings: invalid client id, ignoring message");
+            return;
+        }
+
+        var orgId = await eventDistribution.GetOrganizationId(clientId);
+        foreach (var pass in passings)
+        {
+            pass.OrganizationId = orgId;
+        }
+
+        var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+        var cache = cacheMux.GetDatabase();
+
+        var chunks = SplitIntoChunks(passings);
+
+        foreach (var chunk in chunks)
+        {
+            var json = JsonSerializer.Serialize(chunk);
+            // Send the command to the service responsible for the specific event
+            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_PASSINGS_STREAM_FIELD, eventId, sessionId), json);
+        }
+    }
+
+    /// <summary>
+    /// Divides a list into smaller lists of a specified maximum size. Each smaller list contains a portion of the
+    /// original list.
+    /// </summary>
+    /// <typeparam name="T">Represents the type of elements contained in the list being divided.</typeparam>
+    /// <param name="source">The list to be split into smaller chunks.</param>
+    /// <param name="chunkSize">Specifies the maximum number of elements each smaller list can contain.</param>
+    /// <returns>An enumerable collection of smaller lists created from the original list.</returns>
+    private static IEnumerable<List<T>> SplitIntoChunks<T>(List<T> source, int chunkSize = 25)
+    {
+        for (int i = 0; i < source.Count; i += chunkSize)
+        {
+            yield return source.GetRange(i, Math.Min(chunkSize, source.Count - i));
+        }
+    }
+
+    /// <summary>
+    /// Sends a change in X2 loop data associated with a specific event for processing.
+    /// </summary>
+    /// <param name="eventId">Identifies the specific event for which the loop changes are being sent.</param>
+    /// <param name="loops">Contains the collection of loop data that is being updated and sent.</param>
+    public async Task SendLoopChange(int eventId, List<Loop> loops)
+    {
+        Logger.LogTrace("SendLoopChange: evt:{eventId} loops:{loops.Count}", eventId, loops.Count);
+
+        var clientId = GetClientId();
+        if (clientId == null)
+        {
+            Logger.LogWarning("SendLoopChange: invalid client id, ignoring message");
+            return;
+        }
+
+        var orgId = await eventDistribution.GetOrganizationId(clientId);
+        foreach (var loop in loops)
+        {
+            loop.OrganizationId = orgId;
+        }
+
+        var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+        var cache = cacheMux.GetDatabase();
+        var json = JsonSerializer.Serialize(loops);
+        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_LOOPS_STREAM_FIELD, eventId), json);
     }
 
     #endregion

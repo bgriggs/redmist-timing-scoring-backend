@@ -5,6 +5,7 @@ using RedMist.ControlLogs;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
+using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
@@ -104,7 +105,8 @@ public class EventAggregator : BackgroundService
                             {
                                 // Create a new data processor for this event
                                 var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
-                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor);
+                                var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
+                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor);
                                 processors[eventId] = processor;
 
                                 // Create a control log cache for the event
@@ -116,10 +118,10 @@ public class EventAggregator : BackgroundService
                         var data = field.Value.ToString();
 
                         // Log the data
-                        _ = Task.Run(() => LogStatusData(eventId, sessionId, data, stoppingToken), stoppingToken);
+                        _ = Task.Run(() => LogStatusData(type, eventId, sessionId, data, stoppingToken), stoppingToken);
 
                         // Process the update
-                        await processor.ProcessUpdate(data, sessionId, stoppingToken);
+                        await processor.ProcessUpdate(type, data, sessionId, stoppingToken);
                     }
                 }
             }
@@ -266,7 +268,7 @@ public class EventAggregator : BackgroundService
 
     #region Event Data Logging
 
-    private async Task LogStatusData(int eventId, int sessionId, string data, CancellationToken stoppingToken)
+    private async Task LogStatusData(string type, int eventId, int sessionId, string data, CancellationToken stoppingToken)
     {
         try
         {
@@ -276,6 +278,7 @@ public class EventAggregator : BackgroundService
                 using var db = await tsContext.CreateDbContextAsync(stoppingToken);
                 var log = new EventStatusLog
                 {
+                    Type = type,
                     EventId = eventId,
                     SessionId = sessionId,
                     Timestamp = DateTime.UtcNow,

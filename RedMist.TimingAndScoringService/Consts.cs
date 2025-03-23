@@ -11,4 +11,6 @@ public static class Consts
     public const string LOG_EVENT_DATA = "logevt{0}";
     public const string SEND_CONTROL_LOG = "controlLog";
     public const string EVENT_RMON_STREAM_FIELD = "rmonitor-{0}-{1}";
+    public const string EVENT_X2_LOOPS_STREAM_FIELD = "x2loop-{0}-0";
+    public const string EVENT_X2_PASSINGS_STREAM_FIELD = "x2pass-{0}-{1}";
 }
