@@ -576,8 +576,6 @@ public class OrbitsDataProcessor : IDataProcessor
         payload.EventEntryUpdates.AddRange(eventEntries);
         payload.CarPositionUpdates.AddRange(carPositions);
 
-        // Todo: when shared model is invalidated, save to redis
-        // controller needs to load from redis when a new client connects
         var json = JsonSerializer.Serialize(payload);
         _ = mediator.Publish(new StatusNotification(EventId, SessionId, json) { Payload = payload }, stoppingToken);
     }

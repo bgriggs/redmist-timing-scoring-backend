@@ -4,7 +4,7 @@
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
 USER $APP_UID
 WORKDIR /app
-EXPOSE 8080
+EXPOSE 80
 
 
 # This stage is used to build the service project
@@ -12,6 +12,9 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["RedMist.EventManagement/RedMist.EventManagement.csproj", "RedMist.EventManagement/"]
+COPY ["RedMist.ControlLogs/RedMist.ControlLogs.csproj", "RedMist.ControlLogs/"]
+COPY ["RedMist.Database/RedMist.Database.csproj", "RedMist.Database/"]
+COPY ["redmist-timing-common/RedMist.TimingCommon/RedMist.TimingCommon.csproj", "redmist-timing-common/RedMist.TimingCommon/"]
 RUN dotnet restore "./RedMist.EventManagement/RedMist.EventManagement.csproj"
 COPY . .
 WORKDIR "/src/RedMist.EventManagement"

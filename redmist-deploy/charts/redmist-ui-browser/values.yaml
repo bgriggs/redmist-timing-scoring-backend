@@ -12,7 +12,7 @@ service:
 ingress:
   enabled: true
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    #nginx.ingress.kubernetes.io/rewrite-target: /$2
     # nginx.ingress.kubernetes.io/configuration-snippet: |
     #   more_set_headers "Upgrade $http_upgrade";
     #   more_set_headers "Connection $http_connection";
@@ -21,13 +21,13 @@ ingress:
     #   more_set_headers "X-Forwarded-Proto $scheme";
     #   proxy_cache_bypass $http_upgrade;
   hosts:
-  - host: sunnywood.redmist.racing
+  - host: redmist.racing
     paths: 
-    - path: /timingui(/|$)(.*)
+    - path: /
       pathType: Prefix
   tls:
   - hosts:
-    - sunnywood.redmist.racing
+    - redmist.racing
     secretName: redmist-timing-tls
 
 autoscaling:

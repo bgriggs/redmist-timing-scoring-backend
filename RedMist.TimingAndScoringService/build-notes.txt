@@ -2,3 +2,7 @@
 docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.TimingAndScoringService\Dockerfile" --force-rm -t bigmission/redmist-timing-svc "C:\Code\RedMist.TimingAndScoringService" --progress=plain
 
 docker push bigmission/redmist-timing-svc
+
+
+docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.EventManagement\Dockerfile" --force-rm -t bigmission/redmist-event-management "C:\Code\RedMist.TimingAndScoringService" 
+docker push bigmission/redmist-event-management

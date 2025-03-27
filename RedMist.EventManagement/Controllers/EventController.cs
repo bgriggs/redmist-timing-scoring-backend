@@ -89,6 +89,7 @@ public class EventController : ControllerBase
             dbEvent.CourseConfiguration = @event.CourseConfiguration;
             dbEvent.Distance = @event.Distance;
             dbEvent.Broadcast = @event.Broadcast;
+            dbEvent.LoopsMetadata = @event.LoopsMetadata;
             await context.SaveChangesAsync();
         }
     }

@@ -23,6 +23,7 @@ public class PitProcessor
     private TimingCommon.Models.Configuration.Event? eventConfiguration;
     private readonly Lock eventConfigurationLock = new();
     private DateTime lastEventLoopMetadataRefresh = DateTime.MinValue;
+    private Dictionary<string, HashSet<int>> carLapsWithPitStops = [];
 
 
     public PitProcessor(int eventId, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory)
@@ -153,7 +154,7 @@ public class PitProcessor
                 
                 if (pitExit.TryGetValue(pos.TransponderId, out _))
                 {
-                    pos.IsExistedPit = true;
+                    pos.IsExitedPit = true;
                     pos.IsInPit = true;
                 }
 
@@ -172,6 +173,24 @@ public class PitProcessor
                 {
                     pos.LastLoopName = lm.Name;
                 }
+
+                // Keep track of laps where cars have pitted
+                if (pos.IsInPit && !string.IsNullOrEmpty(pos.Number))
+                {
+                    if (!carLapsWithPitStops.TryGetValue(pos.Number, out var laps))
+                    {
+                        laps = [];
+                        carLapsWithPitStops[pos.Number] = laps;
+                    }
+                    laps.Add(pos.LastLap);
+                }
+
+                // Check if the lap was included in a pit stop
+                pos.LapIncludedPit = pos.IsInPit;
+                if (!pos.IsInPit && !string.IsNullOrEmpty(pos.Number))
+                {
+                    pos.LapIncludedPit = carLapsWithPitStops.TryGetValue(pos.Number, out var laps) && laps.Contains(pos.LastLap);
+                }
             }
         }
     }
@@ -180,7 +199,7 @@ public class PitProcessor
     {
         pos.IsInPit = false;
         pos.IsEnteredPit = false;
-        pos.IsExistedPit = false;
+        pos.IsExitedPit = false;
         pos.IsPitStartFinish = false;
         pos.LastLoopName = string.Empty;
     }

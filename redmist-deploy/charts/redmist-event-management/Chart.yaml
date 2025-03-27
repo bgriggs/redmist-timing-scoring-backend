@@ -1,0 +1,5 @@
+apiVersion: v2
+name: redmist-event-management
+description: Endpoint for event configuration
+type: application
+version: 0.1.0
