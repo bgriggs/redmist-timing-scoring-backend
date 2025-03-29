@@ -1,7 +1,7 @@
 ﻿using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.Tests.RMonitor;
+namespace RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
 
 [TestClass]
 public class SecondaryProcessorTests

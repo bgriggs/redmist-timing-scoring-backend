@@ -3,10 +3,11 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus.RMonitor;
+using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.X2;
+using RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
 
-namespace RedMist.TimingAndScoringService.Tests.RMonitor;
+namespace RedMist.TimingAndScoringService.Tests.EventStatus;
 
 [TestClass]
 public class OrbitsDataProcessorTests

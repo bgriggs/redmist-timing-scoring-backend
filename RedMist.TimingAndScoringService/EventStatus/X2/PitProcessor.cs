@@ -23,7 +23,7 @@ public class PitProcessor
     private TimingCommon.Models.Configuration.Event? eventConfiguration;
     private readonly Lock eventConfigurationLock = new();
     private DateTime lastEventLoopMetadataRefresh = DateTime.MinValue;
-    private Dictionary<string, HashSet<int>> carLapsWithPitStops = [];
+    private readonly Dictionary<string, HashSet<int>> carLapsWithPitStops = [];
 
 
     public PitProcessor(int eventId, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory)

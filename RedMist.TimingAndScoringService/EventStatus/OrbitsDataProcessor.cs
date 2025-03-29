@@ -1,4 +1,5 @@
 ﻿using MediatR;
+using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingAndScoringService.Utilities;
@@ -8,7 +9,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json;
 
-namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
+namespace RedMist.TimingAndScoringService.EventStatus;
 
 /// <summary>
 /// Result Monitor data format processor primarily for Orbits data.
@@ -41,7 +42,7 @@ public class OrbitsDataProcessor : IDataProcessor
 
     private readonly SessionMonitor sessionMonitor;
     private readonly PitProcessor pitProcessor;
-    private readonly HashSet<uint> lastTransponderPassings = new();
+    private readonly HashSet<uint> lastTransponderPassings = [];
     private readonly SecondaryProcessor secondaryProcessor = new();
 
 
@@ -194,12 +195,12 @@ public class OrbitsDataProcessor : IDataProcessor
                     }
                     else
                     {
-                        Logger.LogWarning("Unknown command: {0}", command);
+                        Logger.LogWarning("Unknown command: {cmd}", command);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogError(ex, "Error processing command: {0}", command);
+                    Logger.LogError(ex, "Error processing command: {cmd}", command);
                 }
             }
         }
@@ -417,7 +418,7 @@ public class OrbitsDataProcessor : IDataProcessor
             var ri = startingPositions[regNum];
             if (!competitors.TryGetValue(regNum, out var comp))
             {
-                Logger.LogWarning("Competitor {0} not found for starting position", regNum);
+                Logger.LogWarning("Competitor {rn} not found for starting position", regNum);
                 continue;
             }
             entries.Add((regNum, comp.ClassNumber, ri.Position));
@@ -649,7 +650,7 @@ public class OrbitsDataProcessor : IDataProcessor
 
             if (includeChangedOnly)
             {
-                if (raceInfo.IsDirty || (pass != null && pass.IsDirty) || (pq != null && pq.IsDirty) || dirtyTransponderPassings.Contains(carPos.TransponderId))
+                if (raceInfo.IsDirty || pass != null && pass.IsDirty || pq != null && pq.IsDirty || dirtyTransponderPassings.Contains(carPos.TransponderId))
                 {
                     carPositions.Add(carPos);
                 }

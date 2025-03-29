@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
-namespace RedMist.TimingAndScoringService.Tests.RMonitor;
+namespace RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
 
 internal class DebugSessionMonitor : SessionMonitor
 {
