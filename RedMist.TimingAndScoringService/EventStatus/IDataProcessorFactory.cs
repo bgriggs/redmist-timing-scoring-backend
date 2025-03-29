@@ -1,5 +1,4 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.RMonitor;
-using RedMist.TimingAndScoringService.EventStatus.X2;
+﻿using RedMist.TimingAndScoringService.EventStatus.X2;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 

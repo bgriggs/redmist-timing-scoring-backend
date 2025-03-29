@@ -1,17 +1,17 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.RMonitor;
+﻿using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
+namespace RedMist.TimingAndScoringService.Tests.EventStatus;
 
 [TestClass]
-public class SecondaryProcessorTests
+public class PositionMetadataProcessorTests
 {
     #region Gap and Diff
 
     [TestMethod]
     public void UpdateCarPositions_SingleClass_Test()
     {
-        var secondaryProcessor = new SecondaryProcessor();
+        var secondaryProcessor = new PositionMetadataProcessor();
 
         var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", OverallPosition = 1 };
         var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", OverallPosition = 2 };
@@ -38,7 +38,7 @@ public class SecondaryProcessorTests
     [TestMethod]
     public void UpdateCarPositions_SingleClass_MultiLap_Test()
     {
-        var secondaryProcessor = new SecondaryProcessor();
+        var secondaryProcessor = new PositionMetadataProcessor();
 
         var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", OverallPosition = 1 };
         var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 9, LastTime = "00:01:01.000", OverallPosition = 2 };
@@ -65,7 +65,7 @@ public class SecondaryProcessorTests
     [TestMethod]
     public void UpdateCarPositions_MultiClass_SameLap_Test()
     {
-        var secondaryProcessor = new SecondaryProcessor();
+        var secondaryProcessor = new PositionMetadataProcessor();
 
         var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", OverallPosition = 1 };
         var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", OverallPosition = 2 };
@@ -104,7 +104,7 @@ public class SecondaryProcessorTests
     [TestMethod]
     public void UpdateCarPositions_SingleClass_MinFormat_Test()
     {
-        var secondaryProcessor = new SecondaryProcessor();
+        var secondaryProcessor = new PositionMetadataProcessor();
 
         var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", OverallPosition = 1 };
         var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:11:01.000", LastLap = 10, LastTime = "00:01:01.000", OverallPosition = 2 };
@@ -135,7 +135,7 @@ public class SecondaryProcessorTests
     [TestMethod]
     public void UpdateClassPositions_MultiClass_Test()
     {
-        var secondaryProcessor = new SecondaryProcessor();
+        var secondaryProcessor = new PositionMetadataProcessor();
 
         var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", OverallPosition = 1 };
         var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", OverallPosition = 2 };
@@ -159,7 +159,7 @@ public class SecondaryProcessorTests
     [TestMethod]
     public void UpdateBestTime_MultiClass_Test()
     {
-        var secondaryProcessor = new SecondaryProcessor();
+        var secondaryProcessor = new PositionMetadataProcessor();
 
         var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", BestTime = "00:01:00.000" };
         var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", BestTime = "00:02:00.000" };
@@ -199,7 +199,7 @@ public class SecondaryProcessorTests
     [TestMethod]
     public void UpdateBestTime_ZeroTime_SkipToNext_Test()
     {
-        var secondaryProcessor = new SecondaryProcessor();
+        var secondaryProcessor = new PositionMetadataProcessor();
 
         var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", BestTime = "00:00:00.000" };
         var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", BestTime = "00:02:00.000" };
@@ -222,7 +222,7 @@ public class SecondaryProcessorTests
     [TestMethod]
     public void UpdatePositionsLostGained_MultiClass_Test()
     {
-        var secondaryProcessor = new SecondaryProcessor();
+        var secondaryProcessor = new PositionMetadataProcessor();
 
         var car1 = new CarPosition { Number = "1", Class = "A", OverallPosition = 1, OverallStartingPosition = 1, InClassStartingPosition = 1 };
         var car2 = new CarPosition { Number = "2", Class = "A", OverallPosition = 2, OverallStartingPosition = 2, InClassStartingPosition = 2 };
@@ -294,7 +294,7 @@ public class SecondaryProcessorTests
     [TestMethod]
     public void UpdatePositionsLostGained_Invalid_MissingData_Test()
     {
-        var secondaryProcessor = new SecondaryProcessor();
+        var secondaryProcessor = new PositionMetadataProcessor();
 
         // Overall starting position missing
         var car1 = new CarPosition { Number = "1", Class = "A", OverallPosition = 1, OverallStartingPosition = 0, InClassStartingPosition = 1 };
@@ -316,7 +316,7 @@ public class SecondaryProcessorTests
     [TestMethod]
     public void UpdatePositionsLostGained_Fastest_Reset_Test()
     {
-        var secondaryProcessor = new SecondaryProcessor();
+        var secondaryProcessor = new PositionMetadataProcessor();
 
         // Overall starting position missing
         var car1 = new CarPosition { Number = "1", Class = "A", OverallPosition = 1, OverallStartingPosition = 1, InClassStartingPosition = 1 };

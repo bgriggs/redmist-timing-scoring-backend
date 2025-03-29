@@ -5,7 +5,6 @@ using Moq;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.X2;
-using RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus;
 

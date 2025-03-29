@@ -22,7 +22,7 @@ public class OrbitsDataProcessor : IDataProcessor
     private readonly IMediator mediator;
 
     private ILogger Logger { get; }
-    private readonly Debouncer debouncer = new(TimeSpan.FromMilliseconds(100));
+    private readonly Debouncer debouncer = new(TimeSpan.FromMilliseconds(80));
     public Debouncer Debouncer => debouncer;
 
     private readonly SemaphoreSlim _lock = new(1, 1);
@@ -43,7 +43,7 @@ public class OrbitsDataProcessor : IDataProcessor
     private readonly SessionMonitor sessionMonitor;
     private readonly PitProcessor pitProcessor;
     private readonly HashSet<uint> lastTransponderPassings = [];
-    private readonly SecondaryProcessor secondaryProcessor = new();
+    private readonly PositionMetadataProcessor secondaryProcessor = new();
 
 
     public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor, PitProcessor pitProcessor)
@@ -59,7 +59,7 @@ public class OrbitsDataProcessor : IDataProcessor
     public async Task ProcessUpdate(string type, string data, int sessionId, CancellationToken stoppingToken = default)
     {
         var sw = Stopwatch.StartNew();
-        await sessionMonitor.ProcessSession(sessionId, stoppingToken);
+        await sessionMonitor.ProcessSessionAsync(sessionId, stoppingToken);
 
         // Parse RMonitor data
         if (type == "rmonitor")
@@ -226,13 +226,11 @@ public class OrbitsDataProcessor : IDataProcessor
 
     public TimingCommon.Models.EventStatus GetEventStatus()
     {
-        Enum.TryParse(typeof(Flags), Heartbeat.FlagStatus, true, out var flag);
-        flag ??= Flags.Unknown;
-
+        var flag = Heartbeat.FlagStatus.ToFlag();
         return new TimingCommon.Models.EventStatus
         {
             EventId = EventId.ToString(),
-            Flag = (Flags)flag,
+            Flag = flag,
             LapsToGo = Heartbeat.LapsToGo,
             TimeToGo = Heartbeat.TimeToGo,
             TotalTime = Heartbeat.RaceTime
@@ -384,9 +382,7 @@ public class OrbitsDataProcessor : IDataProcessor
         // Save off starting positions
         if (raceInfo.Laps == 0)
         {
-            Enum.TryParse(typeof(Flags), Heartbeat.FlagStatus, true, out var f);
-            f ??= Flags.Unknown;
-            var flag = (Flags)f;
+            var flag = Heartbeat.FlagStatus.ToFlag();
 
             // Allow capture of starting positions during lap 0 up to and include the green flag
             if (flag == Flags.Unknown || flag == Flags.Yellow || flag == Flags.Green)
@@ -476,12 +472,11 @@ public class OrbitsDataProcessor : IDataProcessor
     /// <example>$I,"16:36:08.000","12 jan 01"</example>
     private void ProcessI()
     {
-        Enum.TryParse(typeof(Flags), Heartbeat.FlagStatus, true, out var flag);
-        flag ??= Flags.Unknown;
+        var flag = Heartbeat.FlagStatus.ToFlag();
 
         // Allow for reset when the event is initializing. Once it has started,
         // suppress the resets to reduce user confusion
-        if ((Flags)flag == Flags.Unknown)
+        if (flag == Flags.Unknown)
         {
             classes.Clear();
             competitors.Clear();
@@ -723,7 +718,7 @@ public class OrbitsDataProcessor : IDataProcessor
             _lock.Release();
         }
 
-        sessionMonitor.LastPayload = payload;
+        sessionMonitor.SetCurrentPayload(payload);
         return payload;
     }
 

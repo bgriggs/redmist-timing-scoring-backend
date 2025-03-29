@@ -1,12 +1,12 @@
 ﻿using RedMist.TimingCommon.Models;
 using System.Globalization;
 
-namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
+namespace RedMist.TimingAndScoringService.EventStatus;
 
 /// <summary>
 /// Responsible for second pass on data from the Result Monitor such as for derived data, e.g. gap, diff, etc.
 /// </summary>
-public class SecondaryProcessor
+public class PositionMetadataProcessor
 {
     private const string MinTimeFormat = @"m\:ss\.fff";
     private const string SecTimeFormat = @"s\.fff";
@@ -55,7 +55,7 @@ public class SecondaryProcessor
         return positions;
     }
 
-    private void UpdateGapAndDiff(List<CarPosition> carPositions, Action<CarPosition, string> setGap, Action<CarPosition, string> setDiff)
+    private static void UpdateGapAndDiff(List<CarPosition> carPositions, Action<CarPosition, string> setGap, Action<CarPosition, string> setDiff)
     {
         if (carPositions.Count == 0)
             return;
@@ -92,7 +92,7 @@ public class SecondaryProcessor
                 if (positionAhead.LastLap == currentPosition.LastLap)
                 {
                     var pat = ParseRMTime(positionAhead.TotalTime);
-                    var g = (cpt - pat);
+                    var g = cpt - pat;
                     setGap(currentPosition, g.ToString(GetTimeFormat(g)));
                 }
                 else
@@ -112,7 +112,7 @@ public class SecondaryProcessor
                 // Overall Difference
                 if (leader.LastLap == currentPosition.LastLap)
                 {
-                    var diff = (cpt - leaderTime);
+                    var diff = cpt - leaderTime;
                     setDiff(currentPosition, diff.ToString(GetTimeFormat(diff)));
                 }
                 else
@@ -132,7 +132,7 @@ public class SecondaryProcessor
         }
     }
 
-    private void UpdateClassPositions(List<CarPosition> classCars)
+    private static void UpdateClassPositions(List<CarPosition> classCars)
     {
         // Class positions
         var sortedClassGroup = classCars.OrderBy(p => p.OverallPosition).ToList();
@@ -142,7 +142,7 @@ public class SecondaryProcessor
         }
     }
 
-    private void UpdateBestTime(List<CarPosition> carPositions, Action<CarPosition, bool> setBest)
+    private static void UpdateBestTime(List<CarPosition> carPositions, Action<CarPosition, bool> setBest)
     {
         if (carPositions.Count == 0)
             return;
@@ -153,7 +153,7 @@ public class SecondaryProcessor
                        orderby time
                        select car)
                       .FirstOrDefault();
-        
+
         if (bestCar != null)
         {
             setBest(bestCar, true);
@@ -178,7 +178,7 @@ public class SecondaryProcessor
                 car.InClassPositionsGained = CarPosition.InvalidPosition;
                 continue;
             }
-            
+
             car.OverallPositionsGained = car.OverallStartingPosition - car.OverallPosition;
             car.InClassPositionsGained = car.InClassStartingPosition - car.ClassPosition;
         }
@@ -222,9 +222,11 @@ public class SecondaryProcessor
 
 
 
-    private static DateTime ParseRMTime(string time)
+    public static DateTime ParseRMTime(string time)
     {
-        DateTime.TryParseExact(time, "HH:mm:ss.fff", null, DateTimeStyles.None, out var result);
+        if (DateTime.TryParseExact(time, "HH:mm:ss.fff", null, DateTimeStyles.None, out var result))
+            return result;
+        DateTime.TryParseExact(time, "HH:mm:ss", null, DateTimeStyles.None, out result);
         return result;
     }
 
