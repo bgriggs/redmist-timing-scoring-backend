@@ -1,4 +1,5 @@
 ﻿using MediatR;
+using RedMist.ControlLogs;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
@@ -42,17 +43,19 @@ public class OrbitsDataProcessor : IDataProcessor
 
     private readonly SessionMonitor sessionMonitor;
     private readonly PitProcessor pitProcessor;
+    private readonly ControlLogCache? controlLog;
     private readonly HashSet<uint> lastTransponderPassings = [];
     private readonly PositionMetadataProcessor secondaryProcessor = new();
 
 
-    public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor, PitProcessor pitProcessor)
+    public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor, PitProcessor pitProcessor, ControlLogCache? controlLog)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
         this.mediator = mediator;
         this.sessionMonitor = sessionMonitor;
         this.pitProcessor = pitProcessor;
+        this.controlLog = controlLog;
     }
 
 
@@ -548,7 +551,7 @@ public class OrbitsDataProcessor : IDataProcessor
             eventEntries = GetChangedEventEntries();
 
             // Car Positions
-            carPositions = GetCarPositions(includeChangedOnly: true);
+            carPositions = await GetCarPositions(includeChangedOnly: true);
 
             // Loop data (pit)
             pitProcessor.ApplyTransponderPassing(carPositions);
@@ -583,7 +586,7 @@ public class OrbitsDataProcessor : IDataProcessor
         _ = mediator.Publish(new StatusNotification(EventId, SessionId, json), stoppingToken);
     }
 
-    public CarPosition[] GetCarPositions(bool includeChangedOnly = false)
+    public async Task<CarPosition[]> GetCarPositions(bool includeChangedOnly = false)
     {
         var carPositions = new List<CarPosition>();
         List<uint> dirtyTransponderPassings;
@@ -666,7 +669,23 @@ public class OrbitsDataProcessor : IDataProcessor
             }
         }
 
+        // Apply diff / gap
         carPositions = secondaryProcessor.UpdateCarPositions(carPositions);
+
+        // Apply penalties
+        if (controlLog != null)
+        {
+            var penalties = await controlLog.GetPenaltiesAsync();
+            foreach (var carPosition in carPositions)
+            {
+                var num = carPosition.Number?.ToLower();
+                if (num != null && penalties.TryGetValue(num, out var penalty))
+                {
+                    carPosition.PenalityWarnings = penalty.warnings;
+                    carPosition.PenalityLaps = penalty.laps;
+                }
+            }
+        }
 
         lock (lastTransponderPassings)
         {
@@ -696,7 +715,7 @@ public class OrbitsDataProcessor : IDataProcessor
             var eventEntries = GetEventEntries();
 
             // Car Positions
-            var carPositions = GetCarPositions();
+            var carPositions = await GetCarPositions();
 
             // Loop data (pit)
             pitProcessor.ApplyTransponderPassing(carPositions);

@@ -1,6 +1,7 @@
 ﻿using Google.Apis.Auth.OAuth2;
 using Google.Apis.Services;
 using Google.Apis.Sheets.v4;
+using Google.Apis.Sheets.v4.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -32,6 +33,7 @@ public class GoogleSheetsControlLog : IControlLog
     private readonly Dictionary<int, SheetColumnMapping> columnIndexMappings = [];
     private readonly IDbContextFactory<TsContext> tsContext;
     private string? configJson;
+
 
     public GoogleSheetsControlLog(ILoggerFactory loggerFactory, IConfiguration config, IDbContextFactory<TsContext> tsContext)
     {
@@ -69,7 +71,9 @@ public class GoogleSheetsControlLog : IControlLog
             ApplicationName = "RedMist"
         });
 
-        var vals = sheetsService.Spreadsheets.Values;
+        var request = sheetsService.Spreadsheets.Get(paramParts[0]);
+        request.IncludeGridData = true;
+
         var range = "A4:H1000";
         if (paramParts.Length == 2 && !string.IsNullOrWhiteSpace(paramParts[1]))
         {
@@ -80,17 +84,17 @@ public class GoogleSheetsControlLog : IControlLog
         {
             range = $"{range}";
         }
+        request.Ranges = range;
 
         var log = new List<ControlLogEntry>();
         try
         {
-            var request = vals.Get(paramParts[0], range);
             var response = await request.ExecuteAsync(stoppingToken);
 
             // Check for column mappings
             if (columnIndexMappings.Count == 0)
             {
-                var header = response.Values[0];
+                var header = response.Sheets[0].Data[0].RowData[0];
                 InitializeColumnMappings(header);
             }
             if (columnIndexMappings.Count == 0)
@@ -98,26 +102,37 @@ public class GoogleSheetsControlLog : IControlLog
                 return (false, []);
             }
 
+            int missedTimestampCount = 0;
+
             // Parse the log, skip the header
-            for (int row = 1; row < response.Values.Count; row++)
+            for (int row = 1; row < response.Sheets[0].Data[0].RowData.Count; row++)
             {
                 var requiredColumns = columns.Where(c => c.IsRequired).ToList();
                 ControlLogEntry entry = new() { OrderId = row };
-                for (int col = 0; col < response.Values[row].Count; col++)
+                for (int col = 0; col < response.Sheets[0].Data[0].RowData[row].Values.Count; col++)
                 {
                     if (columnIndexMappings.TryGetValue(col, out var mapping))
                     {
-                        var cell = response.Values[row][col].ToString();
+                        var cell = response.Sheets[0].Data[0].RowData[row].Values[col];
                         if (cell != null)
                         {
-                            var valueSet = mapping.SetEntryValue(entry, cell);
+                            var valueSet = mapping.SetEntryValue(entry, cell.FormattedValue);
                             if (valueSet)
                             {
                                 requiredColumns.Remove(mapping);
+                                var color = cell.EffectiveFormat.BackgroundColor;
+                                if (color != null && color.Red == 1 && color.Green == 1 && color.Blue == null)
+                                {
+                                    mapping.SetCellHighlighted(entry);
+                                }
                             }
                             else
                             {
-                                Logger.LogTrace($"Failed to parse and assign row {row + 4}, {mapping.PropertyName}, value='{cell}'");
+                                //Logger.LogTrace($"Failed to parse and assign row {row + 4}, {mapping.PropertyName}, value='{cell.FormattedValue}'");
+                                if (mapping.PropertyName.Contains("Time"))
+                                {
+                                    missedTimestampCount++;
+                                }
                             }
                         }
                     }
@@ -130,10 +145,15 @@ public class GoogleSheetsControlLog : IControlLog
                 }
                 else
                 {
-                    foreach (var column in requiredColumns)
-                    {
-                        Logger.LogTrace($"Row {row + 4} did not pass validation, missing {column.PropertyName}");
-                    }
+                    //foreach (var column in requiredColumns)
+                    //{
+                    //    Logger.LogTrace($"Row {row + 4} did not pass validation, missing {column.PropertyName}");
+                    //}
+                }
+
+                if (missedTimestampCount > 2)
+                {
+                    break;
                 }
             }
         }
@@ -145,12 +165,12 @@ public class GoogleSheetsControlLog : IControlLog
         return (true, log);
     }
 
-    private void InitializeColumnMappings(IList<object> header)
+    private void InitializeColumnMappings(RowData header)
     {
-        for (int i = 0; i < header.Count; i++)
+        for (int i = 0; i < header.Values.Count; i++)
         {
             SheetColumnMapping? map;
-            var col = header[i].ToString() ?? string.Empty;
+            var col = header.Values[i].FormattedValue;
 
             // Since there are two identical Car # column headers, check whether the first one has already been used
             if (col.StartsWith("Car", StringComparison.InvariantCultureIgnoreCase) && columnIndexMappings.Values.Any(c => c.SheetColumn.StartsWith("Car")))

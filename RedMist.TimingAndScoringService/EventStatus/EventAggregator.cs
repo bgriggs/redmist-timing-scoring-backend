@@ -103,15 +103,15 @@ public class EventAggregator : BackgroundService
                         {
                             if (!processors.TryGetValue(eventId, out processor))
                             {
-                                // Create a new data processor for this event
-                                var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
-                                var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
-                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor);
-                                processors[eventId] = processor;
-
                                 // Create a control log cache for the event
                                 var controlLogCache = new ControlLogCache(eventId, loggerFactory, tsContext, controlLogFactory);
                                 controlLogCaches[eventId] = controlLogCache;
+
+                                // Create a new data processor for this event
+                                var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
+                                var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
+                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor, controlLogCache);
+                                processors[eventId] = processor;
                             }
                         }
 

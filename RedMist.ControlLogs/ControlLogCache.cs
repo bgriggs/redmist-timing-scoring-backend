@@ -2,16 +2,18 @@
 using Microsoft.Extensions.Logging;
 using RedMist.Database;
 using RedMist.TimingCommon.Models;
+using System.Text.RegularExpressions;
 
 namespace RedMist.ControlLogs;
 
-public class ControlLogCache
+public partial class ControlLogCache
 {
     private readonly int eventId;
     private ILogger Logger { get; }
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly IControlLogFactory controlLogFactory;
     private readonly Dictionary<string, List<ControlLogEntry>> controlLogCache = [];
+    private Dictionary<string, (int warnings, int laps)> penalityCounts = [];
     private readonly SemaphoreSlim cacheLock = new(1, 1);
 
 
@@ -37,6 +39,7 @@ public class ControlLogCache
                 .FirstOrDefaultAsync(stoppingToken);
             if (org != null && !string.IsNullOrEmpty(org.ControlLogType))
             {
+                penalityCounts.Clear();
                 var controlLog = controlLogFactory.CreateControlLog(org.ControlLogType);
                 var logEntries = await controlLog.LoadControlLogAsync(org.ControlLogParams, stoppingToken);
 
@@ -47,7 +50,10 @@ public class ControlLogCache
                 controlLogCache.Clear();
                 foreach (var l in car1Grp)
                 {
-                    controlLogCache[l.Key.ToLower()] = [.. l];
+                    if (l.Key != null)
+                    {
+                        controlLogCache[l.Key.ToLower()] = [.. l];
+                    }
                 }
 
                 foreach (var l in car2Grp)
@@ -61,6 +67,9 @@ public class ControlLogCache
                         value.AddRange(l);
                     }
                 }
+
+                // Determine the number of penalties (laps and warnings)
+                penalityCounts = GetWarningsAndPenalties(controlLogCache);
 
                 var changes = GetChangedCars(oldLogs, controlLogCache);
                 return changes;
@@ -178,6 +187,77 @@ public class ControlLogCache
         try
         {
             return [.. controlLogCache.Values.SelectMany(x => x)];
+        }
+        finally
+        {
+            cacheLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Parse through the penalty column and count the number of warnings and laps.
+    /// </summary>
+    public static Dictionary<string, (int warnings, int laps)> GetWarningsAndPenalties(Dictionary<string, List<ControlLogEntry>> logs)
+    {
+        var results = new Dictionary<string, (int warnings, int laps)>();
+        var warningRegex = WarningRegex();
+        var lapPenaltyRegex = LapPenaltyRegex();
+
+        foreach (var car in logs)
+        {
+            int laps = 0;
+            int warnings = 0;
+            foreach (var entry in car.Value)
+            {
+                var isWarning = warningRegex.IsMatch(entry.PenalityAction);
+                if (isWarning && ApplyToCar(car.Key, entry))
+                {
+                    warnings++;
+                    continue;
+                }
+                var lapPenalties = lapPenaltyRegex.Match(entry.PenalityAction);
+                if (lapPenalties.Success && ApplyToCar(car.Key, entry))
+                {
+                    laps += int.Parse(lapPenalties.Groups[1].Value);
+                }
+            }
+            results[car.Key] = (warnings, laps);
+        }
+        return results;
+    }
+
+    [GeneratedRegex(@".*Warning.*", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex WarningRegex();
+
+    [GeneratedRegex(@"(\d+)\s+(Lap|Laps)", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex LapPenaltyRegex();
+
+    /// <summary>
+    /// When there are two cars, check if the car is highlighted to determine who to apply the penalty to.
+    /// </summary>
+    private static bool ApplyToCar(string car, ControlLogEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.Car2))
+        {
+            return true;
+        }
+        if (car.Equals(entry.Car1, StringComparison.OrdinalIgnoreCase) && entry.IsCar1Highlighted)
+        {
+            return true;
+        }
+        if (car.Equals(entry.Car2, StringComparison.OrdinalIgnoreCase) && entry.IsCar2Highlighted)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    public async Task<Dictionary<string, (int warnings, int laps)>> GetPenaltiesAsync(CancellationToken stoppingToken = default)
+    {
+        await cacheLock.WaitAsync(stoppingToken);
+        try
+        {
+            return penalityCounts.ToDictionary();
         }
         finally
         {

@@ -21,7 +21,7 @@ public class SessionMonitorTests
         var session = new DebugSessionMonitor(1, dbMock.Object);
         var mediatorMock = new Mock<IMediator>();
         var pitProcessor = new PitProcessor(1, dbMock.Object, lf);
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, null);
 
         var dataReader = new TestDataReader("event-finish-with-cars-data.log");
         var data = dataReader.GetData();
@@ -59,7 +59,7 @@ public class SessionMonitorTests
         var session = new DebugSessionMonitor(1, dbMock.Object);
         var mediatorMock = new Mock<IMediator>();
         var pitProcessor = new PitProcessor(1, dbMock.Object, lf);
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, null);
 
         var dataReader = new TestDataReader("event-finish-with-stopped.log");
         var data = dataReader.GetData();
@@ -102,7 +102,7 @@ public class SessionMonitorTests
         var session = new DebugSessionMonitor(1, dbMock.Object);
         var mediatorMock = new Mock<IMediator>();
         var pitProcessor = new PitProcessor(1, dbMock.Object, lf);
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, null);
 
         var dataReader = new TestDataReader("event-finish-with-reset.log");
         var data = dataReader.GetData();

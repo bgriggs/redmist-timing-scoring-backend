@@ -1,4 +1,5 @@
-﻿using RedMist.TimingCommon.Models;
+﻿using Newtonsoft.Json.Linq;
+using RedMist.TimingCommon.Models;
 using System.Reflection;
 
 namespace RedMist.ControlLogs.WrlGoogleSheets;
@@ -40,5 +41,12 @@ public class SheetColumnMapping
         {
             return false;
         }
+    }
+
+    public void SetCellHighlighted(ControlLogEntry entry)
+    {
+        var propName = $"Is{PropertyName}Highlighted";
+        var prop = entry.GetType().GetProperty(propName, BindingFlags.Instance | BindingFlags.Public);
+        prop?.SetValue(entry, true);
     }
 }
