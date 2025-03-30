@@ -58,13 +58,32 @@ public partial class ControlLogCache
 
                 foreach (var l in car2Grp)
                 {
-                    if (!controlLogCache.TryGetValue(l.Key, out List<ControlLogEntry>? value))
+                    if (l.Key != null)
                     {
-                        controlLogCache[l.Key.ToLower()] = [.. l];
+                        if (!controlLogCache.TryGetValue(l.Key, out List<ControlLogEntry>? value))
+                        {
+                            controlLogCache[l.Key.ToLower()] = [.. l];
+                        }
+                        else
+                        {
+                            value.AddRange(l);
+                        }
                     }
-                    else
+                }
+
+                // Entries not associated with a car
+                foreach (var entry in logEntries.logs)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.Car1) && string.IsNullOrWhiteSpace(entry.Car2))
                     {
-                        value.AddRange(l);
+                        if (!controlLogCache.TryGetValue(string.Empty, out List<ControlLogEntry>? value))
+                        {
+                            controlLogCache[string.Empty] = [entry];
+                        }
+                        else
+                        {
+                            value.AddRange(entry);
+                        }
                     }
                 }
 
@@ -205,6 +224,10 @@ public partial class ControlLogCache
 
         foreach (var car in logs)
         {
+            if (string.IsNullOrWhiteSpace(car.Key))
+            {
+                continue;
+            }
             int laps = 0;
             int warnings = 0;
             foreach (var entry in car.Value)

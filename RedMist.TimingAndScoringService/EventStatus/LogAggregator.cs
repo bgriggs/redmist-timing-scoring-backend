@@ -31,7 +31,7 @@ public class LogAggregator : INotificationHandler<StatusNotification>
             {
                 try
                 {
-                    await lapLogger.LogCarPositionUpdates(notification.EventId, notification.SessionId, carPositions, cancellationToken);
+                    await lapLogger.LogCarPositionUpdates(notification.EventId, notification.SessionId, carPositions, notification.PitProcessor, cancellationToken);
                 }
                 catch (Exception ex)
                 {

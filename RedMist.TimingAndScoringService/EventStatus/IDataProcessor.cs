@@ -1,4 +1,5 @@
-﻿using RedMist.TimingCommon.Models;
+﻿using RedMist.TimingAndScoringService.EventStatus.X2;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
@@ -9,6 +10,7 @@ public interface IDataProcessor
 {
     int EventId { get; }
     int SessionId { get; }
+    PitProcessor? PitProcessor { get; }
     Task ProcessUpdate(string type, string data, int sessionId, CancellationToken stoppingToken);
     Task<Payload> GetPayload(CancellationToken stoppingToken);
 }

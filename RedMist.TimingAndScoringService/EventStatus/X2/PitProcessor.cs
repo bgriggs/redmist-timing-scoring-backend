@@ -145,13 +145,13 @@ public class PitProcessor
                 {
                     pos.IsInPit = true;
                 }
-                
+
                 if (pitEntrance.TryGetValue(pos.TransponderId, out _))
                 {
                     pos.IsEnteredPit = true;
                     pos.IsInPit = true;
                 }
-                
+
                 if (pitExit.TryGetValue(pos.TransponderId, out _))
                 {
                     pos.IsExitedPit = true;
@@ -182,7 +182,7 @@ public class PitProcessor
                         laps = [];
                         carLapsWithPitStops[pos.Number] = laps;
                     }
-                    laps.Add(pos.LastLap);
+                    laps.Add(pos.LastLap + 1);
                 }
 
                 // Check if the lap was included in a pit stop
@@ -192,6 +192,14 @@ public class PitProcessor
                     pos.LapIncludedPit = carLapsWithPitStops.TryGetValue(pos.Number, out var laps) && laps.Contains(pos.LastLap);
                 }
             }
+        }
+    }
+
+    public void UpdateCarPositionForLogging(CarPosition carPosition)
+    {
+        if (carPosition.Number != null && !carLapsWithPitStops.TryGetValue(carPosition.Number, out var laps) && laps != null)
+        {
+            carPosition.LapIncludedPit = laps.Contains(carPosition.LastLap);
         }
     }
 

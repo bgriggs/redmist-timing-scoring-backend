@@ -73,7 +73,8 @@ public class TimingAndScoringHub : Hub
     /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
     public async Task SendRMonitor(int eventId, int sessionId, string command)
     {
-        Logger.LogTrace("RX-RM: e:{evt} s:{ses} {c}", eventId, sessionId, command);
+        string commandStr = command.Replace("\r", "").Replace("\n", "");
+        Logger.LogTrace("RX-RM: e:{evt} s:{ses} {c}", eventId, sessionId, commandStr);
         if (eventId > 0)
         {
             // Security note: not checking that the event/session is valid for the user explicitly here for performance. Security is ensured by the

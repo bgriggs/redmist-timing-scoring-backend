@@ -20,7 +20,7 @@ public class GoogleSheetsControlLog : IControlLog
     //Time    Corner  Car #   Car #   Note    Status  Penalty / Action        Other Notes
     private static readonly SheetColumnMapping[] columns =
     [
-        new SheetColumnMapping{ SheetColumn = "Time", PropertyName = "Timestamp", IsRequired = true, Convert = (s) => DateTime.Parse(s) },
+        new SheetColumnMapping{ SheetColumn = "Time", PropertyName = "Timestamp", IsRequired = true, Convert = (s) =>  { DateTime.TryParse(s, out var dt); return dt; } },
         new SheetColumnMapping{ SheetColumn = "Corner", PropertyName = "Corner", IsRequired = false },
         new SheetColumnMapping{ SheetColumn = "Car #", PropertyName = "Car1", IsRequired = false },
         new SheetColumnMapping{ SheetColumn = "Car #", PropertyName = "Car2", IsRequired = false },
@@ -139,7 +139,7 @@ public class GoogleSheetsControlLog : IControlLog
                 }
 
                 // Make sure all required columns have been found
-                if (requiredColumns.Count == 0)
+                if (requiredColumns.Count == 0 && entry.Timestamp > new DateTime(2025))
                 {
                     log.Add(entry);
                 }

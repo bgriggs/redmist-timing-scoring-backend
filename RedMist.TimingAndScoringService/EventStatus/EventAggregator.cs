@@ -193,7 +193,7 @@ public class EventAggregator : BackgroundService
         Logger.LogDebug("Getting payload for event {0}...", p.EventId);
         var payload = await p.GetPayload(stoppingToken);
         var json = JsonSerializer.Serialize(payload);
-        await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, json) { Payload = payload }, stoppingToken);
+        await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, json) { Payload = payload, PitProcessor = p.PitProcessor }, stoppingToken);
     }
 
     #endregion
@@ -244,9 +244,12 @@ public class EventAggregator : BackgroundService
                     var entries = await controlLogs.Value.GetCarControlEntries([.. changedCars]);
                     foreach (var e in entries)
                     {
-                        var ccl = new CarControlLogs { CarNumber = e.Key, ControlLogEntries = e.Value };
-                        var notificaiton = new ControlLogNotification(controlLogs.Key, ccl) { CarNumber = e.Key };
-                        _ = mediator.Publish(notificaiton, stoppingToken);
+                        if (!string.IsNullOrWhiteSpace(e.Key))
+                        {
+                            var ccl = new CarControlLogs { CarNumber = e.Key, ControlLogEntries = e.Value };
+                            var notificaiton = new ControlLogNotification(controlLogs.Key, ccl) { CarNumber = e.Key };
+                            _ = mediator.Publish(notificaiton, stoppingToken);
+                        }
                     }
 
                     // Full log update

@@ -19,7 +19,7 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 public class OrbitsDataProcessor : IDataProcessor
 {
     public int EventId { get; private set; }
-    public int SessionId { get; private set; }
+    public int SessionId => sessionMonitor.SessionId;
     private readonly IMediator mediator;
 
     private ILogger Logger { get; }
@@ -41,8 +41,9 @@ public class OrbitsDataProcessor : IDataProcessor
     public string TrackName { get; set; } = string.Empty;
     public double TrackLength { get; set; }
 
+    public PitProcessor PitProcessor { get; private set; }
+
     private readonly SessionMonitor sessionMonitor;
-    private readonly PitProcessor pitProcessor;
     private readonly ControlLogCache? controlLog;
     private readonly HashSet<uint> lastTransponderPassings = [];
     private readonly PositionMetadataProcessor secondaryProcessor = new();
@@ -54,7 +55,7 @@ public class OrbitsDataProcessor : IDataProcessor
         EventId = eventId;
         this.mediator = mediator;
         this.sessionMonitor = sessionMonitor;
-        this.pitProcessor = pitProcessor;
+        PitProcessor = pitProcessor;
         this.controlLog = controlLog;
     }
 
@@ -80,7 +81,7 @@ public class OrbitsDataProcessor : IDataProcessor
             ProcessLoops(data, stoppingToken);
         }
 
-        Logger.LogInformation("Processed {type} in {time}ms", type, sw.ElapsedMilliseconds);
+        Logger.LogTrace("Processed {type} in {time}ms", type, sw.ElapsedMilliseconds);
     }
 
     private void ProcessPassings(string data, CancellationToken stoppingToken)
@@ -93,7 +94,7 @@ public class OrbitsDataProcessor : IDataProcessor
                 if (passings != null)
                 {
                     _ = mediator.Publish(new X2PassingsNotification(passings), stoppingToken);
-                    pitProcessor.UpdatePassings(passings);
+                    PitProcessor.UpdatePassings(passings);
 
                     lock (lastTransponderPassings)
                     {
@@ -554,7 +555,7 @@ public class OrbitsDataProcessor : IDataProcessor
             carPositions = await GetCarPositions(includeChangedOnly: true);
 
             // Loop data (pit)
-            pitProcessor.ApplyTransponderPassing(carPositions);
+            PitProcessor.ApplyTransponderPassing(carPositions);
         }
         finally
         {
@@ -576,14 +577,14 @@ public class OrbitsDataProcessor : IDataProcessor
         payload.CarPositionUpdates.AddRange(carPositions);
 
         var json = JsonSerializer.Serialize(payload);
-        _ = mediator.Publish(new StatusNotification(EventId, SessionId, json) { Payload = payload }, stoppingToken);
+        _ = mediator.Publish(new StatusNotification(EventId, SessionId, json) { Payload = payload, PitProcessor = PitProcessor }, stoppingToken);
     }
 
     public void PublishEventReset(CancellationToken stoppingToken = default)
     {
         var payload = new Payload { EventId = EventId, IsReset = true };
         var json = JsonSerializer.Serialize(payload);
-        _ = mediator.Publish(new StatusNotification(EventId, SessionId, json), stoppingToken);
+        _ = mediator.Publish(new StatusNotification(EventId, SessionId, json) { PitProcessor = PitProcessor }, stoppingToken);
     }
 
     public async Task<CarPosition[]> GetCarPositions(bool includeChangedOnly = false)
@@ -605,6 +606,7 @@ public class OrbitsDataProcessor : IDataProcessor
             var carPos = new CarPosition
             {
                 EventId = EventId.ToString(),
+                SessionId = SessionId.ToString(),
                 Number = raceInfo.RegistrationNumber,
                 OverallPosition = raceInfo.Position,
                 TotalTime = raceInfo.RaceTime,
@@ -718,7 +720,7 @@ public class OrbitsDataProcessor : IDataProcessor
             var carPositions = await GetCarPositions();
 
             // Loop data (pit)
-            pitProcessor.ApplyTransponderPassing(carPositions);
+            PitProcessor.ApplyTransponderPassing(carPositions);
 
             // Put flag state on all car positions
             foreach (var carPosition in carPositions)

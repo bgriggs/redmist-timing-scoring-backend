@@ -29,7 +29,13 @@ public class PassingsProcessor : INotificationHandler<X2PassingsNotification>
                 await db.AddAsync(passing, cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
             }
-            catch { }
+            catch (DbUpdateException)
+            {
+            }
+            catch(Exception ex)
+            {
+                Logger.LogError(ex, "Error processing X2 passings");
+            }
         }
     }
 }

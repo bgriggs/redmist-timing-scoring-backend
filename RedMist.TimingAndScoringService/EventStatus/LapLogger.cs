@@ -1,7 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using RedMist.Database;
 using RedMist.Database.Models;
+using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingCommon.Models;
+using System.Net.NetworkInformation;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
@@ -25,8 +27,14 @@ public class LapLogger
     }
 
 
-    public async Task LogCarPositionUpdates(int eventId, int sessionId, List<CarPosition> carPositions, CancellationToken cancellationToken)
+    public async Task LogCarPositionUpdates(int eventId, int sessionId, List<CarPosition> carPositions, PitProcessor? pitProcessor, CancellationToken cancellationToken)
     {
+        if (pitProcessor != null)
+        {
+            // Wait for 1 seconds to allow for transponder passing updates to come in for a pit stop at start / finish
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
         // Get the last laps for all cars in the event
         Dictionary<string, int>? carLastLapLookup;
         await eventCarLastLapLookupLock.WaitAsync(cancellationToken);
@@ -59,13 +67,22 @@ public class LapLogger
 
                 if (position.LastLap > lastLap)
                 {
-                    Logger.LogDebug("Car {0} completed new lap {1} in event {2}. Logging...", position.Number, position.LastLap, eventId);
+                    Logger.LogTrace("Car {0} completed new lap {1} in event {2}. Logging...", position.Number, position.LastLap, eventId);
+
+                    // Update pit stops
+                    pitProcessor?.UpdateCarPositionForLogging(position);
+                    //if (position.LapIncludedPit)
+                    //{
+                    //    Logger.LogTrace("Logging Car {0} is in pit", position.Number);
+                    //}
 
                     // New lap completed
                     carLastLapLookup[position.Number] = position.LastLap;
+
                     var log = new CarLapLog
                     {
                         EventId = eventId,
+                        SessionId = sessionId,
                         Timestamp = DateTime.UtcNow,
                         CarNumber = position.Number,
                         LapNumber = position.LastLap,

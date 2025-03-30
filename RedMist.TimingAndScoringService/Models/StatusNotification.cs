@@ -1,4 +1,5 @@
 ﻿using MediatR;
+using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.Models;
@@ -20,4 +21,6 @@ public class StatusNotification(int eventId, int sessionId, string statusJson) :
     public string StatusJson { get; set; } = statusJson;
 
     public string ConnectionDestination { get; set; } = string.Empty;
+
+    public PitProcessor? PitProcessor { get; set; }
 }
