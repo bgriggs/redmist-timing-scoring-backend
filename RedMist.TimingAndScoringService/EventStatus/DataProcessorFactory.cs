@@ -17,11 +17,11 @@ public class DataProcessorFactory : IDataProcessorFactory
     }
 
 
-    public IDataProcessor CreateDataProcessor(string type, int eventId, SessionMonitor sessionMonitor, PitProcessor pitProcessor, ControlLogCache? controlLog)
+    public IDataProcessor CreateDataProcessor(string type, int eventId, SessionMonitor sessionMonitor, PitProcessor pitProcessor, ControlLogCache? controlLog, FlagProcessor flagProcessor)
     {
         if (string.Compare(type, "RMonitor", StringComparison.OrdinalIgnoreCase) == 0)
         {
-            return new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, controlLog);
+            return new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, controlLog, flagProcessor);
         }
         throw new NotImplementedException();
     }

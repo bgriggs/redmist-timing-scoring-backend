@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using RedMist.Database;
 using RedMist.TimingCommon.Models;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace RedMist.ControlLogs;
@@ -28,7 +29,9 @@ public partial class ControlLogCache
 
     public async Task<List<string>> RequestControlLogChanges(CancellationToken stoppingToken = default)
     {
+        //var sw = Stopwatch.StartNew();
         await cacheLock.WaitAsync(stoppingToken);
+        //Logger.LogInformation("cacheLock.WaitAsync in {t}ms", sw.ElapsedMilliseconds);
         try
         {
             Logger.LogDebug($"Checking control log for event {eventId}");
@@ -37,12 +40,14 @@ public partial class ControlLogCache
                 .Join(db.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
                 .Select(x => x.o)
                 .FirstOrDefaultAsync(stoppingToken);
+            //Logger.LogInformation("DB load in {t}ms", sw.ElapsedMilliseconds);
+
             if (org != null && !string.IsNullOrEmpty(org.ControlLogType))
             {
                 penalityCounts.Clear();
                 var controlLog = controlLogFactory.CreateControlLog(org.ControlLogType);
                 var logEntries = await controlLog.LoadControlLogAsync(org.ControlLogParams, stoppingToken);
-
+                //Logger.LogInformation("LoadControlLogAsync in {t}ms", sw.ElapsedMilliseconds);
                 var oldLogs = controlLogCache.ToDictionary(x => x.Key, x => x.Value);
                 var car1Grp = logEntries.logs.GroupBy(x => x.Car1);
                 var car2Grp = logEntries.logs.GroupBy(x => x.Car2);
@@ -89,8 +94,9 @@ public partial class ControlLogCache
 
                 // Determine the number of penalties (laps and warnings)
                 penalityCounts = GetWarningsAndPenalties(controlLogCache);
-
+                //Logger.LogInformation("GetWarningsAndPenalties in {t}ms", sw.ElapsedMilliseconds);
                 var changes = GetChangedCars(oldLogs, controlLogCache);
+                //Logger.LogInformation("GetChangedCars in {t}ms", sw.ElapsedMilliseconds);
                 return changes;
             }
             else if (org == null)

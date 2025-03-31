@@ -20,6 +20,7 @@ public class TsContext : DbContext
     public DbSet<SessionResult> SessionResults { get; set; } = null!;
     public DbSet<Loop> X2Loops { get; set; } = null!;
     public DbSet<Passing> X2Passings { get; set; } = null!;
+    public DbSet<FlagLog> FlagLog { get; set; } = null!;
 
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }

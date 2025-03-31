@@ -12,8 +12,6 @@ public class SessionMonitor
     private ILogger Logger { get; }
 
     private readonly Debouncer lastUpdatedDebouncer = new(TimeSpan.FromMilliseconds(1500));
-    //private readonly TimeSpan finalizeSessionDelay = TimeSpan.FromMinutes(10);
-    //private Timer? finalizeSessionTimer;
     private readonly int eventId;
     private readonly IDbContextFactory<TsContext> tsContext;
 
@@ -158,7 +156,7 @@ public class SessionMonitor
         // See if the event is in the process of finishing, i.e. last lap during checkered flag
         if (finishingStartedTimestamp is not null && current.EventStatus != null)
         {
-            var eventTime = PositionMetadataProcessor.ParseRMTime(current.EventStatus.TotalTime);
+            var eventTime = PositionMetadataProcessor.ParseRMTime(current.EventStatus.LocalTimeOfDay);
             var changes = GetCarCheckeredLapChangedCount(current.CarPositions);
 
             // As cars continue to complete their final lap, update the checkered lap count/timestamp
@@ -197,7 +195,7 @@ public class SessionMonitor
                 }
             }
 
-            finishingStartedTimestamp = PositionMetadataProcessor.ParseRMTime(current.EventStatus.TotalTime);
+            finishingStartedTimestamp = PositionMetadataProcessor.ParseRMTime(current.EventStatus.LocalTimeOfDay);
         }
     }
 

@@ -225,6 +225,29 @@ public class TimingAndScoringHub : Hub
         await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_LOOPS_STREAM_FIELD, eventId), json);
     }
 
+    /// <summary>
+    /// Sends a list of flag durations associated with a specific event to a streaming service.
+    /// </summary>
+    /// <param name="eventId">Identifies the specific event for which the flags are being sent.</param>
+    /// <param name="sessionId"></param>
+    /// <param name="flags">Contains the durations of flags that are associated with the event.</param>
+    public async Task SendFlags(int eventId, int sessionId, List<FlagDuration> flags)
+    {
+        Logger.LogTrace("SendFlags: evt:{eventId} loops:{loops.Count}", eventId, flags.Count);
+
+        var clientId = GetClientId();
+        if (clientId == null)
+        {
+            Logger.LogWarning("SendFlags: invalid client id, ignoring message");
+            return;
+        }
+
+        var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+        var cache = cacheMux.GetDatabase();
+        var json = JsonSerializer.Serialize(flags);
+        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_FLAGS_STREAM_FIELD, eventId, sessionId), json);
+    }
+
     #endregion
 
     #region UI Clients

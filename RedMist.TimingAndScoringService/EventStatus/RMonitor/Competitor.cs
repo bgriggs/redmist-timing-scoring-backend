@@ -30,18 +30,21 @@ public partial class Competitor
     {
         RegistrationNumber = parts[1].Replace("\"", "");
         Number = parts[2].Replace("\"", "");
-        Transponder = uint.Parse(parts[3]);
+        if (uint.TryParse(parts[3], out uint transponder))
+            Transponder = transponder;
         FirstName = parts[4].Replace("\"", "");
         LastName = parts[5].Replace("\"", "");
         Country = parts[6].Replace("\"", "");
-        ClassNumber = int.Parse(parts[7]);
+        if (int.TryParse(parts[7], out int c))
+            ClassNumber = c;
     }
 
     public void ParseComp(string[] parts)
     {
         RegistrationNumber = parts[1].Replace("\"", "");
         Number = parts[2].Replace("\"", "");
-        ClassNumber = int.Parse(parts[3]);
+        if (int.TryParse(parts[3], out int c))
+            ClassNumber = c;
         FirstName = parts[4].Replace("\"", "");
         LastName = parts[5].Replace("\"", "");
         Country = parts[6].Replace("\"", "");

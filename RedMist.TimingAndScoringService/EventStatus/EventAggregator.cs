@@ -4,7 +4,6 @@ using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using RedMist.Database.Models;
-using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
@@ -34,6 +33,7 @@ public class EventAggregator : BackgroundService
     private ILogger Logger { get; }
     private readonly string podInstance;
 
+
     public EventAggregator(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
         IDataProcessorFactory dataProcessorFactory, IMediator mediator, HybridCache hcache,
         IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory)
@@ -48,6 +48,7 @@ public class EventAggregator : BackgroundService
         this.controlLogFactory = controlLogFactory;
         podInstance = configuration["POD_NAME"] ?? throw new ArgumentNullException("POD_NAME");
     }
+
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -84,13 +85,13 @@ public class EventAggregator : BackgroundService
                     foreach (var field in entry.Values)
                     {
                         // Process update from timing system
-                        Logger.LogTrace("Event Status Update: {0}", entry.Id);
+                        Logger.LogTrace("Event Status Update: {e}", entry.Id);
 
                         // Check the message tag to determine the type of update (e.g. result monitor)
                         var tags = field.Name.ToString().Split('-');
                         if (tags.Length < 3)
                         {
-                            Logger.LogWarning("Invalid event status update: {0}", field.Name);
+                            Logger.LogWarning("Invalid event status update: {f}", field.Name);
                             continue;
                         }
 
@@ -110,7 +111,8 @@ public class EventAggregator : BackgroundService
                                 // Create a new data processor for this event
                                 var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
                                 var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
-                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor, controlLogCache);
+                                var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
+                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor, controlLogCache, flagProcessor);
                                 processors[eventId] = processor;
                             }
                         }
@@ -139,7 +141,7 @@ public class EventAggregator : BackgroundService
         var cmd = JsonSerializer.Deserialize<SendStatusCommand>(cmdJson);
         if (cmd == null)
         {
-            Logger.LogWarning("Invalid command received: {0}", cmdJson);
+            Logger.LogWarning("Invalid command received: {cj}", cmdJson);
             return;
         }
 
@@ -151,8 +153,8 @@ public class EventAggregator : BackgroundService
 
         if (p != null)
         {
-            Logger.LogInformation("Sending full status update for event {0} to new connection {1}", cmd.EventId, cmd.ConnectionId);
-            await SendEventStatus(p, cmd.ConnectionId);
+            Logger.LogInformation("Sending full status update for event {e} to new connection {con}", cmd.EventId, cmd.ConnectionId);
+            await SendEventStatusAsync(p, cmd.ConnectionId);
         }
     }
 
@@ -161,7 +163,7 @@ public class EventAggregator : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-            Logger.LogInformation("Sending full update...");
+            //Logger.LogDebug("Sending full status update to connected clients...");
             var sw = Stopwatch.StartNew();
             IDataProcessor[] ps;
             lock (processors)
@@ -172,28 +174,31 @@ public class EventAggregator : BackgroundService
             {
                 foreach (var p in ps)
                 {
-                    await SendEventStatus(p, stoppingToken);
+                    await SendEventStatusAsync(p, stoppingToken);
                 }
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error sending full update");
             }
-            Logger.LogInformation("Full update sent in {0}ms", sw.ElapsedMilliseconds);
+            Logger.LogDebug("Full status update sent in {t}ms", sw.ElapsedMilliseconds);
         }
     }
 
-    private async Task SendEventStatus(IDataProcessor p, CancellationToken stoppingToken = default)
+    private async Task SendEventStatusAsync(IDataProcessor p, CancellationToken stoppingToken = default)
     {
-        await SendEventStatus(p, string.Empty, stoppingToken);
+        await SendEventStatusAsync(p, string.Empty, stoppingToken);
     }
 
-    private async Task SendEventStatus(IDataProcessor p, string connectionIdDestination, CancellationToken stoppingToken = default)
+    private async Task SendEventStatusAsync(IDataProcessor p, string connectionIdDestination, CancellationToken stoppingToken = default)
     {
-        Logger.LogDebug("Getting payload for event {0}...", p.EventId);
+        Logger.LogTrace("Getting payload for event {e}...", p.EventId);
+        //var sw = Stopwatch.StartNew();
         var payload = await p.GetPayload(stoppingToken);
+        //Logger.LogDebug("GetPayload in {t}ms", sw.ElapsedMilliseconds);
         var json = JsonSerializer.Serialize(payload);
         await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, json) { Payload = payload, PitProcessor = p.PitProcessor }, stoppingToken);
+        //Logger.LogDebug("Publish StatusNotification in {t}ms", sw.ElapsedMilliseconds);
     }
 
     #endregion
@@ -205,7 +210,7 @@ public class EventAggregator : BackgroundService
         var cmd = JsonSerializer.Deserialize<SendControlLogCommand>(cmdJson);
         if (cmd == null)
         {
-            Logger.LogWarning("Invalid command received: {0}", cmdJson);
+            Logger.LogWarning("Invalid command received: {cj}", cmdJson);
             return;
         }
 
@@ -222,7 +227,7 @@ public class EventAggregator : BackgroundService
                 var entries = await controlLog.GetCarControlEntries([cmd.CarNumber.ToLower()]);
                 ccl = new CarControlLogs { CarNumber = cmd.CarNumber, ControlLogEntries = [.. entries.SelectMany(s => s.Value)] };
             }
-            Logger.LogInformation("Sending control logs for event {0} car {1} to new connection {1}", cmd.EventId, cmd.CarNumber, cmd.ConnectionId);
+            Logger.LogInformation("Sending control logs for event {e} car {c} to new connection {con}", cmd.EventId, cmd.CarNumber, cmd.ConnectionId);
             await mediator.Publish(new ControlLogNotification(cmd.EventId, ccl) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
         }
     }
@@ -231,7 +236,6 @@ public class EventAggregator : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
             Logger.LogInformation("Requesting control log update...");
             var sw = Stopwatch.StartNew();
 
@@ -263,7 +267,8 @@ public class EventAggregator : BackgroundService
             {
                 Logger.LogError(ex, "Error sending full update");
             }
-            Logger.LogDebug("Full update sent in {0}ms", sw.ElapsedMilliseconds);
+            Logger.LogDebug("Sent control log updates in {0}ms", sw.ElapsedMilliseconds);
+            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
         }
     }
 

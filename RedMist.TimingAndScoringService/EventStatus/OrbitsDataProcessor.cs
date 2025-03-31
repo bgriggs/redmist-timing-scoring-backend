@@ -9,6 +9,7 @@ using RedMist.TimingCommon.Models.X2;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
@@ -36,6 +37,7 @@ public class OrbitsDataProcessor : IDataProcessor
     private readonly Dictionary<string, PracticeQualifying> practiceQualifying = [];
     private readonly Dictionary<string, PassingInformation> passingInformation = [];
 
+
     public int SessionReference { get; set; }
     public string SessionName { get; set; } = string.Empty;
     public string TrackName { get; set; } = string.Empty;
@@ -45,11 +47,13 @@ public class OrbitsDataProcessor : IDataProcessor
 
     private readonly SessionMonitor sessionMonitor;
     private readonly ControlLogCache? controlLog;
+    private readonly FlagProcessor flagProcessor;
     private readonly HashSet<uint> lastTransponderPassings = [];
     private readonly PositionMetadataProcessor secondaryProcessor = new();
 
 
-    public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor, PitProcessor pitProcessor, ControlLogCache? controlLog)
+    public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
+        PitProcessor pitProcessor, ControlLogCache? controlLog, FlagProcessor flagProcessor)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
@@ -57,6 +61,7 @@ public class OrbitsDataProcessor : IDataProcessor
         this.sessionMonitor = sessionMonitor;
         PitProcessor = pitProcessor;
         this.controlLog = controlLog;
+        this.flagProcessor = flagProcessor;
     }
 
 
@@ -79,6 +84,11 @@ public class OrbitsDataProcessor : IDataProcessor
         else if (type == "x2loop")
         {
             ProcessLoops(data, stoppingToken);
+        }
+        // Loops
+        else if (type == "flags")
+        {
+            _ = UpdateFlags(data, stoppingToken);
         }
 
         Logger.LogTrace("Processed {type} in {time}ms", type, sw.ElapsedMilliseconds);
@@ -237,7 +247,8 @@ public class OrbitsDataProcessor : IDataProcessor
             Flag = flag,
             LapsToGo = Heartbeat.LapsToGo,
             TimeToGo = Heartbeat.TimeToGo,
-            TotalTime = Heartbeat.RaceTime
+            LocalTimeOfDay = Heartbeat.TimeOfDay,
+            RunningRaceTime = Heartbeat.RaceTime,
         };
     }
 
@@ -534,6 +545,19 @@ public class OrbitsDataProcessor : IDataProcessor
     #endregion
     #endregion
 
+    #region Flags
+
+    private async Task UpdateFlags(string json, CancellationToken stoppingToken)
+    {
+        var fs = JsonSerializer.Deserialize<List<FlagDuration>>(json);
+        if (fs != null)
+        {
+            await flagProcessor.ProcessFlags(SessionId, fs, stoppingToken);
+        }
+    }
+
+    #endregion
+
     #region Status Publishing
 
     private async Task PublishChanges(CancellationToken stoppingToken = default)
@@ -556,6 +580,7 @@ public class OrbitsDataProcessor : IDataProcessor
 
             // Loop data (pit)
             PitProcessor.ApplyTransponderPassing(carPositions);
+
         }
         finally
         {
@@ -706,7 +731,6 @@ public class OrbitsDataProcessor : IDataProcessor
     public async Task<Payload> GetPayload(CancellationToken stoppingToken = default)
     {
         var payload = new Payload();
-
         await _lock.WaitAsync(stoppingToken);
         try
         {
@@ -733,6 +757,9 @@ public class OrbitsDataProcessor : IDataProcessor
             payload.EventStatus = eventStatus;
             payload.EventEntries.AddRange(eventEntries);
             payload.CarPositions.AddRange(carPositions);
+
+            payload.FlagDurations = await flagProcessor.GetFlagsAsync(stoppingToken);
+
         }
         finally
         {
