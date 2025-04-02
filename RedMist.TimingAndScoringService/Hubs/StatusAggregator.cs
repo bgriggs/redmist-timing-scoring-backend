@@ -37,7 +37,7 @@ public class StatusAggregator : INotificationHandler<StatusNotification>
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error sending status update to client(s): {0}", ex.Message);
+            Logger.LogError(ex, "Error sending status update to client(s).");
         }
     }
 }

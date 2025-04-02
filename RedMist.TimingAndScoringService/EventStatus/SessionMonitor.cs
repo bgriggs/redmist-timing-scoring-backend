@@ -61,6 +61,9 @@ public class SessionMonitor
 
     public async Task ProcessSessionAsync(int sessionId, CancellationToken stoppingToken = default)
     {
+        if (sessionId == 999999)
+            return;
+
         if (SessionId == sessionId)
         {
             _ = lastUpdatedDebouncer.ExecuteAsync(() => SaveLastUpdatedTimestampAsync(eventId, sessionId, stoppingToken), stoppingToken);

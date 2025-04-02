@@ -2,7 +2,6 @@
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
-using System.Threading;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 

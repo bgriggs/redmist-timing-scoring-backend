@@ -1,6 +1,7 @@
 ﻿using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.Logging;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using RedMist.Database.Models;
@@ -68,6 +69,11 @@ public class EventAggregator : BackgroundService
             async (channel, value) => await ProcessControlLogRequest(value.ToString(), stoppingToken),
             CommandFlags.FireAndForget);
 
+        // Subscribe to competitor metadata requests such as when UI details opens for a car
+        await sub.SubscribeAsync(new RedisChannel(Consts.SEND_COMPETITOR_METADATA, RedisChannel.PatternMode.Literal),
+            async (channel, value) => await ProcessCompetitorMetadataRequest(value.ToString(), stoppingToken),
+            CommandFlags.FireAndForget);
+
         // Start a task to send a full update every so often
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
         // Start a task to send a control log updates every so often
@@ -112,7 +118,8 @@ public class EventAggregator : BackgroundService
                                 var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
                                 var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
                                 var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
-                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor, controlLogCache, flagProcessor);
+                                var competitorMetadataProcessor = new CompetitorMetadataProcessor(eventId, tsContext, loggerFactory);
+                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor, controlLogCache, flagProcessor, competitorMetadataProcessor);
                                 processors[eventId] = processor;
                             }
                         }
@@ -271,6 +278,49 @@ public class EventAggregator : BackgroundService
             await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
         }
     }
+
+    #endregion
+
+    #region Competitor Metadata
+
+    private async Task ProcessCompetitorMetadataRequest(string cmdJson, CancellationToken stoppingToken = default)
+    {
+        var cmd = JsonSerializer.Deserialize<SendCompetitorMetadata>(cmdJson);
+        if (cmd == null)
+        {
+            Logger.LogWarning("Invalid command received: {cj}", cmdJson);
+            return;
+        }
+
+        IDataProcessor? processor;
+        lock (processors)
+        {
+            processors.TryGetValue(cmd.EventId, out processor);
+        }
+
+        if (processor is OrbitsDataProcessor odp)
+        {
+            var competitorMetadata = await odp.CompetitorMetadataProcessor.LoadCompetitorMetadata(cmd.CarNumber, stoppingToken);
+            await mediator.Publish(new CompetitorMetadataNotification(cmd.EventId, competitorMetadata) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
+        }
+
+                //if (controlLogCaches.TryGetValue(cmd.EventId, out var controlLog))
+                //{
+                //    CarControlLogs ccl;
+                //    if (string.IsNullOrEmpty(cmd.CarNumber))
+                //    {
+                //        var entries = await controlLog.GetControlEntries();
+                //        ccl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = entries };
+                //    }
+                //    else // Specific car
+                //    {
+                //        var entries = await controlLog.GetCarControlEntries([cmd.CarNumber.ToLower()]);
+                //        ccl = new CarControlLogs { CarNumber = cmd.CarNumber, ControlLogEntries = [.. entries.SelectMany(s => s.Value)] };
+                //    }
+                //    Logger.LogInformation("Sending control logs for event {e} car {c} to new connection {con}", cmd.EventId, cmd.CarNumber, cmd.ConnectionId);
+                //    await mediator.Publish(new ControlLogNotification(cmd.EventId, ccl) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
+                //}
+            }
 
     #endregion
 

@@ -45,7 +45,7 @@ public class ControlLogAggregator : INotificationHandler<ControlLogNotification>
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error sending control log update to clients: {0}", ex.Message);
+            Logger.LogError(ex, "Error sending control log update to clients.");
         }
     }
 }

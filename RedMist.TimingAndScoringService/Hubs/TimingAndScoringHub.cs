@@ -6,9 +6,7 @@ using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.X2;
 using StackExchange.Redis;
-using System.IO;
 using System.Text.Json;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace RedMist.TimingAndScoringService.Hubs;
 
@@ -36,13 +34,13 @@ public class TimingAndScoringHub : Hub
     public async override Task OnConnectedAsync()
     {
         await base.OnConnectedAsync();
-        Logger.LogInformation("Client connected: {0}", Context.ConnectionId);
+        Logger.LogInformation("Client connected: {ConnectionId}", Context.ConnectionId);
     }
 
     public async override Task OnDisconnectedAsync(Exception? exception)
     {
         await base.OnDisconnectedAsync(exception);
-        Logger.LogInformation("Client disconnected: {0}", Context.ConnectionId);
+        Logger.LogInformation("Client disconnected: {ConnectionId}", Context.ConnectionId);
     }
 
     private string? GetClientId()
@@ -248,6 +246,39 @@ public class TimingAndScoringHub : Hub
         await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_FLAGS_STREAM_FIELD, eventId, sessionId), json);
     }
 
+    /// <summary>
+    /// Sends metadata for competitors associated with a specific event.
+    /// </summary>
+    /// <param name="eventId">Identifies the specific event for which competitor metadata is being sent.</param>
+    /// <param name="competitors">Contains the metadata of competitors such as name, make, model, club.</param>
+    public async Task SendCompetitorMetadata(int eventId, List<CompetitorMetadata> competitors)
+    {
+        Logger.LogTrace("SendCompetitorMetadata: evt:{eventId} competitors:{competitors.Count}", eventId, competitors.Count);
+
+        var clientId = GetClientId();
+        if (clientId == null)
+        {
+            Logger.LogWarning("SendCompetitorMetadata: invalid client id, ignoring message");
+            return;
+        }
+
+        // Ensure the event provided is valid for this client
+        var orgId = await eventDistribution.GetOrganizationId(clientId);
+        using var db = await tsContext.CreateDbContextAsync();
+        var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.Id == eventId);
+        if (ev?.Id != eventId)
+        {
+            Logger.LogWarning("SendCompetitorMetadata: event {e} not found for client {c}. Ignoring message.", eventId, clientId);
+            return;
+        }
+
+        // Send the data to the event processor
+        var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+        var cache = cacheMux.GetDatabase();
+        var json = JsonSerializer.Serialize(competitors);
+        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_COMPETITORS, eventId), json);
+    }
+
     #endregion
 
     #region UI Clients
@@ -333,6 +364,33 @@ public class TimingAndScoringHub : Hub
         var grpKey = $"{eventId}-{carNum}";
         await Groups.RemoveFromGroupAsync(connectionId, grpKey);
         Logger.LogInformation("Client {0} unsubscribed from control log for car {1} event {2}", connectionId, carNum, eventId);
+    }
+
+    public async Task SubscribeToCompetitorMetadata(int eventId, string carNum)
+    {
+        var connectionId = Context.ConnectionId;
+        var grpKey = $"{eventId}-{carNum}";
+        await Groups.AddToGroupAsync(connectionId, grpKey);
+
+        if (eventId > 0)
+        {
+            // Send a full status update to the client
+            var sub = cacheMux.GetSubscriber();
+            var cmd = new SendCompetitorMetadata { EventId = eventId, ConnectionId = connectionId, CarNumber = carNum };
+            var json = JsonSerializer.Serialize(cmd);
+            // Tell the service responsible for this event to send a full status update
+            await sub.PublishAsync(new RedisChannel(Consts.SEND_COMPETITOR_METADATA, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
+        }
+
+        Logger.LogInformation("Client {connectionId} subscribed from competitor metadata for car {carNum} event {eventId}", connectionId, carNum, eventId);
+    }
+
+    public async Task UnsubscribeFromCompetitorMetadata(int eventId, string carNum)
+    {
+        var connectionId = Context.ConnectionId;
+        var grpKey = $"{eventId}-{carNum}";
+        await Groups.RemoveFromGroupAsync(connectionId, grpKey);
+        Logger.LogInformation("Client {connectionId} unsubscribed from competitor metadata for car {carNum} event {eventId}", connectionId, carNum, eventId);
     }
 
     #endregion

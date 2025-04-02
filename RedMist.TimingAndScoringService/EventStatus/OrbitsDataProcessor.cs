@@ -9,7 +9,6 @@ using RedMist.TimingCommon.Models.X2;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
@@ -48,12 +47,13 @@ public class OrbitsDataProcessor : IDataProcessor
     private readonly SessionMonitor sessionMonitor;
     private readonly ControlLogCache? controlLog;
     private readonly FlagProcessor flagProcessor;
+    public CompetitorMetadataProcessor CompetitorMetadataProcessor { get; private set; }
     private readonly HashSet<uint> lastTransponderPassings = [];
     private readonly PositionMetadataProcessor secondaryProcessor = new();
 
 
     public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
-        PitProcessor pitProcessor, ControlLogCache? controlLog, FlagProcessor flagProcessor)
+        PitProcessor pitProcessor, ControlLogCache? controlLog, FlagProcessor flagProcessor, CompetitorMetadataProcessor competitorMetadataProcessor)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
@@ -62,6 +62,7 @@ public class OrbitsDataProcessor : IDataProcessor
         PitProcessor = pitProcessor;
         this.controlLog = controlLog;
         this.flagProcessor = flagProcessor;
+        CompetitorMetadataProcessor = competitorMetadataProcessor;
     }
 
 
@@ -73,30 +74,35 @@ public class OrbitsDataProcessor : IDataProcessor
         // Parse RMonitor data
         if (type == "rmonitor")
         {
-            await ProcessResultMonitor(data, stoppingToken);
+            await ProcessResultMonitorAsync(data, stoppingToken);
         }
         // Passings
         else if (type == "x2pass")
         {
-            ProcessPassings(data, stoppingToken);
+            await ProcessPassings(data, stoppingToken);
         }
         // Loops
         else if (type == "x2loop")
         {
             ProcessLoops(data, stoppingToken);
         }
-        // Loops
+        // Flags
         else if (type == "flags")
         {
-            _ = UpdateFlags(data, stoppingToken);
+            _ = UpdateFlagsAsync(data, stoppingToken);
+        }
+        // Competitor Metadata
+        else if (type == "competitors")
+        {
+            _ = ProcessCompetitorMetadataAsync(data, stoppingToken);
         }
 
         Logger.LogTrace("Processed {type} in {time}ms", type, sw.ElapsedMilliseconds);
     }
 
-    private void ProcessPassings(string data, CancellationToken stoppingToken)
+    private async Task ProcessPassings(string data, CancellationToken stoppingToken)
     {
-        _ = Task.Run(() =>
+        await Task.Run(() =>
         {
             try
             {
@@ -140,7 +146,7 @@ public class OrbitsDataProcessor : IDataProcessor
         }
     }
 
-    private async Task ProcessResultMonitor(string data, CancellationToken stoppingToken)
+    private async Task ProcessResultMonitorAsync(string data, CancellationToken stoppingToken)
     {
         await _lock.WaitAsync(stoppingToken);
         try
@@ -224,6 +230,33 @@ public class OrbitsDataProcessor : IDataProcessor
         }
 
         _ = debouncer.ExecuteAsync(() => Task.Run(() => PublishChanges(stoppingToken)), stoppingToken);
+    }
+
+    private async Task ProcessCompetitorMetadataAsync(string data, CancellationToken stoppingToken)
+    {
+        await Task.Run(async () =>
+        {
+            try
+            {
+                var metadata = JsonSerializer.Deserialize<List<CompetitorMetadata>>(data);
+                if (metadata != null)
+                {
+                    await CompetitorMetadataProcessor.Process(metadata, stoppingToken);
+                }
+                else
+                {
+                    Logger.LogWarning("Competitor metadata is null. Possible deserialization issue.");
+                }
+            }
+            catch (JsonException ex)
+            {
+                Logger.LogError(ex, "Error processing competitor metadata JSON");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error processing competitor metadata");
+            }
+        }, stoppingToken);
     }
 
     #region Result Monitor
@@ -547,7 +580,7 @@ public class OrbitsDataProcessor : IDataProcessor
 
     #region Flags
 
-    private async Task UpdateFlags(string json, CancellationToken stoppingToken)
+    private async Task UpdateFlagsAsync(string json, CancellationToken stoppingToken)
     {
         var fs = JsonSerializer.Deserialize<List<FlagDuration>>(json);
         if (fs != null)
