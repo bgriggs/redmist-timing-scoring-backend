@@ -34,7 +34,7 @@ public partial class ControlLogCache
         //Logger.LogInformation("cacheLock.WaitAsync in {t}ms", sw.ElapsedMilliseconds);
         try
         {
-            Logger.LogDebug($"Checking control log for event {eventId}");
+            Logger.LogDebug($"Checking control log for event {eventId} cached size {controlLogCache.Count}");
             using var db = await tsContext.CreateDbContextAsync(stoppingToken);
             var org = await db.Events.Where(db => db.Id == eventId)
                 .Join(db.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
@@ -47,6 +47,7 @@ public partial class ControlLogCache
                 penalityCounts.Clear();
                 var controlLog = controlLogFactory.CreateControlLog(org.ControlLogType);
                 var logEntries = await controlLog.LoadControlLogAsync(org.ControlLogParams, stoppingToken);
+                Logger.LogDebug("Control log loaded for event {eventId} with {Count} entries", eventId, logEntries.logs.Count());
                 //Logger.LogInformation("LoadControlLogAsync in {t}ms", sw.ElapsedMilliseconds);
                 var oldLogs = controlLogCache.ToDictionary(x => x.Key, x => x.Value);
                 var car1Grp = logEntries.logs.GroupBy(x => x.Car1);

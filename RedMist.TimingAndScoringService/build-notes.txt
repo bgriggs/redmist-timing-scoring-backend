@@ -1,8 +1,13 @@
-﻿docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.TimingAndScoringService\Dockerfile" --force-rm -t bigmission/redmist-timing-svc "C:\Code\RedMist.TimingAndScoringService" 
-docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.TimingAndScoringService\Dockerfile" --force-rm -t bigmission/redmist-timing-svc "C:\Code\RedMist.TimingAndScoringService" --progress=plain
-
+﻿# Timing and Scoring Service build notes
+docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.TimingAndScoringService\Dockerfile" --force-rm -t bigmission/redmist-timing-svc "C:\Code\RedMist.TimingAndScoringService" 
 docker push bigmission/redmist-timing-svc
 
-
+# Event Management service
 docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.EventManagement\Dockerfile" --force-rm -t bigmission/redmist-event-management "C:\Code\RedMist.TimingAndScoringService" 
 docker push bigmission/redmist-event-management
+
+
+# deploy to k8s
+kubectl config set-context --current --namespace=timing
+helm uninstall rm-timing
+helm install rm-timing redmist-deploy

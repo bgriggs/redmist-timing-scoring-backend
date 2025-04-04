@@ -151,7 +151,7 @@ public class TimingAndScoringHub : Hub
     /// <param name="passings">Contains the list of passing data that needs to be sent to the service.</param>
     public async Task SendPassings(int eventId, int sessionId, List<Passing> passings)
     {
-        Logger.LogTrace("SendPassings: evt:{eventId} passings:{passings.Count}", eventId, passings.Count);
+        Logger.LogDebug("SendPassings: evt:{eventId} passings:{passings.Count}", eventId, passings.Count);
 
         var clientId = GetClientId();
         if (clientId == null)
@@ -202,7 +202,7 @@ public class TimingAndScoringHub : Hub
     /// <param name="loops">Contains the collection of loop data that is being updated and sent.</param>
     public async Task SendLoopChange(int eventId, List<Loop> loops)
     {
-        Logger.LogTrace("SendLoopChange: evt:{eventId} loops:{loops.Count}", eventId, loops.Count);
+        Logger.LogDebug("SendLoopChange: evt:{eventId} loops:{loops.Count}", eventId, loops.Count);
 
         var clientId = GetClientId();
         if (clientId == null)
@@ -231,7 +231,7 @@ public class TimingAndScoringHub : Hub
     /// <param name="flags">Contains the durations of flags that are associated with the event.</param>
     public async Task SendFlags(int eventId, int sessionId, List<FlagDuration> flags)
     {
-        Logger.LogTrace("SendFlags: evt:{eventId} loops:{loops.Count}", eventId, flags.Count);
+        Logger.LogDebug("SendFlags: evt:{eventId} loops:{loops.Count}", eventId, flags.Count);
 
         var clientId = GetClientId();
         if (clientId == null)
@@ -253,7 +253,7 @@ public class TimingAndScoringHub : Hub
     /// <param name="competitors">Contains the metadata of competitors such as name, make, model, club.</param>
     public async Task SendCompetitorMetadata(int eventId, List<CompetitorMetadata> competitors)
     {
-        Logger.LogTrace("SendCompetitorMetadata: evt:{eventId} competitors:{competitors.Count}", eventId, competitors.Count);
+        Logger.LogDebug("SendCompetitorMetadata: evt:{eventId} competitors:{competitors.Count}", eventId, competitors.Count);
 
         var clientId = GetClientId();
         if (clientId == null)

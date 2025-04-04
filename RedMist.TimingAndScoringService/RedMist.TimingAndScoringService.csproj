@@ -7,7 +7,17 @@
 		<UserSecretsId>e80f9c37-72e7-4ed1-abaf-51e756863769</UserSecretsId>
 		<LangVersion>preview</LangVersion>
 		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<RepositoryUrl>https://github.com/bgriggs/redmist-timing-scoring-backend</RepositoryUrl>
+		<AssemblyVersion>0.0.5.0</AssemblyVersion>
 	</PropertyGroup>
+
+	<ItemGroup>
+	  <None Include="..\README.md">
+	    <Pack>True</Pack>
+	    <PackagePath>\</PackagePath>
+	  </None>
+	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="MediatR" Version="12.5.0" />
