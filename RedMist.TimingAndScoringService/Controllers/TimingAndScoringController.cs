@@ -69,8 +69,17 @@ public class TimingAndScoringController : ControllerBase
     {
         Logger.LogTrace("GetCarPositions for event {0}", eventId);
         using var context = tsContext.CreateDbContext();
+        var sessions = await context.Sessions.Where(s => s.EventId == eventId).ToListAsync();
+        var activeSession = sessions.FirstOrDefault(s => s.IsLive);
+        if (activeSession == null)
+        {
+            activeSession = sessions.OrderByDescending(s => s.StartTime)?.First();
+        }
+        if (activeSession == null)
+            return [];
+
         var laps = await context.CarLapLogs
-            .Where(c => c.EventId == eventId && c.CarNumber == carNumber && c.Timestamp == context.CarLapLogs
+            .Where(c => c.EventId == eventId && c.SessionId == activeSession.Id && c.CarNumber == carNumber && c.Timestamp == context.CarLapLogs
                 .Where(r => r.Id == c.Id)
                 .Max(r => r.Timestamp)) // When there are multiple of the same lap for the same car, such as from a simulated replay, load the newest one
             .ToListAsync();
