@@ -239,6 +239,11 @@ public partial class ControlLogCache
             int warnings = 0;
             foreach (var entry in car.Value)
             {
+                if (string.IsNullOrWhiteSpace(entry.PenalityAction))
+                {
+                    continue;
+                }
+
                 var isWarning = warningRegex.IsMatch(entry.PenalityAction);
                 if (isWarning && ApplyToCar(car.Key, entry))
                 {
