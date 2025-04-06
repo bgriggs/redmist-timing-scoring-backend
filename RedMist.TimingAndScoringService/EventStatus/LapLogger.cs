@@ -102,7 +102,7 @@ public class LapLogger
                 context.CarLapLogs.Add(log.l);
 
                 // Save the last lap reference
-                var lastLapRef = await context.CarLastLaps.FirstOrDefaultAsync(x => x.EventId == eventId && x.CarNumber == log.l.CarNumber, cancellationToken: cancellationToken);
+                var lastLapRef = await context.CarLastLaps.FirstOrDefaultAsync(x => x.EventId == eventId && x.SessionId == sessionId && x.CarNumber == log.l.CarNumber, cancellationToken: cancellationToken);
                 if (lastLapRef == null)
                 {
                     lastLapRef = new CarLastLap { EventId = eventId, SessionId = sessionId, CarNumber = log.l.CarNumber, LastLapNumber = log.lastLapNum, LastLapTimestamp = DateTime.UtcNow };
@@ -132,7 +132,7 @@ public class LapLogger
     {
         Logger.LogDebug("Loading last laps for event {0}...", eventId);
         using var context = tsContext.CreateDbContext();
-        var lastLaps = await context.CarLastLaps.Where(x => x.EventId == eventId).ToListAsync(cancellationToken);
+        var lastLaps = await context.CarLastLaps.Where(x => x.EventId == eventId && x.SessionId == sessionId).ToListAsync(cancellationToken);
         foreach (var lastLap in lastLaps)
         {
             carLastLapLookup[lastLap.CarNumber] = lastLap.LastLapNumber;
