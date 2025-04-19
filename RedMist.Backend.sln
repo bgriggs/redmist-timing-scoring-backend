@@ -20,6 +20,16 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.EventManagement", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.ControlLogs", "RedMist.ControlLogs\RedMist.ControlLogs.csproj", "{2C960C44-2278-496C-894B-D28D69592575}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.UserManagement", "RedMist.UserManagement\RedMist.UserManagement.csproj", "{CAB8CA9F-5E9D-4FCF-A62A-1717B4C390A9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BigMission.Shared", "bigmission-shared\BigMission.Shared\BigMission.Shared.csproj", "{B4143355-4E45-84AE-0D47-ADCF5651B041}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{696EBD40-9305-47DD-9392-3AE967E93E09}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+		version = version
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -58,6 +68,14 @@ Global
 		{2C960C44-2278-496C-894B-D28D69592575}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2C960C44-2278-496C-894B-D28D69592575}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2C960C44-2278-496C-894B-D28D69592575}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CAB8CA9F-5E9D-4FCF-A62A-1717B4C390A9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CAB8CA9F-5E9D-4FCF-A62A-1717B4C390A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CAB8CA9F-5E9D-4FCF-A62A-1717B4C390A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CAB8CA9F-5E9D-4FCF-A62A-1717B4C390A9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4143355-4E45-84AE-0D47-ADCF5651B041}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4143355-4E45-84AE-0D47-ADCF5651B041}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4143355-4E45-84AE-0D47-ADCF5651B041}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4143355-4E45-84AE-0D47-ADCF5651B041}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -66,6 +84,7 @@ Global
 		{0E3292A9-D018-8A12-0037-2B5F75C52CFA} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{A89399C2-B15E-3013-7BFD-256CCC13C04E} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{9A753518-85EA-2D45-E25D-14ACF9CFDC2A} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{B4143355-4E45-84AE-0D47-ADCF5651B041} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {BCE8ECC7-D522-49B0-B6FD-E0C57E6E5E3C}

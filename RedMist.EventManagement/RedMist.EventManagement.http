@@ -1,6 +1,0 @@
-@RedMist.EventManagement_HostAddress = http://localhost:5048
-
-GET {{RedMist.EventManagement_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

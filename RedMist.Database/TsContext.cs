@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
@@ -22,6 +23,7 @@ public class TsContext : DbContext
     public DbSet<Passing> X2Passings { get; set; } = null!;
     public DbSet<FlagLog> FlagLog { get; set; } = null!;
     public DbSet<CompetitorMetadata> CompetitorMetadata { get; set; } = null!;
+    public DbSet<UserOrganizationMapping> UserOrganizationMappings { get; set; } = null!;
 
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }
@@ -83,10 +85,17 @@ public class TsContext : DbContext
         var loopMetadataConverter = new ValueConverter<List<LoopMetadata>, string>(
             v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
             v => JsonSerializer.Deserialize<List<LoopMetadata>>(v, JsonSerializerOptions.Default) ?? new List<LoopMetadata>());
+        
+        var loopsComparer = new ValueComparer<List<LoopMetadata>>(
+            (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2), // Ensure both lists are non-null before calling SequenceEqual
+            c => c != null ? c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())) : 0, // Handle null case for hash code
+            c => c != null ? c.ToList() : new List<LoopMetadata>() // Handle null case for snapshot
+        );
 
         modelBuilder.Entity<TimingCommon.Models.Configuration.Event>()
             .Property(o => o.LoopsMetadata)
-            .HasConversion(loopMetadataConverter!);
+            .HasConversion(loopMetadataConverter!)
+            .Metadata.SetValueComparer(loopsComparer);
 
         // SessionResult Payload
         var payloadConverter = new ValueConverter<Payload, string>(

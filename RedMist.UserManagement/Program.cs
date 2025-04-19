@@ -5,12 +5,10 @@ using Keycloak.AuthServices.Authorization;
 using Keycloak.AuthServices.Common;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
-using RedMist.ControlLogs;
 using RedMist.Database;
 
-namespace RedMist.EventManagement;
+namespace RedMist.UserManagement;
 
 public class Program
 {
@@ -36,45 +34,18 @@ public class Program
             // Note, this should correspond to role configured with KeycloakAuthenticationOptions
             options.RoleClaimType = KeycloakConstants.RoleClaimType;
         });
-        builder.Services.AddControllers();
-        builder.Services.AddEndpointsApiExplorer();
-        builder.Services.AddSwaggerGen(c =>
-        {
-            c.SwaggerDoc("v1", new OpenApiInfo { Title = "Event Management Services", Version = "v1" });
-            c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
-            {
-                Name = "Authorization",
-                Type = SecuritySchemeType.ApiKey,
-                Scheme = "Bearer",
-                BearerFormat = "JWT",
-                In = ParameterLocation.Header,
-                Description = "JWT Authorization header using the Bearer scheme."
 
-            });
-            c.AddSecurityRequirement(new OpenApiSecurityRequirement
-            {
-                {
-                      new OpenApiSecurityScheme
-                      {
-                          Reference = new OpenApiReference
-                          {
-                              Type = ReferenceType.SecurityScheme,
-                              Id = "Bearer"
-                          }
-                      }, []
-                }
-            });
-        });
+        // Add services to the container.
+
+        builder.Services.AddControllers();
+        // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+        builder.Services.AddOpenApi();
 
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
         builder.Services.AddHealthChecks()
-            //.AddCheck<StartupHealthCheck>("Startup", tags: ["startup"])
             .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])
-            //.AddRedis(redisConn, tags: ["cache", "redis"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);
-
-        builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();
@@ -82,11 +53,8 @@ public class Program
         // Configure the HTTP request pipeline.
         if (app.Environment.IsDevelopment())
         {
-            Console.Title = "Event Management";
-            //app.MapOpenApi();
-            app.UseDeveloperExceptionPage();
-            app.UseSwagger();
-            app.UseSwaggerUI();
+            Console.Title = "User Management";
+            app.MapOpenApi();
         }
 
         app.MapHealthChecks("/healthz/startup", new HealthCheckOptions

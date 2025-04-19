@@ -1,18 +1,18 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+	<Import Project="..\version"></Import>
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
 
-  <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="Google.Apis.Auth" Version="1.69.0" />
+		<PackageReference Include="Google.Apis.Sheets.v4" Version="1.69.0.3694" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Google.Apis.Auth" Version="1.69.0" />
-    <PackageReference Include="Google.Apis.Sheets.v4" Version="1.69.0.3694" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
+	</ItemGroup>
 
 </Project>

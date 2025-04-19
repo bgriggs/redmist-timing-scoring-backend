@@ -1,3 +1,4 @@
+using BigMission.Shared.Utilities;
 using BigMission.TestHelpers;
 using HealthChecks.UI.Client;
 using Keycloak.AuthServices.Authentication;
@@ -105,6 +106,7 @@ public class Program
             });
 
         var app = builder.Build();
+        app.LogAssemblyInfo<Program>();
 
         // Configure the HTTP request pipeline.
         if (app.Environment.IsDevelopment())
