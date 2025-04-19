@@ -7,3 +7,6 @@
 [submodule "StackRedis.L1"]
 	path = StackRedis.L1
 	url = https://github.com/bgriggs/StackRedis.L1.git
+[submodule "bigmission-shared"]
+	path = bigmission-shared
+	url = https://github.com/bgriggs/bigmission-shared.git
