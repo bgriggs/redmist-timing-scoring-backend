@@ -5,6 +5,7 @@ using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
+//using RedMist.TimingCommon.Models.Configuration;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.Controllers;
@@ -73,30 +74,35 @@ public class TimingAndScoringController : ControllerBase
     public async Task<List<EventListSummary>> LoadLiveEvents()
     {
         Logger.LogTrace("LoadLiveEvents");
+        using var db = await tsContext.CreateDbContextAsync();
+        var summaries = await (
+        from e in db.Events
+        join o in db.Organizations on e.OrganizationId equals o.Id
+        join s in db.Sessions on e.Id equals s.EventId
+        where e.IsActive && !e.IsDeleted && s.IsLive
+        group new { e, o, s } by new
+        {
+            e.Id,
+            e.OrganizationId,
+            OrganizationName = o.Name,
+            EventName = e.Name,
+            EventDate = e.StartDate,
+            TrackName = e.TrackName,
+            Schedule = e.Schedule
+        } into g
+        select new EventListSummary
+        {
+            Id = g.Key.Id,
+            OrganizationId = g.Key.OrganizationId,
+            OrganizationName = g.Key.OrganizationName,
+            EventName = g.Key.EventName,
+            EventDate = g.Key.EventDate.ToString("yyyy-MM-dd"),
+            IsLive = true, // At least one session in the group is live
+            TrackName = g.Key.TrackName,
+            Schedule = g.Key.Schedule
+        }).ToListAsync();
 
-        using var db2 = await tsContext.CreateDbContextAsync();
-        var dbLiveEvents = await db2.Events
-            .Join(db2.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
-            .Join(db2.Sessions, eo => eo.e.Id, s => s.EventId, (eo, s) => new { eo, s })
-            .Where(x => !x.eo.e.IsDeleted && x.eo.e.IsActive && x.s.IsLive)
-            .OrderByDescending(x => x.eo.e.StartDate)
-            .ToListAsync();
-
-        var liveEvents = dbLiveEvents
-            .Select(x => new EventListSummary
-            {
-                Id = x.eo.e.Id,
-                OrganizationId = x.eo.o.Id,
-                OrganizationName = x.eo.o.Name,
-                EventName = x.eo.e.Name,
-                EventDate = x.eo.e.StartDate.ToString(),
-                IsLive = true,
-                TrackName = x.eo.e.TrackName,
-                Schedule = x.eo.e.Schedule
-            })
-            .ToList();
-
-        return liveEvents;
+        return summaries;
     }
 
     [AllowAnonymous]
@@ -107,31 +113,28 @@ public class TimingAndScoringController : ControllerBase
         Logger.LogTrace("LoadLiveAndRecentEvents");
 
         using var db1 = await tsContext.CreateDbContextAsync();
-        var dbRecentEventsTask = db1.Events
-            .Join(db1.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
-            .Join(db1.Sessions, eo => eo.e.Id, s => s.EventId, (eo, s) => new { eo, s })
-            .Where(x => !x.eo.e.IsDeleted && !x.s.IsLive)
-            .OrderByDescending(x => x.eo.e.StartDate)
+        var recentEvents = await (
+            from e in db1.Events
+            join o in db1.Organizations on e.OrganizationId equals o.Id
+            where !e.IsDeleted
+            where !db1.Sessions.Any(s => s.EventId == e.Id && s.IsLive)
+            orderby e.StartDate descending
+            select new EventListSummary
+            {
+                Id = e.Id,
+                OrganizationId = e.OrganizationId,
+                OrganizationName = o.Name,
+                EventName = e.Name,
+                EventDate = e.StartDate.ToString("yyyy-MM-dd"),
+                IsLive = false,
+                TrackName = e.TrackName,
+            })
             .Take(100)
             .ToListAsync();
-
         var liveEvents = await LoadLiveEvents();
-        var recentEvents = await dbRecentEventsTask;
-        
-        var recentEventList = recentEvents
-            .Select(x => new EventListSummary
-            {
-                Id = x.eo.e.Id,
-                OrganizationId = x.eo.o.Id,
-                OrganizationName = x.eo.o.Name,
-                EventName = x.eo.e.Name,
-                EventDate = x.eo.e.StartDate.ToString(),
-                TrackName = x.eo.e.TrackName,
-            })
-            .ToList();
 
         // Merge recent and live events
-        return [.. liveEvents, .. recentEventList];
+        return [.. liveEvents, .. recentEvents];
     }
 
 
@@ -238,8 +241,8 @@ public class TimingAndScoringController : ControllerBase
         Logger.LogTrace("GetOrganizationIcon for organization {organizationId}", organizationId);
 
         var cacheKey = $"org-icon-{organizationId}";
-        var data = await hcache.GetOrCreateAsync(cacheKey, 
-            async entry => await LoadOrganizationIcon(organizationId), 
+        var data = await hcache.GetOrCreateAsync(cacheKey,
+            async entry => await LoadOrganizationIcon(organizationId),
             new HybridCacheEntryOptions { Expiration = TimeSpan.FromMinutes(30) });
 
         using var context = await tsContext.CreateDbContextAsync();
