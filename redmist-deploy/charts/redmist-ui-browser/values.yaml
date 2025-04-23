@@ -21,13 +21,13 @@ ingress:
     #   more_set_headers "X-Forwarded-Proto $scheme";
     #   proxy_cache_bypass $http_upgrade;
   hosts:
-  - host: redmist.racing
+  - host: timingapp.redmist.racing
     paths: 
     - path: /
       pathType: Prefix
   tls:
   - hosts:
-    - redmist.racing
+    - timingapp.redmist.racing
     secretName: redmist-timing-tls
 
 autoscaling:
