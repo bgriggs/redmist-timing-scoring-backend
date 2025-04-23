@@ -6,7 +6,7 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
       "dotnetRunMessages": true,
-      "applicationUrl": "http://localhost:5210"
+      "applicationUrl": "http://0.0.0.0:5210"
     },
     "Container (Dockerfile)": {
       "commandName": "Docker",

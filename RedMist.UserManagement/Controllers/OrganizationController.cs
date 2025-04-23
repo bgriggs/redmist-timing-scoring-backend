@@ -59,7 +59,7 @@ public class OrganizationController : ControllerBase
 
         var org = await context.Organizations
             .Where(o => o.Id == userOrganization.OrganizationId)
-            .Select(o => new { o.Id, o.Name, o.Website, o.Logo })
+            .Select(o => new { o.Id, o.Name, o.Website })
             .FirstOrDefaultAsync();
 
         if (org == null)
@@ -72,7 +72,7 @@ public class OrganizationController : ControllerBase
             Id = org.Id,
             Name = org.Name,
             Website = org.Website,
-            Logo = org.Logo,
+            //Logo = org.Logo,
         };
     }
 
@@ -293,7 +293,7 @@ public class OrganizationController : ControllerBase
     /// </summary>
     /// <param name="clientName"></param>
     /// <returns></returns>
-    public async Task<ClientRepresentation?> LoadKeycloakClient(string clientName)
+    private async Task<ClientRepresentation?> LoadKeycloakClient(string clientName)
     {
         using HttpClient httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);

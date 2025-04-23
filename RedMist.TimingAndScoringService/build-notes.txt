@@ -6,6 +6,9 @@ docker push bigmission/redmist-timing-svc
 docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.EventManagement\Dockerfile" --force-rm -t bigmission/redmist-event-management "C:\Code\RedMist.TimingAndScoringService" 
 docker push bigmission/redmist-event-management
 
+# User Management service
+docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.UserManagement\Dockerfile" --force-rm -t bigmission/redmist-user-management "C:\Code\RedMist.TimingAndScoringService"
+docker push bigmission/redmist-user-management
 
 # deploy to k8s
 kubectl config set-context --current --namespace=timing
