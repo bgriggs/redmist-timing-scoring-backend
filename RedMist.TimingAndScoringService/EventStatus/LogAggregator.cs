@@ -35,7 +35,7 @@ public class LogAggregator : INotificationHandler<StatusNotification>
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogError(ex, "Error logging car position updates: {0}", ex.Message);
+                    Logger.LogError(ex, "Error logging car position updates: {m}", ex.Message);
                 }
             }, cancellationToken);
         }

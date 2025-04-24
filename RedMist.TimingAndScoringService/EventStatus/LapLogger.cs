@@ -3,7 +3,6 @@ using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingCommon.Models;
-using System.Net.NetworkInformation;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus;

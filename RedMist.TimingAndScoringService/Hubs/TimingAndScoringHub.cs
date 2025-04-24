@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.Models;
+using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.X2;
 using StackExchange.Redis;
@@ -22,6 +23,7 @@ public class TimingAndScoringHub : Hub
 
     private ILogger Logger { get; }
 
+
     public TimingAndScoringHub(ILoggerFactory loggerFactory, EventDistribution eventDistribution, IConnectionMultiplexer cacheMux,
         IDbContextFactory<TsContext> tsContext)
     {
@@ -30,6 +32,7 @@ public class TimingAndScoringHub : Hub
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
     }
+
 
     public async override Task OnConnectedAsync()
     {
@@ -122,7 +125,8 @@ public class TimingAndScoringHub : Hub
                         IsLive = true,
                         StartTime = DateTime.UtcNow,
                         LastUpdated = DateTime.UtcNow,
-                        LocalTimeZoneOffset = timeZoneOffset
+                        LocalTimeZoneOffset = timeZoneOffset,
+                        IsPracticeQualifying = SessionHelper.IsPracticeOrQualifyingSession(sessionName)
                     });
                     await db.SaveChangesAsync();
                     Logger.LogInformation("New session {s} saved for event {e}", sessionId, eventId);
