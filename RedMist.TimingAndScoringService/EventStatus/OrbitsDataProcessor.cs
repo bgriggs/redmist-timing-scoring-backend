@@ -282,7 +282,7 @@ public class OrbitsDataProcessor : IDataProcessor
             TimeToGo = Heartbeat.TimeToGo,
             LocalTimeOfDay = Heartbeat.TimeOfDay,
             RunningRaceTime = Heartbeat.RaceTime,
-            IsPracticeOrQualifying = SessionHelper.IsPracticeOrQualifyingSession(SessionName),
+            IsPracticeQualifying = SessionHelper.IsPracticeOrQualifyingSession(SessionName),
         };
     }
 
