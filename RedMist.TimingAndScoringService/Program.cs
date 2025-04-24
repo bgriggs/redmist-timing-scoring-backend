@@ -1,4 +1,3 @@
-using BigMission.Shared.Utilities;
 using BigMission.TestHelpers;
 using HealthChecks.UI.Client;
 using Keycloak.AuthServices.Authentication;
@@ -12,6 +11,7 @@ using NLog.Extensions.Logging;
 using RedLockNet;
 using RedLockNet.SERedis;
 using RedLockNet.SERedis.Configuration;
+using RedMist.Backend.Shared;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;

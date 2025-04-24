@@ -5,7 +5,6 @@ using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
-//using RedMist.TimingCommon.Models.Configuration;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.Controllers;
@@ -174,21 +173,21 @@ public class TimingAndScoringController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<List<CarPosition>>(StatusCodes.Status200OK)]
-    public async Task<List<CarPosition>> LoadCarLaps(int eventId, string carNumber)
+    public async Task<List<CarPosition>> LoadCarLaps(int eventId, int sessionId, string carNumber)
     {
         Logger.LogTrace("GetCarPositions for event {eventId}", eventId);
         using var context = tsContext.CreateDbContext();
-        var sessions = await context.Sessions.Where(s => s.EventId == eventId).ToListAsync();
-        var activeSession = sessions.FirstOrDefault(s => s.IsLive);
-        if (activeSession == null)
-        {
-            activeSession = sessions.OrderByDescending(s => s.StartTime)?.First();
-        }
-        if (activeSession == null)
-            return [];
+        //var sessions = await context.Sessions.Where(s => s.EventId == eventId).ToListAsync();
+        //var activeSession = sessions.FirstOrDefault(s => s.IsLive);
+        //if (activeSession == null)
+        //{
+        //    activeSession = sessions.OrderByDescending(s => s.StartTime)?.First();
+        //}
+        //if (activeSession == null)
+        //    return [];
 
         var laps = await context.CarLapLogs
-            .Where(c => c.EventId == eventId && c.SessionId == activeSession.Id && c.CarNumber == carNumber && c.Timestamp == context.CarLapLogs
+            .Where(c => c.EventId == eventId && c.SessionId == sessionId && c.CarNumber == carNumber && c.Timestamp == context.CarLapLogs
                 .Where(r => r.Id == c.Id)
                 .Max(r => r.Timestamp)) // When there are multiple of the same lap for the same car, such as from a simulated replay, load the newest one
             .ToListAsync();

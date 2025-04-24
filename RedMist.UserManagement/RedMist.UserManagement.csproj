@@ -37,6 +37,7 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\bigmission-shared\BigMission.Shared\BigMission.Shared.csproj" />
+	  <ProjectReference Include="..\RedMist.Backend.Shared\RedMist.Backend.Shared.csproj" />
 	  <ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
 	</ItemGroup>
 

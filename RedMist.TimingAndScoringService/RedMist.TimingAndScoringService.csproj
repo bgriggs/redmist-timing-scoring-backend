@@ -43,6 +43,7 @@
 	<ItemGroup>
 	  <ProjectReference Include="..\bigmission-shared\BigMission.Shared\BigMission.Shared.csproj" />
 	  <ProjectReference Include="..\redmist-timing-common\RedMist.TimingCommon\RedMist.TimingCommon.csproj" />
+	  <ProjectReference Include="..\RedMist.Backend.Shared\RedMist.Backend.Shared.csproj" />
 	  <ProjectReference Include="..\RedMist.ControlLogs\RedMist.ControlLogs.csproj" />
 	  <ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
 	</ItemGroup>

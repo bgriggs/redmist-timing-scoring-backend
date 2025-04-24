@@ -1,4 +1,3 @@
-using BigMission.Shared.Utilities;
 using HealthChecks.UI.Client;
 using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
@@ -7,6 +6,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
+using RedMist.Backend.Shared;
 using RedMist.ControlLogs;
 using RedMist.Database;
 
