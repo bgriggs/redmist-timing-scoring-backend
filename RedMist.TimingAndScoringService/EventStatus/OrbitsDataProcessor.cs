@@ -691,10 +691,6 @@ public class OrbitsDataProcessor : IDataProcessor
             // Last lap time
             if (passingInformation.TryGetValue(reg, out var pass))
             {
-                if (carPos.TotalTime != pass.RaceTime)
-                {
-                    //Logger.LogWarning("Total time mismatch for passingInformation {0}: {1} != {2}", reg, carPos.TotalTime, pass.RaceTime);
-                }
                 carPos.LastTime = pass.LapTime;
             }
 
@@ -792,7 +788,6 @@ public class OrbitsDataProcessor : IDataProcessor
             payload.CarPositions.AddRange(carPositions);
 
             payload.FlagDurations = await flagProcessor.GetFlagsAsync(stoppingToken);
-
         }
         finally
         {

@@ -73,9 +73,10 @@ public class TsContext : DbContext
             .HasConversion(broadcastConverter!);
 
         // Schedule
+        var dtJsonOptions = new JsonSerializerOptions { Converters = { new UnspecifiedDateTimeConverter() } };
         var scheduleConverter = new ValueConverter<EventSchedule, string>(
-            v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
-            v => JsonSerializer.Deserialize<EventSchedule>(v, JsonSerializerOptions.Default) ?? new EventSchedule());
+            v => JsonSerializer.Serialize(v, dtJsonOptions),
+            v => JsonSerializer.Deserialize<EventSchedule>(v, dtJsonOptions) ?? new EventSchedule());
 
         modelBuilder.Entity<TimingCommon.Models.Configuration.Event>()
             .Property(o => o.Schedule)
@@ -85,7 +86,7 @@ public class TsContext : DbContext
         var loopMetadataConverter = new ValueConverter<List<LoopMetadata>, string>(
             v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
             v => JsonSerializer.Deserialize<List<LoopMetadata>>(v, JsonSerializerOptions.Default) ?? new List<LoopMetadata>());
-        
+
         var loopsComparer = new ValueComparer<List<LoopMetadata>>(
             (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2), // Ensure both lists are non-null before calling SequenceEqual
             c => c != null ? c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())) : 0, // Handle null case for hash code

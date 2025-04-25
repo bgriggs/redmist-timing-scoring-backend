@@ -177,15 +177,6 @@ public class TimingAndScoringController : ControllerBase
     {
         Logger.LogTrace("GetCarPositions for event {eventId}", eventId);
         using var context = tsContext.CreateDbContext();
-        //var sessions = await context.Sessions.Where(s => s.EventId == eventId).ToListAsync();
-        //var activeSession = sessions.FirstOrDefault(s => s.IsLive);
-        //if (activeSession == null)
-        //{
-        //    activeSession = sessions.OrderByDescending(s => s.StartTime)?.First();
-        //}
-        //if (activeSession == null)
-        //    return [];
-
         var laps = await context.CarLapLogs
             .Where(c => c.EventId == eventId && c.SessionId == sessionId && c.CarNumber == carNumber && c.Timestamp == context.CarLapLogs
                 .Where(r => r.Id == c.Id)
