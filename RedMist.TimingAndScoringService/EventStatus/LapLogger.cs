@@ -15,7 +15,7 @@ public class LapLogger
     private readonly IDbContextFactory<TsContext> tsContext;
 
     private ILogger Logger { get; }
-    private readonly Dictionary<int, Dictionary<string, int>> eventCarLastLapLookup = [];
+    private readonly Dictionary<(int evt, int sess), Dictionary<string, int>> eventCarLastLapLookup = [];
     private readonly SemaphoreSlim eventCarLastLapLookupLock = new(1, 1);
 
 
@@ -39,10 +39,10 @@ public class LapLogger
         await eventCarLastLapLookupLock.WaitAsync(cancellationToken);
         try
         {
-            if (!eventCarLastLapLookup.TryGetValue(eventId, out carLastLapLookup))
+            if (!eventCarLastLapLookup.TryGetValue((eventId, sessionId), out carLastLapLookup))
             {
                 carLastLapLookup = [];
-                eventCarLastLapLookup[eventId] = carLastLapLookup;
+                eventCarLastLapLookup[(eventId, sessionId)] = carLastLapLookup;
                 await InitializeEventLastLaps(eventId, sessionId, carLastLapLookup, cancellationToken);
             }
         }
@@ -129,7 +129,7 @@ public class LapLogger
     /// </summary>
     private async Task InitializeEventLastLaps(int eventId, int sessionId, Dictionary<string, int> carLastLapLookup, CancellationToken cancellationToken)
     {
-        Logger.LogDebug("Loading last laps for event {0}...", eventId);
+        Logger.LogDebug("Loading last laps for event {evt}...", eventId);
         using var context = tsContext.CreateDbContext();
         var lastLaps = await context.CarLastLaps.Where(x => x.EventId == eventId && x.SessionId == sessionId).ToListAsync(cancellationToken);
         foreach (var lastLap in lastLaps)
