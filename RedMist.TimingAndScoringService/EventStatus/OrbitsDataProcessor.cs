@@ -8,6 +8,7 @@ using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.X2;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Net.NetworkInformation;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
@@ -50,7 +51,8 @@ public class OrbitsDataProcessor : IDataProcessor
     public CompetitorMetadataProcessor CompetitorMetadataProcessor { get; private set; }
     private readonly HashSet<uint> lastTransponderPassings = [];
     private readonly PositionMetadataProcessor secondaryProcessor = new();
-
+    private DateTime lastResetPosition = DateTime.MinValue;
+    private DateTime lastPositionMismatch = DateTime.MinValue;
 
     public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
         PitProcessor pitProcessor, ControlLogCache? controlLog, FlagProcessor flagProcessor, CompetitorMetadataProcessor competitorMetadataProcessor)
@@ -795,6 +797,15 @@ public class OrbitsDataProcessor : IDataProcessor
         }
 
         sessionMonitor.SetCurrentPayload(payload);
+
+        // Perform consistency check
+        var isConsistent = PerformConsistencyCheck(payload);
+        if (!isConsistent)
+        {
+            Logger.LogWarning("Inconsistent payload detected for EventId {eventId}. Initiating reset from relay.", EventId);
+            _ = ResetRacePositionState();
+        }
+
         return payload;
     }
 
@@ -809,4 +820,80 @@ public class OrbitsDataProcessor : IDataProcessor
     }
 
     #endregion
+
+    private bool PerformConsistencyCheck(Payload payload)
+    {
+        if (payload.CarPositions.Count == 0)
+        {
+            return true;
+        }
+
+        // Check that all car positions are unique
+        var positions = new Dictionary<int, string>();
+        foreach (var car in payload.CarPositions)
+        {
+            if (positions.TryGetValue(car.OverallPosition, out string? value))
+            {
+                Logger.LogWarning("Duplicate car position {pos} for {num} and {num2}", car.OverallPosition, value, car.Number);
+                return false;
+            }
+            positions[car.OverallPosition] = car.Number ?? string.Empty;
+        }
+
+        bool isMismatch = false;
+        int pos = 1;
+        var sortedPos = payload.CarPositions.OrderBy(c => c.OverallPosition).ToList();
+        foreach (var car in sortedPos)
+        {
+            if (car.OverallPosition != pos)
+            {
+                Logger.LogWarning("Car position mismatch: expected {expected}, got {actual} for car {num}", pos, car.OverallPosition, car.Number);
+
+                // Since position changes are not perfectly atomic, do not immediately trigger a reset.
+                // Allow a small window for position mismatches to avoid false positives.
+                // If the last position mismatch was within the last minute, go ahead and trigger a reset.
+                if ((DateTime.Now - lastPositionMismatch).TotalMinutes < 1)
+                {
+                    lastPositionMismatch = DateTime.Now;
+                    return false;
+                }
+
+                lastPositionMismatch = DateTime.Now;
+                isMismatch = true;
+            }
+            pos++;
+        }
+
+        // Reset on non-consecutive position mismatch occurrences
+        if (!isMismatch)
+        {
+            lastPositionMismatch = DateTime.MinValue; // Reset mismatch time if no issues found
+        }
+
+        return true;
+    }
+
+    private async Task ResetRacePositionState()
+    {
+        if ((DateTime.Now - lastResetPosition).TotalMinutes < 1)
+        {
+            Logger.LogWarning("ResetRacePositionState called too soon after last reset. Skipping.");
+            return;
+        }
+        lastResetPosition = DateTime.Now;
+
+        await _lock.WaitAsync();
+        try
+        {
+            raceInformation.Clear();
+            practiceQualifying.Clear();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+
+        // Publish reset event
+        await mediator.Publish(new RelayResetRequest { EventId = EventId }, CancellationToken.None);
+    }
 }

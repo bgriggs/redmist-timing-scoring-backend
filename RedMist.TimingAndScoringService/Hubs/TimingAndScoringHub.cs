@@ -7,6 +7,7 @@ using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.X2;
 using StackExchange.Redis;
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.Hubs;
@@ -20,6 +21,7 @@ public class TimingAndScoringHub : Hub
     private readonly EventDistribution eventDistribution;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDbContextFactory<TsContext> tsContext;
+    private static readonly ConcurrentDictionary<string, HashSet<string>> relayGroupTracker = new();
 
     private ILogger Logger { get; }
 
@@ -37,13 +39,21 @@ public class TimingAndScoringHub : Hub
     public async override Task OnConnectedAsync()
     {
         await base.OnConnectedAsync();
-        Logger.LogInformation("Client connected: {ConnectionId}", Context.ConnectionId);
+        var clientId = GetClientId();
+        Logger.LogInformation("Client {id} connected: {ConnectionId}", clientId, Context.ConnectionId);
     }
 
     public async override Task OnDisconnectedAsync(Exception? exception)
     {
         await base.OnDisconnectedAsync(exception);
-        Logger.LogInformation("Client disconnected: {ConnectionId}", Context.ConnectionId);
+        var clientId = GetClientId();
+        Logger.LogInformation("Client {id} disconnected: {ConnectionId}", clientId, Context.ConnectionId);
+
+        if (clientId?.Contains("relay") ?? false)
+        {
+            Logger.LogDebug("Removing relay connection from all groups for client {id}", clientId);
+            RemoveRelayConnectionFromAllGroups(Context.ConnectionId);
+        }
     }
 
     private string? GetClientId()
@@ -85,6 +95,49 @@ public class TimingAndScoringHub : Hub
 
             // Send the command to the service responsible for the specific event
             await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_RMON_STREAM_FIELD, eventId, sessionId), command);
+
+            // Add the connection to the relay group for this event
+            var connectionId = Context.ConnectionId;
+            var groupName = string.Format(Consts.RELAY_GROUP_PREFIX, eventId);
+            await SafeAddToRelayGroupAsync(connectionId, groupName);
+        }
+    }
+
+    /// <summary>
+    /// Reduces the number of relay group adds by keeping a local copy. When there are
+    /// multiple instance of this service, there may occasional duplications of group adds.
+    /// </summary>
+    /// <param name="connectionId"></param>
+    /// <param name="groupName"></param>
+    private async Task SafeAddToRelayGroupAsync(string connectionId, string groupName)
+    {
+        var group = relayGroupTracker.GetOrAdd(groupName, _ => []);
+
+        lock (group)
+        {
+            if (!group.Add(connectionId))
+            {
+                return; // Already in group, skip adding
+            }
+        }
+
+        await Groups.AddToGroupAsync(connectionId, groupName);
+    }
+
+    public static void RemoveRelayConnectionFromAllGroups(string connectionId)
+    {
+        foreach (var kvp in relayGroupTracker)
+        {
+            var groupName = kvp.Key;
+            var connectionSet = kvp.Value;
+
+            lock (connectionSet)
+            {
+                if (connectionSet.Remove(connectionId) && connectionSet.Count == 0)
+                {
+                    relayGroupTracker.TryRemove(groupName, out _);
+                }
+            }
         }
     }
 
@@ -295,7 +348,6 @@ public class TimingAndScoringHub : Hub
     {
         var connectionId = Context.ConnectionId;
         await Groups.AddToGroupAsync(connectionId, eventId.ToString());
-
         if (eventId > 0)
         {
             // Send a full status update to the client

@@ -16,6 +16,7 @@ public static class Consts
     public const string EVENT_X2_PASSINGS_STREAM_FIELD = "x2pass-{0}-{1}";
     public const string EVENT_FLAGS_STREAM_FIELD = "flags-{0}-{1}";
     public const string EVENT_COMPETITORS = "competitors-{0}-999999";
+    public const string RELAY_GROUP_PREFIX = "relay-event-{0}";
 
     public static readonly string[] PRACTICE_QUAL_TERMS = ["Practice", "Qualifying", "Qual"];
 }
