@@ -14,4 +14,8 @@
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <PackageReference Include="StackExchange.Redis" Version="2.8.24" />
+	</ItemGroup>
+
 </Project>

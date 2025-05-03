@@ -102,7 +102,7 @@ public class Program
         builder.Services.AddSignalR(o => o.MaximumParallelInvocationsPerClient = 3)
             .AddStackExchangeRedis(redisConn, options =>
             {
-                options.Configuration.ChannelPrefix = RedisChannel.Literal("timing-scoring");
+                options.Configuration.ChannelPrefix = RedisChannel.Literal("event-status");
             });
 
         var app = builder.Build();

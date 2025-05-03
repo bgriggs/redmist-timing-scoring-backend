@@ -1,5 +1,6 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.SignalR;
+using RedMist.Backend.Shared.Hubs;
 using RedMist.TimingAndScoringService.Models;
 
 namespace RedMist.TimingAndScoringService.Hubs;
@@ -9,10 +10,10 @@ namespace RedMist.TimingAndScoringService.Hubs;
 /// </summary>
 public class StatusAggregator : INotificationHandler<StatusNotification>
 {
-    private readonly IHubContext<TimingAndScoringHub> hubContext;
+    private readonly IHubContext<StatusHub> hubContext;
     private ILogger Logger { get; }
 
-    public StatusAggregator(IHubContext<TimingAndScoringHub> hubContext, ILoggerFactory loggerFactory)
+    public StatusAggregator(IHubContext<StatusHub> hubContext, ILoggerFactory loggerFactory)
     {
         this.hubContext = hubContext;
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -21,7 +22,6 @@ public class StatusAggregator : INotificationHandler<StatusNotification>
 
     public async Task Handle(StatusNotification notification, CancellationToken cancellationToken)
     {
-        
         try
         {
             if (!string.IsNullOrEmpty(notification.ConnectionDestination))

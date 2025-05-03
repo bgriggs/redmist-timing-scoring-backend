@@ -1,7 +1,7 @@
 ﻿using RedMist.TimingCommon.Models.Configuration;
 using System.Text.Json.Serialization;
 
-namespace RedMist.TimingAndScoringService.Models;
+namespace RedMist.StatusApi.Models;
 
 public class EventListSummary
 {

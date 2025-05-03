@@ -1,6 +1,9 @@
 ﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Reflection;
 
 namespace RedMist.Backend.Shared;
 
@@ -14,6 +17,7 @@ public static class StartupLoggerExtensions
         var name = assembly.GetName().Name ?? "unknown";
         var version = assembly.GetName().Version?.ToString() ?? "unknown";
 
-        logger.LogInformation("Service starting. Assembly: {AssemblyName}, Version: {Version}", name, version);
+        logger.LogInformation("Service starting...");
+        logger.LogInformation("Assembly: {AssemblyName}, Version: {Version}", name, version);
     }
 }

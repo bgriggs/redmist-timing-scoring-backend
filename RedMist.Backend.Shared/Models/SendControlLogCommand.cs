@@ -1,4 +1,4 @@
-﻿namespace RedMist.TimingAndScoringService.Models;
+﻿namespace RedMist.Backend.Shared.Models;
 
 public class SendControlLogCommand
 {

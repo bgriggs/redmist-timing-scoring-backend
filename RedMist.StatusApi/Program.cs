@@ -7,8 +7,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.Hubs;
 using StackExchange.Redis;
 
 namespace RedMist.StatusApi;
@@ -20,6 +20,15 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
         builder.Logging.ClearProviders();
         builder.Logging.AddNLog("NLog");
+
+        builder.Services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(policy =>
+            {
+                policy.AllowAnyOrigin();
+                policy.AllowAnyHeader();
+            });
+        });
 
         // Add services to the container.
         builder.Services.AddKeycloakWebApiAuthentication(builder.Configuration);
@@ -83,7 +92,7 @@ public class Program
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
-        app.MapHub<TimingAndScoringHub>("/event-status");
+        app.MapHub<StatusHub>("/event-status");
         app.Run();
     }
 }

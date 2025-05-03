@@ -1,12 +1,11 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using RedMist.Backend.Shared;
+using Microsoft.Extensions.Logging;
 using RedMist.Backend.Shared.Models;
-using RedMist.TimingAndScoringService.Models;
 using StackExchange.Redis;
 using System.Text.Json;
 
-namespace RedMist.StatusApi.Hubs;
+namespace RedMist.Backend.Shared.Hubs;
 
 [Authorize]
 public class StatusHub : Hub

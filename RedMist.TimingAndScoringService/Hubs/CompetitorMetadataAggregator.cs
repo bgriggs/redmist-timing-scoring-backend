@@ -1,5 +1,6 @@
 ﻿using MediatR;
 using Microsoft.AspNetCore.SignalR;
+using RedMist.Backend.Shared.Hubs;
 using RedMist.TimingAndScoringService.Models;
 
 namespace RedMist.TimingAndScoringService.Hubs;
@@ -10,11 +11,11 @@ namespace RedMist.TimingAndScoringService.Hubs;
 /// </summary>
 public class CompetitorMetadataAggregator : INotificationHandler<CompetitorMetadataNotification>
 {
-    private readonly IHubContext<TimingAndScoringHub> hubContext;
+    private readonly IHubContext<StatusHub> hubContext;
     private ILogger Logger { get; }
 
 
-    public CompetitorMetadataAggregator(IHubContext<TimingAndScoringHub> hubContext, ILoggerFactory loggerFactory)
+    public CompetitorMetadataAggregator(IHubContext<StatusHub> hubContext, ILoggerFactory loggerFactory)
     {
         this.hubContext = hubContext;
         Logger = loggerFactory.CreateLogger(GetType().Name);
