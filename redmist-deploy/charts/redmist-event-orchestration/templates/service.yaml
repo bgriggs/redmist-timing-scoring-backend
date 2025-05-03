@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "redmist-event-orchestration.fullname" . }}
+  labels:
+    {{- include "redmist-event-orchestration.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "redmist-event-orchestration.selectorLabels" . | nindent 4 }}

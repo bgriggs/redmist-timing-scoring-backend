@@ -1,5 +1,4 @@
 ﻿using MediatR;
-using RedMist.ControlLogs;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
@@ -8,7 +7,6 @@ using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.X2;
 using System.Collections.Immutable;
 using System.Diagnostics;
-using System.Net.NetworkInformation;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
@@ -46,7 +44,6 @@ public class OrbitsDataProcessor : IDataProcessor
     public PitProcessor PitProcessor { get; private set; }
 
     private readonly SessionMonitor sessionMonitor;
-    private readonly ControlLogCache? controlLog;
     private readonly FlagProcessor flagProcessor;
     public CompetitorMetadataProcessor CompetitorMetadataProcessor { get; private set; }
     private readonly HashSet<uint> lastTransponderPassings = [];
@@ -55,14 +52,13 @@ public class OrbitsDataProcessor : IDataProcessor
     private DateTime lastPositionMismatch = DateTime.MinValue;
 
     public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
-        PitProcessor pitProcessor, ControlLogCache? controlLog, FlagProcessor flagProcessor, CompetitorMetadataProcessor competitorMetadataProcessor)
+        PitProcessor pitProcessor, FlagProcessor flagProcessor, CompetitorMetadataProcessor competitorMetadataProcessor)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
         this.mediator = mediator;
         this.sessionMonitor = sessionMonitor;
         PitProcessor = pitProcessor;
-        this.controlLog = controlLog;
         this.flagProcessor = flagProcessor;
         CompetitorMetadataProcessor = competitorMetadataProcessor;
     }
@@ -730,20 +726,21 @@ public class OrbitsDataProcessor : IDataProcessor
         // Apply diff / gap
         carPositions = secondaryProcessor.UpdateCarPositions(carPositions);
 
-        // Apply penalties
-        if (controlLog != null)
-        {
-            var penalties = await controlLog.GetPenaltiesAsync();
-            foreach (var carPosition in carPositions)
-            {
-                var num = carPosition.Number?.ToLower();
-                if (num != null && penalties.TryGetValue(num, out var penalty))
-                {
-                    carPosition.PenalityWarnings = penalty.warnings;
-                    carPosition.PenalityLaps = penalty.laps;
-                }
-            }
-        }
+        // Todo: get penalties from control log redis
+        //// Apply penalties
+        //if (controlLog != null)
+        //{
+        //    var penalties = await controlLog.GetPenaltiesAsync();
+        //    foreach (var carPosition in carPositions)
+        //    {
+        //        var num = carPosition.Number?.ToLower();
+        //        if (num != null && penalties.TryGetValue(num, out var penalty))
+        //        {
+        //            carPosition.PenalityWarnings = penalty.warnings;
+        //            carPosition.PenalityLaps = penalty.laps;
+        //        }
+        //    }
+        //}
 
         lock (lastTransponderPassings)
         {

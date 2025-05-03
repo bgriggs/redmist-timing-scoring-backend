@@ -1,0 +1,21 @@
+replicaCount: 1
+
+image:
+  repository: bigmission/redmist-event-orchestration
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+
+autoscaling:
+  enabled: false
+
+serviceAccount:
+  create: false
+
+env:

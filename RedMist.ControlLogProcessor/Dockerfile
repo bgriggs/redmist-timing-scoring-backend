@@ -4,30 +4,30 @@
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
 USER $APP_UID
 WORKDIR /app
-EXPOSE 80
+EXPOSE 8080
 
 
 # This stage is used to build the service project
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["RedMist.TimingAndScoringService/RedMist.TimingAndScoringService.csproj", "RedMist.TimingAndScoringService/"]
-COPY ["bigmission-shared/BigMission.Shared/BigMission.Shared.csproj", "bigmission-shared/BigMission.Shared/"]
+COPY ["RedMist.ControlLogProcessor/RedMist.ControlLogProcessor.csproj", "RedMist.ControlLogProcessor/"]
 COPY ["RedMist.Backend.Shared/RedMist.Backend.Shared.csproj", "RedMist.Backend.Shared/"]
-COPY ["redmist-timing-common/RedMist.TimingCommon/RedMist.TimingCommon.csproj", "redmist-timing-common/RedMist.TimingCommon/"]
 COPY ["RedMist.Database/RedMist.Database.csproj", "RedMist.Database/"]
-RUN dotnet restore "./RedMist.TimingAndScoringService/RedMist.TimingAndScoringService.csproj"
+COPY ["redmist-timing-common/RedMist.TimingCommon/RedMist.TimingCommon.csproj", "redmist-timing-common/RedMist.TimingCommon/"]
+COPY ["RedMist.ControlLogs/RedMist.ControlLogs.csproj", "RedMist.ControlLogs/"]
+RUN dotnet restore "./RedMist.ControlLogProcessor/RedMist.ControlLogProcessor.csproj"
 COPY . .
-WORKDIR "/src/RedMist.TimingAndScoringService"
-RUN dotnet build "./RedMist.TimingAndScoringService.csproj" -c $BUILD_CONFIGURATION -o /app/build
+WORKDIR "/src/RedMist.ControlLogProcessor"
+RUN dotnet build "./RedMist.ControlLogProcessor.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./RedMist.TimingAndScoringService.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./RedMist.ControlLogProcessor.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "RedMist.TimingAndScoringService.dll"]
+ENTRYPOINT ["dotnet", "RedMist.ControlLogProcessor.dll"]

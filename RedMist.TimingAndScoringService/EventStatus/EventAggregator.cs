@@ -1,9 +1,7 @@
 ﻿using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
-using Microsoft.Extensions.Logging;
 using RedMist.Backend.Shared.Models;
-using RedMist.ControlLogs;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.TimingAndScoringService.EventStatus.X2;
@@ -21,14 +19,12 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 public class EventAggregator : BackgroundService
 {
     private readonly Dictionary<int, IDataProcessor> processors = [];
-    private readonly Dictionary<int, ControlLogCache> controlLogCaches = [];
     private readonly ILoggerFactory loggerFactory;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDataProcessorFactory dataProcessorFactory;
     private readonly IMediator mediator;
     private readonly HybridCache hcache;
     private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly IControlLogFactory controlLogFactory;
     public Action<EventStatusUpdateEventArgs<List<TimingCommon.Models.EventStatus>>>? EventStatusUpdated;
     public Action<EventStatusUpdateEventArgs<List<EventEntry>>>? EventEntriesUpdated;
     public Action<EventStatusUpdateEventArgs<List<CarPosition>>>? CarPositionsUpdated;
@@ -38,7 +34,7 @@ public class EventAggregator : BackgroundService
 
     public EventAggregator(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
         IDataProcessorFactory dataProcessorFactory, IMediator mediator, HybridCache hcache,
-        IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory)
+        IDbContextFactory<TsContext> tsContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.loggerFactory = loggerFactory;
@@ -47,7 +43,6 @@ public class EventAggregator : BackgroundService
         this.mediator = mediator;
         this.hcache = hcache;
         this.tsContext = tsContext;
-        this.controlLogFactory = controlLogFactory;
         podInstance = configuration["POD_NAME"] ?? throw new ArgumentNullException("POD_NAME");
     }
 
@@ -65,10 +60,10 @@ public class EventAggregator : BackgroundService
             async (channel, value) => await ProcessFullStatusRequest(value.ToString()),
             CommandFlags.FireAndForget);
 
-        // Subscribe to control log requests such as when UI details opens for a car
-        await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal),
-            async (channel, value) => await ProcessControlLogRequest(value.ToString(), stoppingToken),
-            CommandFlags.FireAndForget);
+        //// Subscribe to control log requests such as when UI details opens for a car
+        //await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal),
+        //    async (channel, value) => await ProcessControlLogRequest(value.ToString(), stoppingToken),
+        //    CommandFlags.FireAndForget);
 
         // Subscribe to competitor metadata requests such as when UI details opens for a car
         await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_COMPETITOR_METADATA, RedisChannel.PatternMode.Literal),
@@ -77,8 +72,8 @@ public class EventAggregator : BackgroundService
 
         // Start a task to send a full update every so often
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
-        // Start a task to send a control log updates every so often
-        _ = Task.Run(() => SendControlLogUpdates(stoppingToken), stoppingToken);
+        //// Start a task to send a control log updates every so often
+        //_ = Task.Run(() => SendControlLogUpdates(stoppingToken), stoppingToken);
 
         // Start a task to read timing source data from this service's stream.
         // The SignalR hub is responsible for sending timing data to the stream.
@@ -111,16 +106,12 @@ public class EventAggregator : BackgroundService
                         {
                             if (!processors.TryGetValue(eventId, out processor))
                             {
-                                // Create a control log cache for the event
-                                var controlLogCache = new ControlLogCache(eventId, loggerFactory, tsContext, controlLogFactory);
-                                controlLogCaches[eventId] = controlLogCache;
-
                                 // Create a new data processor for this event
                                 var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
                                 var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
                                 var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
                                 var competitorMetadataProcessor = new CompetitorMetadataProcessor(eventId, tsContext, loggerFactory);
-                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor, controlLogCache, flagProcessor, competitorMetadataProcessor);
+                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor, flagProcessor, competitorMetadataProcessor);
                                 processors[eventId] = processor;
                             }
                         }
@@ -211,76 +202,76 @@ public class EventAggregator : BackgroundService
 
     #endregion
 
-    #region Control Log
+    //#region Control Log
 
-    private async Task ProcessControlLogRequest(string cmdJson, CancellationToken stoppingToken = default)
-    {
-        var cmd = JsonSerializer.Deserialize<SendControlLogCommand>(cmdJson);
-        if (cmd == null)
-        {
-            Logger.LogWarning("Invalid command received: {cj}", cmdJson);
-            return;
-        }
+    //private async Task ProcessControlLogRequest(string cmdJson, CancellationToken stoppingToken = default)
+    //{
+    //    var cmd = JsonSerializer.Deserialize<SendControlLogCommand>(cmdJson);
+    //    if (cmd == null)
+    //    {
+    //        Logger.LogWarning("Invalid command received: {cj}", cmdJson);
+    //        return;
+    //    }
 
-        if (controlLogCaches.TryGetValue(cmd.EventId, out var controlLog))
-        {
-            CarControlLogs ccl;
-            if (string.IsNullOrEmpty(cmd.CarNumber))
-            {
-                var entries = await controlLog.GetControlEntries();
-                ccl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = entries };
-            }
-            else // Specific car
-            {
-                var entries = await controlLog.GetCarControlEntries([cmd.CarNumber.ToLower()]);
-                ccl = new CarControlLogs { CarNumber = cmd.CarNumber, ControlLogEntries = [.. entries.SelectMany(s => s.Value)] };
-            }
-            Logger.LogInformation("Sending control logs for event {e} car {c} to new connection {con}", cmd.EventId, cmd.CarNumber, cmd.ConnectionId);
-            await mediator.Publish(new ControlLogNotification(cmd.EventId, ccl) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
-        }
-    }
+    //    if (controlLogCaches.TryGetValue(cmd.EventId, out var controlLog))
+    //    {
+    //        CarControlLogs ccl;
+    //        if (string.IsNullOrEmpty(cmd.CarNumber))
+    //        {
+    //            var entries = await controlLog.GetControlEntries();
+    //            ccl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = entries };
+    //        }
+    //        else // Specific car
+    //        {
+    //            var entries = await controlLog.GetCarControlEntries([cmd.CarNumber.ToLower()]);
+    //            ccl = new CarControlLogs { CarNumber = cmd.CarNumber, ControlLogEntries = [.. entries.SelectMany(s => s.Value)] };
+    //        }
+    //        Logger.LogInformation("Sending control logs for event {e} car {c} to new connection {con}", cmd.EventId, cmd.CarNumber, cmd.ConnectionId);
+    //        await mediator.Publish(new ControlLogNotification(cmd.EventId, ccl) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
+    //    }
+    //}
 
-    private async Task SendControlLogUpdates(CancellationToken stoppingToken)
-    {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            Logger.LogInformation("Requesting control log update...");
-            var sw = Stopwatch.StartNew();
+    //private async Task SendControlLogUpdates(CancellationToken stoppingToken)
+    //{
+    //    while (!stoppingToken.IsCancellationRequested)
+    //    {
+    //        Logger.LogInformation("Requesting control log update...");
+    //        var sw = Stopwatch.StartNew();
 
-            try
-            {
-                foreach (var controlLogs in controlLogCaches.ToDictionary())
-                {
-                    // Single car update
-                    var changedCars = await controlLogs.Value.RequestControlLogChanges(stoppingToken);
-                    var entries = await controlLogs.Value.GetCarControlEntries([.. changedCars]);
-                    foreach (var e in entries)
-                    {
-                        if (!string.IsNullOrWhiteSpace(e.Key))
-                        {
-                            var ccl = new CarControlLogs { CarNumber = e.Key, ControlLogEntries = e.Value };
-                            var notificaiton = new ControlLogNotification(controlLogs.Key, ccl) { CarNumber = e.Key };
-                            _ = mediator.Publish(notificaiton, stoppingToken);
-                        }
-                    }
+    //        try
+    //        {
+    //            foreach (var controlLogs in controlLogCaches.ToDictionary())
+    //            {
+    //                // Single car update
+    //                var changedCars = await controlLogs.Value.RequestControlLogChanges(stoppingToken);
+    //                var entries = await controlLogs.Value.GetCarControlEntries([.. changedCars]);
+    //                foreach (var e in entries)
+    //                {
+    //                    if (!string.IsNullOrWhiteSpace(e.Key))
+    //                    {
+    //                        var ccl = new CarControlLogs { CarNumber = e.Key, ControlLogEntries = e.Value };
+    //                        var notificaiton = new ControlLogNotification(controlLogs.Key, ccl) { CarNumber = e.Key };
+    //                        _ = mediator.Publish(notificaiton, stoppingToken);
+    //                    }
+    //                }
 
-                    // Full log update
-                    var fullLog = await controlLogs.Value.GetControlEntries();
-                    var fullCcl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = fullLog };
-                    var fullNotificaiton = new ControlLogNotification(controlLogs.Key, fullCcl);
-                    _ = mediator.Publish(fullNotificaiton, stoppingToken);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error sending full update");
-            }
-            Logger.LogDebug("Sent control log updates in {0}ms", sw.ElapsedMilliseconds);
-            await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
-        }
-    }
+    //                // Full log update
+    //                var fullLog = await controlLogs.Value.GetControlEntries();
+    //                var fullCcl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = fullLog };
+    //                var fullNotificaiton = new ControlLogNotification(controlLogs.Key, fullCcl);
+    //                _ = mediator.Publish(fullNotificaiton, stoppingToken);
+    //            }
+    //        }
+    //        catch (Exception ex)
+    //        {
+    //            Logger.LogError(ex, "Error sending full update");
+    //        }
+    //        Logger.LogDebug("Sent control log updates in {0}ms", sw.ElapsedMilliseconds);
+    //        await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
+    //    }
+    //}
 
-    #endregion
+    //#endregion
 
     #region Competitor Metadata
 

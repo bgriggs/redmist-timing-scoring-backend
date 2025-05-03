@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
@@ -12,7 +13,7 @@ using System.Text.Json;
 namespace RedMist.TimingAndScoringService.Hubs;
 
 /// <summary>
-/// SignalR hub for timing and scoring relay service and UI clients.
+/// SignalR hub for timing and scoring relay service.
 /// </summary>
 [Authorize]
 public class TimingAndScoringHub : Hub
@@ -39,6 +40,12 @@ public class TimingAndScoringHub : Hub
     {
         await base.OnConnectedAsync();
         var clientId = GetClientId();
+        if (clientId == null)
+        {
+            Logger.LogWarning("OnConnectedAsync: invalid client id, ignoring message");
+            return;
+        }
+        await SetRelayConnectionAsync(clientId);
         Logger.LogInformation("Client {id} connected: {ConnectionId}", clientId, Context.ConnectionId);
     }
 
@@ -46,6 +53,13 @@ public class TimingAndScoringHub : Hub
     {
         await base.OnDisconnectedAsync(exception);
         var clientId = GetClientId();
+        if (clientId == null)
+        {
+            Logger.LogWarning("OnDisconnectedAsync: invalid client id, ignoring message");
+            return;
+        }
+
+        await RemoveRelayConnectionAsync();
         Logger.LogInformation("Client {id} disconnected: {ConnectionId}", clientId, Context.ConnectionId);
 
         if (clientId?.Contains("relay") ?? false)
@@ -72,7 +86,50 @@ public class TimingAndScoringHub : Hub
         return clientId;
     }
 
+    private async Task SetRelayConnectionAsync(string clientId)
+    {
+        var connEntry = new RelayConnectionStatus { ClientId = clientId, ConnectionId = Context.ConnectionId, ConnectedTimestamp = DateTime.UtcNow };
+        var cache = cacheMux.GetDatabase();
+        var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
+        var fieldKey = string.Format(Backend.Shared.Consts.RELAY_CONNECTION, Context.ConnectionId);
+        await cache.HashSetAsync(hashKey, fieldKey, JsonSerializer.Serialize(connEntry));
+    }
+
+    private async Task RemoveRelayConnectionAsync()
+    {
+        var cache = cacheMux.GetDatabase();
+        var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
+        var fieldKey = string.Format(Backend.Shared.Consts.RELAY_CONNECTION, Context.ConnectionId);
+        await cache.HashDeleteAsync(hashKey, fieldKey);
+    }
+
     #region Relay Clients
+
+    public async Task SendHeartbeat(int eventId)
+    {
+        var clientId = GetClientId();
+        if (clientId == null)
+        {
+            Logger.LogWarning("SendHeartbeat: invalid client id, ignoring message");
+            return;
+        }
+
+        Logger.LogTrace("Heartbeat received from relay {c} for event {eventId}", clientId, eventId);
+
+        var cache = cacheMux.GetDatabase();
+        var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
+        var orgId = await eventDistribution.GetOrganizationId(clientId);
+        var entry = new RelayConnectionEventEntry
+        {
+            EventId = eventId,
+            ConnectionId = Context.ConnectionId,
+            OrganizationId = orgId,
+            Timestamp = DateTime.UtcNow
+        };
+        var entryKey = string.Format(Backend.Shared.Consts.RELAY_HEARTBEAT, eventId);
+        var entryJson = JsonSerializer.Serialize(entry);
+        await cache.HashSetAsync(hashKey, entryKey, entryJson);
+    }
 
     /// <summary>
     /// Receives a message from an RMonitor relay.
@@ -336,117 +393,4 @@ public class TimingAndScoringHub : Hub
     }
 
     #endregion
-
-    //#region UI Clients
-
-    ///// <summary>
-    ///// UI is registering to receive updates for a specific event.
-    ///// </summary>
-    ///// <param name="eventId"></param>
-    //public async Task SubscribeToEvent(int eventId)
-    //{
-    //    var connectionId = Context.ConnectionId;
-    //    await Groups.AddToGroupAsync(connectionId, eventId.ToString());
-    //    if (eventId > 0)
-    //    {
-    //        // Send a full status update to the client
-    //        var sub = cacheMux.GetSubscriber();
-    //        var cmd = new SendStatusCommand { EventId = eventId, ConnectionId = connectionId };
-    //        var json = JsonSerializer.Serialize(cmd);
-    //        // Tell the service responsible for this event to send a full status update
-    //        await sub.PublishAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
-    //    }
-
-    //    Logger.LogInformation("Client {0} subscribed to event {1}", connectionId, eventId);
-    //}
-
-    //public async Task UnsubscribeFromEvent(int eventId)
-    //{
-    //    var connectionId = Context.ConnectionId;
-    //    await Groups.RemoveFromGroupAsync(connectionId, eventId.ToString());
-    //    Logger.LogInformation("Client {0} unsubscribed from event {1}", connectionId, eventId);
-    //}
-
-    //public async Task SubscribeToControlLogs(int eventId)
-    //{
-    //    var connectionId = Context.ConnectionId;
-    //    var grpKey = $"{eventId}-cl";
-    //    await Groups.AddToGroupAsync(connectionId, grpKey);
-
-    //    if (eventId > 0)
-    //    {
-    //        // Send a full status update to the client
-    //        var sub = cacheMux.GetSubscriber();
-    //        var cmd = new SendControlLogCommand { EventId = eventId, ConnectionId = connectionId, CarNumber = string.Empty };
-    //        var json = JsonSerializer.Serialize(cmd);
-    //        // Tell the service responsible for this event to send a full status update
-    //        await sub.PublishAsync(new RedisChannel(Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
-    //    }
-
-    //    Logger.LogInformation("Client {connectionId} subscribed to control log for event {eventId}", connectionId, eventId);
-    //}
-
-    //public async Task UnsubscribeFromControlLogs(int eventId)
-    //{
-    //    var connectionId = Context.ConnectionId;
-    //    var grpKey = $"{eventId}-cl";
-    //    await Groups.RemoveFromGroupAsync(connectionId, grpKey);
-    //    Logger.LogInformation("Client {connectionId} unsubscribed from control log for event {eventId}", connectionId, eventId);
-    //}
-
-    //public async Task SubscribeToCarControlLogs(int eventId, string carNum)
-    //{
-    //    var connectionId = Context.ConnectionId;
-    //    var grpKey = $"{eventId}-{carNum}";
-    //    await Groups.AddToGroupAsync(connectionId, grpKey);
-
-    //    if (eventId > 0)
-    //    {
-    //        // Send a full status update to the client
-    //        var sub = cacheMux.GetSubscriber();
-    //        var cmd = new SendControlLogCommand { EventId = eventId, ConnectionId = connectionId, CarNumber = carNum };
-    //        var json = JsonSerializer.Serialize(cmd);
-    //        // Tell the service responsible for this event to send a full status update
-    //        await sub.PublishAsync(new RedisChannel(Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
-    //    }
-
-    //    Logger.LogInformation("Client {0} subscribed to control log for car {1} event {2}", connectionId, carNum, eventId);
-    //}
-
-    //public async Task UnsubscribeFromCarControlLogs(int eventId, string carNum)
-    //{
-    //    var connectionId = Context.ConnectionId;
-    //    var grpKey = $"{eventId}-{carNum}";
-    //    await Groups.RemoveFromGroupAsync(connectionId, grpKey);
-    //    Logger.LogInformation("Client {0} unsubscribed from control log for car {1} event {2}", connectionId, carNum, eventId);
-    //}
-
-    //public async Task SubscribeToCompetitorMetadata(int eventId, string carNum)
-    //{
-    //    var connectionId = Context.ConnectionId;
-    //    var grpKey = $"{eventId}-{carNum}";
-    //    await Groups.AddToGroupAsync(connectionId, grpKey);
-
-    //    if (eventId > 0)
-    //    {
-    //        // Send a full status update to the client
-    //        var sub = cacheMux.GetSubscriber();
-    //        var cmd = new SendCompetitorMetadata { EventId = eventId, ConnectionId = connectionId, CarNumber = carNum };
-    //        var json = JsonSerializer.Serialize(cmd);
-    //        // Tell the service responsible for this event to send a full status update
-    //        await sub.PublishAsync(new RedisChannel(Consts.SEND_COMPETITOR_METADATA, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
-    //    }
-
-    //    Logger.LogInformation("Client {connectionId} subscribed from competitor metadata for car {carNum} event {eventId}", connectionId, carNum, eventId);
-    //}
-
-    //public async Task UnsubscribeFromCompetitorMetadata(int eventId, string carNum)
-    //{
-    //    var connectionId = Context.ConnectionId;
-    //    var grpKey = $"{eventId}-{carNum}";
-    //    await Groups.RemoveFromGroupAsync(connectionId, grpKey);
-    //    Logger.LogInformation("Client {connectionId} unsubscribed from competitor metadata for car {carNum} event {eventId}", connectionId, carNum, eventId);
-    //}
-
-    //#endregion
 }

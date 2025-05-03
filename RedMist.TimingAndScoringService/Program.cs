@@ -12,7 +12,6 @@ using RedLockNet;
 using RedLockNet.SERedis;
 using RedLockNet.SERedis.Configuration;
 using RedMist.Backend.Shared;
-using RedMist.ControlLogs;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.Hubs;
@@ -89,12 +88,10 @@ public class Program
         builder.Services.AddSingleton<IDateTimeHelper, DateTimeHelper>();
         builder.Services.AddSingleton<IDistributedLockFactory>(r => RedLockFactory.Create([new RedLockMultiplexer(r.GetRequiredService<IConnectionMultiplexer>())]));
         builder.Services.AddTransient<IDataProcessorFactory, DataProcessorFactory>();
-        builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
         builder.Services.AddHostedService<EventAggregator>();
         builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<Program>());
 
         builder.Services.AddHealthChecks()
-            //.AddCheck<StartupHealthCheck>("Startup", tags: ["startup"])
             .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])
             .AddRedis(redisConn, tags: ["cache", "redis"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 7200, name: "Process Allocated Memory", tags: ["memory"]);
@@ -102,7 +99,7 @@ public class Program
         builder.Services.AddSignalR(o => o.MaximumParallelInvocationsPerClient = 3)
             .AddStackExchangeRedis(redisConn, options =>
             {
-                options.Configuration.ChannelPrefix = RedisChannel.Literal("event-status");
+                options.Configuration.ChannelPrefix = RedisChannel.Literal(Backend.Shared.Consts.STATUS_CHANNEL_PREFIX);
             });
 
         var app = builder.Build();

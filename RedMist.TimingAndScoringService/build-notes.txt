@@ -10,6 +10,18 @@ docker push bigmission/redmist-event-management
 docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.UserManagement\Dockerfile" --force-rm -t bigmission/redmist-user-management "C:\Code\RedMist.TimingAndScoringService"
 docker push bigmission/redmist-user-management
 
+# Status API
+docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.StatusApi\Dockerfile" --force-rm -t bigmission/redmist-status-api "C:\Code\RedMist.TimingAndScoringService"
+docker push bigmission/redmist-status-api
+
+# Event Orchestration service
+docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.EventOrchestration\Dockerfile" --force-rm -t bigmission/redmist-event-orchestration "C:\Code\RedMist.TimingAndScoringService"
+docker push bigmission/redmist-event-orchestration
+
+# Control Log service
+docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.ControlLogProcessor\Dockerfile" --force-rm -t bigmission/redmist-control-log-svc "C:\Code\RedMist.TimingAndScoringService"
+docker push bigmission/redmist-control-log-svc
+
 # deploy to k8s
 kubectl config set-context --current --namespace=timing
 helm uninstall rm-timing

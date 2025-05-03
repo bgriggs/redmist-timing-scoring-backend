@@ -1,0 +1,5 @@
+apiVersion: v2
+name: redmist-event-orchestration
+description: Manages creation and deletion of event processing jobs.
+type: application
+version: 0.1.0

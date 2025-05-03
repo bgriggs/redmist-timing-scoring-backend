@@ -1,0 +1,5 @@
+apiVersion: v2
+name: redmist-status-api
+description: Status data for event timing
+type: application
+version: 0.1.0

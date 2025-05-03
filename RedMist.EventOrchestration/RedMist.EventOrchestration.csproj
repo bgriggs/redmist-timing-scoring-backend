@@ -9,22 +9,21 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="KubernetesClient" Version="16.0.7" />
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.4" />
 		<PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
-		<PackageReference Include="Keycloak.AuthServices.Authorization" Version="2.6.1" />
-		<PackageReference Include="Keycloak.AuthServices.Authentication" Version="2.6.1" />
 		<PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="9.0.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.System" Version="9.0.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.SqlServer" Version="9.0.0" />
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1-Preview.1" />
 		<PackageReference Include="NLog.Extensions.Logging" Version="5.4.0" />
-		<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="9.0.3" />
-		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="9.3.0" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="9.0.4" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="9.4.0" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="..\RedMist.Backend.Shared\RedMist.Backend.Shared.csproj" />
-	  <ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
+		<ProjectReference Include="..\RedMist.Backend.Shared\RedMist.Backend.Shared.csproj" />
+		<ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
 	</ItemGroup>
 
 </Project>
