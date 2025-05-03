@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Logging;
+using RedMist.Backend.Shared.Models;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using RedMist.Database.Models;
@@ -60,17 +61,17 @@ public class EventAggregator : BackgroundService
         var sub = cacheMux.GetSubscriber();
 
         // Subscribe for full status requests such as when a new UI connects
-        await sub.SubscribeAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal),
+        await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal),
             async (channel, value) => await ProcessFullStatusRequest(value.ToString()),
             CommandFlags.FireAndForget);
 
         // Subscribe to control log requests such as when UI details opens for a car
-        await sub.SubscribeAsync(new RedisChannel(Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal),
+        await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal),
             async (channel, value) => await ProcessControlLogRequest(value.ToString(), stoppingToken),
             CommandFlags.FireAndForget);
 
         // Subscribe to competitor metadata requests such as when UI details opens for a car
-        await sub.SubscribeAsync(new RedisChannel(Consts.SEND_COMPETITOR_METADATA, RedisChannel.PatternMode.Literal),
+        await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_COMPETITOR_METADATA, RedisChannel.PatternMode.Literal),
             async (channel, value) => await ProcessCompetitorMetadataRequest(value.ToString(), stoppingToken),
             CommandFlags.FireAndForget);
 
