@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Prometheus;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
@@ -23,6 +24,7 @@ public class StatusAggregatorService : BackgroundService
     private ILogger Logger { get; }
     private ControlLogCache? controlLogCache;
     private int? eventId;
+    private readonly SemaphoreSlim subscriptionCheckLock = new(1);
 
 
     public StatusAggregatorService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration, IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory, IHubContext<StatusHub> hubContext)
@@ -34,6 +36,7 @@ public class StatusAggregatorService : BackgroundService
         this.tsContext = tsContext;
         this.controlLogFactory = controlLogFactory;
         this.hubContext = hubContext;
+        cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
     }
 
 
@@ -46,33 +49,63 @@ public class StatusAggregatorService : BackgroundService
             Logger.LogError("Event ID is not set or invalid. Cannot start StatusAggregatorService.");
             return;
         }
+
+        var requestCounter = Metrics.CreateCounter("controllog_requests", "Total control log requests to organization source");
+        var failureCounter = Metrics.CreateCounter("controllog_failures", "Total control log failures");
+        var entriesCounter = Metrics.CreateCounter("controllog_entries_total", "Total control log entries");
+
+        await EnsureSubscriptions(stoppingToken);
         controlLogCache = new ControlLogCache(eventId.Value, loggerFactory, tsContext, controlLogFactory);
-
-        var sub = cacheMux.GetSubscriber();
-        Logger.LogInformation("StatusAggregatorService started.");
-
-        // Subscribe to control log requests such as when UI details opens for a car
-        await sub.SubscribeAsync(new RedisChannel(Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal),
-            async (channel, value) => await ProcessControlLogRequest(value.ToString(), stoppingToken),
-            CommandFlags.FireAndForget);
-
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
+                Logger.LogInformation("Updating control log entries");
+                requestCounter.Inc();
                 await RequestAndSendControlLogUpdates(stoppingToken);
-
-
-                Logger.LogInformation("StatusAggregatorService is running. Event ID: {eventId}", eventId);
+                var entries = await controlLogCache.GetControlEntries();
+                entriesCounter.IncTo(entries.Count);
+                Logger.LogInformation("Total entries: {count}, requests: {r}, failures: {f}", entries.Count, requestCounter.Value, failureCounter.Value);
+                await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "An error occurred in StatusAggregatorService.");
+                failureCounter.Inc();
+                Logger.LogInformation("Throttling service for 10 secs");
+                await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+                await EnsureSubscriptions(stoppingToken);
             }
-            await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
         }
         Logger.LogInformation("StatusAggregatorService stopped.");
+    }
+
+    private async void CacheMux_ConnectionRestored(object? sender, ConnectionFailedEventArgs e)
+    {
+        await EnsureSubscriptions();
+    }
+
+    private async Task EnsureSubscriptions(CancellationToken stoppingToken = default)
+    {
+        await subscriptionCheckLock.WaitAsync(stoppingToken);
+        try
+        {
+            var sub = cacheMux.GetSubscriber();
+            await sub.UnsubscribeAllAsync();
+
+            // Subscribe to control log requests such as when UI details opens for a car
+            await sub.SubscribeAsync(new RedisChannel(Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal),
+                async (channel, value) => await ProcessControlLogRequest(value.ToString(), stoppingToken), CommandFlags.FireAndForget);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error ensuring subscriptions");
+        }
+        finally
+        {
+            subscriptionCheckLock.Release();
+        }
     }
 
     #region Control Log

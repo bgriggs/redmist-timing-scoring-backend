@@ -59,11 +59,8 @@ public class RelayHub : Hub
         await RemoveRelayConnectionAsync();
         Logger.LogInformation("Client {id} disconnected: {ConnectionId}", clientId, Context.ConnectionId);
 
-        if (clientId?.Contains("relay") ?? false)
-        {
-            Logger.LogDebug("Removing relay connection from all groups for client {id}", clientId);
-            RemoveRelayConnectionFromAllGroups(Context.ConnectionId);
-        }
+        Logger.LogDebug("Removing relay connection from all groups for client {id}", clientId);
+        RemoveRelayConnectionFromAllGroups(Context.ConnectionId);
     }
 
     private string? GetClientId()
