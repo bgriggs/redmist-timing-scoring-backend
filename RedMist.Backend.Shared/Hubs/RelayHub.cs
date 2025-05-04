@@ -7,10 +7,12 @@ using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.TimingCommon.Models;
+using RedMist.TimingCommon.Models.Configuration;
 using RedMist.TimingCommon.Models.X2;
 using StackExchange.Redis;
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Threading;
 
 namespace RedMist.Backend.Shared.Hubs;
 
@@ -120,7 +122,7 @@ public class RelayHub : Hub
             OrganizationId = orgId,
             Timestamp = DateTime.UtcNow
         };
-        var entryKey = string.Format(Backend.Shared.Consts.RELAY_HEARTBEAT, eventId);
+        var entryKey = string.Format(Consts.RELAY_HEARTBEAT, eventId);
         var entryJson = JsonSerializer.Serialize(entry);
         await cache.HashSetAsync(hashKey, entryKey, entryJson);
     }
@@ -140,7 +142,6 @@ public class RelayHub : Hub
         {
             // Security note: not checking that the event/session is valid for the user explicitly here for performance. Security is ensured by the
             // check in SendSessionChange that the event/session is committed to the database only when it passes the security check.
-            //var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
             var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
             var cache = cacheMux.GetDatabase();
 
@@ -274,10 +275,8 @@ public class RelayHub : Hub
             pass.OrganizationId = orgId;
         }
 
-        //var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
         var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
         var cache = cacheMux.GetDatabase();
-
         var chunks = SplitIntoChunks(passings);
 
         foreach (var chunk in chunks)
@@ -326,7 +325,6 @@ public class RelayHub : Hub
             loop.OrganizationId = orgId;
         }
 
-        //var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
         var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
         var cache = cacheMux.GetDatabase();
         var json = JsonSerializer.Serialize(loops);
@@ -350,7 +348,6 @@ public class RelayHub : Hub
             return;
         }
 
-        //var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
         var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
         var cache = cacheMux.GetDatabase();
         var json = JsonSerializer.Serialize(flags);
@@ -383,12 +380,52 @@ public class RelayHub : Hub
             return;
         }
 
-        // Send the data to the event processor
-        //var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+        // Send the data to logger
         var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
         var cache = cacheMux.GetDatabase();
         var json = JsonSerializer.Serialize(competitors);
         await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_COMPETITORS, eventId), json);
+
+        // Save the metadata to the database
+        await SaveCompetitorMetadata(eventId, competitors);
+
+        // Invalidate cache
+        Logger.LogDebug("Invalidating competitor metadata cache for event {EventId}", eventId);
+        foreach (var cm in competitors)
+        {
+            var cacheKey = string.Format(Consts.COMPETITOR_METADATA, cm.CarNumber, eventId);
+            await cache.KeyDeleteAsync(cacheKey, CommandFlags.FireAndForget);
+        }
+    }
+
+    private async Task SaveCompetitorMetadata(int eventId, List<CompetitorMetadata> competitorMetadata)
+    {
+        Logger.LogInformation("Updating database with {Count} competitor metadata entries for event {EventId}", competitorMetadata.Count, eventId);
+        try
+        {
+            using var db = await tsContext.CreateDbContextAsync();
+            foreach (var competitor in competitorMetadata)
+            {
+                var existingCompetitor = await db.CompetitorMetadata
+                    .FirstOrDefaultAsync(c => c.EventId == eventId && c.CarNumber == competitor.CarNumber);
+                if (existingCompetitor != null)
+                {
+                    if (competitor.LastUpdated > existingCompetitor.LastUpdated)
+                    {
+                        db.Entry(existingCompetitor).CurrentValues.SetValues(competitor);
+                    }
+                }
+                else
+                {
+                    await db.CompetitorMetadata.AddAsync(competitor);
+                }
+            }
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving competitor metadata for event {EventId}", eventId);
+        }
     }
 
     #endregion

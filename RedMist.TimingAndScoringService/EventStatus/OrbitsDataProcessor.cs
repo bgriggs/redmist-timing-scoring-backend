@@ -50,7 +50,6 @@ public class OrbitsDataProcessor : IDataProcessor
     private readonly FlagProcessor flagProcessor;
     private readonly IConnectionMultiplexer cacheMux;
 
-    public CompetitorMetadataProcessor CompetitorMetadataProcessor { get; private set; }
     private readonly HashSet<uint> lastTransponderPassings = [];
     private readonly PositionMetadataProcessor secondaryProcessor = new();
     private DateTime lastResetPosition = DateTime.MinValue;
@@ -60,8 +59,7 @@ public class OrbitsDataProcessor : IDataProcessor
 
 
     public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
-        PitProcessor pitProcessor, FlagProcessor flagProcessor, CompetitorMetadataProcessor competitorMetadataProcessor,
-        IConnectionMultiplexer cacheMux)
+        PitProcessor pitProcessor, FlagProcessor flagProcessor, IConnectionMultiplexer cacheMux)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
@@ -69,7 +67,6 @@ public class OrbitsDataProcessor : IDataProcessor
         this.sessionMonitor = sessionMonitor;
         PitProcessor = pitProcessor;
         this.flagProcessor = flagProcessor;
-        CompetitorMetadataProcessor = competitorMetadataProcessor;
         this.cacheMux = cacheMux;
     }
 
@@ -97,10 +94,7 @@ public class OrbitsDataProcessor : IDataProcessor
             _ = UpdateFlagsAsync(data, stoppingToken);
         }
         // Competitor Metadata
-        else if (type == "competitors")
-        {
-            _ = ProcessCompetitorMetadataAsync(data, stoppingToken);
-        }
+        else if (type == "competitors") { }
 
         Logger.LogTrace("Processed {type} in {time}ms", type, sw.ElapsedMilliseconds);
     }
@@ -218,33 +212,6 @@ public class OrbitsDataProcessor : IDataProcessor
         }
 
         _ = debouncer.ExecuteAsync(() => Task.Run(() => PublishChanges(stoppingToken)), stoppingToken);
-    }
-
-    private async Task ProcessCompetitorMetadataAsync(string data, CancellationToken stoppingToken)
-    {
-        await Task.Run(async () =>
-        {
-            try
-            {
-                var metadata = JsonSerializer.Deserialize<List<CompetitorMetadata>>(data);
-                if (metadata != null)
-                {
-                    await CompetitorMetadataProcessor.Process(metadata, stoppingToken);
-                }
-                else
-                {
-                    Logger.LogWarning("Competitor metadata is null. Possible deserialization issue.");
-                }
-            }
-            catch (JsonException ex)
-            {
-                Logger.LogError(ex, "Error processing competitor metadata JSON");
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error processing competitor metadata");
-            }
-        }, stoppingToken);
     }
 
     #region Result Monitor

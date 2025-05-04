@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
+using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.StatusApi.Models;
 using RedMist.TimingCommon.Models;
@@ -14,13 +16,16 @@ namespace RedMist.StatusApi.Controllers;
 public class EventsController : ControllerBase
 {
     private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly HybridCache hcache;
+
     private ILogger Logger { get; }
 
 
-    public EventsController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
+    public EventsController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, HybridCache hcache)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
+        this.hcache = hcache;
     }
 
 
@@ -216,5 +221,26 @@ public class EventsController : ControllerBase
         using var context = await tsContext.CreateDbContextAsync();
         var result = await context.SessionResults.FirstOrDefaultAsync(r => r.EventId == eventId && r.SessionId == sessionId);
         return result?.Payload;
+    }
+
+    [HttpGet]
+    [ProducesResponseType<CompetitorMetadata>(StatusCodes.Status200OK)]
+    public async Task<CompetitorMetadata?> LoadCompetitorMetadata(int eventId, string car)
+    {
+        Logger.LogTrace("LoadCompetitorMetadata for event {eventId}, car {car}", eventId, car);
+        return await GetCompetitorMetadata(eventId, car);
+    }
+
+    private async Task<CompetitorMetadata?> GetCompetitorMetadata(int eventId, string car)
+    {
+        var key = string.Format(Consts.COMPETITOR_METADATA, car, eventId);
+        return await hcache.GetOrCreateAsync(key,
+            async cancel => await LoadDbCompetitorMetadata(eventId, car));
+    }
+
+    private async Task<CompetitorMetadata?> LoadDbCompetitorMetadata(int eventId, string car)
+    {
+        using var db = await tsContext.CreateDbContextAsync();
+        return await db.CompetitorMetadata.FirstOrDefaultAsync(x => x.EventId == eventId && x.CarNumber == car);
     }
 }

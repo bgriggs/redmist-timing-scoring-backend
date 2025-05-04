@@ -6,5 +6,5 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 public interface IDataProcessorFactory
 {
     IDataProcessor CreateDataProcessor(string type, int eventId, SessionMonitor sessionMonitor, PitProcessor pitProcessor, 
-        FlagProcessor flagProcessor, CompetitorMetadataProcessor competitorMetadataProcessor, IConnectionMultiplexer cacheMux);
+        FlagProcessor flagProcessor, IConnectionMultiplexer cacheMux);
 }

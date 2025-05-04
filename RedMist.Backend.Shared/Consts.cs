@@ -20,4 +20,5 @@ public class Consts
     public const string RELAY_GROUP_PREFIX = "relay-event-{0}";
     public const string CLIENT_ID = "ts-client-{0}";
     public static readonly string[] PRACTICE_QUAL_TERMS = ["Practice", "Qualifying", "Qual"];
+    public const string COMPETITOR_METADATA = "cm-{0}-evt-{1}";
 }

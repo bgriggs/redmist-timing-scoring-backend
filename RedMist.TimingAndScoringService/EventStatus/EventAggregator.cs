@@ -49,8 +49,7 @@ public class EventAggregator : BackgroundService
         var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
         var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
         var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
-        var competitorMetadataProcessor = new CompetitorMetadataProcessor(eventId, tsContext, loggerFactory);
-        dataProcessor = new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, competitorMetadataProcessor, cacheMux);
+        dataProcessor = new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux);
     }
 
 
@@ -123,10 +122,6 @@ public class EventAggregator : BackgroundService
             // Subscribe for full status requests such as when a new UI connects
             await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal),
                 async (channel, value) => await ProcessFullStatusRequest(value.ToString()), CommandFlags.FireAndForget);
-
-            // Subscribe to competitor metadata requests such as when UI details opens for a car
-            await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_COMPETITOR_METADATA, RedisChannel.PatternMode.Literal),
-                async (channel, value) => await ProcessCompetitorMetadataRequest(value.ToString(), stoppingToken), CommandFlags.FireAndForget);
         }
         catch (Exception ex)
         {
@@ -200,29 +195,12 @@ public class EventAggregator : BackgroundService
         }
     }
 
-    private async Task SendEventStatusAsync(IDataProcessor p, string connectionIdDestination, CancellationToken stoppingToken = default)
+    private async Task SendEventStatusAsync(OrbitsDataProcessor p, string connectionIdDestination, CancellationToken stoppingToken = default)
     {
         //Logger.LogTrace("Getting payload for event {e}...", p.EventId);
         var payload = await p.GetPayload(stoppingToken);
         var json = JsonSerializer.Serialize(payload);
         await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, json) { ConnectionDestination = connectionIdDestination, Payload = payload, PitProcessor = p.PitProcessor }, stoppingToken);
-    }
-
-    #endregion
-
-    #region Competitor Metadata
-
-    private async Task ProcessCompetitorMetadataRequest(string cmdJson, CancellationToken stoppingToken = default)
-    {
-        var cmd = JsonSerializer.Deserialize<SendCompetitorMetadata>(cmdJson);
-        if (cmd == null)
-        {
-            Logger.LogWarning("Invalid command received: {cj}", cmdJson);
-            return;
-        }
-
-        var competitorMetadata = await dataProcessor.CompetitorMetadataProcessor.LoadCompetitorMetadata(cmd.CarNumber, stoppingToken);
-        await mediator.Publish(new CompetitorMetadataNotification(cmd.EventId, competitorMetadata) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
     }
 
     #endregion

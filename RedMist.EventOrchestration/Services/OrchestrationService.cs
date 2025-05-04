@@ -44,7 +44,7 @@ public class OrchestrationService : BackgroundService
                 var config = KubernetesClientConfiguration.InClusterConfig();
                 using var client = new Kubernetes(config);
 
-                var currentEvents = await GetCurrentEventsAsync(stoppingToken);
+                var currentEvents = await GetCurrentEventsAsync();
                 Logger.LogDebug("Found {eventCount} current events", currentEvents.Count);
 
                 // Get currently active jobs in the namespace
@@ -104,7 +104,7 @@ public class OrchestrationService : BackgroundService
         return jobs;
     }
 
-    private async Task<List<RelayConnectionEventEntry>> GetCurrentEventsAsync(CancellationToken stoppingToken)
+    private async Task<List<RelayConnectionEventEntry>> GetCurrentEventsAsync()
     {
         var cache = cacheMux.GetDatabase();
         var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
