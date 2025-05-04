@@ -6,6 +6,7 @@ using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
+using StackExchange.Redis;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus;
 
@@ -23,7 +24,8 @@ public class SessionMonitorTests
         var pitProcessor = new PitProcessor(1, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(1, dbMock.Object, lf);
         var competitorMetadataProcessor = new CompetitorMetadataProcessor(0, dbMock.Object, lf);
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, competitorMetadataProcessor);
+        var cacheMux = new Mock<IConnectionMultiplexer>();
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, competitorMetadataProcessor, cacheMux.Object);
 
         var dataReader = new TestDataReader("event-finish-with-cars-data.log");
         var data = dataReader.GetData();
@@ -63,7 +65,8 @@ public class SessionMonitorTests
         var pitProcessor = new PitProcessor(1, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(1, dbMock.Object, lf);
         var competitorMetadataProcessor = new CompetitorMetadataProcessor(0, dbMock.Object, lf);
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, competitorMetadataProcessor);
+        var cacheMux = new Mock<IConnectionMultiplexer>();
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, competitorMetadataProcessor, cacheMux.Object);
 
         var dataReader = new TestDataReader("event-finish-with-stopped.log");
         var data = dataReader.GetData();
@@ -108,7 +111,8 @@ public class SessionMonitorTests
         var pitProcessor = new PitProcessor(1, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(1, dbMock.Object, lf);
         var competitorMetadataProcessor = new CompetitorMetadataProcessor(0, dbMock.Object, lf);
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, competitorMetadataProcessor);
+        var cacheMux = new Mock<IConnectionMultiplexer>();
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, competitorMetadataProcessor, cacheMux.Object);
 
         var dataReader = new TestDataReader("event-finish-with-reset.log");
         var data = dataReader.GetData();

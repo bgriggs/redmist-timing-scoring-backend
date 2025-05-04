@@ -1,10 +1,13 @@
 ﻿using MediatR;
+using Microsoft.Extensions.Logging;
+using RedMist.Backend.Shared.Models;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.X2;
+using StackExchange.Redis;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json;
@@ -45,14 +48,18 @@ public class OrbitsDataProcessor : IDataProcessor
 
     private readonly SessionMonitor sessionMonitor;
     private readonly FlagProcessor flagProcessor;
+    private readonly IConnectionMultiplexer cacheMux;
+
     public CompetitorMetadataProcessor CompetitorMetadataProcessor { get; private set; }
     private readonly HashSet<uint> lastTransponderPassings = [];
     private readonly PositionMetadataProcessor secondaryProcessor = new();
     private DateTime lastResetPosition = DateTime.MinValue;
     private DateTime lastPositionMismatch = DateTime.MinValue;
 
+
     public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
-        PitProcessor pitProcessor, FlagProcessor flagProcessor, CompetitorMetadataProcessor competitorMetadataProcessor)
+        PitProcessor pitProcessor, FlagProcessor flagProcessor, CompetitorMetadataProcessor competitorMetadataProcessor,
+        IConnectionMultiplexer cacheMux)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
@@ -61,6 +68,7 @@ public class OrbitsDataProcessor : IDataProcessor
         PitProcessor = pitProcessor;
         this.flagProcessor = flagProcessor;
         CompetitorMetadataProcessor = competitorMetadataProcessor;
+        this.cacheMux = cacheMux;
     }
 
 
@@ -713,34 +721,19 @@ public class OrbitsDataProcessor : IDataProcessor
             }
 
             raceInfo.IsDirty = false;
+
+            // Keep as if statements to avoid issues with docker build
             if (pass != null)
-            {
                 pass.IsDirty = false;
-            }
             if (pq != null)
-            {
                 pq.IsDirty = false;
-            }
         }
 
         // Apply diff / gap
         carPositions = secondaryProcessor.UpdateCarPositions(carPositions);
 
-        // Todo: get penalties from control log redis
-        //// Apply penalties
-        //if (controlLog != null)
-        //{
-        //    var penalties = await controlLog.GetPenaltiesAsync();
-        //    foreach (var carPosition in carPositions)
-        //    {
-        //        var num = carPosition.Number?.ToLower();
-        //        if (num != null && penalties.TryGetValue(num, out var penalty))
-        //        {
-        //            carPosition.PenalityWarnings = penalty.warnings;
-        //            carPosition.PenalityLaps = penalty.laps;
-        //        }
-        //    }
-        //}
+        // Apply penalties
+        await UpdateCarsWithPenalties(carPositions);
 
         lock (lastTransponderPassings)
         {
@@ -751,6 +744,45 @@ public class OrbitsDataProcessor : IDataProcessor
         }
 
         return [.. carPositions];
+    }
+
+    /// <summary>
+    /// Get penalties from redis and apply to car positions.
+    /// </summary>
+    /// <param name="carPositions"></param>
+    private async Task UpdateCarsWithPenalties(List<CarPosition> carPositions)
+    {
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            var carLogCacheKey = string.Format(Backend.Shared.Consts.CONTROL_LOG_CAR_PENALTIES, EventId);
+            var controlLogHash = await cache.HashGetAllAsync(carLogCacheKey);
+            Logger.LogTrace("Retrieved {count} control log penalties from Redis", controlLogHash.Length);
+            foreach (var entry in controlLogHash)
+            {
+                try
+                {
+                    var car = carPositions.FirstOrDefault(c => (c.Number?.ToLower() ?? string.Empty).Equals(entry.Name.ToString(), StringComparison.CurrentCultureIgnoreCase));
+                    if (car != null && entry.Value.HasValue)
+                    {
+                        var penality = JsonSerializer.Deserialize<CarPenality>(entry.Value.ToString()!);
+                        if (penality != null)
+                        {
+                            car.PenalityWarnings = penality.Warnings;
+                            car.PenalityLaps = penality.Laps;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Error processing control log entry for car {car}", entry.Name);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error retrieving control log penalties from Redis");
+        }
     }
 
     /// <summary>

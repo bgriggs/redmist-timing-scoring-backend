@@ -111,7 +111,7 @@ public class EventAggregator : BackgroundService
                                 var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
                                 var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
                                 var competitorMetadataProcessor = new CompetitorMetadataProcessor(eventId, tsContext, loggerFactory);
-                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor, flagProcessor, competitorMetadataProcessor);
+                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor, flagProcessor, competitorMetadataProcessor, cacheMux);
                                 processors[eventId] = processor;
                             }
                         }

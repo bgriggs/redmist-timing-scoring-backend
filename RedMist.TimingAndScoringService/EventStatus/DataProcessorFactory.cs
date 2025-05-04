@@ -1,5 +1,6 @@
 ﻿using MediatR;
 using RedMist.TimingAndScoringService.EventStatus.X2;
+using StackExchange.Redis;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
@@ -16,11 +17,11 @@ public class DataProcessorFactory : IDataProcessorFactory
     }
 
 
-    public IDataProcessor CreateDataProcessor(string type, int eventId, SessionMonitor sessionMonitor, PitProcessor pitProcessor, FlagProcessor flagProcessor, CompetitorMetadataProcessor competitorMetadataProcessor)
+    public IDataProcessor CreateDataProcessor(string type, int eventId, SessionMonitor sessionMonitor, PitProcessor pitProcessor, FlagProcessor flagProcessor, CompetitorMetadataProcessor competitorMetadataProcessor, IConnectionMultiplexer cacheMux)
     {
         if (string.Compare(type, "RMonitor", StringComparison.OrdinalIgnoreCase) == 0)
         {
-            return new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, competitorMetadataProcessor);
+            return new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, competitorMetadataProcessor, cacheMux);
         }
         throw new NotImplementedException();
     }

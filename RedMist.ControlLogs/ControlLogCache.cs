@@ -117,7 +117,7 @@ public partial class ControlLogCache
         return [];
     }
 
-    private List<string> GetChangedCars(Dictionary<string, List<ControlLogEntry>> old, Dictionary<string, List<ControlLogEntry>> @new)
+    private static List<string> GetChangedCars(Dictionary<string, List<ControlLogEntry>> old, Dictionary<string, List<ControlLogEntry>> @new)
     {
         var changedCars = new List<string>();
 
