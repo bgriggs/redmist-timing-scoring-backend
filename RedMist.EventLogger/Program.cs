@@ -4,12 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using NLog.Extensions.Logging;
 using Prometheus;
 using RedMist.Backend.Shared;
-using RedMist.ControlLogProcessor.Services;
-using RedMist.ControlLogs;
 using RedMist.Database;
+using RedMist.EventLogger.Services;
 using StackExchange.Redis;
 
-namespace RedMist.ControlLogProcessor;
+namespace RedMist.EventLogger;
 
 public class Program
 {
@@ -19,12 +18,13 @@ public class Program
         builder.Logging.ClearProviders();
         builder.Logging.AddNLog("NLog");
 
+        // Add services to the container.
+
         builder.Services.AddControllers();
         // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
         builder.Services.AddOpenApi();
 
-        string sqlConn = builder.Configuration["ConnectionStrings:Default"]
-            ?? throw new ArgumentNullException(nameof(builder.Configuration), "SQL Connection is missing.");
+        string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
@@ -33,16 +33,9 @@ public class Program
         builder.Services.AddHealthChecks()
             .AddRedis(redisConn, tags: ["cache", "redis"])
             .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);
+            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024 * 2, name: "Process Allocated Memory", tags: ["memory"]);
 
-        builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
-        builder.Services.AddHostedService<StatusAggregatorService>();
-
-        builder.Services.AddSignalR(o => o.MaximumParallelInvocationsPerClient = 3)
-        .AddStackExchangeRedis(redisConn, options =>
-        {
-            options.Configuration.ChannelPrefix = RedisChannel.Literal(Consts.STATUS_CHANNEL_PREFIX);
-        });
+        builder.Services.AddHostedService<LogConsumerService>();
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();
@@ -50,7 +43,7 @@ public class Program
         // Configure the HTTP request pipeline.
         if (app.Environment.IsDevelopment())
         {
-            Console.Title = "Control Log Processor";
+            Console.Title = "Event Logger";
             app.MapOpenApi();
         }
 

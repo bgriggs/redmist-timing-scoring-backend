@@ -66,7 +66,7 @@ public class LapLogger
 
                 if (position.LastLap > lastLap)
                 {
-                    Logger.LogTrace("Car {0} completed new lap {1} in event {2}. Logging...", position.Number, position.LastLap, eventId);
+                    Logger.LogTrace("Car {n} completed new lap {l} in event {e}. Logging...", position.Number, position.LastLap, eventId);
 
                     // Update pit stops
                     pitProcessor?.UpdateCarPositionForLogging(position);
@@ -115,7 +115,7 @@ public class LapLogger
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Error logging new lap for car {0} in event {1}", log.lastLapNum, eventId);
+                Logger.LogError(ex, "Error logging new lap for car {c} in event {e}", log.lastLapNum, eventId);
             }
         }
 

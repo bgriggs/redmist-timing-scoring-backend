@@ -1,7 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using BigMission.Shared.Utilities;
+using Microsoft.EntityFrameworkCore;
 using RedMist.Database;
 using RedMist.Database.Models;
-using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
@@ -15,8 +15,8 @@ public class SessionMonitor
     private readonly int eventId;
     private readonly IDbContextFactory<TsContext> tsContext;
 
-    private readonly static Flags[] activeSessionFlags = { Flags.White, Flags.Green, Flags.Yellow, Flags.Purple35 };
-    private readonly static Flags[] finishedSessionFlags = { Flags.Checkered };
+    private readonly static Flags[] activeSessionFlags = [Flags.White, Flags.Green, Flags.Yellow, Flags.Purple35];
+    private readonly static Flags[] finishedSessionFlags = [Flags.Checkered];
     private DateTime? finishingStartedTimestamp;
     private DateTime? finishingEventLastTimestamp;
     private readonly Dictionary<string, CarPosition> checkeredCarPositionsLookup = [];

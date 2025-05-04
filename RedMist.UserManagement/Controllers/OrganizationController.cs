@@ -173,9 +173,9 @@ public class OrganizationController : ControllerBase
         };
         await keycloak.ClientsPOST3Async(client, realm);
 
-        Logger.LogInformation($"Created client with ID: {clientId}");
+        Logger.LogInformation("Created client with ID: {clientId}", clientId);
         client = await LoadKeycloakClient(clientId);
-        Logger.LogInformation($"Loaded client with ID: {client?.Id}");
+        Logger.LogInformation("Loaded client with ID: {clientId}", client?.Id);
         if (client == null)
         {
             Logger.LogError("Failed to create or load Keycloak client {clientId}", clientId);
@@ -297,7 +297,7 @@ public class OrganizationController : ControllerBase
     {
         using HttpClient httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
-        Logger.LogInformation($"Checking for keycloak client with name: {clientName}");
+        Logger.LogInformation("Checking for keycloak client with name: {clientName}", clientName);
         var clients = await keycloak.ClientsAll3Async(clientName, null, null, null, false, false, realm);
         if (clients != null && clients.Count > 0)
         {

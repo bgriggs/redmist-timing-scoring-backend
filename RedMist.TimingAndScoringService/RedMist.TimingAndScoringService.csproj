@@ -10,9 +10,6 @@
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<RepositoryUrl>https://github.com/bgriggs/redmist-timing-scoring-backend</RepositoryUrl>
 	</PropertyGroup>
-	<ItemGroup>
-	  <Compile Remove="Controllers\TimingAndScoringController.cs" />
-	</ItemGroup>
 
 	<ItemGroup>
 	  <None Include="..\README.md">
@@ -48,10 +45,6 @@
 	  <ProjectReference Include="..\redmist-timing-common\RedMist.TimingCommon\RedMist.TimingCommon.csproj" />
 	  <ProjectReference Include="..\RedMist.Backend.Shared\RedMist.Backend.Shared.csproj" />
 	  <ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Folder Include="Controllers\" />
 	</ItemGroup>
 
 </Project>

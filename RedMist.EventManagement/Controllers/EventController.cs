@@ -130,7 +130,7 @@ public class EventController : ControllerBase
                 var newestEvent = await context.Events.OrderByDescending(e => e.StartDate).FirstOrDefaultAsync(e => e.OrganizationId == org.Id && !e.IsDeleted);
                 if (newestEvent != null)
                 {
-                    Logger.LogDebug($"Reassigning active event for organization {org.Id} to event ID {newestEvent.Id}");
+                    Logger.LogDebug("Reassigning active event for organization {orgId} to event ID {newestEventId}", org.Id, newestEvent.Id);
                     await UpdateEventStatusActive(newestEvent.Id);
                 }
             }

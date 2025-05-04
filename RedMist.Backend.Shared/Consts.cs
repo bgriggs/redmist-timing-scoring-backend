@@ -3,6 +3,7 @@
 public class Consts
 {
     public const string STATUS_CHANNEL_PREFIX = "event-status";
+    public const string EVENT_STATUS_STREAM_KEY = "evt-st-{0}";
     public const string SEND_FULL_STATUS = "fullstatus";
     public const string SEND_CONTROL_LOG = "controlLog";
     public const string SEND_COMPETITOR_METADATA = "competitor-metadata";
@@ -11,4 +12,12 @@ public class Consts
     public const string RELAY_CONNECTION = "relay-connid-{0}";
     public const string CONTROL_LOG = "control-log-evt-{0}";
     public const string CONTROL_LOG_CAR_PENALTIES = "control-log-penalties-evt-{0}";
+    public const string EVENT_RMON_STREAM_FIELD = "rmonitor-{0}-{1}";
+    public const string EVENT_X2_LOOPS_STREAM_FIELD = "x2loop-{0}-999999";
+    public const string EVENT_X2_PASSINGS_STREAM_FIELD = "x2pass-{0}-{1}";
+    public const string EVENT_FLAGS_STREAM_FIELD = "flags-{0}-{1}";
+    public const string EVENT_COMPETITORS = "competitors-{0}-999999";
+    public const string RELAY_GROUP_PREFIX = "relay-event-{0}";
+    public const string CLIENT_ID = "ts-client-{0}";
+    public static readonly string[] PRACTICE_QUAL_TERMS = ["Practice", "Qualifying", "Qual"];
 }

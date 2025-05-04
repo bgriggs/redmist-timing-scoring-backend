@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: bigmission/redmist-timing-svc
+  repository: bigmission/redmist-relay-api
   tag: latest
   pullPolicy: Always
 
@@ -23,7 +23,7 @@ ingress:
   hosts:
   - host: redmist.racing
     paths: 
-    - path: /timing(/|$)(.*)
+    - path: /relay(/|$)(.*)
       pathType: Prefix
   tls:
   - hosts:

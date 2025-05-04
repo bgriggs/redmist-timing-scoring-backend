@@ -1,4 +1,4 @@
-﻿namespace RedMist.TimingAndScoringService.Utilities;
+﻿namespace RedMist.Backend.Shared.Utilities;
 
 public class SessionHelper
 {

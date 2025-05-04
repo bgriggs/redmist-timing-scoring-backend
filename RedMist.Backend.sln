@@ -38,6 +38,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.EventOrchestration"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.ControlLogProcessor", "RedMist.ControlLogProcessor\RedMist.ControlLogProcessor.csproj", "{C4D9C3D1-F625-4B8E-97CA-50CA64EB9876}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.EventLogger", "RedMist.EventLogger\RedMist.EventLogger.csproj", "{3FBA7CDD-0E88-4664-B205-C1216015DC21}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.RelayApi", "RedMist.RelayApi\RedMist.RelayApi.csproj", "{4FF64448-E4D8-4718-9579-619FB4F03276}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -100,6 +104,14 @@ Global
 		{C4D9C3D1-F625-4B8E-97CA-50CA64EB9876}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C4D9C3D1-F625-4B8E-97CA-50CA64EB9876}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C4D9C3D1-F625-4B8E-97CA-50CA64EB9876}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3FBA7CDD-0E88-4664-B205-C1216015DC21}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3FBA7CDD-0E88-4664-B205-C1216015DC21}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3FBA7CDD-0E88-4664-B205-C1216015DC21}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3FBA7CDD-0E88-4664-B205-C1216015DC21}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4FF64448-E4D8-4718-9579-619FB4F03276}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4FF64448-E4D8-4718-9579-619FB4F03276}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4FF64448-E4D8-4718-9579-619FB4F03276}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4FF64448-E4D8-4718-9579-619FB4F03276}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

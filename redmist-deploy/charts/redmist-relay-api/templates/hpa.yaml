@@ -2,14 +2,14 @@
 apiVersion: autoscaling/v2beta1
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "redmist-timing-svc.fullname" . }}
+  name: {{ include "redmist-relay-api.fullname" . }}
   labels:
-    {{- include "redmist-timing-svc.labels" . | nindent 4 }}
+    {{- include "redmist-relay-api.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "redmist-timing-svc.fullname" . }}
+    name: {{ include "redmist-relay-api.fullname" . }}
   minReplicas: {{ .Values.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.autoscaling.maxReplicas }}
   metrics:

@@ -17,10 +17,12 @@ public class OrchestrationService : BackgroundService
     private const string namespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
     private readonly static TimeSpan checkInterval = TimeSpan.FromMilliseconds(10000);
     private readonly static TimeSpan eventTimeout = TimeSpan.FromMinutes(10);
-    private const string EVENT_PROCESSOR_JOB = "event-processor-evt-{0}";
-    private readonly string eventProcessorContainer = "bigmission/redmist-event-processor-svc:latest";
-    private const string CONTROL_LOG_JOB = "control-log-evt-{0}";
+    private const string EVENT_PROCESSOR_JOB = "{0}-evt-{1}-event-processor";
+    private readonly string eventProcessorContainer = "bigmission/redmist-timing-svc:latest";
+    private const string CONTROL_LOG_JOB = "{0}-evt-{1}-control-log";
     private readonly string controlLogContainer = "bigmission/redmist-control-log-svc:latest";
+    private const string LOGGER_JOB = "{0}-evt-{1}-logger";
+    private readonly string loggerContainer = "bigmission/redmist-event-logger-svc:latest";
 
 
     public OrchestrationService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext)
@@ -172,7 +174,7 @@ public class OrchestrationService : BackgroundService
         // Check control log processing if enabled
         if (!string.IsNullOrWhiteSpace(org.ControlLogType))
         {
-            var clJobName = string.Format(CONTROL_LOG_JOB, evt.EventId);
+            var clJobName = string.Format(CONTROL_LOG_JOB, org.ShortName.ToLower(), evt.EventId);
             if (!jobs.Items.Any(job => job.Metadata.Name.Equals(clJobName, StringComparison.OrdinalIgnoreCase)))
             {
                 Logger.LogInformation("Control log job {clJobName} does not exist for event {eventId}. Creating new job.", clJobName, evt.EventId);
@@ -180,12 +182,24 @@ public class OrchestrationService : BackgroundService
             }
         }
 
+        // Check for logger job
+        var loggerJobName = string.Format(LOGGER_JOB, org.ShortName.ToLower(), evt.EventId);
+        if (!jobs.Items.Any(job => job.Metadata.Name.Equals(loggerJobName, StringComparison.OrdinalIgnoreCase)))
+        {
+            Logger.LogInformation("Logger job {loggerJobName} does not exist for event {eventId}. Creating new job.", loggerJobName, evt.EventId);
+            await CreateJob(client, loggerJobName, ns, loggerContainer, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+        }
+        else
+        {
+            Logger.LogTrace("Logger job {loggerJobName} already exists for event {eventId}.", loggerJobName, evt.EventId);
+        }
+
         // Check for event processor job
-        var epJobName = string.Format(EVENT_PROCESSOR_JOB, evt.EventId);
+        var epJobName = string.Format(EVENT_PROCESSOR_JOB, org.ShortName.ToLower(), evt.EventId);
         if (!jobs.Items.Any(job => job.Metadata.Name.Equals(epJobName, StringComparison.OrdinalIgnoreCase)))
         {
             Logger.LogInformation("Event processor job {epJobName} does not exist for event {eventId}. Creating new job.", epJobName, evt.EventId);
-            //await CreateJob(client, epJobName, ns, eventProcessorContainer, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+            await CreateJob(client, epJobName, ns, eventProcessorContainer, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
         }
         else
         {
@@ -222,6 +236,7 @@ public class OrchestrationService : BackgroundService
                         Containers = [new() { Name = name, Image = container, Env =
                         [
                             new V1EnvVar { Name = "event_id", Value = eventId.ToString()  },
+                            new V1EnvVar { Name = "org_id", Value = organizationId.ToString()  },
                             new V1EnvVar { Name = "ASPNETCORE_ENVIRONMENT", Value = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") },
                             new V1EnvVar { Name = "ASPNETCORE_FORWARDEDHEADERS_ENABLED", Value = Environment.GetEnvironmentVariable("ASPNETCORE_FORWARDEDHEADERS_ENABLED") },
                             new V1EnvVar { Name = "ASPNETCORE_URLS", Value = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") },

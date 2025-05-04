@@ -26,12 +26,12 @@ public class StatusAggregator : INotificationHandler<StatusNotification>
         {
             if (!string.IsNullOrEmpty(notification.ConnectionDestination))
             {
-                Logger.LogTrace("StatusNotification: {0}", notification.ConnectionDestination);
+                Logger.LogTrace("StatusNotification: {c}", notification.ConnectionDestination);
                 await hubContext.Clients.Client(notification.ConnectionDestination).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
             }
             else
             {
-                Logger.LogTrace("StatusNotification Group: {0}", notification.EventId);
+                Logger.LogTrace("StatusNotification Group: {g}", notification.EventId);
                 await hubContext.Clients.Group(notification.EventId.ToString()).SendAsync("ReceiveMessage", notification.StatusJson, cancellationToken);
             }
         }

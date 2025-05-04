@@ -3,12 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Backend.Shared.Models;
 using RedMist.Database;
-using RedMist.Database.Models;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
-using System.Diagnostics;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
@@ -18,10 +16,12 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 /// </summary>
 public class EventAggregator : BackgroundService
 {
-    private readonly Dictionary<int, IDataProcessor> processors = [];
+    private const string CONSUMER_GROUP = "processor";
+    private readonly int eventId;
+    private readonly string streamKey;
+    private readonly OrbitsDataProcessor dataProcessor;
     private readonly ILoggerFactory loggerFactory;
     private readonly IConnectionMultiplexer cacheMux;
-    private readonly IDataProcessorFactory dataProcessorFactory;
     private readonly IMediator mediator;
     private readonly HybridCache hcache;
     private readonly IDbContextFactory<TsContext> tsContext;
@@ -29,51 +29,42 @@ public class EventAggregator : BackgroundService
     public Action<EventStatusUpdateEventArgs<List<EventEntry>>>? EventEntriesUpdated;
     public Action<EventStatusUpdateEventArgs<List<CarPosition>>>? CarPositionsUpdated;
     private ILogger Logger { get; }
-    private readonly string podInstance;
+    private readonly SemaphoreSlim streamCheckLock = new(1);
+    private readonly SemaphoreSlim subscriptionCheckLock = new(1);
 
 
     public EventAggregator(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IDataProcessorFactory dataProcessorFactory, IMediator mediator, HybridCache hcache,
-        IDbContextFactory<TsContext> tsContext)
+        IMediator mediator, HybridCache hcache, IDbContextFactory<TsContext> tsContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.loggerFactory = loggerFactory;
         this.cacheMux = cacheMux;
-        this.dataProcessorFactory = dataProcessorFactory;
         this.mediator = mediator;
         this.hcache = hcache;
         this.tsContext = tsContext;
-        podInstance = configuration["POD_NAME"] ?? throw new ArgumentNullException("POD_NAME");
+        eventId = configuration.GetValue("event_id", 0);
+        streamKey = string.Format(Backend.Shared.Consts.EVENT_STATUS_STREAM_KEY, eventId);
+        cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
+
+        var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
+        var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
+        var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
+        var competitorMetadataProcessor = new CompetitorMetadataProcessor(eventId, tsContext, loggerFactory);
+        dataProcessor = new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, competitorMetadataProcessor, cacheMux);
     }
 
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         Logger.LogInformation("Event Aggregator starting...");
-        var cache = cacheMux.GetDatabase();
-        var streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, podInstance);
-
-        var sub = cacheMux.GetSubscriber();
-
-        // Subscribe for full status requests such as when a new UI connects
-        await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal),
-            async (channel, value) => await ProcessFullStatusRequest(value.ToString()),
-            CommandFlags.FireAndForget);
-
-        //// Subscribe to control log requests such as when UI details opens for a car
-        //await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal),
-        //    async (channel, value) => await ProcessControlLogRequest(value.ToString(), stoppingToken),
-        //    CommandFlags.FireAndForget);
-
-        // Subscribe to competitor metadata requests such as when UI details opens for a car
-        await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_COMPETITOR_METADATA, RedisChannel.PatternMode.Literal),
-            async (channel, value) => await ProcessCompetitorMetadataRequest(value.ToString(), stoppingToken),
-            CommandFlags.FireAndForget);
+        await EnsureStream();
+        await EnsureSubscriptions(stoppingToken);
 
         // Start a task to send a full update every so often
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
-        //// Start a task to send a control log updates every so often
-        //_ = Task.Run(() => SendControlLogUpdates(stoppingToken), stoppingToken);
+
+        // Publish reset event to get full set of data from the relay
+        await mediator.Publish(new RelayResetRequest { EventId = eventId }, stoppingToken);
 
         // Start a task to read timing source data from this service's stream.
         // The SignalR hub is responsible for sending timing data to the stream.
@@ -81,13 +72,14 @@ public class EventAggregator : BackgroundService
         {
             try
             {
-                var result = await cache.StreamReadGroupAsync(streamKey, podInstance, podInstance, ">", 1);
+                var cache = cacheMux.GetDatabase();
+                var result = await cache.StreamReadGroupAsync(streamKey, CONSUMER_GROUP, "proc", ">", 1);
                 foreach (var entry in result)
                 {
                     foreach (var field in entry.Values)
                     {
                         // Process update from timing system
-                        Logger.LogTrace("Event Status Update: {e}", entry.Id);
+                        //Logger.LogTrace("Event Status Update: {e}", entry.Id);
 
                         // Check the message tag to determine the type of update (e.g. result monitor)
                         var tags = field.Name.ToString().Split('-');
@@ -100,36 +92,81 @@ public class EventAggregator : BackgroundService
                         var type = tags[0];
                         var eventId = int.Parse(tags[1]);
                         var sessionId = int.Parse(tags[2]);
-
-                        IDataProcessor? processor;
-                        lock (processors)
-                        {
-                            if (!processors.TryGetValue(eventId, out processor))
-                            {
-                                // Create a new data processor for this event
-                                var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
-                                var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
-                                var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
-                                var competitorMetadataProcessor = new CompetitorMetadataProcessor(eventId, tsContext, loggerFactory);
-                                processor = dataProcessorFactory.CreateDataProcessor(type, eventId, sessionMonitor, pitProcessor, flagProcessor, competitorMetadataProcessor, cacheMux);
-                                processors[eventId] = processor;
-                            }
-                        }
-
                         var data = field.Value.ToString();
 
-                        // Log the data
-                        _ = Task.Run(() => LogStatusData(type, eventId, sessionId, data, stoppingToken), stoppingToken);
-
                         // Process the update
-                        await processor.ProcessUpdate(type, data, sessionId, stoppingToken);
+                        await dataProcessor.ProcessUpdate(type, data, sessionId, stoppingToken);
                     }
+
+                    await cache.StreamAcknowledgeAsync(streamKey, CONSUMER_GROUP, entry.Id);
                 }
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error reading event status stream");
+                Logger.LogInformation("Throttling service for 5 secs");
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                await EnsureStream();
+                await EnsureSubscriptions(stoppingToken);
             }
+        }
+    }
+
+    private async Task EnsureSubscriptions(CancellationToken stoppingToken = default)
+    {
+        await subscriptionCheckLock.WaitAsync(stoppingToken);
+        try
+        {
+            var sub = cacheMux.GetSubscriber();
+            await sub.UnsubscribeAllAsync();
+
+            // Subscribe for full status requests such as when a new UI connects
+            await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal),
+                async (channel, value) => await ProcessFullStatusRequest(value.ToString()), CommandFlags.FireAndForget);
+
+            // Subscribe to competitor metadata requests such as when UI details opens for a car
+            await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_COMPETITOR_METADATA, RedisChannel.PatternMode.Literal),
+                async (channel, value) => await ProcessCompetitorMetadataRequest(value.ToString(), stoppingToken), CommandFlags.FireAndForget);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error ensuring subscriptions");
+        }
+        finally
+        {
+            subscriptionCheckLock.Release();
+        }
+    }
+
+    private async void CacheMux_ConnectionRestored(object? sender, ConnectionFailedEventArgs e)
+    {
+        await EnsureStream();
+        await EnsureSubscriptions();
+
+        // Publish reset event to get full set of data from the relay
+        await mediator.Publish(new RelayResetRequest { EventId = eventId });
+    }
+
+    private async Task EnsureStream()
+    {
+        // Lock to avoid race condition between checking for the stream and creating it
+        await streamCheckLock.WaitAsync();
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            if (!await cache.KeyExistsAsync(streamKey) || (await cache.StreamGroupInfoAsync(streamKey)).All(x => x.Name != CONSUMER_GROUP))
+            {
+                Logger.LogInformation("Creating new stream and consumer group {cg}", CONSUMER_GROUP);
+                await cache.StreamCreateConsumerGroupAsync(streamKey, CONSUMER_GROUP, createStream: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error checking stream");
+        }
+        finally
+        {
+            streamCheckLock.Release();
         }
     }
 
@@ -143,18 +180,8 @@ public class EventAggregator : BackgroundService
             Logger.LogWarning("Invalid command received: {cj}", cmdJson);
             return;
         }
-
-        IDataProcessor? p;
-        lock (processors)
-        {
-            processors.TryGetValue(cmd.EventId, out p);
-        }
-
-        if (p != null)
-        {
-            Logger.LogInformation("Sending full status update for event {e} to new connection {con}", cmd.EventId, cmd.ConnectionId);
-            await SendEventStatusAsync(p, cmd.ConnectionId);
-        }
+        Logger.LogInformation("Sending full status update for event {e} to new connection {con}", cmd.EventId, cmd.ConnectionId);
+        await SendEventStatusAsync(dataProcessor, cmd.ConnectionId);
     }
 
     private async Task SendFullUpdates(CancellationToken stoppingToken)
@@ -162,116 +189,26 @@ public class EventAggregator : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-            //Logger.LogDebug("Sending full status update to connected clients...");
-            var sw = Stopwatch.StartNew();
-            IDataProcessor[] ps;
-            lock (processors)
-            {
-                ps = [.. processors.Values];
-            }
             try
             {
-                foreach (var p in ps)
-                {
-                    await SendEventStatusAsync(p, stoppingToken);
-                }
+                await SendEventStatusAsync(dataProcessor, string.Empty, stoppingToken);
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error sending full update");
             }
-            Logger.LogDebug("Full status update sent in {t}ms", sw.ElapsedMilliseconds);
         }
-    }
-
-    private async Task SendEventStatusAsync(IDataProcessor p, CancellationToken stoppingToken = default)
-    {
-        await SendEventStatusAsync(p, string.Empty, stoppingToken);
     }
 
     private async Task SendEventStatusAsync(IDataProcessor p, string connectionIdDestination, CancellationToken stoppingToken = default)
     {
-        Logger.LogTrace("Getting payload for event {e}...", p.EventId);
-        //var sw = Stopwatch.StartNew();
+        //Logger.LogTrace("Getting payload for event {e}...", p.EventId);
         var payload = await p.GetPayload(stoppingToken);
-        //Logger.LogDebug("GetPayload in {t}ms", sw.ElapsedMilliseconds);
         var json = JsonSerializer.Serialize(payload);
-        await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, json) { Payload = payload, PitProcessor = p.PitProcessor }, stoppingToken);
-        //Logger.LogDebug("Publish StatusNotification in {t}ms", sw.ElapsedMilliseconds);
+        await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, json) { ConnectionDestination = connectionIdDestination, Payload = payload, PitProcessor = p.PitProcessor }, stoppingToken);
     }
 
     #endregion
-
-    //#region Control Log
-
-    //private async Task ProcessControlLogRequest(string cmdJson, CancellationToken stoppingToken = default)
-    //{
-    //    var cmd = JsonSerializer.Deserialize<SendControlLogCommand>(cmdJson);
-    //    if (cmd == null)
-    //    {
-    //        Logger.LogWarning("Invalid command received: {cj}", cmdJson);
-    //        return;
-    //    }
-
-    //    if (controlLogCaches.TryGetValue(cmd.EventId, out var controlLog))
-    //    {
-    //        CarControlLogs ccl;
-    //        if (string.IsNullOrEmpty(cmd.CarNumber))
-    //        {
-    //            var entries = await controlLog.GetControlEntries();
-    //            ccl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = entries };
-    //        }
-    //        else // Specific car
-    //        {
-    //            var entries = await controlLog.GetCarControlEntries([cmd.CarNumber.ToLower()]);
-    //            ccl = new CarControlLogs { CarNumber = cmd.CarNumber, ControlLogEntries = [.. entries.SelectMany(s => s.Value)] };
-    //        }
-    //        Logger.LogInformation("Sending control logs for event {e} car {c} to new connection {con}", cmd.EventId, cmd.CarNumber, cmd.ConnectionId);
-    //        await mediator.Publish(new ControlLogNotification(cmd.EventId, ccl) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
-    //    }
-    //}
-
-    //private async Task SendControlLogUpdates(CancellationToken stoppingToken)
-    //{
-    //    while (!stoppingToken.IsCancellationRequested)
-    //    {
-    //        Logger.LogInformation("Requesting control log update...");
-    //        var sw = Stopwatch.StartNew();
-
-    //        try
-    //        {
-    //            foreach (var controlLogs in controlLogCaches.ToDictionary())
-    //            {
-    //                // Single car update
-    //                var changedCars = await controlLogs.Value.RequestControlLogChanges(stoppingToken);
-    //                var entries = await controlLogs.Value.GetCarControlEntries([.. changedCars]);
-    //                foreach (var e in entries)
-    //                {
-    //                    if (!string.IsNullOrWhiteSpace(e.Key))
-    //                    {
-    //                        var ccl = new CarControlLogs { CarNumber = e.Key, ControlLogEntries = e.Value };
-    //                        var notificaiton = new ControlLogNotification(controlLogs.Key, ccl) { CarNumber = e.Key };
-    //                        _ = mediator.Publish(notificaiton, stoppingToken);
-    //                    }
-    //                }
-
-    //                // Full log update
-    //                var fullLog = await controlLogs.Value.GetControlEntries();
-    //                var fullCcl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = fullLog };
-    //                var fullNotificaiton = new ControlLogNotification(controlLogs.Key, fullCcl);
-    //                _ = mediator.Publish(fullNotificaiton, stoppingToken);
-    //            }
-    //        }
-    //        catch (Exception ex)
-    //        {
-    //            Logger.LogError(ex, "Error sending full update");
-    //        }
-    //        Logger.LogDebug("Sent control log updates in {0}ms", sw.ElapsedMilliseconds);
-    //        await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
-    //    }
-    //}
-
-    //#endregion
 
     #region Competitor Metadata
 
@@ -284,79 +221,8 @@ public class EventAggregator : BackgroundService
             return;
         }
 
-        IDataProcessor? processor;
-        lock (processors)
-        {
-            processors.TryGetValue(cmd.EventId, out processor);
-        }
-
-        if (processor is OrbitsDataProcessor odp)
-        {
-            var competitorMetadata = await odp.CompetitorMetadataProcessor.LoadCompetitorMetadata(cmd.CarNumber, stoppingToken);
-            await mediator.Publish(new CompetitorMetadataNotification(cmd.EventId, competitorMetadata) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
-        }
-
-                //if (controlLogCaches.TryGetValue(cmd.EventId, out var controlLog))
-                //{
-                //    CarControlLogs ccl;
-                //    if (string.IsNullOrEmpty(cmd.CarNumber))
-                //    {
-                //        var entries = await controlLog.GetControlEntries();
-                //        ccl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = entries };
-                //    }
-                //    else // Specific car
-                //    {
-                //        var entries = await controlLog.GetCarControlEntries([cmd.CarNumber.ToLower()]);
-                //        ccl = new CarControlLogs { CarNumber = cmd.CarNumber, ControlLogEntries = [.. entries.SelectMany(s => s.Value)] };
-                //    }
-                //    Logger.LogInformation("Sending control logs for event {e} car {c} to new connection {con}", cmd.EventId, cmd.CarNumber, cmd.ConnectionId);
-                //    await mediator.Publish(new ControlLogNotification(cmd.EventId, ccl) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
-                //}
-            }
-
-    #endregion
-
-    #region Event Data Logging
-
-    private async Task LogStatusData(string type, int eventId, int sessionId, string data, CancellationToken stoppingToken)
-    {
-        try
-        {
-            var isEnabled = await IsLoggingEnabled(eventId, stoppingToken);
-            if (isEnabled)
-            {
-                using var db = await tsContext.CreateDbContextAsync(stoppingToken);
-                var log = new EventStatusLog
-                {
-                    Type = type,
-                    EventId = eventId,
-                    SessionId = sessionId,
-                    Timestamp = DateTime.UtcNow,
-                    Data = data,
-                };
-                db.EventStatusLogs.Add(log);
-                await db.SaveChangesAsync(stoppingToken);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error logging status data for event {0}", eventId);
-        }
-    }
-
-    private async Task<bool> IsLoggingEnabled(int eventId, CancellationToken stoppingToken)
-    {
-        var key = string.Format(Consts.LOG_EVENT_DATA, eventId);
-        return await hcache.GetOrCreateAsync(key,
-            async cancel => await LoadIsEventLoggingEnabled(eventId, stoppingToken),
-            cancellationToken: stoppingToken);
-    }
-
-    private async Task<bool> LoadIsEventLoggingEnabled(int eventId, CancellationToken stoppingToken)
-    {
-        using var db = await tsContext.CreateDbContextAsync(stoppingToken);
-        var isEnabled = await db.Events.Where(x => x.Id == eventId).Select(x => x.EnableSourceDataLogging).FirstOrDefaultAsync(stoppingToken);
-        return isEnabled;
+        var competitorMetadata = await dataProcessor.CompetitorMetadataProcessor.LoadCompetitorMetadata(cmd.CarNumber, stoppingToken);
+        await mediator.Publish(new CompetitorMetadataNotification(cmd.EventId, competitorMetadata) { ConnectionDestination = cmd.ConnectionId }, stoppingToken);
     }
 
     #endregion

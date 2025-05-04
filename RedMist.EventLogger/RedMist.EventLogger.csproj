@@ -17,14 +17,12 @@
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1-Preview.1" />
 		<PackageReference Include="NLog.Extensions.Logging" Version="5.4.0" />
 		<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="9.0.4" />
-		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="9.4.0" />
 		<PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\RedMist.Backend.Shared\RedMist.Backend.Shared.csproj" />
 		<ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
-		<ProjectReference Include="..\RedMist.ControlLogs\RedMist.ControlLogs.csproj" />
 	</ItemGroup>
-
+	
 </Project>

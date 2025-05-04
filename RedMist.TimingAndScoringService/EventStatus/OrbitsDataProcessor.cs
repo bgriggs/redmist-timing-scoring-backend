@@ -1,10 +1,10 @@
-﻿using MediatR;
-using Microsoft.Extensions.Logging;
+﻿using BigMission.Shared.Utilities;
+using MediatR;
 using RedMist.Backend.Shared.Models;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
-using RedMist.TimingAndScoringService.Utilities;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.X2;
 using StackExchange.Redis;
@@ -55,6 +55,8 @@ public class OrbitsDataProcessor : IDataProcessor
     private readonly PositionMetadataProcessor secondaryProcessor = new();
     private DateTime lastResetPosition = DateTime.MinValue;
     private DateTime lastPositionMismatch = DateTime.MinValue;
+    private HashEntry[]? lastPenalties;
+
 
 
     public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
@@ -88,10 +90,7 @@ public class OrbitsDataProcessor : IDataProcessor
             await ProcessPassings(data, stoppingToken);
         }
         // Loops
-        else if (type == "x2loop")
-        {
-            ProcessLoops(data, stoppingToken);
-        }
+        else if (type == "x2loop") { }
         // Flags
         else if (type == "flags")
         {
@@ -115,7 +114,6 @@ public class OrbitsDataProcessor : IDataProcessor
                 var passings = JsonSerializer.Deserialize<List<Passing>>(data);
                 if (passings != null)
                 {
-                    _ = mediator.Publish(new X2PassingsNotification(passings), stoppingToken);
                     PitProcessor.UpdatePassings(passings);
 
                     lock (lastTransponderPassings)
@@ -126,7 +124,7 @@ public class OrbitsDataProcessor : IDataProcessor
                         }
                     }
 
-                    _ = debouncer.ExecuteAsync(() => Task.Run(() => PublishChanges(stoppingToken)), stoppingToken);
+                    _ = debouncer.ExecuteAsync(() => PublishChanges(stoppingToken));
                 }
             }
             catch (Exception ex)
@@ -134,22 +132,6 @@ public class OrbitsDataProcessor : IDataProcessor
                 Logger.LogError(ex, "Error processing X2 passings data");
             }
         }, stoppingToken);
-    }
-
-    private void ProcessLoops(string data, CancellationToken stoppingToken)
-    {
-        try
-        {
-            var loops = JsonSerializer.Deserialize<List<Loop>>(data);
-            if (loops != null)
-            {
-                _ = mediator.Publish(new X2LoopsNotification(loops), stoppingToken);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error processing X2 loop data");
-        }
     }
 
     private async Task ProcessResultMonitorAsync(string data, CancellationToken stoppingToken)
@@ -733,7 +715,7 @@ public class OrbitsDataProcessor : IDataProcessor
         carPositions = secondaryProcessor.UpdateCarPositions(carPositions);
 
         // Apply penalties
-        await UpdateCarsWithPenalties(carPositions);
+        await UpdateCarsWithPenalties(carPositions, !includeChangedOnly);
 
         lock (lastTransponderPassings)
         {
@@ -750,15 +732,26 @@ public class OrbitsDataProcessor : IDataProcessor
     /// Get penalties from redis and apply to car positions.
     /// </summary>
     /// <param name="carPositions"></param>
-    private async Task UpdateCarsWithPenalties(List<CarPosition> carPositions)
+    /// <param name="fullUpdate">full will pull latest logs</param>
+    private async Task UpdateCarsWithPenalties(List<CarPosition> carPositions, bool fullUpdate)
     {
         try
         {
-            var cache = cacheMux.GetDatabase();
-            var carLogCacheKey = string.Format(Backend.Shared.Consts.CONTROL_LOG_CAR_PENALTIES, EventId);
-            var controlLogHash = await cache.HashGetAllAsync(carLogCacheKey);
-            Logger.LogTrace("Retrieved {count} control log penalties from Redis", controlLogHash.Length);
-            foreach (var entry in controlLogHash)
+            HashEntry[]? controlLogHash = null;
+            if (fullUpdate || lastPenalties == null)
+            {
+                var cache = cacheMux.GetDatabase();
+                var carLogCacheKey = string.Format(Backend.Shared.Consts.CONTROL_LOG_CAR_PENALTIES, EventId);
+                controlLogHash = await cache.HashGetAllAsync(carLogCacheKey);
+                lastPenalties = controlLogHash;
+                Logger.LogTrace("Retrieved {count} control log penalties from Redis", controlLogHash.Length);
+            }
+            else if (lastPenalties != null)
+            {
+                controlLogHash = lastPenalties;
+            }
+
+            foreach (var entry in controlLogHash!)
             {
                 try
                 {

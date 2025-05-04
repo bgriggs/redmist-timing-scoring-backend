@@ -1,5 +1,0 @@
-apiVersion: v2
-name: redmist-timing-svc
-description: Endpoint user interface clients and timing relays
-type: application
-version: 0.1.0

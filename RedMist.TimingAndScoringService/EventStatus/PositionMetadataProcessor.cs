@@ -15,7 +15,7 @@ public class PositionMetadataProcessor
 
     public List<CarPosition> UpdateCarPositions(List<CarPosition> positions)
     {
-        // stale
+        // todo: stale
 
         foreach (var position in positions)
         {
@@ -249,7 +249,7 @@ public class PositionMetadataProcessor
     }
 
     /// <summary>
-    /// Comparer for sorting car positions. This is used to sort the cars in the DataGrid.
+    /// Comparer for sorting car positions. This is used to sort the cars in the UI table.
     /// </summary>
     private class PositionComparer : IComparer<CarPosition>
     {

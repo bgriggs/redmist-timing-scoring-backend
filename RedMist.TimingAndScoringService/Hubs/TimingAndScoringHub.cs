@@ -1,396 +1,401 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
-using RedMist.Backend.Shared.Models;
-using RedMist.Database;
-using RedMist.TimingAndScoringService.Utilities;
-using RedMist.TimingCommon.Models;
-using RedMist.TimingCommon.Models.X2;
-using StackExchange.Redis;
-using System.Collections.Concurrent;
-using System.Text.Json;
+﻿//using Microsoft.AspNetCore.Authorization;
+//using Microsoft.AspNetCore.SignalR;
+//using Microsoft.EntityFrameworkCore;
+//using RedMist.Backend.Shared.Models;
+//using RedMist.Database;
+//using RedMist.TimingAndScoringService.Utilities;
+//using RedMist.TimingCommon.Models;
+//using RedMist.TimingCommon.Models.X2;
+//using StackExchange.Redis;
+//using System.Collections.Concurrent;
+//using System.Text.Json;
 
-namespace RedMist.TimingAndScoringService.Hubs;
+//namespace RedMist.TimingAndScoringService.Hubs;
 
-/// <summary>
-/// SignalR hub for timing and scoring relay service.
-/// </summary>
-[Authorize]
-public class TimingAndScoringHub : Hub
-{
-    private readonly EventDistribution eventDistribution;
-    private readonly IConnectionMultiplexer cacheMux;
-    private readonly IDbContextFactory<TsContext> tsContext;
-    private static readonly ConcurrentDictionary<string, HashSet<string>> relayGroupTracker = new();
+///// <summary>
+///// SignalR hub for timing and scoring relay service.
+///// </summary>
+//[Authorize]
+//public class TimingAndScoringHub : Hub
+//{
+//    private readonly EventDistribution eventDistribution;
+//    private readonly IConnectionMultiplexer cacheMux;
+//    private readonly IDbContextFactory<TsContext> tsContext;
+//    private static readonly ConcurrentDictionary<string, HashSet<string>> relayGroupTracker = new();
 
-    private ILogger Logger { get; }
-
-
-    public TimingAndScoringHub(ILoggerFactory loggerFactory, EventDistribution eventDistribution, IConnectionMultiplexer cacheMux,
-        IDbContextFactory<TsContext> tsContext)
-    {
-        Logger = loggerFactory.CreateLogger(GetType().Name);
-        this.eventDistribution = eventDistribution;
-        this.cacheMux = cacheMux;
-        this.tsContext = tsContext;
-    }
+//    private ILogger Logger { get; }
 
 
-    public async override Task OnConnectedAsync()
-    {
-        await base.OnConnectedAsync();
-        var clientId = GetClientId();
-        if (clientId == null)
-        {
-            Logger.LogWarning("OnConnectedAsync: invalid client id, ignoring message");
-            return;
-        }
-        await SetRelayConnectionAsync(clientId);
-        Logger.LogInformation("Client {id} connected: {ConnectionId}", clientId, Context.ConnectionId);
-    }
+//    public TimingAndScoringHub(ILoggerFactory loggerFactory, EventDistribution eventDistribution, IConnectionMultiplexer cacheMux,
+//        IDbContextFactory<TsContext> tsContext)
+//    {
+//        Logger = loggerFactory.CreateLogger(GetType().Name);
+//        this.eventDistribution = eventDistribution;
+//        this.cacheMux = cacheMux;
+//        this.tsContext = tsContext;
+//    }
 
-    public async override Task OnDisconnectedAsync(Exception? exception)
-    {
-        await base.OnDisconnectedAsync(exception);
-        var clientId = GetClientId();
-        if (clientId == null)
-        {
-            Logger.LogWarning("OnDisconnectedAsync: invalid client id, ignoring message");
-            return;
-        }
 
-        await RemoveRelayConnectionAsync();
-        Logger.LogInformation("Client {id} disconnected: {ConnectionId}", clientId, Context.ConnectionId);
+//    public async override Task OnConnectedAsync()
+//    {
+//        await base.OnConnectedAsync();
+//        var clientId = GetClientId();
+//        if (clientId == null)
+//        {
+//            Logger.LogWarning("OnConnectedAsync: invalid client id, ignoring message");
+//            return;
+//        }
+//        await SetRelayConnectionAsync(clientId);
+//        Logger.LogInformation("Client {id} connected: {ConnectionId}", clientId, Context.ConnectionId);
+//    }
 
-        if (clientId?.Contains("relay") ?? false)
-        {
-            Logger.LogDebug("Removing relay connection from all groups for client {id}", clientId);
-            RemoveRelayConnectionFromAllGroups(Context.ConnectionId);
-        }
-    }
+//    public async override Task OnDisconnectedAsync(Exception? exception)
+//    {
+//        await base.OnDisconnectedAsync(exception);
+//        var clientId = GetClientId();
+//        if (clientId == null)
+//        {
+//            Logger.LogWarning("OnDisconnectedAsync: invalid client id, ignoring message");
+//            return;
+//        }
 
-    private string? GetClientId()
-    {
-        if (Context.User == null)
-        {
-            Logger.LogDebug("Invalid user context, ignoring message");
-            return null;
-        }
+//        await RemoveRelayConnectionAsync();
+//        Logger.LogInformation("Client {id} disconnected: {ConnectionId}", clientId, Context.ConnectionId);
 
-        var clientId = Context.User.Claims.First(c => c.Type == "azp").Value;
-        if (clientId == null)
-        {
-            Logger.LogDebug("Invalid client id, ignoring message");
-            return null;
-        }
-        return clientId;
-    }
+//        if (clientId?.Contains("relay") ?? false)
+//        {
+//            Logger.LogDebug("Removing relay connection from all groups for client {id}", clientId);
+//            RemoveRelayConnectionFromAllGroups(Context.ConnectionId);
+//        }
+//    }
 
-    private async Task SetRelayConnectionAsync(string clientId)
-    {
-        var connEntry = new RelayConnectionStatus { ClientId = clientId, ConnectionId = Context.ConnectionId, ConnectedTimestamp = DateTime.UtcNow };
-        var cache = cacheMux.GetDatabase();
-        var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
-        var fieldKey = string.Format(Backend.Shared.Consts.RELAY_CONNECTION, Context.ConnectionId);
-        await cache.HashSetAsync(hashKey, fieldKey, JsonSerializer.Serialize(connEntry));
-    }
+//    private string? GetClientId()
+//    {
+//        if (Context.User == null)
+//        {
+//            Logger.LogDebug("Invalid user context, ignoring message");
+//            return null;
+//        }
 
-    private async Task RemoveRelayConnectionAsync()
-    {
-        var cache = cacheMux.GetDatabase();
-        var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
-        var fieldKey = string.Format(Backend.Shared.Consts.RELAY_CONNECTION, Context.ConnectionId);
-        await cache.HashDeleteAsync(hashKey, fieldKey);
-    }
+//        var clientId = Context.User.Claims.First(c => c.Type == "azp").Value;
+//        if (clientId == null)
+//        {
+//            Logger.LogDebug("Invalid client id, ignoring message");
+//            return null;
+//        }
+//        return clientId;
+//    }
 
-    #region Relay Clients
+//    private async Task SetRelayConnectionAsync(string clientId)
+//    {
+//        var connEntry = new RelayConnectionStatus { ClientId = clientId, ConnectionId = Context.ConnectionId, ConnectedTimestamp = DateTime.UtcNow };
+//        var cache = cacheMux.GetDatabase();
+//        var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
+//        var fieldKey = string.Format(Backend.Shared.Consts.RELAY_CONNECTION, Context.ConnectionId);
+//        await cache.HashSetAsync(hashKey, fieldKey, JsonSerializer.Serialize(connEntry));
+//    }
 
-    public async Task SendHeartbeat(int eventId)
-    {
-        var clientId = GetClientId();
-        if (clientId == null)
-        {
-            Logger.LogWarning("SendHeartbeat: invalid client id, ignoring message");
-            return;
-        }
+//    private async Task RemoveRelayConnectionAsync()
+//    {
+//        var cache = cacheMux.GetDatabase();
+//        var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
+//        var fieldKey = string.Format(Backend.Shared.Consts.RELAY_CONNECTION, Context.ConnectionId);
+//        await cache.HashDeleteAsync(hashKey, fieldKey);
+//    }
 
-        Logger.LogTrace("Heartbeat received from relay {c} for event {eventId}", clientId, eventId);
+//    #region Relay Clients
 
-        var cache = cacheMux.GetDatabase();
-        var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
-        var orgId = await eventDistribution.GetOrganizationId(clientId);
-        var entry = new RelayConnectionEventEntry
-        {
-            EventId = eventId,
-            ConnectionId = Context.ConnectionId,
-            OrganizationId = orgId,
-            Timestamp = DateTime.UtcNow
-        };
-        var entryKey = string.Format(Backend.Shared.Consts.RELAY_HEARTBEAT, eventId);
-        var entryJson = JsonSerializer.Serialize(entry);
-        await cache.HashSetAsync(hashKey, entryKey, entryJson);
-    }
+//    public async Task SendHeartbeat(int eventId)
+//    {
+//        var clientId = GetClientId();
+//        if (clientId == null)
+//        {
+//            Logger.LogWarning("SendHeartbeat: invalid client id, ignoring message");
+//            return;
+//        }
 
-    /// <summary>
-    /// Receives a message from an RMonitor relay.
-    /// </summary>
-    /// <param name="eventId">user select event on the relay</param>
-    /// <param name="sessionId">timing system session</param>
-    /// <param name="command">RMonitor command string</param>
-    /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
-    public async Task SendRMonitor(int eventId, int sessionId, string command)
-    {
-        string commandStr = command.Replace("\r", "").Replace("\n", "");
-        Logger.LogTrace("RX-RM: e:{evt} s:{ses} {c}", eventId, sessionId, commandStr);
-        if (eventId > 0)
-        {
-            // Security note: not checking that the event/session is valid for the user explicitly here for performance. Security is ensured by the
-            // check in SendSessionChange that the event/session is committed to the database only when it passes the security check.
-            var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
-            var cache = cacheMux.GetDatabase();
+//        Logger.LogTrace("Heartbeat received from relay {c} for event {eventId}", clientId, eventId);
 
-            // Send the command to the service responsible for the specific event
-            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_RMON_STREAM_FIELD, eventId, sessionId), command);
+//        var cache = cacheMux.GetDatabase();
+//        var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
+//        var orgId = await eventDistribution.GetOrganizationId(clientId);
+//        var entry = new RelayConnectionEventEntry
+//        {
+//            EventId = eventId,
+//            ConnectionId = Context.ConnectionId,
+//            OrganizationId = orgId,
+//            Timestamp = DateTime.UtcNow
+//        };
+//        var entryKey = string.Format(Backend.Shared.Consts.RELAY_HEARTBEAT, eventId);
+//        var entryJson = JsonSerializer.Serialize(entry);
+//        await cache.HashSetAsync(hashKey, entryKey, entryJson);
+//    }
 
-            // Add the connection to the relay group for this event
-            var connectionId = Context.ConnectionId;
-            var groupName = string.Format(Consts.RELAY_GROUP_PREFIX, eventId);
-            await SafeAddToRelayGroupAsync(connectionId, groupName);
-        }
-    }
+//    /// <summary>
+//    /// Receives a message from an RMonitor relay.
+//    /// </summary>
+//    /// <param name="eventId">user select event on the relay</param>
+//    /// <param name="sessionId">timing system session</param>
+//    /// <param name="command">RMonitor command string</param>
+//    /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
+//    public async Task SendRMonitor(int eventId, int sessionId, string command)
+//    {
+//        string commandStr = command.Replace("\r", "").Replace("\n", "");
+//        Logger.LogTrace("RX-RM: e:{evt} s:{ses} {c}", eventId, sessionId, commandStr);
+//        if (eventId > 0)
+//        {
+//            // Security note: not checking that the event/session is valid for the user explicitly here for performance. Security is ensured by the
+//            // check in SendSessionChange that the event/session is committed to the database only when it passes the security check.
+//            //var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+//            var streamId = string.Format(Backend.Shared.Consts.EVENT_STATUS_STREAM_KEY, eventId);
+//            var cache = cacheMux.GetDatabase();
 
-    /// <summary>
-    /// Reduces the number of relay group adds by keeping a local copy. When there are
-    /// multiple instance of this service, there may occasional duplications of group adds.
-    /// </summary>
-    /// <param name="connectionId"></param>
-    /// <param name="groupName"></param>
-    private async Task SafeAddToRelayGroupAsync(string connectionId, string groupName)
-    {
-        var group = relayGroupTracker.GetOrAdd(groupName, _ => []);
+//            // Send the command to the service responsible for the specific event
+//            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_RMON_STREAM_FIELD, eventId, sessionId), command);
 
-        lock (group)
-        {
-            if (!group.Add(connectionId))
-            {
-                return; // Already in group, skip adding
-            }
-        }
+//            // Add the connection to the relay group for this event
+//            var connectionId = Context.ConnectionId;
+//            var groupName = string.Format(Consts.RELAY_GROUP_PREFIX, eventId);
+//            await SafeAddToRelayGroupAsync(connectionId, groupName);
+//        }
+//    }
 
-        await Groups.AddToGroupAsync(connectionId, groupName);
-    }
+//    /// <summary>
+//    /// Reduces the number of relay group adds by keeping a local copy. When there are
+//    /// multiple instance of this service, there may occasional duplications of group adds.
+//    /// </summary>
+//    /// <param name="connectionId"></param>
+//    /// <param name="groupName"></param>
+//    private async Task SafeAddToRelayGroupAsync(string connectionId, string groupName)
+//    {
+//        var group = relayGroupTracker.GetOrAdd(groupName, _ => []);
 
-    public static void RemoveRelayConnectionFromAllGroups(string connectionId)
-    {
-        foreach (var kvp in relayGroupTracker)
-        {
-            var groupName = kvp.Key;
-            var connectionSet = kvp.Value;
+//        lock (group)
+//        {
+//            if (!group.Add(connectionId))
+//            {
+//                return; // Already in group, skip adding
+//            }
+//        }
 
-            lock (connectionSet)
-            {
-                if (connectionSet.Remove(connectionId) && connectionSet.Count == 0)
-                {
-                    relayGroupTracker.TryRemove(groupName, out _);
-                }
-            }
-        }
-    }
+//        await Groups.AddToGroupAsync(connectionId, groupName);
+//    }
 
-    /// <summary>
-    /// Receive and register a new session/run from the timing system.
-    /// </summary>
-    /// <param name="sessionId">ID received from the timing system</param>
-    /// <param name="sessionName">Name of the event from the timing system</param>
-    /// <param name="timeZoneOffset">Local time zone offset in hours</param>
-    public async Task SendSessionChange(int eventId, int sessionId, string sessionName, double timeZoneOffset)
-    {
-        Logger.LogDebug("SendSessionChange: evt:{eventId} new session:{sessionId}, new name:{sessionName}", eventId, sessionId, sessionName);
+//    public static void RemoveRelayConnectionFromAllGroups(string connectionId)
+//    {
+//        foreach (var kvp in relayGroupTracker)
+//        {
+//            var groupName = kvp.Key;
+//            var connectionSet = kvp.Value;
 
-        var clientId = GetClientId();
-        if (clientId == null)
-        {
-            Logger.LogWarning("SendSessionChange: invalid client id, ignoring message");
-            return;
-        }
+//            lock (connectionSet)
+//            {
+//                if (connectionSet.Remove(connectionId) && connectionSet.Count == 0)
+//                {
+//                    relayGroupTracker.TryRemove(groupName, out _);
+//                }
+//            }
+//        }
+//    }
 
-        try
-        {
-            // Verify that the event is under this client
-            var orgId = await eventDistribution.GetOrganizationId(clientId);
-            using var db = await tsContext.CreateDbContextAsync();
-            var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.Id == eventId);
-            if (ev != null)
-            {
-                Logger.LogTrace("SendSessionChange: success, event {e} found for client {c}", eventId, clientId);
-                var existingSession = await db.Sessions.FirstOrDefaultAsync(x => x.EventId == eventId && x.Id == sessionId);
-                if (existingSession == null)
-                {
-                    db.Sessions.Add(new Session
-                    {
-                        Id = sessionId,
-                        EventId = eventId,
-                        Name = sessionName,
-                        IsLive = true,
-                        StartTime = DateTime.UtcNow,
-                        LastUpdated = DateTime.UtcNow,
-                        LocalTimeZoneOffset = timeZoneOffset,
-                        IsPracticeQualifying = SessionHelper.IsPracticeOrQualifyingSession(sessionName)
-                    });
-                    await db.SaveChangesAsync();
-                    Logger.LogInformation("New session {s} saved for event {e}", sessionId, eventId);
-                }
-                else
-                {
-                    Logger.LogInformation("Session {s} already exists for event {e}. No modifications.", sessionId, eventId);
-                }
-            }
-            else
-            {
-                Logger.LogWarning("Event {e} not found for client {c}. Session not registered.", eventId, clientId);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error processing SendSessionChange");
-        }
-    }
+//    /// <summary>
+//    /// Receive and register a new session/run from the timing system.
+//    /// </summary>
+//    /// <param name="sessionId">ID received from the timing system</param>
+//    /// <param name="sessionName">Name of the event from the timing system</param>
+//    /// <param name="timeZoneOffset">Local time zone offset in hours</param>
+//    public async Task SendSessionChange(int eventId, int sessionId, string sessionName, double timeZoneOffset)
+//    {
+//        Logger.LogDebug("SendSessionChange: evt:{eventId} new session:{sessionId}, new name:{sessionName}", eventId, sessionId, sessionName);
 
-    /// <summary>
-    /// Sends a list of X2 passing data associated with a specific event and session.
-    /// </summary>
-    /// <param name="eventId">Identifies the specific event for which the passing data is being sent.</param>
-    /// <param name="sessionId">Specifies the session related to the event for which the passings are recorded.</param>
-    /// <param name="passings">Contains the list of passing data that needs to be sent to the service.</param>
-    public async Task SendPassings(int eventId, int sessionId, List<Passing> passings)
-    {
-        Logger.LogDebug("SendPassings: evt:{eventId} passings:{passings.Count}", eventId, passings.Count);
+//        var clientId = GetClientId();
+//        if (clientId == null)
+//        {
+//            Logger.LogWarning("SendSessionChange: invalid client id, ignoring message");
+//            return;
+//        }
 
-        var clientId = GetClientId();
-        if (clientId == null)
-        {
-            Logger.LogWarning("SendPassings: invalid client id, ignoring message");
-            return;
-        }
+//        try
+//        {
+//            // Verify that the event is under this client
+//            var orgId = await eventDistribution.GetOrganizationId(clientId);
+//            using var db = await tsContext.CreateDbContextAsync();
+//            var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.Id == eventId);
+//            if (ev != null)
+//            {
+//                Logger.LogTrace("SendSessionChange: success, event {e} found for client {c}", eventId, clientId);
+//                var existingSession = await db.Sessions.FirstOrDefaultAsync(x => x.EventId == eventId && x.Id == sessionId);
+//                if (existingSession == null)
+//                {
+//                    db.Sessions.Add(new Session
+//                    {
+//                        Id = sessionId,
+//                        EventId = eventId,
+//                        Name = sessionName,
+//                        IsLive = true,
+//                        StartTime = DateTime.UtcNow,
+//                        LastUpdated = DateTime.UtcNow,
+//                        LocalTimeZoneOffset = timeZoneOffset,
+//                        IsPracticeQualifying = SessionHelper.IsPracticeOrQualifyingSession(sessionName)
+//                    });
+//                    await db.SaveChangesAsync();
+//                    Logger.LogInformation("New session {s} saved for event {e}", sessionId, eventId);
+//                }
+//                else
+//                {
+//                    Logger.LogInformation("Session {s} already exists for event {e}. No modifications.", sessionId, eventId);
+//                }
+//            }
+//            else
+//            {
+//                Logger.LogWarning("Event {e} not found for client {c}. Session not registered.", eventId, clientId);
+//            }
+//        }
+//        catch (Exception ex)
+//        {
+//            Logger.LogError(ex, "Error processing SendSessionChange");
+//        }
+//    }
 
-        var orgId = await eventDistribution.GetOrganizationId(clientId);
-        foreach (var pass in passings)
-        {
-            pass.OrganizationId = orgId;
-        }
+//    /// <summary>
+//    /// Sends a list of X2 passing data associated with a specific event and session.
+//    /// </summary>
+//    /// <param name="eventId">Identifies the specific event for which the passing data is being sent.</param>
+//    /// <param name="sessionId">Specifies the session related to the event for which the passings are recorded.</param>
+//    /// <param name="passings">Contains the list of passing data that needs to be sent to the service.</param>
+//    public async Task SendPassings(int eventId, int sessionId, List<Passing> passings)
+//    {
+//        Logger.LogDebug("SendPassings: evt:{eventId} passings:{passings.Count}", eventId, passings.Count);
 
-        var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
-        var cache = cacheMux.GetDatabase();
+//        var clientId = GetClientId();
+//        if (clientId == null)
+//        {
+//            Logger.LogWarning("SendPassings: invalid client id, ignoring message");
+//            return;
+//        }
 
-        var chunks = SplitIntoChunks(passings);
+//        var orgId = await eventDistribution.GetOrganizationId(clientId);
+//        foreach (var pass in passings)
+//        {
+//            pass.OrganizationId = orgId;
+//        }
 
-        foreach (var chunk in chunks)
-        {
-            var json = JsonSerializer.Serialize(chunk);
-            // Send the command to the service responsible for the specific event
-            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_PASSINGS_STREAM_FIELD, eventId, sessionId), json);
-        }
-    }
+//        //var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+//        var streamId = string.Format(Backend.Shared.Consts.EVENT_STATUS_STREAM_KEY, eventId);
+//        var cache = cacheMux.GetDatabase();
 
-    /// <summary>
-    /// Divides a list into smaller lists of a specified maximum size. Each smaller list contains a portion of the
-    /// original list.
-    /// </summary>
-    /// <typeparam name="T">Represents the type of elements contained in the list being divided.</typeparam>
-    /// <param name="source">The list to be split into smaller chunks.</param>
-    /// <param name="chunkSize">Specifies the maximum number of elements each smaller list can contain.</param>
-    /// <returns>An enumerable collection of smaller lists created from the original list.</returns>
-    private static IEnumerable<List<T>> SplitIntoChunks<T>(List<T> source, int chunkSize = 25)
-    {
-        for (int i = 0; i < source.Count; i += chunkSize)
-        {
-            yield return source.GetRange(i, Math.Min(chunkSize, source.Count - i));
-        }
-    }
+//        var chunks = SplitIntoChunks(passings);
 
-    /// <summary>
-    /// Sends a change in X2 loop data associated with a specific event for processing.
-    /// </summary>
-    /// <param name="eventId">Identifies the specific event for which the loop changes are being sent.</param>
-    /// <param name="loops">Contains the collection of loop data that is being updated and sent.</param>
-    public async Task SendLoopChange(int eventId, List<Loop> loops)
-    {
-        Logger.LogDebug("SendLoopChange: evt:{eventId} loops:{loops.Count}", eventId, loops.Count);
+//        foreach (var chunk in chunks)
+//        {
+//            var json = JsonSerializer.Serialize(chunk);
+//            // Send the command to the service responsible for the specific event
+//            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_PASSINGS_STREAM_FIELD, eventId, sessionId), json);
+//        }
+//    }
 
-        var clientId = GetClientId();
-        if (clientId == null)
-        {
-            Logger.LogWarning("SendLoopChange: invalid client id, ignoring message");
-            return;
-        }
+//    /// <summary>
+//    /// Divides a list into smaller lists of a specified maximum size. Each smaller list contains a portion of the
+//    /// original list.
+//    /// </summary>
+//    /// <typeparam name="T">Represents the type of elements contained in the list being divided.</typeparam>
+//    /// <param name="source">The list to be split into smaller chunks.</param>
+//    /// <param name="chunkSize">Specifies the maximum number of elements each smaller list can contain.</param>
+//    /// <returns>An enumerable collection of smaller lists created from the original list.</returns>
+//    private static IEnumerable<List<T>> SplitIntoChunks<T>(List<T> source, int chunkSize = 25)
+//    {
+//        for (int i = 0; i < source.Count; i += chunkSize)
+//        {
+//            yield return source.GetRange(i, Math.Min(chunkSize, source.Count - i));
+//        }
+//    }
 
-        var orgId = await eventDistribution.GetOrganizationId(clientId);
-        foreach (var loop in loops)
-        {
-            loop.OrganizationId = orgId;
-        }
+//    /// <summary>
+//    /// Sends a change in X2 loop data associated with a specific event for processing.
+//    /// </summary>
+//    /// <param name="eventId">Identifies the specific event for which the loop changes are being sent.</param>
+//    /// <param name="loops">Contains the collection of loop data that is being updated and sent.</param>
+//    public async Task SendLoopChange(int eventId, List<Loop> loops)
+//    {
+//        Logger.LogDebug("SendLoopChange: evt:{eventId} loops:{loops.Count}", eventId, loops.Count);
 
-        var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
-        var cache = cacheMux.GetDatabase();
-        var json = JsonSerializer.Serialize(loops);
-        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_LOOPS_STREAM_FIELD, eventId), json);
-    }
+//        var clientId = GetClientId();
+//        if (clientId == null)
+//        {
+//            Logger.LogWarning("SendLoopChange: invalid client id, ignoring message");
+//            return;
+//        }
 
-    /// <summary>
-    /// Sends a list of flag durations associated with a specific event to a streaming service.
-    /// </summary>
-    /// <param name="eventId">Identifies the specific event for which the flags are being sent.</param>
-    /// <param name="sessionId"></param>
-    /// <param name="flags">Contains the durations of flags that are associated with the event.</param>
-    public async Task SendFlags(int eventId, int sessionId, List<FlagDuration> flags)
-    {
-        Logger.LogDebug("SendFlags: evt:{eventId} loops:{loops.Count}", eventId, flags.Count);
+//        var orgId = await eventDistribution.GetOrganizationId(clientId);
+//        foreach (var loop in loops)
+//        {
+//            loop.OrganizationId = orgId;
+//        }
 
-        var clientId = GetClientId();
-        if (clientId == null)
-        {
-            Logger.LogWarning("SendFlags: invalid client id, ignoring message");
-            return;
-        }
+//        //var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+//        var streamId = string.Format(Backend.Shared.Consts.EVENT_STATUS_STREAM_KEY, eventId);
+//        var cache = cacheMux.GetDatabase();
+//        var json = JsonSerializer.Serialize(loops);
+//        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_LOOPS_STREAM_FIELD, eventId), json);
+//    }
 
-        var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
-        var cache = cacheMux.GetDatabase();
-        var json = JsonSerializer.Serialize(flags);
-        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_FLAGS_STREAM_FIELD, eventId, sessionId), json);
-    }
+//    /// <summary>
+//    /// Sends a list of flag durations associated with a specific event to a streaming service.
+//    /// </summary>
+//    /// <param name="eventId">Identifies the specific event for which the flags are being sent.</param>
+//    /// <param name="sessionId"></param>
+//    /// <param name="flags">Contains the durations of flags that are associated with the event.</param>
+//    public async Task SendFlags(int eventId, int sessionId, List<FlagDuration> flags)
+//    {
+//        Logger.LogDebug("SendFlags: evt:{eventId} loops:{loops.Count}", eventId, flags.Count);
 
-    /// <summary>
-    /// Sends metadata for competitors associated with a specific event.
-    /// </summary>
-    /// <param name="eventId">Identifies the specific event for which competitor metadata is being sent.</param>
-    /// <param name="competitors">Contains the metadata of competitors such as name, make, model, club.</param>
-    public async Task SendCompetitorMetadata(int eventId, List<CompetitorMetadata> competitors)
-    {
-        Logger.LogDebug("SendCompetitorMetadata: evt:{eventId} competitors:{competitors.Count}", eventId, competitors.Count);
+//        var clientId = GetClientId();
+//        if (clientId == null)
+//        {
+//            Logger.LogWarning("SendFlags: invalid client id, ignoring message");
+//            return;
+//        }
 
-        var clientId = GetClientId();
-        if (clientId == null)
-        {
-            Logger.LogWarning("SendCompetitorMetadata: invalid client id, ignoring message");
-            return;
-        }
+//        //var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+//        var streamId = string.Format(Backend.Shared.Consts.EVENT_STATUS_STREAM_KEY, eventId);
+//        var cache = cacheMux.GetDatabase();
+//        var json = JsonSerializer.Serialize(flags);
+//        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_FLAGS_STREAM_FIELD, eventId, sessionId), json);
+//    }
 
-        // Ensure the event provided is valid for this client
-        var orgId = await eventDistribution.GetOrganizationId(clientId);
-        using var db = await tsContext.CreateDbContextAsync();
-        var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.Id == eventId);
-        if (ev?.Id != eventId)
-        {
-            Logger.LogWarning("SendCompetitorMetadata: event {e} not found for client {c}. Ignoring message.", eventId, clientId);
-            return;
-        }
+//    /// <summary>
+//    /// Sends metadata for competitors associated with a specific event.
+//    /// </summary>
+//    /// <param name="eventId">Identifies the specific event for which competitor metadata is being sent.</param>
+//    /// <param name="competitors">Contains the metadata of competitors such as name, make, model, club.</param>
+//    public async Task SendCompetitorMetadata(int eventId, List<CompetitorMetadata> competitors)
+//    {
+//        Logger.LogDebug("SendCompetitorMetadata: evt:{eventId} competitors:{competitors.Count}", eventId, competitors.Count);
 
-        // Send the data to the event processor
-        var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
-        var cache = cacheMux.GetDatabase();
-        var json = JsonSerializer.Serialize(competitors);
-        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_COMPETITORS, eventId), json);
-    }
+//        var clientId = GetClientId();
+//        if (clientId == null)
+//        {
+//            Logger.LogWarning("SendCompetitorMetadata: invalid client id, ignoring message");
+//            return;
+//        }
 
-    #endregion
-}
+//        // Ensure the event provided is valid for this client
+//        var orgId = await eventDistribution.GetOrganizationId(clientId);
+//        using var db = await tsContext.CreateDbContextAsync();
+//        var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.Id == eventId);
+//        if (ev?.Id != eventId)
+//        {
+//            Logger.LogWarning("SendCompetitorMetadata: event {e} not found for client {c}. Ignoring message.", eventId, clientId);
+//            return;
+//        }
+
+//        // Send the data to the event processor
+//        //var streamId = await eventDistribution.GetStreamIdAsync(eventId.ToString());
+//        var streamId = string.Format(Backend.Shared.Consts.EVENT_STATUS_STREAM_KEY, eventId);
+//        var cache = cacheMux.GetDatabase();
+//        var json = JsonSerializer.Serialize(competitors);
+//        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_COMPETITORS, eventId), json);
+//    }
+
+//    #endregion
+//}

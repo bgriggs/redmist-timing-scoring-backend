@@ -34,7 +34,7 @@ public partial class ControlLogCache
         //Logger.LogInformation("cacheLock.WaitAsync in {t}ms", sw.ElapsedMilliseconds);
         try
         {
-            Logger.LogDebug($"Checking control log for event {eventId} cached size {controlLogCache.Count}");
+            Logger.LogDebug("Checking control log for event {eventId} cached size {controlLogCacheCount}", eventId, controlLogCache.Count);
             using var db = await tsContext.CreateDbContextAsync(stoppingToken);
             var org = await db.Events.Where(db => db.Id == eventId)
                 .Join(db.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
@@ -102,12 +102,12 @@ public partial class ControlLogCache
             }
             else if (org == null)
             {
-                Logger.LogWarning($"No event {eventId} found for Control Log in database.");
+                Logger.LogWarning("No event {eventId} found for Control Log in database.", eventId);
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error loading control log for event {0}", eventId);
+            Logger.LogError(ex, "Error loading control log for event {eventId}", eventId);
         }
         finally
         {
