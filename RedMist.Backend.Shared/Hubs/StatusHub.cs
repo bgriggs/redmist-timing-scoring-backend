@@ -89,16 +89,6 @@ public class StatusHub : Hub
         var grpKey = $"{eventId}-cl";
         await Groups.AddToGroupAsync(connectionId, grpKey);
 
-        if (eventId > 0)
-        {
-            // Send a full status update to the client
-            var sub = cacheMux.GetSubscriber();
-            var cmd = new SendControlLogCommand { EventId = eventId, ConnectionId = connectionId, CarNumber = string.Empty };
-            var json = JsonSerializer.Serialize(cmd);
-            // Tell the service responsible for this event to send a full status update
-            await sub.PublishAsync(new RedisChannel(Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
-        }
-
         Logger.LogInformation("Client {connectionId} subscribed to control log for event {eventId}", connectionId, eventId);
     }
 
@@ -115,16 +105,6 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-{carNum}";
         await Groups.AddToGroupAsync(connectionId, grpKey);
-
-        if (eventId > 0)
-        {
-            // Send a full status update to the client
-            var sub = cacheMux.GetSubscriber();
-            var cmd = new SendControlLogCommand { EventId = eventId, ConnectionId = connectionId, CarNumber = carNum };
-            var json = JsonSerializer.Serialize(cmd);
-            // Tell the service responsible for this event to send a full status update
-            await sub.PublishAsync(new RedisChannel(Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
-        }
 
         Logger.LogInformation("Client {connectionId} subscribed to control log for car {carNum} event {eventId}", connectionId, carNum, eventId);
     }

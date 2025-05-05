@@ -6,6 +6,8 @@ using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.StatusApi.Models;
 using RedMist.TimingCommon.Models;
+using StackExchange.Redis;
+using System.Formats.Tar;
 using System.Text.Json;
 
 namespace RedMist.StatusApi.Controllers;
@@ -17,15 +19,17 @@ public class EventsController : ControllerBase
 {
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly HybridCache hcache;
+    private readonly IConnectionMultiplexer cacheMux;
 
     private ILogger Logger { get; }
 
 
-    public EventsController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, HybridCache hcache)
+    public EventsController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, HybridCache hcache, IConnectionMultiplexer cacheMux)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.hcache = hcache;
+        this.cacheMux = cacheMux;
     }
 
 
@@ -204,6 +208,8 @@ public class EventsController : ControllerBase
         return carPositions;
     }
 
+    #region Sessions
+
     [HttpGet]
     [ProducesResponseType<List<Session>>(StatusCodes.Status200OK)]
     public async Task<List<Session>> LoadSessions(int eventId)
@@ -222,6 +228,10 @@ public class EventsController : ControllerBase
         var result = await context.SessionResults.FirstOrDefaultAsync(r => r.EventId == eventId && r.SessionId == sessionId);
         return result?.Payload;
     }
+
+    #endregion
+
+    #region Competitor Metadata
 
     [HttpGet]
     [ProducesResponseType<CompetitorMetadata>(StatusCodes.Status200OK)]
@@ -243,4 +253,43 @@ public class EventsController : ControllerBase
         using var db = await tsContext.CreateDbContextAsync();
         return await db.CompetitorMetadata.FirstOrDefaultAsync(x => x.EventId == eventId && x.CarNumber == car);
     }
+
+    #endregion
+
+    #region Control Logs
+
+    [HttpGet]
+    [ProducesResponseType<List<ControlLogEntry>>(StatusCodes.Status200OK)]
+    public async Task<List<ControlLogEntry>> LoadControlLog(int eventId)
+    {
+        Logger.LogTrace("LoadControlLog for event {eventId}", eventId);
+        var logCacheKey = string.Format(Consts.CONTROL_LOG, eventId);
+        var cache = cacheMux.GetDatabase();
+        var json = await cache.StringGetAsync(logCacheKey);
+        if (json.IsNullOrEmpty)
+        {
+            Logger.LogWarning("Control log for event {eventId} not found in cache", eventId);
+            return [];
+        }
+        var ccl = JsonSerializer.Deserialize<CarControlLogs>(json!);
+        return ccl?.ControlLogEntries ?? [];
+    }
+
+    [HttpGet]
+    [ProducesResponseType<CarControlLogs>(StatusCodes.Status200OK)]
+    public async Task<CarControlLogs?> LoadCarControlLogs(int eventId, string car)
+    {
+        Logger.LogTrace("LoadCarControlLog for event {eventId} car {c}", eventId, car);
+        var carLogEntryKey = string.Format(Consts.CONTROL_LOG_CAR, eventId, car);
+        var cache = cacheMux.GetDatabase();
+        var json = await cache.StringGetAsync(carLogEntryKey);
+        if (json.IsNullOrEmpty)
+        {
+            Logger.LogWarning("Control log for event {eventId} car {c} not found in cache", eventId, car);
+            return null;
+        }
+        return JsonSerializer.Deserialize<CarControlLogs>(json!);
+    }
+
+    #endregion
 }

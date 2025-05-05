@@ -186,12 +186,17 @@ public partial class ControlLogCache
         return true;
     }
 
-    public async Task<Dictionary<string, List<ControlLogEntry>>> GetCarControlEntries(string[] cars)
+    public async Task<Dictionary<string, List<ControlLogEntry>>> GetCarControlEntries(string[]? cars = null)
     {
         Dictionary<string, List<ControlLogEntry>> entries = [];
         await cacheLock.WaitAsync();
         try
         {
+            if (cars == null || cars.Length == 0)
+            {
+                return controlLogCache.ToDictionary(x => x.Key, x => x.Value.ToList());
+            }
+
             foreach (var car in cars)
             {
                 if (controlLogCache.TryGetValue(car, out List<ControlLogEntry>? value))

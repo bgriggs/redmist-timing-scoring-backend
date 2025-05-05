@@ -36,7 +36,6 @@ public class StatusAggregatorService : BackgroundService
         this.tsContext = tsContext;
         this.controlLogFactory = controlLogFactory;
         this.hubContext = hubContext;
-        cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
     }
 
 
@@ -54,7 +53,6 @@ public class StatusAggregatorService : BackgroundService
         var failureCounter = Metrics.CreateCounter("controllog_failures", "Total control log failures");
         var entriesCounter = Metrics.CreateCounter("controllog_entries_total", "Total control log entries");
 
-        await EnsureSubscriptions(stoppingToken);
         controlLogCache = new ControlLogCache(eventId.Value, loggerFactory, tsContext, controlLogFactory);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -73,72 +71,14 @@ public class StatusAggregatorService : BackgroundService
             {
                 Logger.LogError(ex, "An error occurred in StatusAggregatorService.");
                 failureCounter.Inc();
-                Logger.LogInformation("Throttling service for 10 secs");
-                await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
-                await EnsureSubscriptions(stoppingToken);
+                //Logger.LogInformation("Throttling service for 10 secs");
+                //await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
             }
         }
         Logger.LogInformation("StatusAggregatorService stopped.");
     }
 
-    private async void CacheMux_ConnectionRestored(object? sender, ConnectionFailedEventArgs e)
-    {
-        await EnsureSubscriptions();
-    }
-
-    private async Task EnsureSubscriptions(CancellationToken stoppingToken = default)
-    {
-        await subscriptionCheckLock.WaitAsync(stoppingToken);
-        try
-        {
-            var sub = cacheMux.GetSubscriber();
-            await sub.UnsubscribeAllAsync();
-
-            // Subscribe to control log requests such as when UI details opens for a car
-            await sub.SubscribeAsync(new RedisChannel(Consts.SEND_CONTROL_LOG, RedisChannel.PatternMode.Literal),
-                async (channel, value) => await ProcessControlLogRequest(value.ToString(), stoppingToken), CommandFlags.FireAndForget);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error ensuring subscriptions");
-        }
-        finally
-        {
-            subscriptionCheckLock.Release();
-        }
-    }
-
     #region Control Log
-
-    private async Task ProcessControlLogRequest(string cmdJson, CancellationToken stoppingToken = default)
-    {
-        if (controlLogCache == null)
-        {
-            Logger.LogWarning("ControlLogCache is not initialized. Cannot process control log request.");
-            return;
-        }
-
-        var cmd = JsonSerializer.Deserialize<SendControlLogCommand>(cmdJson);
-        if (cmd == null)
-        {
-            Logger.LogWarning("Invalid command received: {cj}", cmdJson);
-            return;
-        }
-
-        CarControlLogs ccl;
-        if (string.IsNullOrEmpty(cmd.CarNumber))
-        {
-            var entries = await controlLogCache.GetControlEntries();
-            ccl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = entries };
-        }
-        else // Specific car
-        {
-            var entries = await controlLogCache.GetCarControlEntries([cmd.CarNumber.ToLower()]);
-            ccl = new CarControlLogs { CarNumber = cmd.CarNumber, ControlLogEntries = [.. entries.SelectMany(s => s.Value)] };
-        }
-        Logger.LogInformation("Sending control logs for event {e} car {c} to new connection {con}", cmd.EventId, cmd.CarNumber, cmd.ConnectionId);
-        await SendAsync(cmd.ConnectionId, string.Empty, ccl, stoppingToken);
-    }
 
     private async Task RequestAndSendControlLogUpdates(CancellationToken stoppingToken)
     {
@@ -171,8 +111,20 @@ public class StatusAggregatorService : BackgroundService
         var cache = cacheMux.GetDatabase();
         var logCacheKey = string.Format(Consts.CONTROL_LOG, eventId);
         var logCacheValue = JsonSerializer.Serialize(fullCcl);
-        await cache.StringSetAsync(logCacheKey, logCacheValue, TimeSpan.FromMinutes(5), When.Always, CommandFlags.FireAndForget);
+        await cache.StringSetAsync(logCacheKey, logCacheValue);
 
+        // Update the cache with car control logs
+        Logger.LogInformation("Updating cache with car control logs...");
+        var carEntriesLookup = await controlLogCache.GetCarControlEntries();
+        foreach (var carEntry in carEntriesLookup)
+        {
+            var carLogEntryKey = string.Format(Consts.CONTROL_LOG_CAR, eventId, carEntry.Key);
+            var carLogCacheValue = JsonSerializer.Serialize(new CarControlLogs { CarNumber = carEntry.Key, ControlLogEntries = carEntry.Value });
+            await cache.StringSetAsync(carLogEntryKey, carLogCacheValue);
+        }
+
+        // Update the cache with car penalties
+        Logger.LogInformation("Updating cache with car penalties...");
         var carLogCacheKey = string.Format(Consts.CONTROL_LOG_CAR_PENALTIES, eventId);
         var carPenaltyEntries = new List<HashEntry>();
         var carPenalties = await controlLogCache.GetPenaltiesAsync(stoppingToken);
