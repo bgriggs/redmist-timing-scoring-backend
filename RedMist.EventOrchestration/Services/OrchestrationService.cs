@@ -47,6 +47,9 @@ public class OrchestrationService : BackgroundService
                 var currentEvents = await GetCurrentEventsAsync();
                 Logger.LogDebug("Found {eventCount} current events", currentEvents.Count);
 
+                // Update the live events in the database
+                await UpdateLiveEvents(currentEvents);
+
                 // Get currently active jobs in the namespace
                 var currentJobs = await GetJobsAsync(client, currentNamespace, stoppingToken);
 
@@ -92,6 +95,9 @@ public class OrchestrationService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Gets the jobs active in kubernetes for the current namespace.
+    /// </summary>
     private async Task<V1JobList> GetJobsAsync(Kubernetes client, string ns, CancellationToken stoppingToken)
     {
         var jobs = await client.ListNamespacedJobAsync(ns, cancellationToken: stoppingToken);
@@ -104,6 +110,10 @@ public class OrchestrationService : BackgroundService
         return jobs;
     }
 
+    /// <summary>
+    /// Based on active signalR connections of relays, get the current events for those relays.
+    /// </summary>
+    /// <returns></returns>
     private async Task<List<RelayConnectionEventEntry>> GetCurrentEventsAsync()
     {
         var cache = cacheMux.GetDatabase();
@@ -122,6 +132,31 @@ public class OrchestrationService : BackgroundService
             }
         }
         return result;
+    }
+
+    /// <summary>
+    /// Sets the IsLive flag on Events when they are currently active in the system.
+    /// All other Events are set to false.
+    /// </summary>
+    private async Task UpdateLiveEvents(List<RelayConnectionEventEntry> currentEvents)
+    {
+        using var context = await tsContext.CreateDbContextAsync();
+        var currentEventIds = currentEvents.Select(e => e.EventId).ToList();
+        var idList = string.Join(",", currentEventIds);
+        if (string.IsNullOrWhiteSpace(idList))
+        {
+            // If no events are active, set all to not live
+            await context.Database.ExecuteSqlRawAsync("UPDATE Events SET IsLive = 0");
+        }
+        else
+        {
+            var sql = $@"UPDATE Events SET IsLive = CASE 
+                       WHEN Id IN ({idList}) THEN 1
+                       ELSE 0
+                     END";
+
+            await context.Database.ExecuteSqlRawAsync(sql);
+        }
     }
 
     /// <summary>
@@ -155,6 +190,9 @@ public class OrchestrationService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Make sure the necessary jobs for an event are created.
+    /// </summary>
     private async Task EnsureEventJobs(RelayConnectionEventEntry evt, Kubernetes client, string ns, V1JobList jobs, CancellationToken stoppingToken)
     {
         using var db = await tsContext.CreateDbContextAsync(stoppingToken);

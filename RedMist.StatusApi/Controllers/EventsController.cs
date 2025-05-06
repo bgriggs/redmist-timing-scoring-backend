@@ -4,10 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Backend.Shared;
 using RedMist.Database;
-using RedMist.StatusApi.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
-using System.Formats.Tar;
 using System.Text.Json;
 
 namespace RedMist.StatusApi.Controllers;
@@ -64,7 +62,8 @@ public class EventsController : ControllerBase
                 Distance = dbEvent.e.Distance,
                 Broadcast = dbEvent.e.Broadcast,
                 Schedule = dbEvent.e.Schedule,
-                HasControlLog = !string.IsNullOrEmpty(dbEvent.o.ControlLogType)
+                HasControlLog = !string.IsNullOrEmpty(dbEvent.o.ControlLogType),
+                IsLive = dbEvent.e.IsLive,
             };
             eventDtos.Add(eventDto);
         }
@@ -82,9 +81,9 @@ public class EventsController : ControllerBase
         var summaries = await (
         from e in db.Events
         join o in db.Organizations on e.OrganizationId equals o.Id
-        join s in db.Sessions on e.Id equals s.EventId
-        where e.IsActive && !e.IsDeleted && s.IsLive
-        group new { e, o, s } by new
+        //join s in db.Sessions on e.Id equals s.EventId
+        where e.IsActive && !e.IsDeleted && e.IsLive
+        group new { e, o } by new
         {
             e.Id,
             e.OrganizationId,
@@ -120,8 +119,8 @@ public class EventsController : ControllerBase
         var recentEvents = await (
             from e in db1.Events
             join o in db1.Organizations on e.OrganizationId equals o.Id
-            where !e.IsDeleted
-            where !db1.Sessions.Any(s => s.EventId == e.Id && s.IsLive)
+            where !e.IsDeleted && !e.IsLive
+            //where !db1.Sessions.Any(s => s.EventId == e.Id && s.IsLive)
             orderby e.StartDate descending
             select new EventListSummary
             {
@@ -140,7 +139,6 @@ public class EventsController : ControllerBase
         // Merge recent and live events
         return [.. liveEvents, .. recentEvents];
     }
-
 
     [HttpGet]
     [ProducesResponseType<Event>(StatusCodes.Status200OK)]
@@ -172,7 +170,8 @@ public class EventsController : ControllerBase
             Distance = dbEvent.e.Distance,
             Broadcast = dbEvent.e.Broadcast,
             Schedule = dbEvent.e.Schedule,
-            HasControlLog = !string.IsNullOrEmpty(dbEvent.o.ControlLogType)
+            HasControlLog = !string.IsNullOrEmpty(dbEvent.o.ControlLogType),
+            IsLive = dbEvent.e.IsLive,
         };
     }
 
