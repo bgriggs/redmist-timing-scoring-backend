@@ -49,7 +49,7 @@ public class EventAggregator : BackgroundService
         var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
         var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
         var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
-        dataProcessor = new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux);
+        dataProcessor = new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux, tsContext);
     }
 
 

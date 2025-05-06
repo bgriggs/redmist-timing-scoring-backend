@@ -24,7 +24,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf, new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf, new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
 
         Assert.AreEqual(14, processor.Heartbeat.LapsToGo);
@@ -42,7 +43,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
         Assert.IsTrue(processor.Heartbeat.IsDirty);
 
@@ -61,7 +63,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
         Assert.IsTrue(processor.Heartbeat.IsDirty);
 
@@ -80,7 +83,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
         Assert.IsTrue(processor.Heartbeat.IsDirty);
 
@@ -99,7 +103,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$F,,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
 
         Assert.AreEqual(0, processor.Heartbeat.LapsToGo);
@@ -113,7 +118,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$F,asdf,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 0);
 
         Assert.AreEqual(0, processor.Heartbeat.LapsToGo);
@@ -127,7 +133,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$F,9999,\"07:50:29\",\"08:09:30\",", 0);
 
         Assert.AreEqual(0, processor.Heartbeat.LapsToGo);
@@ -145,7 +152,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
         await processor.ProcessUpdate("rmonitor", "$C,5,\"Formula 300\"", 0);
         var entry = processor.GetEventEntries();
@@ -164,7 +172,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         // Disable the debouncer to bypass premature dirty reset
         processor.Debouncer.IsDisabled = true;
@@ -189,7 +198,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 0);
         var entry = processor.GetEventEntries();
 
@@ -204,7 +214,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$COMP,\"1234BE\",\"12X\",5,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
         await processor.ProcessUpdate("rmonitor", "$C,5,\"Formula 300\"", 0);
         var entry = processor.GetEventEntries();
@@ -223,7 +234,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$COMP,\"1234BE\",\"12X\",5,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
         var entry = processor.GetEventEntries();
 
@@ -242,7 +254,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$B,5,\"Friday free practice\"", 0);
         var @event = processor.GetEvent();
 
@@ -257,7 +270,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$B,asdf,\"Friday free practice\"", 0);
         var @event = processor.GetEvent();
 
@@ -272,7 +286,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$B,2", 0);
         var @event = processor.GetEvent();
 
@@ -291,7 +306,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$C,5,\"Formula 300\"", 0);
         var classes = processor.GetClasses();
 
@@ -307,7 +323,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$C,1,\"GTU\"\n$C,2,\"GTO\"\n$C,3,\"GP1\"\n$C,4,\"GP2\"", 0);
         var classes = processor.GetClasses();
 
@@ -326,7 +343,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$C,1,\"GTU\"", 0);
         await processor.ProcessUpdate("rmonitor", "$C,2,\"GTO\"", 0);
         await processor.ProcessUpdate("rmonitor", "$C,3,\"GP1\"", 0);
@@ -348,7 +366,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$C,1", 0);
         var classes = processor.GetClasses();
         Assert.AreEqual(0, classes.Count);
@@ -362,7 +381,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$C,a", 0);
         var classes = processor.GetClasses();
         Assert.AreEqual(0, classes.Count);
@@ -376,7 +396,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$Casdkjnalmngka", 0);
         var classes = processor.GetClasses();
         Assert.AreEqual(0, classes.Count);
@@ -394,7 +415,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         await processor.ProcessUpdate("rmonitor", "$E,\"TRACKNAME\",\"Indianapolis Motor Speedway\"", 0);
         Assert.AreEqual("Indianapolis Motor Speedway", processor.TrackName);
@@ -411,7 +433,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         await processor.ProcessUpdate("rmonitor", "$E,\"wefahbt\",\"Indianapolis Motor Speedway\"", 0);
         Assert.AreEqual("", processor.TrackName);
@@ -430,7 +453,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",14,\"01:12:47.872\"", 0);
         var raceInfo = processor.GetRaceInformation();
@@ -449,7 +473,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",14,", 0);
         var raceInfo = processor.GetRaceInformation();
@@ -464,7 +489,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",14,\"01asdf:we12we:47.872\"", 0);
         var raceInfo = processor.GetRaceInformation();
@@ -479,7 +505,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",,\"01:12:47.872\"", 0);
         var raceInfo = processor.GetRaceInformation();
@@ -494,7 +521,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",asdf,\"01:12:47.872\"", 0);
         var raceInfo = processor.GetRaceInformation();
@@ -509,7 +537,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         await processor.ProcessUpdate("rmonitor", "$G,10,\"89\",,\"00:00:00.000\"", 0);
         await processor.ProcessUpdate("rmonitor", "$G,11,\"188\",,\"00:00:00.000\"", 0);
@@ -526,7 +555,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         await processor.ProcessUpdate("rmonitor", "$G,10,\"89\",,\"00:00:00.000\"", 0);
         await processor.ProcessUpdate("rmonitor", "$G,3,\"1234BE\",,\"01:12:47.872\"", 0); // Now using laps and flag rather than time
@@ -546,7 +576,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         await processor.ProcessUpdate("rmonitor", "$COMP,\"89\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
         await processor.ProcessUpdate("rmonitor", "$COMP,\"188\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
         await processor.ProcessUpdate("rmonitor", "$COMP,\"68\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
@@ -576,7 +607,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         //await processor.ProcessUpdate("rmonitor", "$COMP,\"89\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"");
         await processor.ProcessUpdate("rmonitor", "$COMP,\"188\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
         await processor.ProcessUpdate("rmonitor", "$COMP,\"68\",\"89\",1,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 0);
@@ -610,7 +642,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         await processor.ProcessUpdate("rmonitor", "$H,2,\"1234BE\",3,\"00:02:17.872\"", 0);
         var raceInfo = processor.GetPracticeQualifying();
@@ -633,7 +666,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(0, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
 
         await processor.ProcessUpdate("rmonitor", "$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 0);
         var raceInfo = processor.GetPassingInformation();
@@ -656,7 +690,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         processor.Debouncer.IsDisabled = true;
 
         await processor.ProcessUpdate("rmonitor", "$B,5,\"Friday free practice\"", 0);
@@ -686,7 +721,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         processor.Debouncer.IsDisabled = true;
 
         await processor.ProcessUpdate("rmonitor", "$B,5,\"Friday free practice\"", 0);
@@ -721,7 +757,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         processor.Debouncer.IsDisabled = true;
 
         await processor.ProcessUpdate("rmonitor", "$B,5,\"Friday free practice\"", 0);
@@ -753,7 +790,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         processor.Debouncer.IsDisabled = true;
 
         await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Red \"", 0);
@@ -770,7 +808,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         processor.Debouncer.IsDisabled = true;
 
         await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"    \"", 0);
@@ -787,7 +826,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         processor.Debouncer.IsDisabled = true;
 
         await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"  asdfas  \"", 0);
@@ -804,7 +844,8 @@ public class OrbitsDataProcessorTests
         var pitProcessor = new PitProcessor(0, dbMock.Object, lf);
         var flagProcessor = new FlagProcessor(0, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object);
+        var db = new Mock<IDbContextFactory<TsContext>>();
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf,  new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object);
         processor.Debouncer.IsDisabled = true;
 
         await processor.ProcessUpdate("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Red  \"", 0);

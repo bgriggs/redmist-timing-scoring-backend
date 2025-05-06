@@ -1,16 +1,22 @@
 ﻿using BigMission.Shared.Utilities;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
+using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.X2;
 using StackExchange.Redis;
+using System;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
+using System.Threading.Tasks;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
@@ -49,17 +55,17 @@ public class OrbitsDataProcessor : IDataProcessor
     private readonly SessionMonitor sessionMonitor;
     private readonly FlagProcessor flagProcessor;
     private readonly IConnectionMultiplexer cacheMux;
-
+    private readonly IDbContextFactory<TsContext> tsContext;
     private readonly HashSet<uint> lastTransponderPassings = [];
     private readonly PositionMetadataProcessor secondaryProcessor = new();
+    private bool startingPositionsInitialized = false;
     private DateTime lastResetPosition = DateTime.MinValue;
     private DateTime lastPositionMismatch = DateTime.MinValue;
     private HashEntry[]? lastPenalties;
 
 
-
     public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
-        PitProcessor pitProcessor, FlagProcessor flagProcessor, IConnectionMultiplexer cacheMux)
+        PitProcessor pitProcessor, FlagProcessor flagProcessor, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
@@ -68,6 +74,7 @@ public class OrbitsDataProcessor : IDataProcessor
         PitProcessor = pitProcessor;
         this.flagProcessor = flagProcessor;
         this.cacheMux = cacheMux;
+        this.tsContext = tsContext;
     }
 
 
@@ -384,19 +391,23 @@ public class OrbitsDataProcessor : IDataProcessor
         raceInfo.ProcessG(parts);
 
         // Save off starting positions
-        if (raceInfo.Laps == 0)
+        if (raceInfo.Laps == 0 && !RaceHasPassedStart())
         {
             var flag = Heartbeat.FlagStatus.ToFlag();
+            UpdateStartingPosition(parts, regNum, flag);
+        }
+    }
 
-            // Allow capture of starting positions during lap 0 up to and include the green flag
-            if (flag == Flags.Unknown || flag == Flags.Yellow || flag == Flags.Green)
-            {
-                // Make a copy for storing off
-                var sp = new RaceInformation();
-                sp.ProcessG(parts);
-                startingPositions[regNum] = sp;
-                UpdateInClassStartingPositionLookup();
-            }
+    private void UpdateStartingPosition(string[] parts, string regNum, Flags flag)
+    {
+        // Allow capture of starting positions during lap 0 up to and including the green flag
+        if (flag == Flags.Unknown || flag == Flags.Yellow || flag == Flags.Green)
+        {
+            // Make a copy for storing off
+            var sp = new RaceInformation();
+            sp.ProcessG(parts);
+            startingPositions[regNum] = sp;
+            UpdateInClassStartingPositionLookup();
         }
     }
 
@@ -678,7 +689,13 @@ public class OrbitsDataProcessor : IDataProcessor
                 pq.IsDirty = false;
         }
 
-        // Apply diff / gap
+        // Apply diff / gap / position changes
+        // See if a reload of the starting positions are needed, such as after a service restart
+        if (SessionId > 0 && !AreStartPositionsInitialized() && RaceHasPassedStart() && !startingPositionsInitialized)
+        {
+            Logger.LogDebug("Possible service restart, attempting to initialize starting positions from logged data");
+            await InitializeStartingPositions();
+        }
         carPositions = secondaryProcessor.UpdateCarPositions(carPositions);
 
         // Apply penalties
@@ -810,6 +827,11 @@ public class OrbitsDataProcessor : IDataProcessor
 
     #endregion
 
+    /// <summary>
+    /// Look for errors or issues in the position information.
+    /// </summary>
+    /// <param name="payload"></param>
+    /// <returns></returns>
     private bool PerformConsistencyCheck(Payload payload)
     {
         if (payload.CarPositions.Count == 0)
@@ -862,6 +884,12 @@ public class OrbitsDataProcessor : IDataProcessor
         return true;
     }
 
+    /// <summary>
+    /// Resets the race position state by clearing all race-related data and requesting a full update from the relay.
+    /// </summary>
+    /// <remarks>This method ensures that the race position state is reset only if at least one minute has
+    /// passed  since the last reset. It clears the internal collections for race information and practice/qualifying
+    /// data,  and publishes a reset event to notify other components.</remarks>
     private async Task ResetRacePositionState()
     {
         if ((DateTime.Now - lastResetPosition).TotalMinutes < 1)
@@ -884,5 +912,66 @@ public class OrbitsDataProcessor : IDataProcessor
 
         // Publish reset event
         await mediator.Publish(new RelayResetRequest { EventId = EventId }, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Determine if the race is in progress.
+    /// </summary>
+    private bool RaceHasPassedStart()
+    {
+        foreach (var ri in raceInformation.Values)
+        {
+            // Use car that has passes one lap to ensure there was a chance for the race to initialize normally
+            if (ri.Laps > 1)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool AreStartPositionsInitialized()
+    {
+        return startingPositions.Count == raceInformation.Count;
+    }
+
+    private async Task InitializeStartingPositions()
+    {
+        try
+        {
+            // Load laps from database for lap zero to replay the start
+            var db = await tsContext.CreateDbContextAsync();
+            var laps = db.CarLapLogs
+                .Where(l => l.EventId == EventId && l.SessionId == SessionId && l.LapNumber == 0)
+                .OrderBy(l => l.Timestamp);
+
+            Logger.LogDebug("Loaded {count} laps from database for Event {eventId} Session {s} for starting position initialization", laps.Count(), EventId, SessionId);
+            foreach (var lap in laps)
+            {
+                try
+                {
+                    var pos = JsonSerializer.Deserialize<CarPosition>(lap.LapData);
+                    if (pos != null)
+                    {
+                        string g = $"$G,{pos.OverallPosition},\"{lap.CarNumber}\",{lap.LapNumber},\"00:00:00.000\"";
+                        var parts = g.Split(',');
+                        UpdateStartingPosition(parts, lap.CarNumber, (Flags)lap.Flag);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Error processing lap data for car {car}", lap.CarNumber);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing starting positions from database");
+        }
+        finally
+        {
+            startingPositionsInitialized = true;
+        }
     }
 }

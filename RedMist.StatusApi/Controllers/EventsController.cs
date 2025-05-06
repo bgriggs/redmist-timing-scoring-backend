@@ -182,7 +182,7 @@ public class EventsController : ControllerBase
         Logger.LogTrace("GetCarPositions for event {eventId}", eventId);
         using var context = tsContext.CreateDbContext();
         var laps = await context.CarLapLogs
-            .Where(c => c.EventId == eventId && c.SessionId == sessionId && c.CarNumber == carNumber && c.Timestamp == context.CarLapLogs
+            .Where(c => c.EventId == eventId && c.SessionId == sessionId && c.CarNumber == carNumber && c.LapNumber > 0 && c.Timestamp == context.CarLapLogs
                 .Where(r => r.Id == c.Id)
                 .Max(r => r.Timestamp)) // When there are multiple of the same lap for the same car, such as from a simulated replay, load the newest one
             .ToListAsync();

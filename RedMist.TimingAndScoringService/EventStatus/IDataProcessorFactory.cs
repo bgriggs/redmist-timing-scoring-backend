@@ -1,4 +1,6 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.X2;
+﻿using Microsoft.EntityFrameworkCore;
+using RedMist.Database;
+using RedMist.TimingAndScoringService.EventStatus.X2;
 using StackExchange.Redis;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
@@ -6,5 +8,5 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 public interface IDataProcessorFactory
 {
     IDataProcessor CreateDataProcessor(string type, int eventId, SessionMonitor sessionMonitor, PitProcessor pitProcessor, 
-        FlagProcessor flagProcessor, IConnectionMultiplexer cacheMux);
+        FlagProcessor flagProcessor, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext);
 }

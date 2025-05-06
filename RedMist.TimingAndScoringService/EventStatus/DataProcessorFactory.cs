@@ -1,4 +1,6 @@
 ﻿using MediatR;
+using Microsoft.EntityFrameworkCore;
+using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using StackExchange.Redis;
 
@@ -17,11 +19,11 @@ public class DataProcessorFactory : IDataProcessorFactory
     }
 
 
-    public IDataProcessor CreateDataProcessor(string type, int eventId, SessionMonitor sessionMonitor, PitProcessor pitProcessor, FlagProcessor flagProcessor,  IConnectionMultiplexer cacheMux)
+    public IDataProcessor CreateDataProcessor(string type, int eventId, SessionMonitor sessionMonitor, PitProcessor pitProcessor, FlagProcessor flagProcessor,  IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext)
     {
         if (string.Compare(type, "RMonitor", StringComparison.OrdinalIgnoreCase) == 0)
         {
-            return new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux);
+            return new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux, tsContext);
         }
         throw new NotImplementedException();
     }

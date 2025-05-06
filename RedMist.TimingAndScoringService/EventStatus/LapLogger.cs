@@ -17,7 +17,7 @@ public class LapLogger
     private ILogger Logger { get; }
     private readonly Dictionary<(int evt, int sess), Dictionary<string, int>> eventCarLastLapLookup = [];
     private readonly SemaphoreSlim eventCarLastLapLookupLock = new(1, 1);
-
+    private readonly Dictionary<string, CarPosition> lastCarPositionLookup = [];
 
     public LapLogger(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
     {
@@ -64,8 +64,13 @@ public class LapLogger
                     lastLap = 0;
                 }
 
-                if (position.LastLap > lastLap)
+                // Check if the car has completed a new lap or include lap 0 so the starting grid can be restored
+                // on service restarts and qualifying or practice can be captured
+                if (position.LastLap > lastLap || position.LastLap == 0)
                 {
+                    if (position.LastLap == 0 && !IsLapNewerThanLastEntryWithReplace(position))
+                        return;
+
                     Logger.LogTrace("Car {n} completed new lap {l} in event {e}. Logging...", position.Number, position.LastLap, eventId);
 
                     // Update pit stops
@@ -136,5 +141,40 @@ public class LapLogger
         {
             carLastLapLookup[lastLap.CarNumber] = lastLap.LastLapNumber;
         }
+    }
+
+    /// <summary>
+    /// Determine if the lap is newer or has changed from the last entry in the database for the car.
+    /// Typically, the last lap will not have changed in this case.
+    /// </summary>
+    /// <param name="carPosition"></param>
+    /// <returns></returns>
+    private bool IsLapNewerThanLastEntryWithReplace(CarPosition carPosition)
+    {
+        if (string.IsNullOrEmpty(carPosition.Number)) 
+            return false;
+
+        if (lastCarPositionLookup.TryGetValue(carPosition.Number, out var old))
+        {
+            if (carPosition.LastLap > old.LastLap)
+            {
+                lastCarPositionLookup[carPosition.Number] = carPosition;
+                return true;
+            }
+            else if (carPosition.LastLap == old.LastLap && 
+                (carPosition.OverallPosition != old.OverallPosition ||
+                 carPosition.LastTime != old.LastTime))
+            {
+                lastCarPositionLookup[carPosition.Number] = carPosition;
+                return true;
+            }
+        }
+        else
+        {
+            lastCarPositionLookup[carPosition.Number] = carPosition;
+            return true;
+        }
+
+        return false;
     }
 }
