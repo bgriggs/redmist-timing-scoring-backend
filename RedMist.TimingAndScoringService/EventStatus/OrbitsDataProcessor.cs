@@ -888,8 +888,8 @@ public class OrbitsDataProcessor : IDataProcessor
     /// Resets the race position state by clearing all race-related data and requesting a full update from the relay.
     /// </summary>
     /// <remarks>This method ensures that the race position state is reset only if at least one minute has
-    /// passed  since the last reset. It clears the internal collections for race information and practice/qualifying
-    /// data,  and publishes a reset event to notify other components.</remarks>
+    /// passed since the last reset. It clears the internal collections for race information and practice/qualifying
+    /// data, and publishes a reset event to notify other components.</remarks>
     private async Task ResetRacePositionState()
     {
         if ((DateTime.Now - lastResetPosition).TotalMinutes < 1)

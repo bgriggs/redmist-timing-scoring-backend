@@ -8,13 +8,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
-using RedLockNet;
-using RedLockNet.SERedis;
-using RedLockNet.SERedis.Configuration;
 using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.Hubs;
 using StackExchange.Redis;
 
 namespace RedMist.TimingAndScoringService;
@@ -77,12 +73,11 @@ public class Program
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
-        builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 10; c.ConnectTimeout = 10; }));
+        builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 5; c.ConnectTimeout = 10; }));
 
         builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(100), LocalCacheExpiration = TimeSpan.FromDays(100) });
         builder.Services.AddSingleton<LapLogger>();
         builder.Services.AddSingleton<IDateTimeHelper, DateTimeHelper>();
-        //builder.Services.AddSingleton<IDistributedLockFactory>(r => RedLockFactory.Create([new RedLockMultiplexer(r.GetRequiredService<IConnectionMultiplexer>())]));
         builder.Services.AddHostedService<EventAggregator>();
         builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<Program>());
 
@@ -130,9 +125,6 @@ public class Program
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
-
-        //app.MapHub<TimingAndScoringHub>("/ts-hub");
-
         await app.RunAsync();
     }
 }

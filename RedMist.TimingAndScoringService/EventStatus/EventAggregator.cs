@@ -7,6 +7,8 @@ using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
+using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
@@ -200,7 +202,14 @@ public class EventAggregator : BackgroundService
         //Logger.LogTrace("Getting payload for event {e}...", p.EventId);
         var payload = await p.GetPayload(stoppingToken);
         var json = JsonSerializer.Serialize(payload);
-        await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, json) { ConnectionDestination = connectionIdDestination, Payload = payload, PitProcessor = p.PitProcessor }, stoppingToken);
+        var bytes = Encoding.UTF8.GetBytes(json);
+        using var output = new MemoryStream();
+        using (var gzip = new GZipStream(output, CompressionLevel.Optimal))
+        {
+            gzip.Write(bytes, 0, bytes.Length);
+        }
+        var b64 = Convert.ToBase64String(output.ToArray());
+        await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, b64) { ConnectionDestination = connectionIdDestination, Payload = payload, PitProcessor = p.PitProcessor }, stoppingToken);
     }
 
     #endregion
