@@ -3,7 +3,7 @@ global:
     "ASPNETCORE_ENVIRONMENT": "Production"
     "ASPNETCORE_FORWARDEDHEADERS_ENABLED": "true"
     "ASPNETCORE_URLS": "http://+:8080"
-    "REDIS_SVC": "redis-master:6379"
+    "REDIS_SVC": "redis-node-0.redis-headless.timing.svc.cluster.local:6379,redis-node-1.redis-headless.timing.svc.cluster.local:6379"
     "Keycloak__Realm": "redmist"
     "Keycloak__AuthServerUrl": "https://sunnywood.redmist.racing/auth/"
   secrets:
@@ -14,16 +14,24 @@ global:
       name: "rmkeys"
       key: "db"
 redis:
+  fullnameOverride: "redis"
+  architecture: replication
   master:
     persistence:
       enabled: false
     resourcesPreset: large
-  fullnameOverride: "redis"
   auth:
     existingSecret: rmkeys
     existingSecretPasswordKey: redis
   replica:
-    replicaCount: 0
+    replicaCount: 2
+    persistence:
+      enabled: false
+  sentinel:
+    enabled: true
+    quorum: 2
+    persistence:
+      enabled: false
   commonConfiguration: |-
    # Enable AOF https://redis.io/topics/persistence#append-only-file
    appendonly no
