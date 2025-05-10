@@ -5,7 +5,7 @@ global:
     "ASPNETCORE_URLS": "http://+:8080"
     "REDIS_SVC": "redis-node-0.redis-headless.timing.svc.cluster.local:6379,redis-node-1.redis-headless.timing.svc.cluster.local:6379"
     "Keycloak__Realm": "redmist"
-    "Keycloak__AuthServerUrl": "https://sunnywood.redmist.racing/auth/"
+    "Keycloak__AuthServerUrl": "https://auth.redmist.racing"
   secrets:
     - env: "REDIS_PW"
       name: "rmkeys"
