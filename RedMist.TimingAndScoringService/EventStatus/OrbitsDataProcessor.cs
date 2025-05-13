@@ -10,13 +10,9 @@ using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.X2;
 using StackExchange.Redis;
-using System;
 using System.Collections.Immutable;
 using System.Diagnostics;
-using System.IO;
 using System.Text.Json;
-using System.Threading.Tasks;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
@@ -51,6 +47,7 @@ public class OrbitsDataProcessor : IDataProcessor
     public double TrackLength { get; set; }
 
     public PitProcessor PitProcessor { get; private set; }
+    public event Action<Payload>? PayloadChanged;
 
     private readonly SessionMonitor sessionMonitor;
     private readonly FlagProcessor flagProcessor;
@@ -602,6 +599,7 @@ public class OrbitsDataProcessor : IDataProcessor
 
         var json = JsonSerializer.Serialize(payload);
         _ = mediator.Publish(new StatusNotification(EventId, SessionId, json) { Payload = payload, PitProcessor = PitProcessor }, stoppingToken);
+        PayloadChanged?.Invoke(payload);
     }
 
     public void PublishEventReset(CancellationToken stoppingToken = default)

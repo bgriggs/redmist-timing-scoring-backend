@@ -26,6 +26,19 @@ public class StatusHub : Hub
     {
         await base.OnConnectedAsync();
         var clientId = GetClientId();
+
+        try
+        {
+            // Save off the connectionId in the cache
+            var cache = cacheMux.GetDatabase();
+            var conn = new StatusConnection { ConnectedTimestamp = DateTime.UtcNow, ClientId = clientId, SubscribedEventId = 0 };
+            var json = JsonSerializer.Serialize(conn);
+            await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, Context.ConnectionId, json);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error adding connectionId {connectionId} to status connections cache", Context.ConnectionId);
+        }
         Logger.LogInformation("Client {id} connected: {ConnectionId}", clientId, Context.ConnectionId);
     }
 
@@ -33,6 +46,31 @@ public class StatusHub : Hub
     {
         await base.OnDisconnectedAsync(exception);
         var clientId = GetClientId();
+
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+
+            // Get the cache entry for this connectionId
+            var json = await cache.HashGetAsync(Consts.STATUS_CONNECTIONS, Context.ConnectionId);
+            // Remove the connectionId from the cache
+            await cache.HashDeleteAsync(Consts.STATUS_CONNECTIONS, Context.ConnectionId, CommandFlags.FireAndForget);
+
+            // If the connection had an event subscription, remove it from the event connections cache
+            if (!json.IsNullOrEmpty)
+            {
+                var conn = JsonSerializer.Deserialize<StatusConnection>(json!);
+                if (conn != null && conn.SubscribedEventId > 0)
+                {
+                    var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, conn.SubscribedEventId);
+                    await cache.HashDeleteAsync(connKey, Context.ConnectionId, CommandFlags.FireAndForget);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error removing connectionId {connectionId} from status connections cache", Context.ConnectionId);
+        }
         Logger.LogInformation("Client {id} disconnected: {ConnectionId}", clientId, Context.ConnectionId);
     }
 
@@ -69,8 +107,37 @@ public class StatusHub : Hub
             var sub = cacheMux.GetSubscriber();
             var cmd = new SendStatusCommand { EventId = eventId, ConnectionId = connectionId };
             var json = JsonSerializer.Serialize(cmd);
+
             // Tell the service responsible for this event to send a full status update
             await sub.PublishAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
+
+            try
+            {
+                // Save off the connectionId in the cache for ability to send messages to this client individually
+                var cache = cacheMux.GetDatabase();
+
+                // Get the cache entry for this connectionId
+                var connJson = await cache.HashGetAsync(Consts.STATUS_CONNECTIONS, Context.ConnectionId);
+                if (!connJson.IsNullOrEmpty)
+                {
+                    var conn = JsonSerializer.Deserialize<StatusConnection>(connJson!);
+                    if (conn != null && conn.ClientId != null)
+                    {
+                        // Update the connectionId with the eventId
+                        conn.SubscribedEventId = eventId;
+                        var updatedJson = JsonSerializer.Serialize(conn);
+                        await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, Context.ConnectionId, updatedJson);
+                    }
+                }
+
+                // Save off the connectionId in the event connections cache
+                var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId);
+                await cache.HashSetAsync(connKey, connectionId, DateTime.UtcNow.ToString(), When.Always, CommandFlags.FireAndForget);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error adding connectionId {connectionId} to event {eventId}", connectionId, eventId);
+            }
         }
 
         Logger.LogInformation("Client {connectionId} subscribed to event {eventId}", connectionId, eventId);
@@ -80,6 +147,18 @@ public class StatusHub : Hub
     {
         var connectionId = Context.ConnectionId;
         await Groups.RemoveFromGroupAsync(connectionId, eventId.ToString());
+
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId);
+            await cache.HashDeleteAsync(connKey, connectionId, CommandFlags.FireAndForget);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error removing connectionId {connectionId} from event {eventId}", connectionId, eventId);
+        }
+
         Logger.LogInformation("Client {connectionId} unsubscribed from event {eventId}", connectionId, eventId);
     }
 

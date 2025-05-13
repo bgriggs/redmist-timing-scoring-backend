@@ -1,6 +1,8 @@
 ﻿using MediatR;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
+using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.X2;
@@ -27,16 +29,23 @@ public class EventAggregator : BackgroundService
     private readonly IMediator mediator;
     private readonly HybridCache hcache;
     private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly IHubContext<StatusHub> hubContext;
+    private static readonly TimeSpan fullSendInterval = TimeSpan.FromMilliseconds(5000);
+
     public Action<EventStatusUpdateEventArgs<List<TimingCommon.Models.EventStatus>>>? EventStatusUpdated;
     public Action<EventStatusUpdateEventArgs<List<EventEntry>>>? EventEntriesUpdated;
     public Action<EventStatusUpdateEventArgs<List<CarPosition>>>? CarPositionsUpdated;
     private ILogger Logger { get; }
     private readonly SemaphoreSlim streamCheckLock = new(1);
     private readonly SemaphoreSlim subscriptionCheckLock = new(1);
+    private readonly SemaphoreSlim payloadSerializationLock = new(1);
+    private DateTime? lastFullStatusTimestamp;
+    private string? lastFullStatusData;
+    private DateTime? lastPayloadChangedTimestamp;
 
 
     public EventAggregator(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IMediator mediator, HybridCache hcache, IDbContextFactory<TsContext> tsContext)
+        IMediator mediator, HybridCache hcache, IDbContextFactory<TsContext> tsContext, IHubContext<StatusHub> hubContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.loggerFactory = loggerFactory;
@@ -44,6 +53,7 @@ public class EventAggregator : BackgroundService
         this.mediator = mediator;
         this.hcache = hcache;
         this.tsContext = tsContext;
+        this.hubContext = hubContext;
         eventId = configuration.GetValue("event_id", 0);
         streamKey = string.Format(Backend.Shared.Consts.EVENT_STATUS_STREAM_KEY, eventId);
         cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
@@ -52,6 +62,7 @@ public class EventAggregator : BackgroundService
         var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
         var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
         dataProcessor = new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux, tsContext);
+        dataProcessor.PayloadChanged += DataProcessor_PayloadChanged;
     }
 
 
@@ -59,7 +70,7 @@ public class EventAggregator : BackgroundService
     {
         Logger.LogInformation("Event Aggregator starting...");
         await EnsureStream();
-        await EnsureSubscriptions(stoppingToken);
+        await EnsureCacheSubscriptions(stoppingToken);
 
         // Start a task to send a full update every so often
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
@@ -108,12 +119,12 @@ public class EventAggregator : BackgroundService
                 Logger.LogInformation("Throttling service for 5 secs");
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
                 await EnsureStream();
-                await EnsureSubscriptions(stoppingToken);
+                await EnsureCacheSubscriptions(stoppingToken);
             }
         }
     }
 
-    private async Task EnsureSubscriptions(CancellationToken stoppingToken = default)
+    private async Task EnsureCacheSubscriptions(CancellationToken stoppingToken = default)
     {
         await subscriptionCheckLock.WaitAsync(stoppingToken);
         try
@@ -138,7 +149,7 @@ public class EventAggregator : BackgroundService
     private async void CacheMux_ConnectionRestored(object? sender, ConnectionFailedEventArgs e)
     {
         await EnsureStream();
-        await EnsureSubscriptions();
+        await EnsureCacheSubscriptions();
 
         // Publish reset event to get full set of data from the relay
         await mediator.Publish(new RelayResetRequest { EventId = eventId });
@@ -169,6 +180,11 @@ public class EventAggregator : BackgroundService
 
     #region Event Status Requests
 
+    private void DataProcessor_PayloadChanged(Payload obj)
+    {
+        lastPayloadChangedTimestamp = DateTime.UtcNow;
+    }
+
     private async Task ProcessFullStatusRequest(string cmdJson)
     {
         var cmd = JsonSerializer.Deserialize<SendStatusCommand>(cmdJson);
@@ -177,39 +193,100 @@ public class EventAggregator : BackgroundService
             Logger.LogWarning("Invalid command received: {cj}", cmdJson);
             return;
         }
+
         Logger.LogInformation("Sending full status update for event {e} to new connection {con}", cmd.EventId, cmd.ConnectionId);
-        await SendEventStatusAsync(dataProcessor, cmd.ConnectionId);
+        var payload = await GetEventStatusWithRefreshAsync(dataProcessor);
+        await SendEventStatusAsync(cmd.ConnectionId, payload);
     }
 
     private async Task SendFullUpdates(CancellationToken stoppingToken)
     {
+        await Task.Delay(fullSendInterval, stoppingToken);
+
+        var connKey = string.Format(Backend.Shared.Consts.STATUS_EVENT_CONNECTIONS, eventId);
+        var maxInterval = TimeSpan.FromMilliseconds(50);
+        var minInterval = TimeSpan.FromMilliseconds(2);
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            var sendStart = DateTime.UtcNow;
             try
             {
-                await SendEventStatusAsync(dataProcessor, string.Empty, stoppingToken);
+                // Stagger the sending of full status updates to all connections
+                var cache = cacheMux.GetDatabase();
+                var connectionEntries = await cache.HashGetAllAsync(connKey);
+                if (connectionEntries?.Length > 0)
+                {
+                    var connectionIds = connectionEntries.Select(x => x.Name.ToString()).ToArray();
+                    var interval = TimeSpan.FromMilliseconds(fullSendInterval.TotalMilliseconds / connectionEntries.Length);
+                    if (interval > maxInterval)
+                        interval = maxInterval;
+                    else if (interval < minInterval)
+                        interval = minInterval;
+
+                    Logger.LogTrace("Sending full status to {c} connections with interval {i}", connectionEntries.Length, interval.TotalMilliseconds);
+                    foreach (var connectionId in connectionIds)
+                    {
+                        var payload = await GetEventStatusWithRefreshAsync(dataProcessor, stoppingToken);
+                        await SendEventStatusAsync(connectionId, payload, stoppingToken);
+                    }
+                }
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error sending full update");
             }
+            finally
+            {
+                var elapsed = DateTime.UtcNow - sendStart;
+                if (elapsed < fullSendInterval)
+                {
+                    await Task.Delay(fullSendInterval - elapsed, stoppingToken);
+                }
+            }
         }
     }
 
-    private async Task SendEventStatusAsync(OrbitsDataProcessor p, string connectionIdDestination, CancellationToken stoppingToken = default)
+    private async Task SendEventStatusAsync(string connectionIdDestination, string payload, CancellationToken stoppingToken = default)
     {
         //Logger.LogTrace("Getting payload for event {e}...", p.EventId);
-        var payload = await p.GetPayload(stoppingToken);
-        var json = JsonSerializer.Serialize(payload);
-        var bytes = Encoding.UTF8.GetBytes(json);
-        using var output = new MemoryStream();
-        using (var gzip = new GZipStream(output, CompressionLevel.Optimal))
+        await hubContext.Clients.Client(connectionIdDestination).SendAsync("ReceiveMessage", payload, stoppingToken);
+        //await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, b64) { ConnectionDestination = connectionIdDestination, Payload = payload, PitProcessor = p.PitProcessor }, stoppingToken);
+    }
+
+    /// <summary>
+    /// Get compressed event status data.
+    /// </summary>
+    /// <param name="p"></param>
+    private async Task<string> GetEventStatusWithRefreshAsync(OrbitsDataProcessor p, CancellationToken stoppingToken = default)
+    {
+        // See if the last payload is still the latest. When there is a newer change, update the payload.
+        if (lastFullStatusTimestamp.HasValue && (lastPayloadChangedTimestamp <= lastFullStatusTimestamp.Value) && lastFullStatusData != null)
         {
-            gzip.Write(bytes, 0, bytes.Length);
+            return lastFullStatusData;
         }
-        var b64 = Convert.ToBase64String(output.ToArray());
-        await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, b64) { ConnectionDestination = connectionIdDestination, Payload = payload, PitProcessor = p.PitProcessor }, stoppingToken);
+
+        await payloadSerializationLock.WaitAsync(stoppingToken);
+        try
+        {
+            var payload = await p.GetPayload(stoppingToken);
+            lastFullStatusTimestamp = DateTime.UtcNow;
+
+            var json = JsonSerializer.Serialize(payload);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            using var output = new MemoryStream();
+            using (var gzip = new GZipStream(output, CompressionLevel.Optimal))
+            {
+                gzip.Write(bytes, 0, bytes.Length);
+            }
+            var b64 = Convert.ToBase64String(output.ToArray());
+
+            lastFullStatusData = b64;
+            return lastFullStatusData;
+        }
+        finally
+        {
+            payloadSerializationLock.Release();
+        }
     }
 
     #endregion

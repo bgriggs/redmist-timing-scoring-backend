@@ -188,6 +188,25 @@ public class OrchestrationService : BackgroundService
                 }
             }
         }
+
+        // Remove the event entry from the cache that tracks connections
+        await DisposeEventConnectionsAsync(eventEntry, stoppingToken);
+    }
+
+    private async Task DisposeEventConnectionsAsync(RelayConnectionEventEntry eventEntry, CancellationToken stoppingToken)
+    {
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            var entryKey = string.Format(Backend.Shared.Consts.STATUS_EVENT_CONNECTIONS, eventEntry.EventId);
+
+            // Remove the event entry from the cache
+            await cache.KeyDeleteAsync(entryKey, CommandFlags.FireAndForget);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete event connection entry {entryKey}", eventEntry.EventId);
+        }
     }
 
     /// <summary>

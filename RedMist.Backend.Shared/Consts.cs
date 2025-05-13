@@ -7,6 +7,8 @@ public class Consts
     public const string SEND_FULL_STATUS = "fullstatus";
     public const string SEND_COMPETITOR_METADATA = "competitor-metadata";
     public const string RELAY_EVENT_CONNECTIONS = "relay-evt-conns";
+    public const string STATUS_EVENT_CONNECTIONS = "st-evt-{0}-conns";
+    public const string STATUS_CONNECTIONS = "st-conns";
     public const string RELAY_HEARTBEAT = "relay-hb-evt-{0}";
     public const string RELAY_CONNECTION = "relay-connid-{0}";
     public const string CONTROL_LOG = "control-log-evt-{0}";
