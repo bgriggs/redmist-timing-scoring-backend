@@ -164,37 +164,109 @@ Base route for all endpoints is `https://api.redmist.racing`
 ## Events (Status API)
 The `EventsController` provides endpoints to retrieve information about events and their associated sessions.
 
-**Base Route:** `/events`
+**Base Route:** `/status/events`
 
 ### 1. Get All Events
 
-- **Endpoint:** `GET /events`
+- **Endpoint:** `GET /status/LoadEvents`
 - **Description:** Retrieves a list of all events.
 - **Response:**
-  - `200 OK`: Returns an array of event objects.
+  - `200 OK`: Returns the EventListSummary object.
   - `500 Internal Server Error`: If an unexpected error occurs.
 
-### 2. Get Event by ID
+### 2. Get Live Events
 
-- **Endpoint:** `GET /events/{eventId}`
+- **Endpoint:** `GET /status/events/LoadLiveEvents`
+- **Description:** Retrieves a list of all live events.
+- **Response:**
+  - `200 OK`: Returns the EventListSummary object.
+  - `500 Internal Server Error`: If an unexpected error occurs.
+
+
+### 3. Get Live and Recent Events
+
+- **Endpoint:** `GET /status/events/LoadLiveAndRecentEvents`
+- **Description:** Retrieves a list of all live and recent (top 100) events.
+- **Response:**
+  - `200 OK`: Returns the EventListSummary object.
+  - `500 Internal Server Error`: If an unexpected error occurs.
+
+### 4. Get an Event
+
+- **Endpoint:** `GET /status/events/LoadEvent?eventId=x`
 - **Parameters:**
   - `eventId` (int): The unique identifier of the event.
-- **Description:** Retrieves details of a specific event by its ID.
+- **Description:** Loads a specific event. Null if not found
 - **Response:**
-  - `200 OK`: Returns the event object.
-  - `404 Not Found`: If the event does not exist.
+  - `200 OK`: Returns the Event object.
   - `500 Internal Server Error`: If an unexpected error occurs.
 
-### 3. Get Sessions for an Event
+### 5. Get Laps for a Car
 
-- **Endpoint:** `GET /events/{eventId}/sessions`
+- **Endpoint:** `GET /status/events/LoadCarLaps?eventId=x&sessionId=y&carNumber=n`
 - **Parameters:**
-  - `eventId` (int): The unique identifier of the event.
-- **Description:** Retrieves all sessions associated with a specific event.
+  - `eventId` (int): The identifier of the event.
+  - `sessionId` (int): The identifier of the session.
+  - `carNumber` (string): The number of the car.
+- **Description:** Loads completed laps for a specific car in a given session.
 - **Response:**
-  - `200 OK`: Returns an array of session objects.
-  - `404 Not Found`: If the event does not exist.
+  - `200 OK`: Returns the array of CarPosition.
   - `500 Internal Server Error`: If an unexpected error occurs.
+
+
+### 6. Get Sessions for an Event
+
+- **Endpoint:** `GET /status/events/LoadSessions?eventId=x`
+- **Parameters:**
+  - `eventId` (int): The identifier of the event.
+- **Description:** Loads sessions for a specific event. Null if not found.
+- **Response:**
+  - `200 OK`: Returns the array of Session objects.
+  - `500 Internal Server Error`: If an unexpected error occurs.
+
+### 7. Get Results for a Session
+
+- **Endpoint:** `GET /status/events/LoadSessionResults?eventId=x&sessionId=y`
+- **Parameters:**
+  - `eventId` (int): The identifier of the event.
+  - `sessionId` (int): The identifier of the session.
+- **Description:** Loads results for a specific session of an event. Null if not found.
+- **Response:**
+  - `200 OK`: Returns Payload object.
+  - `500 Internal Server Error`: If an unexpected error occurs.
+
+### 8. Get Competitor Metadata
+
+- **Endpoint:** `GET /status/events/LoadCompetitorMetadata?eventId=x&car=n`
+- **Parameters:**
+  - `eventId` (int): The identifier of the event.
+  - `car` (string): The identifier of the car for which metadata is retrieved.
+- **Description:** Loads competitor metadata if available from an Orbits timing system for a specific event and car. Null if not found.
+- **Response:**
+  - `200 OK`: Returns CompetitorMetadata object or null.
+  - `500 Internal Server Error`: If an unexpected error occurs.
+
+### 9. Get Control Log
+
+- **Endpoint:** `GET /status/events/LoadControlLog?eventId=x`
+- **Parameters:**
+  - `eventId` (int): The identifier of the event.
+- **Description:** Loads control log for a specific event if available and configured by the organizer.
+- **Response:**
+  - `200 OK`: Returns array of ControlLogEntry object.
+  - `500 Internal Server Error`: If an unexpected error occurs.
+
+### 10. Get Car Control Logs
+
+- **Endpoint:** `GET /status/events/LoadCarControlLogs?eventId=x&car=n`
+- **Parameters:**
+  - `eventId` (int): The identifier of the event.
+  - `car` (string): The identifier of the car for which control logs are retrieved.
+- **Description:** Loads control logs for a specific event and car if available and configured by the organizer.
+- **Response:**
+  - `200 OK`: Returns array of ControlLogEntry object.
+  - `500 Internal Server Error`: If an unexpected error occurs.
+
 
 ### 🔐 Authentication
 
@@ -203,22 +275,114 @@ All endpoints require authentication via a valid API token.
 - **Header:** `Authorization: Bearer {token}`
 
 ### Models
+#### EventListSummary
+
+| C# Property Name     | JSON Property Name | Type             | Description                                                        | 
+|---------------------|-------------------|------------------|--------------------------------------------------------------------| 
+| Id                  | eid               | int              | The unique identifier for the event.                               | 
+| OrganizationId      | oid               | int              | The unique identifier for the organization.                        | 
+| OrganizationName    | on                | string           | The name of the organizing entity.                                 | 
+| EventName           | en                | string           | The name of the event.                                             | 
+| EventDate           | ed                | string           | The date of the event (as a string, typically in ISO format).      | 
+| IsLive              | l                 | bool             | Indicates if the event is currently live.                          | 
+| TrackName           | t                 | string           | The name of the track where the event is held.                     | 
+| Schedule            | s                 | EventSchedule?   | The schedule for the event, including session times (nullable).    |
+
 #### Event
 
-- `id` (int): Unique identifier for the event.
-- `name` (string): Name of the event.
-- `startDate` (DateTime): Start date and time of the event.
-- `endDate` (DateTime): End date and time of the event.
-- `location` (string): Location where the event is held.
+| C# Property Name        | JSON Property Name | Type                | Description                                                                                  | 
+|------------------------|-------------------|---------------------|----------------------------------------------------------------------------------------------| 
+| EventId                | e                 | int                 | The identifier for the event.                                                         | 
+| EventName              | n                 | string              | The name of the event.                                                                       | 
+| EventDate              | d                 | string              | The date of the event (as a string, typically in ISO format).                                | 
+| EventUrl               | u                 | string              | The URL for the event's information or results.                                              | 
+| Sessions               | s                 | Session[]           | The array of sessions associated with the event.                                             | 
+| OrganizationName       | on                | string              | The name of the organizing entity.                                                           | 
+| OrganizationWebsite    | ow                | string?             | The website URL of the organizing entity (nullable).                                         | 
+| OrganizationLogo       | l                 | byte[]?             | The logo of the organizing entity as a byte array (nullable).                                | 
+| Schedule               | sc                | EventSchedule?      | The schedule for the event, including session times (nullable).                              | 
+| TrackName              | t                 | string              | The name of the track where the event is held.                                               | 
+| CourseConfiguration    | cc                | string              | The configuration or layout of the track/course.                                             | 
+| Distance               | di                | string              | The distance of the event (e.g., total race distance or lap length).                         | 
+| Broadcast              | b                 | BroadcasterConfig?  | The broadcast configuration for the event (nullable).                                        | 
+| HasControlLog          | hc                | bool                | Indicates if the event has an associated control log.                                        | 
+| IsLive                 | il                | bool                | Indicates if the event is currently live.                                                    |
+
 
 #### Session
 
-- `id` (int): Unique identifier for the session.
-- `eventId` (int): Identifier of the associated event.
-- `name` (string): Name of the session.
-- `startTime` (DateTime): Start time of the session.
-- `endTime` (DateTime): End time of the session.
-- `type` (string): Type of session (e.g., Practice, Qualifying, Race).
+| C# Property Name        | JSON Property Name | Type      | Description                                                                 | 
+|------------------------|-------------------|-----------|-----------------------------------------------------------------------------| 
+| Id                     | sid               | int       | The identifier for the session.                                      | 
+| EventId                | eid               | int       | The identifier of the event this session belongs to.                        | 
+| Name                   | n                 | string    | The name of the session (e.g., "Qualifying", "Race 1").                     | 
+| StartTime              | st                | DateTime  | The scheduled or actual start time of the session.                          | 
+| EndTime                | et                | DateTime? | The scheduled or actual end time of the session (nullable).                 | 
+| LocalTimeZoneOffset    | tz                | double    | The local time zone offset (in hours) from UTC for the session times.        | 
+| LastUpdated            | lu                | DateTime? | The last time the session data was updated (nullable).                      | 
+| IsLive                 | il                | bool      | Indicates if the session is currently live.                                 | 
+| IsPracticeQualifying   | pq                | bool      | Indicates if the session is a practice or qualifying session.                |
+
+#### EventSchedule
+
+| C# Property Name | JSON Property Name | Type                        | Description                                              | 
+|------------------|-------------------|-----------------------------|----------------------------------------------------------| 
+| Name             | n                 | string                      | The name or label for the event schedule.                | 
+| Entries          | s                 | List<EventScheduleEntry>    | The list of schedule entries for the event.              |
+
+#### EventScheduleEntry
+
+| C# Property Name | JSON Property Name | Type      | Description                                              | 
+|------------------|-------------------|-----------|----------------------------------------------------------| 
+| DayOfEvent       | d                 | DateTime  | The date of the event day for this schedule entry.       | 
+| StartTime        | s                 | DateTime  | The scheduled start time for this entry.                 | 
+| EndTime          | e                 | DateTime  | The scheduled end time for this entry.                   | 
+| Name             | n                 | string    | The name or description of the schedule entry, e.g. Practice Session 1.           |
+
+#### BroadcasterConfig
+
+| C# Property Name | JSON Property Name | Type   | Description                                   | 
+|------------------|-------------------|--------|-----------------------------------------------| 
+| CompanyName      | c                 | string | The name of the broadcasting company.         | 
+| Url              | u                 | string | The URL for the broadcaster or broadcast feed.|
+
+#### CompetitorMetadata
+
+| C# Property Name   | JSON Property Name | Type      | Description                                                        | 
+|--------------------|-------------------|-----------|--------------------------------------------------------------------| 
+| EventId            | e                 | int       | The identifier for the event.                               | 
+| CarNumber          | n                 | string    | The car number or competitor number.                               | 
+| LastUpdated        | lu                | DateTime  | The last time this metadata was updated.                           | 
+| Transponder        | t                 | uint      | The primary transponder number assigned to the car.                | 
+| Transponder2       | t2                | uint      | The secondary transponder number assigned to the car.              | 
+| Class              | cl                | string    | The class or category of the competitor.                           | 
+| FirstName          | -                 | string    | The first name of the competitor.                                  | 
+| LastName           | -                 | string    | The last name of the competitor.                                   | 
+| NationState        | -                 | string    | The nation or state of the competitor.                             | 
+| Sponsor            | -                 | string    | The sponsor of the competitor or car.                              | 
+| Make               | -                 | string    | The make or manufacturer of the car.                               | 
+| Hometown           | -                 | string    | The hometown of the competitor.                                    | 
+| Club               | -                 | string    | The club affiliation of the competitor.                            |
+| ModelEngine        | -                 | string    | The model and engine details of the car.                           | 
+| Tires              | -                 | string    | The tire brand or type used by the car.                            | 
+| Email              | -                 | string    | The email address of the competitor.                               |
+
+#### ControlLogEntry
+
+| C# Property Name        | JSON Property Name | Type      | Description                                                        | 
+|------------------------|-------------------|-----------|--------------------------------------------------------------------| 
+| OrderId                | o                 | int       | The order or sequence number of the log entry.                     | 
+| Timestamp              | t                 | DateTime  | The timestamp when the log entry was created.                      | 
+| Corner                 | cor               | string    | The name of the corner related to the log entry.     | 
+| Car1                   | c1                | string    | The first car involved in the log entry.                           | 
+| IsCar1Highlighted      | c1h               | bool      | Indicates if the first car should be highlighted.                  | 
+| Car2                   | c2                | string    | The second car involved in the log entry.                          | 
+| IsCar2Highlighted      | c2h               | bool      | Indicates if the second car should be highlighted.                 | 
+| Note                   | n                 | string    | Additional notes or comments for the log entry.                    | 
+| Status                 | s                 | string    | The status or outcome associated with the log entry.               | 
+| PenalityAction         | a                 | string    | The penalty action taken, if any.                                  | 
+| OtherNotes             | on                | string    | Any other notes or remarks related to the log entry.               |
+
 
 ### Error Handling
 
@@ -226,60 +390,20 @@ All endpoints require authentication via a valid API token.
 - `401 Unauthorized`: Authentication failed or user does not have permissions.
 - `404 Not Found`: The requested resource could not be found.
 - `500 Internal Server Error`: An unexpected error occurred on the server.
-
-### Notes
-
-- Date and time fields are in ISO 8601 format.
 
 ## Organization (Status API)
 The `OrganizationController` provides endpoints to retrieve information about organizations, i.e. the groups running the events.
 
-**Base Route:** `/organization`
+**Base Route:** `/status/organization`
 
-### 1. Get All Organizations
+### 1. Get Organization Icon
 
-- **Endpoint:** `GET /organization`
-- **Description:** Retrieves a list of all organizations.
+- **Endpoint:** `GET /status/organization/GetOrganizationIcon?organizationId=x`
+- **Description:** Retrieves the icon for a specific organization by its ID.
 - **Response:**
-  - `200 OK`: Returns an array of organization objects.
-  - `500 Internal Server Error`: If an unexpected error occurs.
+  - `200 OK`: Returns the organization icon image.
+  - `404 Not Found`: If the organization does not exist or has no icon.
 
-### 2. Get Organization by ID
-
-- **Endpoint:** `GET /organization/{organizationId}`
-- **Parameters:**
-  - `organizationId` (int): The unique identifier of the organization.
-- **Description:** Retrieves details of a specific organization by its ID.
-- **Response:**
-  - `200 OK`: Returns the organization object.
-  - `404 Not Found`: If the organization does not exist.
-  - `500 Internal Server Error`: If an unexpected error occurs.
-
-### 🔐 Authentication
-
-All endpoints require authentication via a valid API token.
-
-- **Header:** `Authorization: Bearer {token}`
-
-### Models
-
-#### Organization
-
-- `id` (int): Unique identifier for the organization.
-- `name` (string): Name of the organization.
-- `description` (string): Description of the organization.
-- `createdDate` (DateTime): Date and time when the organization was created.
-
-### Error Handling
-
-- `400 Bad Request`: The request was invalid or cannot be served.
-- `401 Unauthorized`: Authentication failed or user does not have permissions.
-- `404 Not Found`: The requested resource could not be found.
-- `500 Internal Server Error`: An unexpected error occurred on the server.
-
-### Notes
-
-- Date and time fields are in ISO 8601 format.
 
 ## Status Endpoint (Status API)
 The `StatusHub` is a SignalR hub that facilitates real-time communication between the server and connected clients. It enables clients to receive live updates about system status, session changes, and other pertinent events.
@@ -288,6 +412,7 @@ The `StatusHub` is a SignalR hub that facilitates real-time communication betwee
 
 ### JavaScript client connection example
 https://learn.microsoft.com/en-us/aspnet/core/signalr/javascript-client?view=aspnetcore-9.0&tabs=visual-studio-code
+
 https://learn.microsoft.com/en-us/aspnet/core/signalr/authn-and-authz?view=aspnetcore-9.0
 
 ### Example Connection (JavaScript)
@@ -359,7 +484,6 @@ if __name__ == "__main__":
 ```
 
 ## Server-to-Client Methods
-
 The server can invoke the following methods on connected clients:
 
 ### 1. `ReceiveMessage`
@@ -368,7 +492,6 @@ The server can invoke the following methods on connected clients:
 - **Parameters:**
   - `status` (string): The current status payload Json. The full payload is compressed with gzip. Incremental updates are not.
   
-
 ## Payload Structure
 The Payload class represents the main data structure for transmitting event, entry, car, and flag status information in the RedMist timing system.
 
