@@ -117,16 +117,25 @@ public class SessionMonitor
                 session.IsLive = false;
                 session.EndTime = DateTime.UtcNow;
 
-                if (GetCurrentPayload() != null)
+                var payload = GetCurrentPayload();
+                if (payload != null)
                 {
-                    var result = new SessionResult
+                    var existingResult = db.SessionResults.FirstOrDefault(r => r.EventId == eventId && r.SessionId == SessionId);
+                    if (existingResult != null)
                     {
-                        EventId = eventId,
-                        SessionId = SessionId,
-                        Start = session.StartTime,
-                        Payload = GetCurrentPayload()
-                    };
-                    db.SessionResults.Add(result);
+                        existingResult.Payload = payload;
+                    }
+                    else
+                    {
+                        var result = new SessionResult
+                        {
+                            EventId = eventId,
+                            SessionId = SessionId,
+                            Start = session.StartTime,
+                            Payload = payload
+                        };
+                        db.SessionResults.Add(result);
+                    }
                 }
 
                 db.SaveChanges();
