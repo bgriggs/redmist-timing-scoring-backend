@@ -23,4 +23,5 @@ public class Consts
     public const string CLIENT_ID = "ts-client-{0}";
     public static readonly string[] PRACTICE_QUAL_TERMS = ["Practice", "Qualifying", "Qual"];
     public const string COMPETITOR_METADATA = "cm-{0}-evt-{1}";
+    public const string EVENT_PAYLOAD = "evt-{0}-payload";
 }

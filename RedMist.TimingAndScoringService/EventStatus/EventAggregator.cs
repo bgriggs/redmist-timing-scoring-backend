@@ -228,6 +228,10 @@ public class EventAggregator : BackgroundService
                     {
                         var payload = await GetEventStatusWithRefreshAsync(dataProcessor, stoppingToken);
                         await SendEventStatusAsync(connectionId, payload, stoppingToken);
+
+                        await Task.Delay(interval, stoppingToken);
+                        if (stoppingToken.IsCancellationRequested)
+                            return;
                     }
                 }
             }
@@ -243,6 +247,9 @@ public class EventAggregator : BackgroundService
                     await Task.Delay(fullSendInterval - elapsed, stoppingToken);
                 }
             }
+
+            // Save off the last payload to the cache for quick access by other services
+            await UpdateCachedPayload(dataProcessor, stoppingToken);
         }
     }
 
@@ -286,6 +293,25 @@ public class EventAggregator : BackgroundService
         finally
         {
             payloadSerializationLock.Release();
+        }
+    }
+
+
+    private async Task UpdateCachedPayload(OrbitsDataProcessor p, CancellationToken stoppingToken)
+    {
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            var payload = await p.GetPayload(stoppingToken);
+            var json = JsonSerializer.Serialize(payload);
+
+            Logger.LogTrace("Caching payload...");
+            var key = string.Format(Backend.Shared.Consts.EVENT_PAYLOAD, eventId);
+            await cache.StringSetAsync(key, json, TimeSpan.FromMinutes(1), When.Always);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating cached payload");
         }
     }
 

@@ -23,6 +23,8 @@ public class OrchestrationService : BackgroundService
     private readonly string controlLogContainer = "bigmission/redmist-control-log-svc:latest";
     private const string LOGGER_JOB = "{0}-evt-{1}-logger";
     private readonly string loggerContainer = "bigmission/redmist-event-logger-svc:latest";
+    private const string SENTINEL_VIDEO_JOB = "{0}-evt-{1}-sentinel-video";
+    private readonly string sentinelVideoContainer = "bigmission/redmist-sentinel-video-svc:latest";
 
 
     public OrchestrationService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext)
@@ -261,6 +263,18 @@ public class OrchestrationService : BackgroundService
         else
         {
             Logger.LogTrace("Event processor job {epJobName} already exists for event {eventId}.", epJobName, evt.EventId);
+        }
+
+        // Check for sentinel video job
+        var svJobName = string.Format(SENTINEL_VIDEO_JOB, org.ShortName.ToLower(), evt.EventId);
+        if (!jobs.Items.Any(job => job.Metadata.Name.Equals(svJobName, StringComparison.OrdinalIgnoreCase)))
+        {
+            Logger.LogInformation("Sentinel video job {svJobName} does not exist for event {eventId}. Creating new job.", svJobName, evt.EventId);
+            await CreateJob(client, svJobName, ns, sentinelVideoContainer, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+        }
+        else
+        {
+            Logger.LogTrace("Sentinel video job {svJobName} already exists for event {eventId}.", svJobName, evt.EventId);
         }
     }
 
