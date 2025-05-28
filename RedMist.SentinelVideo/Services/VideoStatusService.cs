@@ -66,7 +66,7 @@ public class VideoStatusService : BackgroundService
                         Logger.LogInformation("Fetching video status for transponder IDs...");
                         // Todo: Fetch the latest video status for each transponder ID
                         //activeCarsCounter.IncTo();
-                        //await hubContext.Clients.Group(eventId.ToString()).SendAsync("ReceiveInCarVideo", json, stoppingToken);
+                        //await hubContext.Clients.Group(eventId.ToString()).SendAsync("ReceiveInCarVideoMetadata", json, stoppingToken);
                     }
                     else
                     {
