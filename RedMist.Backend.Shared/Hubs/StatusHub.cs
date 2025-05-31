@@ -91,7 +91,7 @@ public class StatusHub : Hub
         return clientId;
     }
 
-    #region UI Clients
+    #region Event Subscriptions
 
     /// <summary>
     /// UI is registering to receive updates for a specific event.
@@ -162,6 +162,10 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} unsubscribed from event {eventId}", connectionId, eventId);
     }
 
+    #endregion
+
+    #region Control Logs
+
     public async Task SubscribeToControlLogs(int eventId)
     {
         var connectionId = Context.ConnectionId;
@@ -194,33 +198,6 @@ public class StatusHub : Hub
         var grpKey = $"{eventId}-{carNum}";
         await Groups.RemoveFromGroupAsync(connectionId, grpKey);
         Logger.LogInformation("Client {connectionId} unsubscribed from control log for car {carNum} event {eventId}", connectionId, carNum, eventId);
-    }
-
-    public async Task SubscribeToCompetitorMetadata(int eventId, string carNum)
-    {
-        var connectionId = Context.ConnectionId;
-        var grpKey = $"{eventId}-{carNum}";
-        await Groups.AddToGroupAsync(connectionId, grpKey);
-
-        if (eventId > 0)
-        {
-            // Send a full status update to the client
-            var sub = cacheMux.GetSubscriber();
-            var cmd = new SendCompetitorMetadata { EventId = eventId, ConnectionId = connectionId, CarNumber = carNum };
-            var json = JsonSerializer.Serialize(cmd);
-            // Tell the service responsible for this event to send a full status update
-            await sub.PublishAsync(new RedisChannel(Consts.SEND_COMPETITOR_METADATA, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
-        }
-
-        Logger.LogInformation("Client {connectionId} subscribed from competitor metadata for car {carNum} event {eventId}", connectionId, carNum, eventId);
-    }
-
-    public async Task UnsubscribeFromCompetitorMetadata(int eventId, string carNum)
-    {
-        var connectionId = Context.ConnectionId;
-        var grpKey = $"{eventId}-{carNum}";
-        await Groups.RemoveFromGroupAsync(connectionId, grpKey);
-        Logger.LogInformation("Client {connectionId} unsubscribed from competitor metadata for car {carNum} event {eventId}", connectionId, carNum, eventId);
     }
 
     #endregion
