@@ -5,6 +5,7 @@ using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
 using RedMist.Database;
+using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
@@ -61,7 +62,8 @@ public class EventAggregator : BackgroundService
         var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
         var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
         var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
-        dataProcessor = new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux, tsContext);
+        var driverModeDataProcessor = new DriverModeProcessor(eventId, hubContext, loggerFactory, hcache, tsContext, cacheMux);
+        dataProcessor = new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux, tsContext, driverModeDataProcessor);
         dataProcessor.PayloadChanged += DataProcessor_PayloadChanged;
     }
 

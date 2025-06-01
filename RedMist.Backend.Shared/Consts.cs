@@ -24,4 +24,15 @@ public class Consts
     public static readonly string[] PRACTICE_QUAL_TERMS = ["Practice", "Qualifying", "Qual"];
     public const string COMPETITOR_METADATA = "cm-{0}-evt-{1}";
     public const string EVENT_PAYLOAD = "evt-{0}-payload";
+    public const string IN_CAR_EVENT_SUB = "in-car-evt-{0}-car-{1}";
+    public const string IN_CAR_DATA = "in-car-data-{0}-{1}";
+
+    #region Metrics
+    public const string CLIENT_CONNECTIONS_KEY = "total_client_connections";
+    public const string EVENT_CONNECTIONS_KEY = "total_event_connections";
+    public const string CONTROL_LOG_CONNECTIONS_KEY = "total_control_log_connections";
+    public const string CAR_CONTROL_LOG_CONNECTIONS_KEY = "total_car_control_log_connections";
+    public const string IN_CAR_CONNECTIONS_KEY = "total_in_car_connections";
+
+    #endregion
 }

@@ -230,7 +230,7 @@ public class PositionMetadataProcessor
         return result;
     }
 
-    private static string GetTimeFormat(TimeSpan time)
+    public static string GetTimeFormat(TimeSpan time)
     {
         if (time.Minutes > 0)
         {
@@ -239,7 +239,7 @@ public class PositionMetadataProcessor
         return SecTimeFormat;
     }
 
-    private static string GetLapTerm(int laps)
+    public static string GetLapTerm(int laps)
     {
         if (laps == 1)
         {

@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.TimingAndScoringService.Models;
 
-namespace RedMist.TimingAndScoringService.Hubs;
+namespace RedMist.TimingAndScoringService.EventStatus;
 
 /// <summary>
 /// Handles sending status updates to registered hub clients.
@@ -12,6 +12,7 @@ public class StatusAggregator : INotificationHandler<StatusNotification>
 {
     private readonly IHubContext<StatusHub> hubContext;
     private ILogger Logger { get; }
+
 
     public StatusAggregator(IHubContext<StatusHub> hubContext, ILoggerFactory loggerFactory)
     {

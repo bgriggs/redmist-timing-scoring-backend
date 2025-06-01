@@ -1,9 +1,13 @@
 ﻿using BigMission.TestHelpers.Testing;
 using MediatR;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using Moq;
+using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
+using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
 using StackExchange.Redis;
@@ -15,6 +19,7 @@ public class SessionMonitorTests
 {
     private readonly DebugLoggerFactory lf = new();
 
+
     [TestMethod]
     public async Task Session_End_CarsFinishing_Test()
     {
@@ -25,7 +30,10 @@ public class SessionMonitorTests
         var flagProcessor = new FlagProcessor(1, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
         var db = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object);
+        var hub = new Mock<IHubContext<StatusHub>>();
+        var hcache = new Mock<HybridCache>();
+        var dmProc = new DriverModeProcessor(1, hub.Object, lf, hcache.Object, db.Object, cacheMux.Object);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
 
         var dataReader = new TestDataReader("event-finish-with-cars-data.log");
         var data = dataReader.GetData();
@@ -66,7 +74,10 @@ public class SessionMonitorTests
         var flagProcessor = new FlagProcessor(1, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
         var db = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object);
+        var hub = new Mock<IHubContext<StatusHub>>();
+        var hcache = new Mock<HybridCache>();
+        var dmProc = new DriverModeProcessor(1, hub.Object, lf, hcache.Object, db.Object, cacheMux.Object);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
 
         var dataReader = new TestDataReader("event-finish-with-stopped.log");
         var data = dataReader.GetData();
@@ -112,7 +123,10 @@ public class SessionMonitorTests
         var flagProcessor = new FlagProcessor(1, dbMock.Object, lf);
         var cacheMux = new Mock<IConnectionMultiplexer>();
         var db = new Mock<IDbContextFactory<TsContext>>();
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object);
+        var hub = new Mock<IHubContext<StatusHub>>();
+        var hcache = new Mock<HybridCache>();
+        var dmProc = new DriverModeProcessor(1, hub.Object, lf, hcache.Object, db.Object, cacheMux.Object);
+        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
 
         var dataReader = new TestDataReader("event-finish-with-reset.log");
         var data = dataReader.GetData();

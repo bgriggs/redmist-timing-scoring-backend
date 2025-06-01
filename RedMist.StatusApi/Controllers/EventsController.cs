@@ -5,6 +5,7 @@ using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.TimingCommon.Models;
+using RedMist.TimingCommon.Models.InCarDriverMode;
 using StackExchange.Redis;
 using System.Text.Json;
 
@@ -288,6 +289,26 @@ public class EventsController : ControllerBase
             return null;
         }
         return JsonSerializer.Deserialize<CarControlLogs>(json!);
+    }
+
+    #endregion
+
+    #region In-Car Data
+
+    [HttpGet]
+    [ProducesResponseType<InCarPayload>(StatusCodes.Status200OK)]
+    public async Task<InCarPayload?> LoadInCarPayload(int eventId, string car)
+    {
+        Logger.LogTrace("LoadInCarPayload for event {eventId}, car {car}", eventId, car);
+        var cache = cacheMux.GetDatabase();
+        var cacheKey = string.Format(Consts.IN_CAR_DATA, eventId, car);
+        var json = await cache.StringGetAsync(cacheKey);
+        if (json.IsNullOrEmpty)
+        {
+            Logger.LogWarning("In-car data for event {eventId} car {car} not found in cache", eventId, car);
+            return null;
+        }
+        return JsonSerializer.Deserialize<InCarPayload>(json!);
     }
 
     #endregion

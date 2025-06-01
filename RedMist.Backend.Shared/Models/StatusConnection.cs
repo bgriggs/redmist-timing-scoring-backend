@@ -8,4 +8,5 @@ public class StatusConnection
     public DateTime ConnectedTimestamp { get; set; }
     public string? ClientId { get; set; } = string.Empty;
     public int SubscribedEventId { get; set; }
+    public InCarDriverConnection? InCarDriverConnection { get; set; } = null;
 }

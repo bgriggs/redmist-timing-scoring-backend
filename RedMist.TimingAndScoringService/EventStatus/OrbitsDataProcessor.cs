@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
@@ -20,7 +21,7 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 /// Result Monitor data format processor primarily for Orbits data.
 /// </summary>
 /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
-public class OrbitsDataProcessor : IDataProcessor
+public class OrbitsDataProcessor
 {
     public int EventId { get; private set; }
     public int SessionId => sessionMonitor.SessionId;
@@ -55,6 +56,7 @@ public class OrbitsDataProcessor : IDataProcessor
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly HashSet<uint> lastTransponderPassings = [];
     private readonly PositionMetadataProcessor secondaryProcessor = new();
+    private readonly DriverModeProcessor driverModeProcessor;
     private bool startingPositionsInitialized = false;
     private DateTime lastResetPosition = DateTime.MinValue;
     private DateTime lastPositionMismatch = DateTime.MinValue;
@@ -62,7 +64,8 @@ public class OrbitsDataProcessor : IDataProcessor
 
 
     public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
-        PitProcessor pitProcessor, FlagProcessor flagProcessor, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext)
+        PitProcessor pitProcessor, FlagProcessor flagProcessor, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext, 
+        DriverModeProcessor driverModeProcessor)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         EventId = eventId;
@@ -72,6 +75,7 @@ public class OrbitsDataProcessor : IDataProcessor
         this.flagProcessor = flagProcessor;
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
+        this.driverModeProcessor = driverModeProcessor;
     }
 
 
@@ -695,6 +699,7 @@ public class OrbitsDataProcessor : IDataProcessor
             await InitializeStartingPositions();
         }
         carPositions = secondaryProcessor.UpdateCarPositions(carPositions);
+        _ = driverModeProcessor.UpdateCarPositions(carPositions, competitors.ToDictionary(), Heartbeat.FlagStatus.ToFlag());
 
         // Apply penalties
         await UpdateCarsWithPenalties(carPositions, !includeChangedOnly);

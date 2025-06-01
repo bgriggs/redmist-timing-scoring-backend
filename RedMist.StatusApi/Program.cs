@@ -9,6 +9,7 @@ using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
+using RedMist.StatusApi.Services;
 using StackExchange.Redis;
 
 namespace RedMist.StatusApi;
@@ -60,6 +61,8 @@ public class Program
             {
                 options.Configuration.ChannelPrefix = RedisChannel.Literal(Consts.STATUS_CHANNEL_PREFIX);
             });
+
+        builder.Services.AddHostedService<MetricsPublisher>();
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();

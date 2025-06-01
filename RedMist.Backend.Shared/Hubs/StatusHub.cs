@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
+using Prometheus;
 using RedMist.Backend.Shared.Models;
 using StackExchange.Redis;
 using System.Text.Json;
@@ -10,6 +11,16 @@ namespace RedMist.Backend.Shared.Hubs;
 [Authorize]
 public class StatusHub : Hub
 {
+    #region Metrics
+
+    public static Gauge ClientConnectionsCount { get; } = Metrics.CreateGauge(Consts.CLIENT_CONNECTIONS_KEY, "Total client connections");
+    public static Gauge EventConnectionsCount { get; } = Metrics.CreateGauge(Consts.EVENT_CONNECTIONS_KEY, "Total client event connections");
+    public static Gauge ControlLogConnectionsCount { get; } = Metrics.CreateGauge(Consts.CONTROL_LOG_CONNECTIONS_KEY, "Total client control log connections");
+    public static Gauge CarControlLogConnectionsCount { get; } = Metrics.CreateGauge(Consts.CAR_CONTROL_LOG_CONNECTIONS_KEY, "Total client car control log connections");
+    public static Gauge InCarConnectionsCount { get; } = Metrics.CreateGauge(Consts.IN_CAR_CONNECTIONS_KEY, "Total client in-car connections");
+
+    #endregion
+
     private readonly IConnectionMultiplexer cacheMux;
 
     private ILogger Logger { get; }
@@ -39,6 +50,8 @@ public class StatusHub : Hub
         {
             Logger.LogError(ex, "Error adding connectionId {connectionId} to status connections cache", Context.ConnectionId);
         }
+
+        ClientConnectionsCount.Inc();
         Logger.LogInformation("Client {id} connected: {ConnectionId}", clientId, Context.ConnectionId);
     }
 
@@ -71,6 +84,8 @@ public class StatusHub : Hub
         {
             Logger.LogError(ex, "Error removing connectionId {connectionId} from status connections cache", Context.ConnectionId);
         }
+
+        ClientConnectionsCount.Inc(-1);
         Logger.LogInformation("Client {id} disconnected: {ConnectionId}", clientId, Context.ConnectionId);
     }
 
@@ -111,35 +126,11 @@ public class StatusHub : Hub
             // Tell the service responsible for this event to send a full status update
             await sub.PublishAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
 
-            try
-            {
-                // Save off the connectionId in the cache for ability to send messages to this client individually
-                var cache = cacheMux.GetDatabase();
-
-                // Get the cache entry for this connectionId
-                var connJson = await cache.HashGetAsync(Consts.STATUS_CONNECTIONS, Context.ConnectionId);
-                if (!connJson.IsNullOrEmpty)
-                {
-                    var conn = JsonSerializer.Deserialize<StatusConnection>(connJson!);
-                    if (conn != null && conn.ClientId != null)
-                    {
-                        // Update the connectionId with the eventId
-                        conn.SubscribedEventId = eventId;
-                        var updatedJson = JsonSerializer.Serialize(conn);
-                        await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, Context.ConnectionId, updatedJson);
-                    }
-                }
-
-                // Save off the connectionId in the event connections cache
-                var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId);
-                await cache.HashSetAsync(connKey, connectionId, DateTime.UtcNow.ToString(), When.Always, CommandFlags.FireAndForget);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error adding connectionId {connectionId} to event {eventId}", connectionId, eventId);
-            }
+            // Update connection tracking for this event
+            await AddOrUpdateConnectionTracking(connectionId, eventId, inCarDriverConnection: null);
         }
 
+        EventConnectionsCount.Inc();
         Logger.LogInformation("Client {connectionId} subscribed to event {eventId}", connectionId, eventId);
     }
 
@@ -159,6 +150,7 @@ public class StatusHub : Hub
             Logger.LogError(ex, "Error removing connectionId {connectionId} from event {eventId}", connectionId, eventId);
         }
 
+        EventConnectionsCount.Dec();
         Logger.LogInformation("Client {connectionId} unsubscribed from event {eventId}", connectionId, eventId);
     }
 
@@ -171,7 +163,7 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-cl";
         await Groups.AddToGroupAsync(connectionId, grpKey);
-
+        ControlLogConnectionsCount.Inc();
         Logger.LogInformation("Client {connectionId} subscribed to control log for event {eventId}", connectionId, eventId);
     }
 
@@ -180,6 +172,7 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-cl";
         await Groups.RemoveFromGroupAsync(connectionId, grpKey);
+        ControlLogConnectionsCount.Dec();
         Logger.LogInformation("Client {connectionId} unsubscribed from control log for event {eventId}", connectionId, eventId);
     }
 
@@ -188,7 +181,7 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-{carNum}";
         await Groups.AddToGroupAsync(connectionId, grpKey);
-
+        CarControlLogConnectionsCount.Inc();
         Logger.LogInformation("Client {connectionId} subscribed to control log for car {carNum} event {eventId}", connectionId, carNum, eventId);
     }
 
@@ -197,7 +190,71 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-{carNum}";
         await Groups.RemoveFromGroupAsync(connectionId, grpKey);
+        CarControlLogConnectionsCount.Dec();
         Logger.LogInformation("Client {connectionId} unsubscribed from control log for car {carNum} event {eventId}", connectionId, carNum, eventId);
+    }
+
+    #endregion
+
+    #region In-Car Driver Mode
+
+    public async Task SubscribeToInCarDriverEvent(int eventId, string car)
+    {
+        var connectionId = Context.ConnectionId;
+        var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB, eventId, car);
+        await Groups.AddToGroupAsync(connectionId, grpKey);
+        await AddOrUpdateConnectionTracking(connectionId, 0, inCarDriverConnection: new InCarDriverConnection(eventId, car));
+        InCarConnectionsCount.Inc();
+        Logger.LogInformation("Client {connectionId} subscribed to in-car driver event for car {car} event {eventId}", connectionId, car, eventId);
+    }
+
+    public async Task UnsubscribeFromInCarDriverEvent(int eventId, string car)
+    {
+        var connectionId = Context.ConnectionId;
+        var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB, eventId, car);
+        await Groups.RemoveFromGroupAsync(connectionId, grpKey);
+        await AddOrUpdateConnectionTracking(connectionId, 0, inCarDriverConnection: null);
+        InCarConnectionsCount.Dec();
+        Logger.LogInformation("Client {connectionId} unsubscribed from in-car driver event for car {car} event {eventId}", connectionId, car, eventId);
+    }
+
+    #endregion
+
+    #region Connection Status Management
+
+    private async Task AddOrUpdateConnectionTracking(string connectionId, int eventId, InCarDriverConnection? inCarDriverConnection)
+    {
+        try
+        {
+            // Save off the connectionId in the cache for ability to send messages to this client individually
+            var cache = cacheMux.GetDatabase();
+
+            // Get the cache entry for this connectionId that would have been created in OnConnectedAsync
+            var connJson = await cache.HashGetAsync(Consts.STATUS_CONNECTIONS, connectionId);
+            if (!connJson.IsNullOrEmpty)
+            {
+                var conn = JsonSerializer.Deserialize<StatusConnection>(connJson!);
+                if (conn != null && conn.ClientId != null)
+                {
+                    // Update the connectionId with the eventId
+                    conn.SubscribedEventId = eventId;
+                    conn.InCarDriverConnection = inCarDriverConnection;
+                    var updatedJson = JsonSerializer.Serialize(conn);
+                    await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, connectionId, updatedJson);
+                }
+            }
+
+            // Save off the connectionId in the event connections cache
+            if (eventId > 0)
+            {
+                var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId);
+                await cache.HashSetAsync(connKey, connectionId, DateTime.UtcNow.ToString(), When.Always, CommandFlags.FireAndForget);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error adding connection tracking for connectionId {connectionId} to event {eventId}", connectionId, eventId);
+        }
     }
 
     #endregion

@@ -15,11 +15,12 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <PackageReference Include="StackExchange.Redis" Version="2.8.24" />
+		<PackageReference Include="StackExchange.Redis" Version="2.8.24" />
+		<PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
+		<ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
 	</ItemGroup>
 
 </Project>
