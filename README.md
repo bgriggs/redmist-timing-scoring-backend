@@ -168,7 +168,7 @@ The `EventsController` provides endpoints to retrieve information about events a
 
 ### 1. Get All Events
 
-- **Endpoint:** `GET /status/LoadEvents`
+- **Endpoint:** `GET /status/events/LoadEvents`
 - **Description:** Retrieves a list of all events.
 - **Response:**
   - `200 OK`: Returns the EventListSummary object.
@@ -408,7 +408,7 @@ The `OrganizationController` provides endpoints to retrieve information about or
 ## Status Endpoint (Status API)
 The `StatusHub` is a SignalR hub that facilitates real-time communication between the server and connected clients. It enables clients to receive live updates about system status, session changes, and other pertinent events.
 
-**Hub Route:** `/event-status`
+**Hub Route:** `/status/event-status`
 
 ### JavaScript client connection example
 https://learn.microsoft.com/en-us/aspnet/core/signalr/javascript-client?view=aspnetcore-9.0&tabs=visual-studio-code
@@ -418,7 +418,7 @@ https://learn.microsoft.com/en-us/aspnet/core/signalr/authn-and-authz?view=aspne
 ### Example Connection (JavaScript)
 ``` javascript
 const connection = new signalR.HubConnectionBuilder()
-     .withUrl("/event-status", { accessTokenFactory: () => this.loginToken })
+     .withUrl("https://api.redmist.racing/status/event-status", { accessTokenFactory: () => this.loginToken })
     .withAutomaticReconnect()
     .build();
 
@@ -441,7 +441,7 @@ from signalr_aio import Connection
 import aiohttp
 
 async def main():
-    url = "https://api.redmist.racing/event-hub"
+    url = "https://api.redmist.racing/status/event-status"
     
     # Your Bearer token
     token = "YOUR_BEARER_TOKEN_HERE"
@@ -457,7 +457,7 @@ async def main():
     connection = Connection(url, session)
     
     # Get the hub proxy
-    hub = connection.register_hub('event-hub')
+    hub = connection.register_hub('event-status')
     
     # Define a handler for a server-invoked event called 'ReceiveMessage'
     def on_receive_message(message):
