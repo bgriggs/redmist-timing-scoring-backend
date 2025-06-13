@@ -1,5 +1,4 @@
-﻿using Prometheus;
-using RedMist.Backend.Shared.Hubs;
+﻿using RedMist.Backend.Shared.Hubs;
 
 namespace RedMist.StatusApi.Services;
 

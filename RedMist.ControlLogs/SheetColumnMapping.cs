@@ -1,11 +1,10 @@
-﻿using Newtonsoft.Json.Linq;
-using RedMist.TimingCommon.Models;
+﻿using RedMist.TimingCommon.Models;
 using System.Reflection;
 
-namespace RedMist.ControlLogs.WrlGoogleSheets;
+namespace RedMist.ControlLogs;
 
 /// <summary>
-/// Represents a WRL google sheet column mapping.
+/// Represents a google sheet column mapping.
 /// </summary>
 public class SheetColumnMapping
 {

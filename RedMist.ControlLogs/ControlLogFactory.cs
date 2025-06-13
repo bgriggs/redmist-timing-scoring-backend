@@ -26,6 +26,10 @@ public class ControlLogFactory : IControlLogFactory
         {
             return new GoogleSheetsControlLog(loggerFactory, config, tsContext);
         }
+        else if (type == ControlLogType.CHAMPCAR_GOOGLE_SHEET)
+        {
+            return new ChampCarGoogleSheets.GoogleSheetsControlLog(loggerFactory, config, tsContext);
+        }
 
         throw new NotImplementedException($"type={type}");
     }

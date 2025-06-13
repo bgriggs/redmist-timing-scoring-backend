@@ -30,6 +30,9 @@ docker push bigmission/redmist-control-log-svc
 docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.EventLogger\Dockerfile" --force-rm -t bigmission/redmist-event-logger-svc "C:\Code\RedMist.TimingAndScoringService"
 docker push bigmission/redmist-event-logger-svc
 
+# Sentinel Video service
+docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.SentinelVideo\Dockerfile" --force-rm -t bigmission/redmist-sentinel-video-svc "C:\Code\RedMist.TimingAndScoringService"
+docker push bigmission/redmist-sentinel-video-svc
 
 # deploy to k8s
 kubectl config set-context --current --namespace=timing
