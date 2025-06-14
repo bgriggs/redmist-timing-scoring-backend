@@ -25,6 +25,6 @@ public class RelayResetAggregator : INotificationHandler<RelayResetRequest>
     {
         var groupName = string.Format(Backend.Shared.Consts.RELAY_GROUP_PREFIX, notification.EventId);
         Logger.LogInformation("Sending request to relay group to resend event data: {groupName}", groupName);
-        return hubContext.Clients.Group(groupName).SendAsync("SendEventData", cancellationToken);
+        return hubContext.Clients.Group(groupName).SendAsync("SendEventData", notification.ForceTimingDataReset, cancellationToken);
     }
 }

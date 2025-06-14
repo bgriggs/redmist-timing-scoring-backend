@@ -60,11 +60,12 @@ public class OrbitsDataProcessor
     private bool startingPositionsInitialized = false;
     private DateTime lastResetPosition = DateTime.MinValue;
     private DateTime lastPositionMismatch = DateTime.MinValue;
+    private DateTime lastForceTimingDataReset = DateTime.MinValue;
     private HashEntry[]? lastPenalties;
 
 
     public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
-        PitProcessor pitProcessor, FlagProcessor flagProcessor, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext, 
+        PitProcessor pitProcessor, FlagProcessor flagProcessor, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext,
         DriverModeProcessor driverModeProcessor)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -900,7 +901,6 @@ public class OrbitsDataProcessor
             Logger.LogWarning("ResetRacePositionState called too soon after last reset. Skipping.");
             return;
         }
-        lastResetPosition = DateTime.Now;
 
         await _lock.WaitAsync();
         try
@@ -913,8 +913,26 @@ public class OrbitsDataProcessor
             _lock.Release();
         }
 
+        // Force timing system to resend all data when the relay's cached data was recently requested and failed to resolve consistency issues
+        bool forceTimingDataReset = false;
+        var timeSinceLastReset = (DateTime.Now - lastResetPosition).TotalMinutes;
+        var timeSinceLastForceTimingDataReset = (DateTime.Now - lastForceTimingDataReset).TotalMinutes;
+        
+        if (timeSinceLastReset >= 1 && timeSinceLastReset < 2 && timeSinceLastForceTimingDataReset >= 3)
+        {
+            forceTimingDataReset = true;
+            lastForceTimingDataReset = DateTime.Now;
+            Logger.LogInformation("Consistency check: forcing timing data reset due to recent cached data request failure to resolve.");
+        }
+        else
+        {
+            Logger.LogInformation("Consistency check: attempting soft relay data reset using relay cached data.");
+        }
+
         // Publish reset event
-        await mediator.Publish(new RelayResetRequest { EventId = EventId }, CancellationToken.None);
+        await mediator.Publish(new RelayResetRequest { EventId = EventId, ForceTimingDataReset = forceTimingDataReset }, CancellationToken.None);
+
+        lastResetPosition = DateTime.Now;
     }
 
     /// <summary>

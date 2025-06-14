@@ -42,7 +42,7 @@ public class OrganizationController : Controller
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task UpdateOrganization(Organization organization)
     {
-        Logger.LogTrace("GetCurrentOrganization");
+        Logger.LogTrace("UpdateOrganization");
         var clientId = User.FindFirstValue("client_id");
         using var db = await tsContext.CreateDbContextAsync();
         var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
