@@ -289,6 +289,11 @@ public partial class ControlLogCache
         {
             return true;
         }
+        // Default to car 1 if no highlighting is specified
+        if (car.Equals(entry.Car1, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
         return false;
     }
 
