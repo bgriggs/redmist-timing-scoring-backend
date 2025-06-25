@@ -4,15 +4,7 @@ VisualStudioVersion = 17.13.35723.152
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.TimingAndScoringService", "RedMist.TimingAndScoringService\RedMist.TimingAndScoringService.csproj", "{D58D11F3-B446-4BF9-8CC0-250A981A0BB7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.TimingCommon", "redmist-timing-common\RedMist.TimingCommon\RedMist.TimingCommon.csproj", "{0E3292A9-D018-8A12-0037-2B5F75C52CFA}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.TimingAndScoringService.Tests", "RedMist.TimingAndScoringService.Tests\RedMist.TimingAndScoringService.Tests.csproj", "{05089F2B-9FF2-4E05-BA12-0B37E120F764}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BigMission.TestHelpers", "unit-test-helpers\BigMission.TestHelpers\BigMission.TestHelpers.csproj", "{A89399C2-B15E-3013-7BFD-256CCC13C04E}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StackRedis.L1", "StackRedis.L1\StackRedis.L1\StackRedis.L1.csproj", "{9A753518-85EA-2D45-E25D-14ACF9CFDC2A}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "submodules", "submodules", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.Database", "RedMist.Database\RedMist.Database.csproj", "{BAB69F74-D629-42A6-95C2-18433289F2E0}"
 EndProject
@@ -21,8 +13,6 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.ControlLogs", "RedMist.ControlLogs\RedMist.ControlLogs.csproj", "{2C960C44-2278-496C-894B-D28D69592575}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.UserManagement", "RedMist.UserManagement\RedMist.UserManagement.csproj", "{CAB8CA9F-5E9D-4FCF-A62A-1717B4C390A9}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BigMission.Shared", "bigmission-shared\BigMission.Shared\BigMission.Shared.csproj", "{B4143355-4E45-84AE-0D47-ADCF5651B041}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{696EBD40-9305-47DD-9392-3AE967E93E09}"
 	ProjectSection(SolutionItems) = preProject
@@ -54,22 +44,10 @@ Global
 		{D58D11F3-B446-4BF9-8CC0-250A981A0BB7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D58D11F3-B446-4BF9-8CC0-250A981A0BB7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D58D11F3-B446-4BF9-8CC0-250A981A0BB7}.Release|Any CPU.Build.0 = Release|Any CPU
-		{0E3292A9-D018-8A12-0037-2B5F75C52CFA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{0E3292A9-D018-8A12-0037-2B5F75C52CFA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{0E3292A9-D018-8A12-0037-2B5F75C52CFA}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{0E3292A9-D018-8A12-0037-2B5F75C52CFA}.Release|Any CPU.Build.0 = Release|Any CPU
 		{05089F2B-9FF2-4E05-BA12-0B37E120F764}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{05089F2B-9FF2-4E05-BA12-0B37E120F764}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{05089F2B-9FF2-4E05-BA12-0B37E120F764}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{05089F2B-9FF2-4E05-BA12-0B37E120F764}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A89399C2-B15E-3013-7BFD-256CCC13C04E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A89399C2-B15E-3013-7BFD-256CCC13C04E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A89399C2-B15E-3013-7BFD-256CCC13C04E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A89399C2-B15E-3013-7BFD-256CCC13C04E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{9A753518-85EA-2D45-E25D-14ACF9CFDC2A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{9A753518-85EA-2D45-E25D-14ACF9CFDC2A}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{9A753518-85EA-2D45-E25D-14ACF9CFDC2A}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{9A753518-85EA-2D45-E25D-14ACF9CFDC2A}.Release|Any CPU.Build.0 = Release|Any CPU
 		{BAB69F74-D629-42A6-95C2-18433289F2E0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{BAB69F74-D629-42A6-95C2-18433289F2E0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BAB69F74-D629-42A6-95C2-18433289F2E0}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -86,10 +64,6 @@ Global
 		{CAB8CA9F-5E9D-4FCF-A62A-1717B4C390A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CAB8CA9F-5E9D-4FCF-A62A-1717B4C390A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CAB8CA9F-5E9D-4FCF-A62A-1717B4C390A9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B4143355-4E45-84AE-0D47-ADCF5651B041}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B4143355-4E45-84AE-0D47-ADCF5651B041}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B4143355-4E45-84AE-0D47-ADCF5651B041}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B4143355-4E45-84AE-0D47-ADCF5651B041}.Release|Any CPU.Build.0 = Release|Any CPU
 		{AFE89D3C-46B6-4059-BF4B-4C5FA93FF81B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{AFE89D3C-46B6-4059-BF4B-4C5FA93FF81B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AFE89D3C-46B6-4059-BF4B-4C5FA93FF81B}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -121,12 +95,6 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(NestedProjects) = preSolution
-		{0E3292A9-D018-8A12-0037-2B5F75C52CFA} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
-		{A89399C2-B15E-3013-7BFD-256CCC13C04E} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
-		{9A753518-85EA-2D45-E25D-14ACF9CFDC2A} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
-		{B4143355-4E45-84AE-0D47-ADCF5651B041} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {BCE8ECC7-D522-49B0-B6FD-E0C57E6E5E3C}
