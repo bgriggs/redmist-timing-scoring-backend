@@ -3,7 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Prometheus;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
+using RedMist.SentinelVideo.Clients;
+using RedMist.SentinelVideo.Models;
 using RedMist.TimingCommon.Models;
+using RedMist.TimingCommon.Models.InCarVideo;
 using StackExchange.Redis;
 using System.Text.Json;
 
@@ -17,17 +20,19 @@ public class VideoStatusService : BackgroundService
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly IHubContext<StatusHub> hubContext;
-    private readonly TimeSpan updateInterval = TimeSpan.FromSeconds(120);
+    private readonly SentinelClient sentinelClient;
+    private readonly TimeSpan updateInterval = TimeSpan.FromSeconds(30);
 
 
     public VideoStatusService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IDbContextFactory<TsContext> tsContext, IHubContext<StatusHub> hubContext)
+        IDbContextFactory<TsContext> tsContext, IHubContext<StatusHub> hubContext, SentinelClient sentinelClient)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.loggerFactory = loggerFactory;
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
         this.hubContext = hubContext;
+        this.sentinelClient = sentinelClient;
         eventId = configuration.GetValue("event_id", 0);
     }
 
@@ -47,7 +52,7 @@ public class VideoStatusService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            
+
             try
             {
                 var cache = cacheMux.GetDatabase();
@@ -63,10 +68,61 @@ public class VideoStatusService : BackgroundService
                         var transponderIds = payload.CarPositions.Select(t => t.TransponderId).ToList();
                         Logger.LogInformation("Found {Count} transponder IDs in payload", transponderIds.Count);
 
-                        Logger.LogInformation("Fetching video status for transponder IDs...");
-                        // Todo: Fetch the latest video status for each transponder ID
-                        //activeCarsCounter.IncTo();
-                        //await hubContext.Clients.Group(eventId.ToString()).SendAsync("ReceiveInCarVideoMetadata", json, stoppingToken);
+                        Logger.LogInformation("Fetching live video streams...");
+                        var streams = await sentinelClient.GetStreamsAsync();
+                        Logger.LogInformation("Fetched {Count} live video streams", streams.Count);
+                        var eventStreams = new List<PublicStreams>();
+                        foreach (var transponderId in transponderIds)
+                        {
+                            var stream = streams.FirstOrDefault(s => s.TransponderId == transponderId);
+                            if (stream != null)
+                            {
+                                eventStreams.Add(stream);
+                            }
+                        }
+                        Logger.LogInformation("Filtered {Count} streams for transponder IDs in payload", eventStreams.Count);
+                        activeCarsCounter.IncTo(eventStreams.Count);
+
+                        //eventStreams.Add(new PublicStreams { DriverName = "test driver", TransponderId = 10908083, YouTubeUrl = "https://redmist.racing" });
+
+                        var videoMetadata = new List<VideoMetadata>();
+                        foreach (var stream in eventStreams)
+                        {
+                            var metadata = new VideoMetadata
+                            {
+                                EventId = eventId,
+                                TransponderId = stream.TransponderId,
+                                UseTransponderId = true,
+                                SystemType = VideoSystemType.Sentinel,
+                                CarNumber = payload.CarPositions.FirstOrDefault(c => c.TransponderId == stream.TransponderId)?.Number ?? string.Empty,
+                                IsLive = true,
+                                DriverName = stream.DriverName
+                            };
+
+                            if (!string.IsNullOrWhiteSpace(stream.YouTubeUrl))
+                            {
+                                var dest =  new VideoDestination
+                                {
+                                    Type = VideoDestinationType.Youtube,
+                                    Url = stream.YouTubeUrl
+                                };
+                                metadata.Destinations.Add(dest);
+                            }
+                            if (!string.IsNullOrWhiteSpace(stream.SvnUrl))
+                            {
+                                var dest = new VideoDestination
+                                {
+                                    Type = VideoDestinationType.DirectSrt,
+                                    Url = stream.SvnUrl
+                                };
+                                metadata.Destinations.Add(dest);
+                            }
+
+                            videoMetadata.Add(metadata);
+                        }
+
+                        Logger.LogInformation("Sending {Count} video entries to clients", videoMetadata.Count);
+                        await hubContext.Clients.Group(eventId.ToString()).SendAsync("ReceiveInCarVideoMetadata", videoMetadata, stoppingToken);
                     }
                     else
                     {

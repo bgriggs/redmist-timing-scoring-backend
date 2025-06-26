@@ -313,6 +313,7 @@ public class OrchestrationService : BackgroundService
                             new V1EnvVar { Name = "ASPNETCORE_URLS", Value = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") },
                             new V1EnvVar { Name = "Keycloak__AuthServerUrl", Value = Environment.GetEnvironmentVariable("Keycloak__AuthServerUrl") },
                             new V1EnvVar { Name = "Keycloak__Realm", Value = Environment.GetEnvironmentVariable("Keycloak__Realm") },
+                            new V1EnvVar { Name = "SentinelApiUrl", Value = Environment.GetEnvironmentVariable("SentinelApiUrl") },
                             new V1EnvVar { Name = "REDIS_SVC", Value = Environment.GetEnvironmentVariable("REDIS_SVC") },
                             new V1EnvVar { Name = "REDIS_PW", ValueFrom = new V1EnvVarSource {
                                 SecretKeyRef = new V1SecretKeySelector { Name = "rmkeys", Key = "redis" }}},

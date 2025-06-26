@@ -12,11 +12,9 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["RedMist.EventManagement/RedMist.EventManagement.csproj", "RedMist.EventManagement/"]
-COPY ["bigmission-shared/BigMission.Shared/BigMission.Shared.csproj", "bigmission-shared/BigMission.Shared/"]
 COPY ["RedMist.Backend.Shared/RedMist.Backend.Shared.csproj", "RedMist.Backend.Shared/"]
 COPY ["RedMist.ControlLogs/RedMist.ControlLogs.csproj", "RedMist.ControlLogs/"]
 COPY ["RedMist.Database/RedMist.Database.csproj", "RedMist.Database/"]
-COPY ["redmist-timing-common/RedMist.TimingCommon/RedMist.TimingCommon.csproj", "redmist-timing-common/RedMist.TimingCommon/"]
 RUN dotnet restore "./RedMist.EventManagement/RedMist.EventManagement.csproj"
 COPY . .
 WORKDIR "/src/RedMist.EventManagement"

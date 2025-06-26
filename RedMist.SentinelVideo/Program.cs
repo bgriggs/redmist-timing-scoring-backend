@@ -5,6 +5,7 @@ using NLog.Extensions.Logging;
 using Prometheus;
 using RedMist.Backend.Shared;
 using RedMist.Database;
+using RedMist.SentinelVideo.Clients;
 using RedMist.SentinelVideo.Services;
 using StackExchange.Redis;
 
@@ -39,6 +40,7 @@ public class Program
             });
 
         builder.Services.AddHostedService<VideoStatusService>();
+        builder.Services.AddTransient<SentinelClient>();
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();

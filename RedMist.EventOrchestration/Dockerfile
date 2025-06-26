@@ -14,7 +14,6 @@ WORKDIR /src
 COPY ["RedMist.EventOrchestration/RedMist.EventOrchestration.csproj", "RedMist.EventOrchestration/"]
 COPY ["RedMist.Backend.Shared/RedMist.Backend.Shared.csproj", "RedMist.Backend.Shared/"]
 COPY ["RedMist.Database/RedMist.Database.csproj", "RedMist.Database/"]
-COPY ["redmist-timing-common/RedMist.TimingCommon/RedMist.TimingCommon.csproj", "redmist-timing-common/RedMist.TimingCommon/"]
 RUN dotnet restore "./RedMist.EventOrchestration/RedMist.EventOrchestration.csproj"
 COPY . .
 WORKDIR "/src/RedMist.EventOrchestration"

@@ -15,7 +15,6 @@ WORKDIR /src
 COPY ["RedMist.StatusApi/RedMist.StatusApi.csproj", "RedMist.StatusApi/"]
 COPY ["RedMist.Backend.Shared/RedMist.Backend.Shared.csproj", "RedMist.Backend.Shared/"]
 COPY ["RedMist.Database/RedMist.Database.csproj", "RedMist.Database/"]
-COPY ["redmist-timing-common/RedMist.TimingCommon/RedMist.TimingCommon.csproj", "redmist-timing-common/RedMist.TimingCommon/"]
 RUN dotnet restore "./RedMist.StatusApi/RedMist.StatusApi.csproj"
 COPY . .
 WORKDIR "/src/RedMist.StatusApi"
