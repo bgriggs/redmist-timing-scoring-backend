@@ -11,8 +11,18 @@ public class PublicStreams
     public string SvnUrl { get; set; } = string.Empty;
 
     [JsonPropertyName("transponderNumber")]
-    public uint TransponderId { get; set; }
+    public string TransponderIdStr { get; set; } = string.Empty;
 
     [JsonPropertyName("driverName")]
     public string DriverName { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public uint TransponderId
+    {
+        get
+        {
+            _ = uint.TryParse(TransponderIdStr, out var id);
+            return id;
+        }
+    }
 }

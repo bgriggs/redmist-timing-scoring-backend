@@ -65,7 +65,7 @@ public class VideoStatusService : BackgroundService
                     var payload = JsonSerializer.Deserialize<Payload>(json!);
                     if (payload != null)
                     {
-                        var transponderIds = payload.CarPositions.Select(t => t.TransponderId).ToList();
+                        var transponderIds = payload.CarPositions.Where(t => t.TransponderId > 0).Select(t => t.TransponderId).ToList();
                         Logger.LogInformation("Found {Count} transponder IDs in payload", transponderIds.Count);
 
                         Logger.LogInformation("Fetching live video streams...");
@@ -96,12 +96,16 @@ public class VideoStatusService : BackgroundService
                                 SystemType = VideoSystemType.Sentinel,
                                 CarNumber = payload.CarPositions.FirstOrDefault(c => c.TransponderId == stream.TransponderId)?.Number ?? string.Empty,
                                 IsLive = true,
-                                DriverName = stream.DriverName
                             };
+
+                            if (!stream.DriverName.StartsWith("PROD"))
+                            {
+                                metadata.DriverName = stream.DriverName;
+                            }
 
                             if (!string.IsNullOrWhiteSpace(stream.YouTubeUrl))
                             {
-                                var dest =  new VideoDestination
+                                var dest = new VideoDestination
                                 {
                                     Type = VideoDestinationType.Youtube,
                                     Url = stream.YouTubeUrl
