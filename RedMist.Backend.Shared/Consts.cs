@@ -15,6 +15,7 @@ public class Consts
     public const string CONTROL_LOG_CAR_PENALTIES = "control-log-penalties-evt-{0}";
     public const string CONTROL_LOG_CAR = "control-log-evt-{0}-car-{1}";
     public const string EVENT_RMON_STREAM_FIELD = "rmonitor-{0}-{1}";
+    public const string EVENT_MULTILOOP_STREAM_FIELD = "multiloop-{0}-{1}";
     public const string EVENT_X2_LOOPS_STREAM_FIELD = "x2loop-{0}-999999";
     public const string EVENT_X2_PASSINGS_STREAM_FIELD = "x2pass-{0}-{1}";
     public const string EVENT_FLAGS_STREAM_FIELD = "flags-{0}-{1}";
