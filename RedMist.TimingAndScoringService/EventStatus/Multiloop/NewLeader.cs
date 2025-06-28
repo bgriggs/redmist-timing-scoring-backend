@@ -52,4 +52,9 @@ public partial class NewLeader : Message
         if (ushort.TryParse(parts[8], NumberStyles.HexNumber, null, out var lci))
             LeadChangeIndex = lci;
     }
+
+    internal void ProcessN(string data)
+    {
+        throw new NotImplementedException();
+    }
 }
