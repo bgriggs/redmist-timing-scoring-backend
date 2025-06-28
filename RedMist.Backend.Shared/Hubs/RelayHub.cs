@@ -128,7 +128,7 @@ public class RelayHub : Hub
     /// <summary>
     /// Receives a message from an RMonitor relay.
     /// </summary>
-    /// <param name="eventId">user select event on the relay</param>
+    /// <param name="eventId">user selected event on the relay</param>
     /// <param name="sessionId">timing system session</param>
     /// <param name="command">RMonitor command string</param>
     /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
@@ -145,6 +145,34 @@ public class RelayHub : Hub
 
             // Send the command to the service responsible for the specific event
             await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_RMON_STREAM_FIELD, eventId, sessionId), command);
+
+            // Add the connection to the relay group for this event
+            var connectionId = Context.ConnectionId;
+            var groupName = string.Format(Consts.RELAY_GROUP_PREFIX, eventId);
+            await SafeAddToRelayGroupAsync(connectionId, groupName);
+        }
+    }
+
+    /// <summary>
+    /// Receives a message from an RMonitor relay.
+    /// </summary>
+    /// <param name="eventId">user selected event on the relay</param>
+    /// <param name="sessionId">timing system run</param>
+    /// <param name="command">Multiloop command string</param>
+    /// <see cref="https://www.scribd.com/document/212233593/Multiloop-Timing-Protocol"/>
+    public async Task SendMultiloop(int eventId, int sessionId, string command)
+    {
+        string commandStr = command.Replace("\r", "").Replace("\n", "");
+        Logger.LogTrace("RX-ML: e:{evt} s:{ses} {c}", eventId, sessionId, commandStr);
+        if (eventId > 0)
+        {
+            // Security note: not checking that the event/session is valid for the user explicitly here for performance. Security is ensured by the
+            // check in SendSessionChange that the event/session is committed to the database only when it passes the security check.
+            var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
+            var cache = cacheMux.GetDatabase();
+
+            // Send the command to the service responsible for the specific event
+            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_MULTILOOP_STREAM_FIELD, eventId, sessionId), command);
 
             // Add the connection to the relay group for this event
             var connectionId = Context.ConnectionId;
