@@ -5,6 +5,7 @@ using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
+using RedMist.TimingAndScoringService.EventStatus.Multiloop;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
@@ -32,7 +33,7 @@ public class OrbitsDataProcessor
     public Debouncer Debouncer => debouncer;
 
     private readonly SemaphoreSlim _lock = new(1, 1);
-    public Heartbeat Heartbeat { get; } = new();
+    public RMonitor.Heartbeat Heartbeat { get; } = new();
     private readonly Dictionary<int, string> classes = [];
     private readonly Dictionary<string, Competitor> competitors = [];
     private readonly Dictionary<string, RaceInformation> raceInformation = [];
@@ -42,6 +43,7 @@ public class OrbitsDataProcessor
     private readonly Dictionary<string, PassingInformation> passingInformation = [];
 
 
+    public MultiloopProcessor multiloopProcessor;
     public int SessionReference { get; set; }
     public string SessionName { get; set; } = string.Empty;
     public string TrackName { get; set; } = string.Empty;
@@ -77,6 +79,7 @@ public class OrbitsDataProcessor
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
         this.driverModeProcessor = driverModeProcessor;
+        multiloopProcessor = new MultiloopProcessor(loggerFactory); 
     }
 
 
@@ -90,12 +93,17 @@ public class OrbitsDataProcessor
         {
             await ProcessResultMonitorAsync(data, stoppingToken);
         }
-        // Passings
+        // Multiloop Protocol
+        else if (type == "multiloop")
+        {
+            await multiloopProcessor.Process(data, stoppingToken);
+        }
+        // X2 Passings
         else if (type == "x2pass")
         {
             await ProcessPassings(data, stoppingToken);
         }
-        // Loops
+        // X2 Loops
         else if (type == "x2loop") { }
         // Flags
         else if (type == "flags")
