@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Prometheus;
 using RedMist.Backend.Shared.Hubs;
+using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using RedMist.SentinelVideo.Clients;
 using RedMist.SentinelVideo.Models;
@@ -22,6 +23,8 @@ public class VideoStatusService : BackgroundService
     private readonly IHubContext<StatusHub> hubContext;
     private readonly SentinelClient sentinelClient;
     private readonly TimeSpan updateInterval = TimeSpan.FromSeconds(30);
+    private readonly SemaphoreSlim subscriptionCheckLock = new(1);
+    private List<VideoMetadata>? lastVideoMetadata;
 
 
     public VideoStatusService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
@@ -52,11 +55,11 @@ public class VideoStatusService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-
             try
             {
                 var cache = cacheMux.GetDatabase();
                 var key = string.Format(Backend.Shared.Consts.EVENT_PAYLOAD, eventId);
+                await EnsureCacheSubscriptions(stoppingToken);
 
                 Logger.LogInformation("Loading last Payload...");
                 var json = await cache.StringGetAsync(key);
@@ -125,8 +128,8 @@ public class VideoStatusService : BackgroundService
                             videoMetadata.Add(metadata);
                         }
 
-                        Logger.LogInformation("Sending {Count} video entries to clients", videoMetadata.Count);
-                        await hubContext.Clients.Group(eventId.ToString()).SendAsync("ReceiveInCarVideoMetadata", videoMetadata, stoppingToken);
+                        lastVideoMetadata = videoMetadata;
+                        await SendVideoMetadata(videoMetadata, stoppingToken);
                     }
                     else
                     {
@@ -145,6 +148,50 @@ public class VideoStatusService : BackgroundService
                 Logger.LogInformation("Total Sentinel: {count}, requests: {r}, failures: {f}", activeCarsCounter.Value, requestCounter.Value, failureCounter.Value);
             }
             await Task.Delay(updateInterval, stoppingToken);
+        }
+    }
+
+    private async Task EnsureCacheSubscriptions(CancellationToken stoppingToken = default)
+    {
+        await subscriptionCheckLock.WaitAsync(stoppingToken);
+        try
+        {
+            var sub = cacheMux.GetSubscriber();
+            await sub.UnsubscribeAllAsync();
+
+            // Subscribe for status requests such as when a new UI connects
+            await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal),
+                async (channel, value) => await ProcessUiStatusRequest(value.ToString()), CommandFlags.FireAndForget);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error ensuring subscriptions");
+        }
+        finally
+        {
+            subscriptionCheckLock.Release();
+        }
+    }
+
+    private async Task SendVideoMetadata(List<VideoMetadata> metadata, CancellationToken stoppingToken = default)
+    {
+        Logger.LogInformation("Sending video metadata for {Count} entries", metadata.Count);
+        await hubContext.Clients.Group(eventId.ToString()).SendAsync("ReceiveInCarVideoMetadata", metadata, stoppingToken);
+    }
+
+    private async Task ProcessUiStatusRequest(string cmdJson)
+    {
+        var cmd = JsonSerializer.Deserialize<SendStatusCommand>(cmdJson);
+        if (cmd == null)
+        {
+            Logger.LogWarning("Invalid command received: {cj}", cmdJson);
+            return;
+        }
+
+        Logger.LogInformation("Sending UI status update for event {e} to new connection {con}", cmd.EventId, cmd.ConnectionId);
+        if (lastVideoMetadata != null)
+        {
+            await SendVideoMetadata(lastVideoMetadata, CancellationToken.None);
         }
     }
 }
