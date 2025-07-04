@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RedMist.Database;
 
@@ -11,9 +12,11 @@ using RedMist.Database;
 namespace RedMist.Migrations
 {
     [DbContext(typeof(TsContext))]
-    partial class TsContextModelSnapshot : ModelSnapshot
+    [Migration("20250704004446_Multiloop")]
+    partial class Multiloop
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -90,23 +93,6 @@ namespace RedMist.Migrations
                     b.ToTable("CarLastLaps");
                 });
 
-            modelBuilder.Entity("RedMist.Database.Models.DefaultOrgImage", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<byte[]>("ImageData")
-                        .IsRequired()
-                        .HasColumnType("varbinary(max)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("DefaultOrgImages");
-                });
-
             modelBuilder.Entity("RedMist.Database.Models.EventStatusLog", b =>
                 {
                     b.Property<long>("Id")
@@ -176,40 +162,6 @@ namespace RedMist.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("GoogleSheetsConfigs");
-                });
-
-            modelBuilder.Entity("RedMist.Database.Models.RelayLog", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Exception")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("nvarchar(1024)");
-
-                    b.Property<string>("Level")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<int>("OrganizationId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("State")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("RelayLogs");
                 });
 
             modelBuilder.Entity("RedMist.Database.Models.SessionResult", b =>
@@ -476,9 +428,7 @@ namespace RedMist.Migrations
                     b.HasIndex("ClientId")
                         .IsUnique();
 
-                    b.ToTable("Organizations", (string)null);
-
-                    b.ToView("OrganizationExtView", "dbo");
+                    b.ToTable("Organizations");
                 });
 
             modelBuilder.Entity("RedMist.TimingCommon.Models.Session", b =>

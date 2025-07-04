@@ -7,7 +7,7 @@ public partial class Version : Message
 {
     public partial ushort Major { get; private set; }
     public partial ushort Minor { get; private set; }
-    public partial string Info { get; private set; }
+    public partial string Info { get; private set; } = string.Empty;
 
     public bool IsDirty { get; private set; }
 
