@@ -6,6 +6,7 @@ global:
     "REDIS_SVC": "redis-node-0.redis-headless.timing.svc.cluster.local:6379,redis-node-1.redis-headless.timing.svc.cluster.local:6379"
     "Keycloak__Realm": "redmist"
     "Keycloak__AuthServerUrl": "https://auth.redmist.racing"
+    "SentinelApiUrl": "https://svs-api.sentinel.racing/api/"
   secrets:
     - env: "REDIS_PW"
       name: "rmkeys"
@@ -13,6 +14,9 @@ global:
     - env: "ConnectionStrings__Default"
       name: "rmkeys"
       key: "db"
+    - env: "Keycloak__ClientSecret"
+      name: "rmkeys"
+      key: "usermansecret"
 redis:
   fullnameOverride: "redis"
   architecture: replication
