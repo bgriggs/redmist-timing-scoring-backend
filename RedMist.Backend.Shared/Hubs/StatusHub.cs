@@ -14,9 +14,6 @@ public class StatusHub : Hub
     #region Metrics
 
     public static Gauge ClientConnectionsCount { get; } = Metrics.CreateGauge(Consts.CLIENT_CONNECTIONS_KEY, "Total client connections");
-    public static Gauge EventConnectionsCount { get; } = Metrics.CreateGauge(Consts.EVENT_CONNECTIONS_KEY, "Total client event connections");
-    public static Gauge ControlLogConnectionsCount { get; } = Metrics.CreateGauge(Consts.CONTROL_LOG_CONNECTIONS_KEY, "Total client control log connections");
-    public static Gauge CarControlLogConnectionsCount { get; } = Metrics.CreateGauge(Consts.CAR_CONTROL_LOG_CONNECTIONS_KEY, "Total client car control log connections");
     public static Gauge InCarConnectionsCount { get; } = Metrics.CreateGauge(Consts.IN_CAR_CONNECTIONS_KEY, "Total client in-car connections");
 
     #endregion
@@ -130,7 +127,6 @@ public class StatusHub : Hub
             await AddOrUpdateConnectionTracking(connectionId, eventId, inCarDriverConnection: null);
         }
 
-        EventConnectionsCount.Inc();
         Logger.LogInformation("Client {connectionId} subscribed to event {eventId}", connectionId, eventId);
     }
 
@@ -150,7 +146,6 @@ public class StatusHub : Hub
             Logger.LogError(ex, "Error removing connectionId {connectionId} from event {eventId}", connectionId, eventId);
         }
 
-        EventConnectionsCount.Dec();
         Logger.LogInformation("Client {connectionId} unsubscribed from event {eventId}", connectionId, eventId);
     }
 
@@ -163,7 +158,6 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-cl";
         await Groups.AddToGroupAsync(connectionId, grpKey);
-        ControlLogConnectionsCount.Inc();
         Logger.LogInformation("Client {connectionId} subscribed to control log for event {eventId}", connectionId, eventId);
     }
 
@@ -172,7 +166,6 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-cl";
         await Groups.RemoveFromGroupAsync(connectionId, grpKey);
-        ControlLogConnectionsCount.Dec();
         Logger.LogInformation("Client {connectionId} unsubscribed from control log for event {eventId}", connectionId, eventId);
     }
 
@@ -181,7 +174,6 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-{carNum}";
         await Groups.AddToGroupAsync(connectionId, grpKey);
-        CarControlLogConnectionsCount.Inc();
         Logger.LogInformation("Client {connectionId} subscribed to control log for car {carNum} event {eventId}", connectionId, carNum, eventId);
     }
 
@@ -190,7 +182,6 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-{carNum}";
         await Groups.RemoveFromGroupAsync(connectionId, grpKey);
-        CarControlLogConnectionsCount.Dec();
         Logger.LogInformation("Client {connectionId} unsubscribed from control log for car {carNum} event {eventId}", connectionId, carNum, eventId);
     }
 
