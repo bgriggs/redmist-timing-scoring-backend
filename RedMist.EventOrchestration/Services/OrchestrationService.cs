@@ -68,14 +68,47 @@ public class OrchestrationService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Gets the current Kubernetes namespace the pod is running in.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The current namespace name</returns>
+    private async Task<string> GetCurrentNamespaceAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!File.Exists(namespaceFile))
+            {
+                Logger.LogWarning("Namespace file {namespaceFile} does not exist, falling back to 'default' namespace", namespaceFile);
+                return "default";
+            }
+
+            var currentNamespace = await File.ReadAllTextAsync(namespaceFile, cancellationToken);
+            currentNamespace = currentNamespace.Trim();
+            
+            if (string.IsNullOrWhiteSpace(currentNamespace))
+            {
+                Logger.LogWarning("Namespace file {namespaceFile} is empty, falling back to 'default' namespace", namespaceFile);
+                return "default";
+            }
+
+            Logger.LogTrace("Found namespace {namespace}", currentNamespace);
+            return currentNamespace;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to read namespace from {namespaceFile}, falling back to 'default' namespace", namespaceFile);
+            return "default";
+        }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                string currentNamespace = await File.ReadAllTextAsync(namespaceFile, stoppingToken);
-                Logger.LogTrace("Found namespace {ns}", currentNamespace);
+                string currentNamespace = await GetCurrentNamespaceAsync(stoppingToken);
                 var config = KubernetesClientConfiguration.InClusterConfig();
                 using var client = new Kubernetes(config);
 
@@ -311,10 +344,13 @@ public class OrchestrationService : BackgroundService
         }
     }
 
-    private static async Task CreateJob(Kubernetes client, string name, string ns, string container, int eventId, string eventName, int organizationId, string organizationName, CancellationToken stoppingToken)
+    private async Task CreateJob(Kubernetes client, string name, string ns, string container, int eventId, string eventName, int organizationId, string organizationName, CancellationToken stoppingToken)
     {
         eventName = eventName.Replace(" ", "-").ToLowerInvariant();
         organizationName = organizationName.Replace(" ", "-").ToLowerInvariant();
+        var k8sNamespace = await GetCurrentNamespaceAsync(stoppingToken);
+        var secretKeyName = ResolveKeyName(k8sNamespace);
+
         var labels = new Dictionary<string, string>
         {
             { "event_id", eventId.ToString() },
@@ -349,9 +385,9 @@ public class OrchestrationService : BackgroundService
                             new V1EnvVar { Name = "SentinelApiUrl", Value = Environment.GetEnvironmentVariable("SentinelApiUrl") },
                             new V1EnvVar { Name = "REDIS_SVC", Value = Environment.GetEnvironmentVariable("REDIS_SVC") },
                             new V1EnvVar { Name = "REDIS_PW", ValueFrom = new V1EnvVarSource {
-                                SecretKeyRef = new V1SecretKeySelector { Name = "rmkeys", Key = "redis" }}},
+                                SecretKeyRef = new V1SecretKeySelector { Name = secretKeyName, Key = "redis" }}},
                             new V1EnvVar { Name = "ConnectionStrings__Default", ValueFrom = new V1EnvVarSource {
-                                SecretKeyRef = new V1SecretKeySelector { Name = "rmkeys", Key = "db" }}}
+                                SecretKeyRef = new V1SecretKeySelector { Name = secretKeyName, Key = "db" }}}
                         ] }],
                         RestartPolicy = "OnFailure"
                     }
@@ -360,5 +396,21 @@ public class OrchestrationService : BackgroundService
         };
 
         await client.CreateNamespacedJobAsync(jobSpec, ns, cancellationToken: stoppingToken);
+    }
+
+    private static string ResolveKeyName(string @namespace)
+    {
+        if (@namespace.Contains("-dev"))
+        {
+            return "rmkeys-dev";
+        }
+        else if (@namespace.Contains("-test"))
+        {
+            return "rmkeys-test";
+        }
+        else // Prod
+        {
+            return "rmkeys"; // Default key name
+        }
     }
 }
