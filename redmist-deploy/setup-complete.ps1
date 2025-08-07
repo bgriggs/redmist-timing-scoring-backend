@@ -65,7 +65,7 @@ Write-Host ""
 
 # Step 1: Common Infrastructure Setup
 Write-Host "Step 1: Setting up common infrastructure..." -ForegroundColor Green
-& ".\setup-environment.ps1"
+& ".\setup-environment.ps1" -Environment $Environment
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Common infrastructure setup failed!" -ForegroundColor Red
