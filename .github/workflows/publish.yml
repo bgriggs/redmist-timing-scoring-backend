@@ -1,0 +1,104 @@
+name: Publish Backend Containers
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  
+jobs:
+  extract-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Extract version from version file
+        id: get_version
+        run: |
+          VERSION=$(grep -oP '<Version>\K[^<]+' version)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+  build-and-push:
+    needs: extract-version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - name: "Timing Service"
+            dockerfile: "./RedMist.TimingAndScoringService/Dockerfile"
+            image: "bigmission/redmist-timing-svc"
+          - name: "Event Management"
+            dockerfile: "./RedMist.EventManagement/Dockerfile"
+            image: "bigmission/redmist-event-management"
+          - name: "User Management"
+            dockerfile: "./RedMist.UserManagement/Dockerfile"
+            image: "bigmission/redmist-user-management"
+          - name: "Status API"
+            dockerfile: "./RedMist.StatusApi/Dockerfile"
+            image: "bigmission/redmist-status-api"
+          - name: "Relay API"
+            dockerfile: "./RedMist.RelayApi/Dockerfile"
+            image: "bigmission/redmist-relay-api"
+          - name: "Event Orchestration"
+            dockerfile: "./RedMist.EventOrchestration/Dockerfile"
+            image: "bigmission/redmist-event-orchestration"
+          - name: "Control Log Service"
+            dockerfile: "./RedMist.ControlLogProcessor/Dockerfile"
+            image: "bigmission/redmist-control-log-svc"
+          - name: "Event Logger Service"
+            dockerfile: "./RedMist.EventLogger/Dockerfile"
+            image: "bigmission/redmist-event-logger-svc"
+          - name: "Sentinel Video Service"
+            dockerfile: "./RedMist.SentinelVideo/Dockerfile"
+            image: "bigmission/redmist-sentinel-video-svc"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.service.name }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.service.dockerfile }}
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: |
+            ${{ matrix.service.image }}:latest
+            ${{ matrix.service.image }}:${{ needs.extract-version.outputs.version }}
+
+  build-summary:
+    needs: [extract-version, build-and-push]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build Summary
+        run: |
+          echo "? Successfully built and pushed all containers in parallel with version: ${{ needs.extract-version.outputs.version }}"
+          echo "?? Published containers:"
+          echo "  - bigmission/redmist-timing-svc:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-event-management:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-user-management:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-status-api:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-relay-api:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-event-orchestration:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-control-log-svc:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-event-logger-svc:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-sentinel-video-svc:${{ needs.extract-version.outputs.version }}"
