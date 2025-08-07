@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using StackExchange.Redis;
+using System.Reflection;
 using System.Text.Json;
 
 namespace RedMist.EventOrchestration.Services;
@@ -18,13 +19,13 @@ public class OrchestrationService : BackgroundService
     private readonly static TimeSpan checkInterval = TimeSpan.FromMilliseconds(10000);
     private readonly static TimeSpan eventTimeout = TimeSpan.FromMinutes(10);
     private const string EVENT_PROCESSOR_JOB = "{0}-evt-{1}-event-processor";
-    private readonly string eventProcessorContainer = "bigmission/redmist-timing-svc:latest";
+    private readonly string eventProcessorContainer;
     private const string CONTROL_LOG_JOB = "{0}-evt-{1}-control-log";
-    private readonly string controlLogContainer = "bigmission/redmist-control-log-svc:latest";
+    private readonly string controlLogContainer;
     private const string LOGGER_JOB = "{0}-evt-{1}-logger";
-    private readonly string loggerContainer = "bigmission/redmist-event-logger-svc:latest";
+    private readonly string loggerContainer;
     private const string SENTINEL_VIDEO_JOB = "{0}-evt-{1}-sentinel-video";
-    private readonly string sentinelVideoContainer = "bigmission/redmist-sentinel-video-svc:latest";
+    private readonly string sentinelVideoContainer;
 
 
     public OrchestrationService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext)
@@ -32,8 +33,40 @@ public class OrchestrationService : BackgroundService
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
+
+        // Get the current assembly version for container tags
+        var version = GetAssemblyVersion();
+        eventProcessorContainer = $"bigmission/redmist-timing-svc:{version}";
+        controlLogContainer = $"bigmission/redmist-control-log-svc:{version}";
+        loggerContainer = $"bigmission/redmist-event-logger-svc:{version}";
+        sentinelVideoContainer = $"bigmission/redmist-sentinel-video-svc:{version}";
+
+        Logger.LogInformation("OrchestrationService initialized with version {version}", version);
     }
 
+    /// <summary>
+    /// Gets the current assembly version for use in container tags.
+    /// </summary>
+    /// <returns>The assembly version string</returns>
+    private string GetAssemblyVersion()
+    {
+        try
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var version = assembly.GetName().Version;
+            if (version == null)
+            {
+                Logger.LogWarning("Assembly version is null, falling back to 'latest' tag for container images");
+                return "latest";
+            }
+            return version.ToString();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to retrieve assembly version, falling back to 'latest' tag for container images");
+            return "latest";
+        }
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

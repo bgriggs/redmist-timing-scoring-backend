@@ -17,9 +17,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{696EBD40-9305-47DD-9392-3AE967E93E09}"
 	ProjectSection(SolutionItems) = preProject
 		.github\workflows\build.yml = .github\workflows\build.yml
-		redmist-deploy\deploy-dev.ps1 = redmist-deploy\deploy-dev.ps1
-		redmist-deploy\deploy-prod.ps1 = redmist-deploy\deploy-prod.ps1
-		redmist-deploy\deploy-test.ps1 = redmist-deploy\deploy-test.ps1
 		.github\workflows\publish.yml = .github\workflows\publish.yml
 		README.md = README.md
 		version = version
