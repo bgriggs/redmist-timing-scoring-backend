@@ -12,7 +12,8 @@ service:
 ingress:
   enabled: true
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/configuration-snippet: |
       more_set_headers "Upgrade $http_upgrade";
       more_set_headers "Connection $http_connection";
@@ -20,15 +21,19 @@ ingress:
       more_set_headers "X-Forwarded-For $proxy_add_x_forwarded_for";
       more_set_headers "X-Forwarded-Proto $scheme";
       proxy_cache_bypass $http_upgrade;
+  # Environment-specific configuration
+  environment: prod  # Override this in environment-specific values files
+  domain: redmist.racing
+  subdomain: timingapp
   hosts:
-  - host: timingapp.redmist.racing
+  - host: "{{ .Values.ingress.subdomain }}-{{ if ne .Values.ingress.environment \"prod\" }}{{ .Values.ingress.environment }}.{{ end }}{{ .Values.ingress.domain }}"
     paths: 
     - path: /
       pathType: Prefix
   tls:
   - hosts:
-    - timingapp.redmist.racing
-    secretName: redmist-timing-tls
+    - "{{ .Values.ingress.subdomain }}-{{ if ne .Values.ingress.environment \"prod\" }}{{ .Values.ingress.environment }}.{{ end }}{{ .Values.ingress.domain }}"
+    secretName: "redmist-timing-{{ .Values.ingress.environment }}-tls"
 
 autoscaling:
   enabled: false

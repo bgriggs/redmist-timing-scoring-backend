@@ -1,0 +1,39 @@
+# Development Environment Configuration
+global:
+  env:
+    "ASPNETCORE_ENVIRONMENT": "Production"
+    "ASPNETCORE_FORWARDEDHEADERS_ENABLED": "true"
+    "ASPNETCORE_URLS": "http://+:8080"
+    "REDIS_SVC": "redis-dev-node-0.redis-dev-headless.timing-dev.svc.cluster.local:6379,redis-dev-node-1.redis-dev-headless.timing-dev.svc.cluster.local:6379"
+    "Keycloak__Realm": "redmist"
+    "Keycloak__AuthServerUrl": "https://auth.redmist.racing"
+    "SentinelApiUrl": "https://svs-api.sentinel.racing/api/"
+  secrets:
+    - env: "REDIS_PW"
+      name: "rmkeys-dev"
+      key: "redis"
+    - env: "ConnectionStrings__Default"
+      name: "rmkeys-dev"
+      key: "db"
+    - env: "Keycloak__ClientSecret"
+      name: "rmkeys-dev"
+      key: "usermansecret"
+
+# Override for all subcharts
+redmist-status-api:
+  environment: dev
+
+redmist-user-management:
+  environment: dev
+
+redmist-event-management:
+  environment: dev
+
+redmist-relay-api:
+  environment: dev
+
+# Redis configuration for development
+redis:
+  fullnameOverride: "redis-dev"
+  auth:
+    existingSecret: rmkeys-dev

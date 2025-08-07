@@ -1,0 +1,29 @@
+# Production Environment Configuration
+global:
+  env:
+    "ASPNETCORE_ENVIRONMENT": "Production"
+    "ASPNETCORE_FORWARDEDHEADERS_ENABLED": "true"
+    "ASPNETCORE_URLS": "http://+:8080"
+    "REDIS_SVC": "redis-node-0.redis-headless.timing.svc.cluster.local:6379,redis-node-1.redis-headless.timing.svc.cluster.local:6379"
+    "Keycloak__Realm": "redmist"
+    "Keycloak__AuthServerUrl": "https://auth.redmist.racing"
+    "SentinelApiUrl": "https://svs-api.sentinel.racing/api/"
+
+# Override for all subcharts
+redmist-status-api:
+  environment: prod
+
+redmist-user-management:
+  environment: prod
+
+redmist-event-management:
+  environment: prod
+
+redmist-relay-api:
+  environment: prod
+
+# Redis configuration for production
+redis:
+  fullnameOverride: "redis"
+  master:
+    resourcesPreset: xlarge  # More resources for prod
