@@ -1,9 +1,7 @@
-name: Publish Backend Containers
+﻿name: Publish Backend Containers
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
   
 jobs:
   extract-version:
@@ -91,8 +89,8 @@ jobs:
     steps:
       - name: Build Summary
         run: |
-          echo "? Successfully built and pushed all containers in parallel with version: ${{ needs.extract-version.outputs.version }}"
-          echo "?? Published containers:"
+          echo "✅ Successfully built and pushed all containers in parallel with version: ${{ needs.extract-version.outputs.version }}"
+          echo "📦 Published containers:"
           echo "  - bigmission/redmist-timing-svc:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-event-management:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-user-management:${{ needs.extract-version.outputs.version }}"
