@@ -33,6 +33,7 @@ public class GoogleSheetsControlLog : IControlLog
     private readonly Dictionary<int, SheetColumnMapping> columnIndexMappings = [];
     private readonly IDbContextFactory<TsContext> tsContext;
     private string? configJson;
+    private string? lastWorksheetParameter; // Track the last worksheet parameter to detect changes
 
 
     public GoogleSheetsControlLog(ILoggerFactory loggerFactory, IConfiguration config, IDbContextFactory<TsContext> tsContext)
@@ -60,8 +61,19 @@ public class GoogleSheetsControlLog : IControlLog
         var paramParts = parameter.Split(';');
         if (paramParts.Length != 2)
         {
-            Logger.LogError("Invalid parameter format for control log: {0}", parameter);
+            Logger.LogError("Invalid parameter format for control log: {p}", parameter);
             return (false, []);
+        }
+
+        // Check if worksheet parameter has changed and clear column mappings if so
+        if (lastWorksheetParameter != parameter)
+        {
+            if (lastWorksheetParameter != null)
+            {
+                Logger.LogInformation("Worksheet parameter changed from '{oldParam}' to '{newParam}', clearing column mappings", lastWorksheetParameter, parameter);
+            }
+            columnIndexMappings.Clear();
+            lastWorksheetParameter = parameter;
         }
 
         var googleCreds = GoogleCredential.FromJson(configJson);

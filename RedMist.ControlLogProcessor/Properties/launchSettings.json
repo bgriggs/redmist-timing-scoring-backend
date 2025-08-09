@@ -8,7 +8,7 @@
       "applicationUrl": "http://localhost:5285",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "event_id": "2011"
+        "event_id": "1"
       }
     }
   }

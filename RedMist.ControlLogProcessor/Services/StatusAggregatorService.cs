@@ -61,7 +61,7 @@ public class StatusAggregatorService : BackgroundService
             {
                 Logger.LogInformation("Updating control log entries");
                 requestCounter.Inc();
-                await RequestAndSendControlLogUpdates(stoppingToken);
+                await RequestAndSendControlLogUpdatesAsync(stoppingToken);
                 var entries = await controlLogCache.GetControlEntries();
                 entriesCounter.IncTo(entries.Count);
                 Logger.LogInformation("Total entries: {count}, requests: {r}, failures: {f}", entries.Count, requestCounter.Value, failureCounter.Value);
@@ -80,7 +80,7 @@ public class StatusAggregatorService : BackgroundService
 
     #region Control Log
 
-    private async Task RequestAndSendControlLogUpdates(CancellationToken stoppingToken)
+    private async Task RequestAndSendControlLogUpdatesAsync(CancellationToken stoppingToken)
     {
         if (controlLogCache == null || eventId == null)
         {
@@ -105,10 +105,10 @@ public class StatusAggregatorService : BackgroundService
         var fullCcl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = fullLog };
         await SendAsync(eventId.ToString()!, string.Empty, fullCcl, stoppingToken);
 
+        var cache = cacheMux.GetDatabase();
 
         // Update the cache with the latest full control log
         Logger.LogInformation("Updating cache with latest control log...");
-        var cache = cacheMux.GetDatabase();
         var logCacheKey = string.Format(Consts.CONTROL_LOG, eventId);
         var logCacheValue = JsonSerializer.Serialize(fullCcl);
         await cache.StringSetAsync(logCacheKey, logCacheValue);
@@ -135,7 +135,70 @@ public class StatusAggregatorService : BackgroundService
         }
         await cache.HashSetAsync(carLogCacheKey, [.. carPenaltyEntries], CommandFlags.FireAndForget);
 
+        // Clean up inactive car cache entries
+        await CleanupInactiveCarCacheEntriesAsync(carEntriesLookup.Keys.Where(k => !string.IsNullOrWhiteSpace(k)).ToHashSet(), stoppingToken);
+
         Logger.LogInformation("Finished updating cache");
+    }
+
+    /// <summary>
+    /// Removes Redis cache entries for cars that are no longer active in the control log
+    /// </summary>
+    /// <param name="activeCarNumbers">Set of car numbers that are currently active</param>
+    /// <param name="stoppingToken">Cancellation token</param>
+    private async Task CleanupInactiveCarCacheEntriesAsync(HashSet<string> activeCarNumbers, CancellationToken stoppingToken)
+    {
+        if (eventId == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            
+            // Get existing car cache keys to identify what needs to be removed
+            var existingCarKeys = new HashSet<string>();
+            var pattern = string.Format(Consts.CONTROL_LOG_CAR, eventId, "*");
+            var server = cacheMux.GetServer(cacheMux.GetEndPoints().First());
+            var keys = server.Keys(pattern: pattern);
+            
+            foreach (var key in keys)
+            {
+                // Extract car number from the key pattern: control-log-evt-{eventId}-car-{carNumber}
+                var keyStr = key.ToString();
+                var lastDashIndex = keyStr.LastIndexOf('-');
+                if (lastDashIndex > 0 && lastDashIndex < keyStr.Length - 1)
+                {
+                    var carNumber = keyStr.Substring(lastDashIndex + 1);
+                    existingCarKeys.Add(carNumber);
+                }
+            }
+
+            // Find cars that are no longer active
+            var removedCars = existingCarKeys.Except(activeCarNumbers);
+            if (removedCars.Any())
+            {
+                Logger.LogInformation("Removing cache entries for inactive cars: {removedCars}", string.Join(", ", removedCars));
+                
+                foreach (var removedCar in removedCars)
+                {
+                    // Remove individual car control log cache entry
+                    var carLogEntryKey = string.Format(Consts.CONTROL_LOG_CAR, eventId, removedCar);
+                    await cache.KeyDeleteAsync(carLogEntryKey);
+                    Logger.LogDebug("Removed cache entry for car {carNumber}: {cacheKey}", removedCar, carLogEntryKey);
+                    
+                    // Remove penalty entry from hash set
+                    var carLogCacheKey = string.Format(Consts.CONTROL_LOG_CAR_PENALTIES, eventId);
+                    await cache.HashDeleteAsync(carLogCacheKey, removedCar);
+                    Logger.LogDebug("Removed penalty entry for car {carNumber} from {cacheKey}", removedCar, carLogCacheKey);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error occurred while cleaning up inactive car cache entries");
+        }
     }
 
     #endregion
