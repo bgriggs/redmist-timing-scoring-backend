@@ -49,4 +49,8 @@
 		</None>
 	</ItemGroup>
 
+	<ItemGroup>
+	  <Folder Include="ControlLogProcessor\Services\" />
+	</ItemGroup>
+
 </Project>

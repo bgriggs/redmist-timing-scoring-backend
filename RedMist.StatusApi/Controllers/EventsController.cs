@@ -312,4 +312,28 @@ public class EventsController : ControllerBase
     }
 
     #endregion
+
+    #region Flags
+
+    [HttpGet]
+    [ProducesResponseType<List<FlagDuration>>(StatusCodes.Status200OK)]
+    public async Task<List<FlagDuration>> LoadFlags(int eventId, int sessionId)
+    {
+        Logger.LogTrace("LoadFlags for event {eventId}, session {sessionId}", eventId, sessionId);
+        using var context = await tsContext.CreateDbContextAsync();
+        var flagLogs = await context.FlagLog
+            .Where(f => f.EventId == eventId && f.SessionId == sessionId)
+            .ToListAsync();
+
+        var flagDurations = flagLogs.Select(f => new FlagDuration
+        {
+            Flag = f.Flag,
+            StartTime = f.StartTime,
+            EndTime = f.EndTime,
+        }).ToList();
+
+        return flagDurations;
+    }
+
+    #endregion
 }
