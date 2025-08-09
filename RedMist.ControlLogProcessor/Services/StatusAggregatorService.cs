@@ -136,7 +136,7 @@ public class StatusAggregatorService : BackgroundService
         await cache.HashSetAsync(carLogCacheKey, [.. carPenaltyEntries], CommandFlags.FireAndForget);
 
         // Clean up inactive car cache entries
-        await CleanupInactiveCarCacheEntriesAsync(carEntriesLookup.Keys.Where(k => !string.IsNullOrWhiteSpace(k)).ToHashSet(), stoppingToken);
+        await CleanupInactiveCarCacheEntriesAsync([.. carEntriesLookup.Keys.Where(k => !string.IsNullOrWhiteSpace(k))], stoppingToken);
 
         Logger.LogInformation("Finished updating cache");
     }

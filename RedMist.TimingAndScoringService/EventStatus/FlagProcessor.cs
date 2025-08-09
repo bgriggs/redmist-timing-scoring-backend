@@ -54,6 +54,7 @@ public class FlagProcessor
         // Load flags that are not finished
         var dbFlags = await context.FlagLog
             .Where(f => f.EventId == eventId && f.SessionId == sessionId)
+            .OrderBy(f => f.StartTime)
             .ToListAsync(cancellationToken);
 
         // Attempt to finish flags that lack end time
@@ -72,6 +73,31 @@ public class FlagProcessor
             }
         }
 
+        // Auto-complete previous flags when a new flag starts
+        // This handles the case where the timing system starts a new flag without explicitly ending the previous one
+        foreach (var newFlag in fs)
+        {
+            // Check if this is truly a new flag (not already in database)
+            var isNewFlag = !dbFlags.Any(existing => existing.Flag == newFlag.Flag && existing.StartTime == newFlag.StartTime);
+            
+            if (isNewFlag)
+            {
+                // Find any existing flag with EndTime = NULL that started before this new flag
+                var previousIncompleteFlag = dbFlags
+                    .Where(dbf => dbf.EndTime == null && dbf.StartTime < newFlag.StartTime)
+                    .OrderByDescending(dbf => dbf.StartTime)
+                    .FirstOrDefault();
+
+                if (previousIncompleteFlag != null)
+                {
+                    previousIncompleteFlag.EndTime = newFlag.StartTime;
+                    flagsUpdated++;
+                    Logger.LogDebug("Auto-completing previous flag {flag} started at {start} with end time {end} due to new flag {newFlag} starting", 
+                        previousIncompleteFlag.Flag, previousIncompleteFlag.StartTime, previousIncompleteFlag.EndTime, newFlag.Flag);
+                }
+            }
+        }
+
         // Save changes to end times
         if (flagsUpdated > 0)
         {
@@ -84,9 +110,8 @@ public class FlagProcessor
         var newFlagsAdded = 0;
         foreach (var f in fs)
         {
-            var exists = dbFlags.Any(x => x.Flag == f.Flag && 
-                                         x.StartTime == f.StartTime && 
-                                         x.EndTime == f.EndTime);
+            // Check if this flag already exists in database (by Flag, StartTime only - EndTime can be updated)
+            var exists = dbFlags.Any(x => x.Flag == f.Flag && x.StartTime == f.StartTime);
             if (exists)
                 continue;
 
