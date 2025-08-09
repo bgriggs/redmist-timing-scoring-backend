@@ -53,30 +53,43 @@ public class FlagProcessor
 
         // Load flags that are not finished
         var dbFlags = await context.FlagLog
-            .Where(f => f.EventId == eventId && f.SessionId == SessionId)
+            .Where(f => f.EventId == eventId && f.SessionId == sessionId)
             .ToListAsync(cancellationToken);
 
         // Attempt to finish flags that lack end time
+        var flagsUpdated = 0;
         foreach (var dbf in dbFlags.Where(f => f.EndTime == null).ToList())
         {
-            var sourceFlag = fs.FirstOrDefault(x => x.Flag == dbf.Flag && dbf.StartTime == x.StartTime && x.EndTime != null);
+            var sourceFlag = fs.FirstOrDefault(x => x.Flag == dbf.Flag && 
+                                                   x.StartTime == dbf.StartTime && 
+                                                   x.EndTime.HasValue);
             if (sourceFlag != null)
             {
                 dbf.EndTime = sourceFlag.EndTime;
+                flagsUpdated++;
+                Logger.LogDebug("Setting end time for flag {flag} from {start} to {end}", 
+                    dbf.Flag, dbf.StartTime, dbf.EndTime);
             }
         }
+
         // Save changes to end times
-        var saved = await context.SaveChangesAsync(cancellationToken);
-        Logger.LogDebug("Saving {cnt} flag end timestamps for event {eventId} session {sessionId}", saved, eventId, sessionId);
+        if (flagsUpdated > 0)
+        {
+            var saved = await context.SaveChangesAsync(cancellationToken);
+            Logger.LogDebug("Saved {cnt} flag end timestamps for event {eventId} session {sessionId}", 
+                saved, eventId, sessionId);
+        }
 
         // Save new flags
+        var newFlagsAdded = 0;
         foreach (var f in fs)
         {
-            var exists = dbFlags.Any(x => x.Flag == f.Flag && x.StartTime == f.StartTime && x.EndTime == f.EndTime);
+            var exists = dbFlags.Any(x => x.Flag == f.Flag && 
+                                         x.StartTime == f.StartTime && 
+                                         x.EndTime == f.EndTime);
             if (exists)
                 continue;
 
-            using var db = await tsContext.CreateDbContextAsync(cancellationToken);
             try
             {
                 var dbFlag = new FlagLog
@@ -87,29 +100,52 @@ public class FlagProcessor
                     StartTime = f.StartTime,
                     EndTime = f.EndTime
                 };
-                await db.FlagLog.AddAsync(dbFlag, cancellationToken);
-                await db.SaveChangesAsync(cancellationToken);
-                Logger.LogDebug("Saved new flag {flag} for event {eventId} session {sessionId}", f.Flag, eventId, sessionId);
+                await context.FlagLog.AddAsync(dbFlag, cancellationToken);
+                newFlagsAdded++;
+                Logger.LogDebug("Adding new flag {flag} for event {eventId} session {sessionId} from {start} to {end}", 
+                    f.Flag, eventId, sessionId, f.StartTime, f.EndTime);
             }
-            catch (DbUpdateException) { }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Error saving flag {flag} for event {eventId} session {sessionId}", f.Flag, eventId, sessionId);
+                Logger.LogError(ex, "Error preparing flag {flag} for event {eventId} session {sessionId}", 
+                    f.Flag, eventId, sessionId);
             }
         }
 
-        // Load full set of flags
-        using var db2 = await tsContext.CreateDbContextAsync(cancellationToken);
-        Logger.LogInformation("Reloading flags for event {eventId} session {sessionId}", eventId, sessionId);
-        dbFlags = await db2.FlagLog
-            .Where(f => f.EventId == eventId && f.SessionId == SessionId)
+        // Save new flags in batch
+        if (newFlagsAdded > 0)
+        {
+            try
+            {
+                await context.SaveChangesAsync(cancellationToken);
+                Logger.LogDebug("Saved {cnt} new flags for event {eventId} session {sessionId}", 
+                    newFlagsAdded, eventId, sessionId);
+            }
+            catch (DbUpdateException ex)
+            {
+                Logger.LogWarning(ex, "Database update exception when saving {cnt} new flags for event {eventId} session {sessionId}. This may be due to concurrent updates.", 
+                    newFlagsAdded, eventId, sessionId);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Unexpected error saving {cnt} new flags for event {eventId} session {sessionId}", 
+                    newFlagsAdded, eventId, sessionId);
+            }
+        }
+
+        // Reload flags from database
+        Logger.LogDebug("Reloading flags for event {eventId} session {sessionId}", eventId, sessionId);
+        var reloadedFlags = await context.FlagLog
+            .Where(f => f.EventId == eventId && f.SessionId == sessionId)
             .ToListAsync(cancellationToken: cancellationToken);
 
         await flagsLock.WaitAsync(cancellationToken);
         try
         {
             flags.Clear();
-            flags.AddRange(ToFlagsDuration(dbFlags));
+            flags.AddRange(ToFlagsDuration(reloadedFlags));
+            Logger.LogDebug("Loaded {cnt} flags into memory for event {eventId} session {sessionId}", 
+                flags.Count, eventId, sessionId);
         }
         finally
         {
