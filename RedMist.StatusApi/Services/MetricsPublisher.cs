@@ -22,7 +22,7 @@ public class MetricsPublisher : BackgroundService
         {
             try
             {
-                Logger.LogInformation("clients:{c},in-car:{ic}", StatusHub.ClientConnectionsCount.Value, StatusHub.InCarConnectionsCount.Value);
+                Logger.LogInformation("clients:{c}", StatusHub.ClientConnectionsCount.Value);
             }
             catch (Exception ex)
             {

@@ -14,7 +14,6 @@ public class StatusHub : Hub
     #region Metrics
 
     public static Gauge ClientConnectionsCount { get; } = Metrics.CreateGauge(Consts.CLIENT_CONNECTIONS_KEY, "Total client connections");
-    public static Gauge InCarConnectionsCount { get; } = Metrics.CreateGauge(Consts.IN_CAR_CONNECTIONS_KEY, "Total client in-car connections");
 
     #endregion
 
@@ -195,7 +194,6 @@ public class StatusHub : Hub
         var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB, eventId, car);
         await Groups.AddToGroupAsync(connectionId, grpKey);
         await AddOrUpdateConnectionTracking(connectionId, 0, inCarDriverConnection: new InCarDriverConnection(eventId, car));
-        InCarConnectionsCount.Inc();
         Logger.LogInformation("Client {connectionId} subscribed to in-car driver event for car {car} event {eventId}", connectionId, car, eventId);
     }
 
@@ -205,7 +203,6 @@ public class StatusHub : Hub
         var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB, eventId, car);
         await Groups.RemoveFromGroupAsync(connectionId, grpKey);
         await AddOrUpdateConnectionTracking(connectionId, 0, inCarDriverConnection: null);
-        InCarConnectionsCount.Dec();
         Logger.LogInformation("Client {connectionId} unsubscribed from in-car driver event for car {car} event {eventId}", connectionId, car, eventId);
     }
 
