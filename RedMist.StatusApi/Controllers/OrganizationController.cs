@@ -49,7 +49,7 @@ public class OrganizationController : ControllerBase
     private async Task<byte[]> LoadOrganizationIcon(int organizationId)
     {
         using var context = await tsContext.CreateDbContextAsync();
-        var organization = await context.Organizations.FirstOrDefaultAsync(o => o.Id == organizationId);
+        var organization = await context.OrganizationExtView.FirstOrDefaultAsync(o => o.Id == organizationId);
         return organization?.Logo ?? [];
     }
 

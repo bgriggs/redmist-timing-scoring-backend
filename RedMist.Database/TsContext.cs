@@ -12,6 +12,7 @@ namespace RedMist.Database;
 public class TsContext : DbContext
 {
     public DbSet<Organization> Organizations { get; set; } = null!;
+    public DbSet<Organization> OrganizationExtView { get; set; } = null!;
     public DbSet<TimingCommon.Models.Configuration.Event> Events { get; set; } = null!;
     public DbSet<Session> Sessions { get; set; } = null!;
     public DbSet<EventStatusLog> EventStatusLogs { get; set; } = null!;
@@ -24,6 +25,7 @@ public class TsContext : DbContext
     public DbSet<FlagLog> FlagLog { get; set; } = null!;
     public DbSet<CompetitorMetadata> CompetitorMetadata { get; set; } = null!;
     public DbSet<UserOrganizationMapping> UserOrganizationMappings { get; set; } = null!;
+    public DbSet<DefaultOrgImage> DefaultOrgImages { get; set; } = null!;
 
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }
@@ -45,6 +47,10 @@ public class TsContext : DbContext
         modelBuilder.Entity<Organization>()
             .HasIndex(o => o.ClientId)
             .IsUnique();
+
+        modelBuilder.Entity<Organization>()
+            .ToView("OrganizationExtView", "dbo")
+            .HasKey(o => o.Id);
 
         var orbitsConverter = new ValueConverter<OrbitsConfiguration, string>(
             v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),

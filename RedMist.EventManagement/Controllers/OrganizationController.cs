@@ -31,10 +31,10 @@ public class OrganizationController : Controller
     [HttpGet]
     public async Task<Organization?> LoadOrganization()
     {
-        Logger.LogTrace("GetCurrentOrganization");
+        Logger.LogTrace("LoadOrganization");
         var clientId = User.FindFirstValue("client_id");
         using var db = await tsContext.CreateDbContextAsync();
-        return await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        return await db.OrganizationExtView.FirstOrDefaultAsync(x => x.ClientId == clientId);
     }
 
     [HttpPost]

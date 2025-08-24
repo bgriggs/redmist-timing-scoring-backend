@@ -57,9 +57,9 @@ public class OrganizationController : ControllerBase
             return NotFound("User organization mapping not found.");
         }
 
-        var org = await context.Organizations
+        var org = await context.OrganizationExtView
             .Where(o => o.Id == userOrganization.OrganizationId)
-            .Select(o => new { o.Id, o.Name, o.Website })
+            .Select(o => new { o.Id, o.Name, o.Website, o.Logo })
             .FirstOrDefaultAsync();
 
         if (org == null)
@@ -72,7 +72,7 @@ public class OrganizationController : ControllerBase
             Id = org.Id,
             Name = org.Name,
             Website = org.Website,
-            //Logo = org.Logo,
+            Logo = org.Logo,
         };
     }
 
