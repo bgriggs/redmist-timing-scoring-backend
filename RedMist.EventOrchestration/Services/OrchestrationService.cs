@@ -108,15 +108,16 @@ public class OrchestrationService : BackgroundService
         {
             try
             {
-                string currentNamespace = await GetCurrentNamespaceAsync(stoppingToken);
-                var config = KubernetesClientConfiguration.InClusterConfig();
-                using var client = new Kubernetes(config);
-
+                // Set live events first for running outside of K8s in debug where K8s calls will fail
                 var currentEvents = await GetCurrentEventsAsync();
                 Logger.LogDebug("Found {eventCount} current events", currentEvents.Count);
 
                 // Update the live events in the database
                 await UpdateLiveEvents(currentEvents);
+
+                string currentNamespace = await GetCurrentNamespaceAsync(stoppingToken);
+                var config = KubernetesClientConfiguration.InClusterConfig();
+                using var client = new Kubernetes(config);
 
                 // Get currently active jobs in the namespace
                 var currentJobs = await GetJobsAsync(client, currentNamespace, stoppingToken);

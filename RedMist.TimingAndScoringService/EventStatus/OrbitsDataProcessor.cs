@@ -489,20 +489,21 @@ public class OrbitsDataProcessor
     /// <example>$I,"16:36:08.000","12 jan 01"</example>
     private void ProcessI()
     {
-        var flag = Heartbeat.FlagStatus.ToFlag();
+        // Adhere to reset to maintain consistency. This is required for occurrences such as mid-race car removals
+        competitors.Clear();
+        raceInformation.Clear();
+        practiceQualifying.Clear();
+        secondaryProcessor.Clear();
 
         // Allow for reset when the event is initializing. Once it has started,
         // suppress the resets to reduce user confusion
+        var flag = Heartbeat.FlagStatus.ToFlag();
         if (flag == Flags.Unknown)
         {
             classes.Clear();
-            competitors.Clear();
-            raceInformation.Clear();
-            practiceQualifying.Clear();
             passingInformation.Clear();
             startingPositions.Clear();
             inClassStartingPositions.Clear();
-            secondaryProcessor.Clear();
         }
         PublishEventReset();
     }
@@ -623,7 +624,7 @@ public class OrbitsDataProcessor
             dirtyTransponderPassings = [.. lastTransponderPassings];
         }
 
-        foreach (var reg in raceInformation.Keys)
+        foreach (var reg in competitors.Keys)
         {
             if (!raceInformation.TryGetValue(reg, out var raceInfo))
             {
