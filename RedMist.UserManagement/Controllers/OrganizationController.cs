@@ -2,6 +2,7 @@ using BigMission.Shared.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models.Configuration;
@@ -42,7 +43,7 @@ public class OrganizationController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<OrganizationDto>> LoadUserOrganization()
     {
-        Logger.LogInformation("LoadUserOrganization");
+        Logger.LogMethodEntry();
         var clientId = User.Identity?.Name;
         if (string.IsNullOrEmpty(clientId))
         {
@@ -77,10 +78,39 @@ public class OrganizationController : ControllerBase
     }
 
     [HttpGet]
+    [ProducesResponseType<List<UserOrganizationDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<List<UserOrganizationDto>>> LoadUserOrganizationRoles()
+    {
+        Logger.LogMethodEntry();
+        var clientId = User.Identity?.Name;
+        if (string.IsNullOrEmpty(clientId))
+        {
+            return NotFound("Client Identity not found in user claims.");
+        }
+
+        using var context = await tsContext.CreateDbContextAsync();
+
+        var userOrganizations = await context.UserOrganizationMappings
+            .Where(u => u.Username.ToUpper() == clientId.ToUpper())
+            .Join(context.OrganizationExtView,
+                uom => uom.OrganizationId,
+                org => org.Id,
+                (uom, org) => new UserOrganizationDto
+                {
+                    OrganizationId = org.Id,
+                    Role = uom.Role
+                })
+            .ToListAsync();
+
+        return userOrganizations;
+    }
+
+    [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult<bool>> RelayClientNameExists(string name)
     {
-        Logger.LogInformation("RelayClientNameExists {name}", name);
+        Logger.LogMethodInfo("RelayClientNameExists {name}", name);
         var clientId = string.Format(Consts.RELAY_CLIENT_ID, name);
         var client = await LoadKeycloakClient(clientId);
         return client != null;
@@ -91,7 +121,7 @@ public class OrganizationController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<int>> SaveNewOrganization(OrganizationDto newOrganization)
     {
-        Logger.LogInformation("SaveNewOrganization {organization}", newOrganization.Name);
+        Logger.LogMethodInfo("SaveNewOrganization {organization}", newOrganization.Name);
 
         var clientId = User.Identity?.Name;
         if (string.IsNullOrEmpty(clientId))
@@ -204,7 +234,7 @@ public class OrganizationController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult> UpdateOrganization(OrganizationDto organizationDto)
     {
-        Logger.LogInformation("UpdateOrganization {organization}", organizationDto.Name);
+        Logger.LogMethodInfo($"UpdateOrganization {organizationDto.Name}");
 
         // Ensure user is authorized for this organization
         if (!await ValidateUserOrganization(organizationDto.Id))
@@ -233,7 +263,7 @@ public class OrganizationController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<RelayConnectionInfoDto>> LoadRelayConnection(int organizationId)
     {
-        Logger.LogInformation("LoadRelayConnection for organization {organizationId}", organizationId);
+        Logger.LogMethodInfo($"LoadRelayConnection for organization {organizationId}");
         // Ensure user is authorized for this organization
         if (!await ValidateUserOrganization(organizationId))
         {

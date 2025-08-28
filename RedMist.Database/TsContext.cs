@@ -44,6 +44,7 @@ public class TsContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
+        modelBuilder.Entity<Organization>().ToTable("Organizations");
         modelBuilder.Entity<Organization>()
             .HasIndex(o => o.ClientId)
             .IsUnique();
