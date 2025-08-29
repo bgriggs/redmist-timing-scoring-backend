@@ -10,7 +10,6 @@ FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["RedMist.DatabaseMigrationRunner/RedMist.DatabaseMigrationRunner.csproj", "RedMist.DatabaseMigrationRunner/"]
-COPY ["RedMist.Backend.Shared/RedMist.Backend.Shared.csproj", "RedMist.Backend.Shared/"]
 COPY ["RedMist.Database/RedMist.Database.csproj", "RedMist.Database/"]
 RUN dotnet restore "./RedMist.DatabaseMigrationRunner/RedMist.DatabaseMigrationRunner.csproj"
 COPY . .

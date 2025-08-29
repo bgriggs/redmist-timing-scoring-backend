@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NLog.Extensions.Logging;
-using RedMist.Backend.Shared;
 using RedMist.Database;
 
 namespace RedMist.DatabaseMigrationRunner;
@@ -32,7 +31,7 @@ public class Program
         var logger = host.Services.GetRequiredService<ILogger<Program>>();
         
         // Log startup information
-        host.LogAssemblyInfo<Program>();
+        LogAssemblyInfo(logger);
         logger.LogInformation("Database Migration Runner starting...");
         logger.LogInformation("Connection string configured: {HasConnection}", !string.IsNullOrEmpty(sqlConn));
 
@@ -84,6 +83,16 @@ public class Program
             await Task.Delay(5000);
             return 1;
         }
+    }
+    
+    private static void LogAssemblyInfo(ILogger logger)
+    {
+        var assembly = typeof(Program).Assembly;
+        var name = assembly.GetName().Name ?? "unknown";
+        var version = assembly.GetName().Version?.ToString() ?? "unknown";
+
+        logger.LogInformation("Service starting...");
+        logger.LogInformation("Assembly: {AssemblyName}, Version: {Version}", name, version);
     }
     
     private static string MaskConnectionString(string connectionString)
