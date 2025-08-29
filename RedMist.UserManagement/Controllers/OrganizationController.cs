@@ -135,12 +135,20 @@ public class OrganizationController : ControllerBase
         var organization = new Organization
         {
             Name = newOrganization.Name,
+            ClientId = clientId,
             ShortName = newOrganization.ShortName,
             Website = newOrganization.Website,
             Logo = newOrganization.Logo,
             ControlLogType = "Default",
             ControlLogParams = string.Empty
         };
+
+        // When there isn't data for an image, set to null to use default image
+        if (organization.Logo != null && organization.Logo.Length < 2)
+        {
+            organization.Logo = null;
+        }
+
         context.Organizations.Add(organization);
         await context.SaveChangesAsync();
         Logger.LogInformation("New organization created with ID {organizationId}", organization.Id);
