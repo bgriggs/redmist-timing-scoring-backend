@@ -16,6 +16,12 @@ public class Program
         {
             var builder = Host.CreateApplicationBuilder(args);
 
+            // Ensure user secrets are loaded in development
+            if (builder.Environment.IsDevelopment())
+            {
+                builder.Configuration.AddUserSecrets<Program>();
+            }
+
             // Clear default providers and add NLog
             builder.Logging.ClearProviders();
             builder.Logging.AddNLog("NLog");
@@ -35,8 +41,6 @@ public class Program
             LogAssemblyInfo(logger);
             logger.LogInformation("Database Migration Runner starting...");
             logger.LogInformation("Connection string configured: {HasConnection}", !string.IsNullOrEmpty(sqlConn));
-
-
             logger.LogInformation("Starting database migrations...");
 
             using var scope = host.Services.CreateScope();
@@ -68,7 +72,7 @@ public class Program
             logger.LogInformation("Migration process completed successfully.");
 
             // Give Kubernetes time to capture logs before container exits
-            await Task.Delay(5000);
+            await Task.Delay(3000);
             return 0;
         }
         catch (Exception ex)
@@ -76,7 +80,7 @@ public class Program
             Console.WriteLine("An error occurred while applying migrations: {e}", ex);
 
             // Give Kubernetes time to capture error logs
-            await Task.Delay(15000);
+            await Task.Delay(30000);
             return 1;
         }
     }
