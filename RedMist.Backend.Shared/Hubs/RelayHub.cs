@@ -438,9 +438,9 @@ public class RelayHub : Hub
         {
             OrganizationId = orgId,
             Timestamp = timestamp,
-            Level = level,
-            State = state,
-            Exception = exception,
+            Level = level?.Length > 20 ? level[..20] : level ?? "Unknown",
+            State = state?.Length > 300 ? state[..300] : state ?? "",
+            Exception = exception?.Length > 1024 ? exception[..1024] : exception ?? "",
         };
 
         using var db = await tsContext.CreateDbContextAsync();
