@@ -7,7 +7,7 @@ namespace RedMist.DatabaseMigrationRunner;
 
 public class Program
 {
-    public static async Task Main(string[] args)
+    public static async Task<int> Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
         builder.Logging.ClearProviders();
@@ -42,13 +42,14 @@ public class Program
             var context = scope.ServiceProvider.GetRequiredService<TsContext>();
             await context.Database.MigrateAsync();
             logger.LogInformation("Migrations completed successfully.");
+            await Task.Delay(3000);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "An error occurred while applying migrations.");
-            Environment.Exit(1);
+            return 1;
         }
 
-        Environment.Exit(0);
+        return 0;
     }
 }

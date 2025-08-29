@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.X2;
 using StackExchange.Redis;
@@ -424,6 +425,27 @@ public class RelayHub : Hub
         {
             Logger.LogError(ex, "Error saving competitor metadata for event {EventId}", eventId);
         }
+    }
+
+    public async Task SaveLoggerMessage(DateTime timestamp, string level, string state, string exception)
+    {
+        Logger.LogTrace("SaveLoggerMessage: {t} {l} {s} {e}", timestamp, level, state, exception);
+        var clientId = GetClientId();
+        if (clientId == null) return;
+        var orgId = await GetOrganizationId(clientId);
+
+        var logEntry = new RelayLog
+        {
+            OrganizationId = orgId,
+            Timestamp = timestamp,
+            Level = level,
+            State = state,
+            Exception = exception,
+        };
+
+        using var db = await tsContext.CreateDbContextAsync();
+        db.RelayLogs.Add(logEntry);
+        await db.SaveChangesAsync();
     }
 
     #endregion

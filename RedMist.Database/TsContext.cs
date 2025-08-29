@@ -26,6 +26,7 @@ public class TsContext : DbContext
     public DbSet<CompetitorMetadata> CompetitorMetadata { get; set; } = null!;
     public DbSet<UserOrganizationMapping> UserOrganizationMappings { get; set; } = null!;
     public DbSet<DefaultOrgImage> DefaultOrgImages { get; set; } = null!;
+    public DbSet<RelayLog> RelayLogs { get; set; } = null!;
 
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }
