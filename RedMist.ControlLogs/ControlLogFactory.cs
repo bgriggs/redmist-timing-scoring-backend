@@ -6,19 +6,11 @@ using RedMist.Database;
 
 namespace RedMist.ControlLogs;
 
-public class ControlLogFactory : IControlLogFactory
+public class ControlLogFactory(ILoggerFactory loggerFactory, IConfiguration config, IDbContextFactory<TsContext> tsContext) : IControlLogFactory
 {
-    private readonly ILoggerFactory loggerFactory;
-    private readonly IConfiguration config;
-    private readonly IDbContextFactory<TsContext> tsContext;
-
-    public ControlLogFactory(ILoggerFactory loggerFactory, IConfiguration config, IDbContextFactory<TsContext> tsContext)
-    {
-        this.loggerFactory = loggerFactory;
-        this.config = config;
-        this.tsContext = tsContext;
-    }
-
+    private readonly ILoggerFactory loggerFactory = loggerFactory;
+    private readonly IConfiguration config = config;
+    private readonly IDbContextFactory<TsContext> tsContext = tsContext;
 
     public IControlLog CreateControlLog(string type)
     {
@@ -29,6 +21,10 @@ public class ControlLogFactory : IControlLogFactory
         else if (type == ControlLogType.CHAMPCAR_GOOGLE_SHEET)
         {
             return new ChampCarGoogleSheets.GoogleSheetsControlLog(loggerFactory, config, tsContext);
+        }
+        else if (type == ControlLogType.LUCKYDOG_GOOGLE_SHEET)
+        {
+            return new LuckyDogGoogleSheets.GoogleSheetsControlLog(loggerFactory, config, tsContext);
         }
 
         throw new NotImplementedException($"type={type}");
