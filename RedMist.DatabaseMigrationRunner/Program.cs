@@ -31,7 +31,7 @@ public class Program
 
             builder.Services.AddDbContext<TsContext>(options =>
                 options.UseSqlServer(sqlConn)
-                       .LogTo(Console.WriteLine, LogLevel.Information));
+                       .LogTo(Console.WriteLine, LogLevel.Debug));
 
             var host = builder.Build();
 
@@ -72,12 +72,12 @@ public class Program
             logger.LogInformation("Migration process completed successfully.");
 
             // Give Kubernetes time to capture logs before container exits
-            await Task.Delay(3000);
-            return 0;
+            await Task.Delay(6000);
+            return 1;
         }
         catch (Exception ex)
         {
-            Console.WriteLine("An error occurred while applying migrations: {e}", ex);
+            Console.WriteLine($"An error occurred while applying migrations: {ex}");
 
             // Give Kubernetes time to capture error logs
             await Task.Delay(30000);
