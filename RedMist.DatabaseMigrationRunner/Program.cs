@@ -10,7 +10,7 @@ namespace RedMist.DatabaseMigrationRunner;
 
 public class Program
 {
-    public static async Task<int> Main(string[] args)
+    public static async Task Main(string[] args)
     {
         try
         {
@@ -73,7 +73,7 @@ public class Program
 
             // Give Kubernetes time to capture logs before container exits
             await Task.Delay(6000);
-            return 1;
+            Environment.Exit(1);
         }
         catch (Exception ex)
         {
@@ -81,7 +81,7 @@ public class Program
 
             // Give Kubernetes time to capture error logs
             await Task.Delay(30000);
-            return 1;
+            Environment.Exit(1);
         }
     }
 
