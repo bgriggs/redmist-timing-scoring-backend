@@ -62,10 +62,12 @@ helm upgrade --install $config.releaseName . `
   --set redmist-event-management.image.tag=$Version `
   --set redmist-event-orchestration.image.tag=$Version `
   --set redmist-user-management.image.tag=$Version `
-  --namespace $config.namespace
+  --set migration.image.tag=$Version `
+  --namespace $config.namespace `
+  --wait
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "$($Environment.ToUpper()) deployment complete!" -ForegroundColor $config.color
+    Write-Host "✅ $($Environment.ToUpper()) deployment complete!" -ForegroundColor $config.color
     
     # Show next steps
     Write-Host "`nNext steps:" -ForegroundColor Yellow
@@ -77,6 +79,13 @@ if ($LASTEXITCODE -eq 0) {
         Write-Host "Test API: curl https://api.redmist.racing/status/Events/LoadLiveEvents" -ForegroundColor White
     }
 } else {
-    Write-Host "$($Environment.ToUpper()) deployment failed!" -ForegroundColor Red
+    Write-Host "❌ $($Environment.ToUpper()) deployment FAILED!" -ForegroundColor Red
+    Write-Host "`nPossible causes:" -ForegroundColor Yellow
+    Write-Host "- Database migration failed (check migration container logs)" -ForegroundColor Yellow
+    Write-Host "- Resource constraints or timeout" -ForegroundColor Yellow
+    Write-Host "- Configuration issues" -ForegroundColor Yellow
+    Write-Host "`nTo debug migration issues:" -ForegroundColor Cyan
+    Write-Host "kubectl get jobs -n $($config.namespace) -l app.kubernetes.io/component=migration" -ForegroundColor White
+    Write-Host "kubectl logs -n $($config.namespace) job/<migration-job-name>" -ForegroundColor White
     exit 1
 }

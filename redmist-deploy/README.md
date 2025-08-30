@@ -16,6 +16,8 @@ Internet → Cloudflare (HTTPS) → Cloudflare Tunnel → Kubernetes Ingress (HT
 - **Automatic SSL**: Cloudflare handles certificate lifecycle
 - **Enhanced Performance**: Cloudflare CDN and edge optimization
 - **DDoS Protection**: Built-in Cloudflare security features
+- **Database Migration**: Automatic EF Core migrations on deployment
+- **Pre-deployment Hooks**: Migrations run before service deployment
 
 ## Quick Start
 
@@ -74,6 +76,16 @@ All environments are configured for:
 - **SSL Redirect**: Disabled to prevent redirect loops
 - **Path Rewriting**: Uses regex patterns for proper URL rewriting
 - **HTTP Only**: Internal cluster communication via HTTP
+- **Database Migration**: Automatic EF Core migrations via pre-deployment hooks
+
+### Migration Job Configuration
+
+The migration job (`bigmission/redmist-database-migration-runner`) runs automatically before deployments:
+- **Hook**: `pre-install,pre-upgrade` - Runs before service deployment
+- **Weight**: `-5` - Executes early in the deployment process
+- **Policy**: `before-hook-creation,hook-succeeded` - Cleans up previous jobs
+- **Resources**: Configurable per environment (dev/test/prod)
+- **Environment Variables**: Inherits global configuration including database connection strings
 
 ## Cloudflare Setup
 
