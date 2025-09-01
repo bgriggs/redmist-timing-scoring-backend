@@ -114,5 +114,19 @@ public class TsContext : DbContext
         modelBuilder.Entity<SessionResult>()
             .Property(o => o.Payload)
             .HasConversion(payloadConverter!);
+
+        // Configure TimingCommon models
+        modelBuilder.Entity<Session>()
+            .HasKey(s => new { s.Id, s.EventId });
+            
+        modelBuilder.Entity<CompetitorMetadata>()
+            .HasKey(c => new { c.EventId, c.CarNumber });
+            
+        // Configure other TimingCommon models as needed...
+        modelBuilder.Entity<Loop>()
+            .HasKey(l => new { l.OrganizationId, l.EventId, l.Id });
+            
+        modelBuilder.Entity<Passing>()
+            .HasKey(p => new { p.OrganizationId, p.EventId, p.Id });
     }
 }
