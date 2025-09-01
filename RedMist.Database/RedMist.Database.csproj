@@ -17,6 +17,9 @@
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="RedMist.TimingCommon" Version="1.0.5" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\..\RedMist.TimingCommon\RedMist.TimingCommon\RedMist.TimingCommon.csproj" />
 	</ItemGroup>
 </Project>

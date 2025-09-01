@@ -6,6 +6,7 @@ using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
+using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
@@ -24,7 +25,7 @@ public class EventAggregator : BackgroundService
     private const string CONSUMER_GROUP = "processor";
     private readonly int eventId;
     private readonly string streamKey;
-    private readonly OrbitsDataProcessor dataProcessor;
+    private readonly RMonitorDataProcessor dataProcessor;
     private readonly ILoggerFactory loggerFactory;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IMediator mediator;
@@ -63,7 +64,7 @@ public class EventAggregator : BackgroundService
         var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
         var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
         var driverModeDataProcessor = new DriverModeProcessor(eventId, hubContext, loggerFactory, hcache, tsContext, cacheMux);
-        dataProcessor = new OrbitsDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux, tsContext, driverModeDataProcessor);
+        dataProcessor = new RMonitorDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux, tsContext, driverModeDataProcessor);
         dataProcessor.PayloadChanged += DataProcessor_PayloadChanged;
     }
 
@@ -266,7 +267,7 @@ public class EventAggregator : BackgroundService
     /// Get compressed event status data.
     /// </summary>
     /// <param name="p"></param>
-    private async Task<string> GetEventStatusWithRefreshAsync(OrbitsDataProcessor p, CancellationToken stoppingToken = default)
+    private async Task<string> GetEventStatusWithRefreshAsync(RMonitorDataProcessor p, CancellationToken stoppingToken = default)
     {
         // See if the last payload is still the latest. When there is a newer change, update the payload.
         if (lastFullStatusTimestamp.HasValue && (lastPayloadChangedTimestamp <= lastFullStatusTimestamp.Value) && lastFullStatusData != null)
@@ -299,7 +300,7 @@ public class EventAggregator : BackgroundService
     }
 
 
-    private async Task UpdateCachedPayload(OrbitsDataProcessor p, CancellationToken stoppingToken)
+    private async Task UpdateCachedPayload(RMonitorDataProcessor p, CancellationToken stoppingToken)
     {
         try
         {

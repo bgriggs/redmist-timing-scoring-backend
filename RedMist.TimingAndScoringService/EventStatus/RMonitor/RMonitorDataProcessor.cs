@@ -6,7 +6,6 @@ using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
-using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
@@ -16,13 +15,13 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text.Json;
 
-namespace RedMist.TimingAndScoringService.EventStatus;
+namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
 /// <summary>
 /// Result Monitor data format processor primarily for Orbits data.
 /// </summary>
 /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
-public class OrbitsDataProcessor
+public class RMonitorDataProcessor
 {
     public int EventId { get; private set; }
     public int SessionId => sessionMonitor.SessionId;
@@ -33,7 +32,7 @@ public class OrbitsDataProcessor
     public Debouncer Debouncer => debouncer;
 
     private readonly SemaphoreSlim _lock = new(1, 1);
-    public RMonitor.Heartbeat Heartbeat { get; } = new();
+    public Heartbeat Heartbeat { get; } = new();
     private readonly Dictionary<int, string> classes = [];
     private readonly Dictionary<string, Competitor> competitors = [];
     private readonly Dictionary<string, RaceInformation> raceInformation = [];
@@ -66,7 +65,7 @@ public class OrbitsDataProcessor
     private HashEntry[]? lastPenalties;
 
 
-    public OrbitsDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
+    public RMonitorDataProcessor(int eventId, IMediator mediator, ILoggerFactory loggerFactory, SessionMonitor sessionMonitor,
         PitProcessor pitProcessor, FlagProcessor flagProcessor, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext,
         DriverModeProcessor driverModeProcessor)
     {

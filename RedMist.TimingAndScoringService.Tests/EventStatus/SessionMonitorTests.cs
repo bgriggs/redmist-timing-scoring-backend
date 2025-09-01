@@ -8,6 +8,7 @@ using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
+using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
 using StackExchange.Redis;
@@ -33,7 +34,7 @@ public class SessionMonitorTests
         var hub = new Mock<IHubContext<StatusHub>>();
         var hcache = new Mock<HybridCache>();
         var dmProc = new DriverModeProcessor(1, hub.Object, lf, hcache.Object, db.Object, cacheMux.Object);
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
+        var processor = new RMonitorDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
 
         var dataReader = new TestDataReader("event-finish-with-cars-data.log");
         var data = dataReader.GetData();
@@ -77,7 +78,7 @@ public class SessionMonitorTests
         var hub = new Mock<IHubContext<StatusHub>>();
         var hcache = new Mock<HybridCache>();
         var dmProc = new DriverModeProcessor(1, hub.Object, lf, hcache.Object, db.Object, cacheMux.Object);
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
+        var processor = new RMonitorDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
 
         var dataReader = new TestDataReader("event-finish-with-stopped.log");
         var data = dataReader.GetData();
@@ -126,7 +127,7 @@ public class SessionMonitorTests
         var hub = new Mock<IHubContext<StatusHub>>();
         var hcache = new Mock<HybridCache>();
         var dmProc = new DriverModeProcessor(1, hub.Object, lf, hcache.Object, db.Object, cacheMux.Object);
-        var processor = new OrbitsDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
+        var processor = new RMonitorDataProcessor(1, mediatorMock.Object, lf, session, pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
 
         var dataReader = new TestDataReader("event-finish-with-reset.log");
         var data = dataReader.GetData();

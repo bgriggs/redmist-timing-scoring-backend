@@ -8,6 +8,7 @@ using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
+using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using StackExchange.Redis;
 
@@ -18,7 +19,7 @@ public class OrbitsDataProcessorTests
 {
     private readonly DebugLoggerFactory lf = new();
 
-    private OrbitsDataProcessor GetProcessor()
+    private RMonitorDataProcessor GetProcessor()
     {
         var mediatorMock = new Mock<IMediator>();
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
@@ -29,7 +30,7 @@ public class OrbitsDataProcessorTests
         var hub = new Mock<IHubContext<StatusHub>>();
         var hcache = new Mock<HybridCache>();
         var dmProc = new DriverModeProcessor(0, hub.Object, lf, hcache.Object, db.Object, cacheMux.Object);
-        return new OrbitsDataProcessor(0, mediatorMock.Object, lf, new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
+        return new RMonitorDataProcessor(0, mediatorMock.Object, lf, new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
     }
 
     #region Heartbeat
