@@ -66,12 +66,12 @@ public class LapLogger
 
                 // Check if the car has completed a new lap or include lap 0 so the starting grid can be restored
                 // on service restarts and qualifying or practice can be captured
-                if (position.LastLap > lastLap || position.LastLap == 0)
+                if (position.LastLapCompleted > lastLap || position.LastLapCompleted == 0)
                 {
-                    if (position.LastLap == 0 && !IsLapNewerThanLastEntryWithReplace(position))
+                    if (position.LastLapCompleted == 0 && !IsLapNewerThanLastEntryWithReplace(position))
                         return;
 
-                    Logger.LogTrace("Car {n} completed new lap {l} in event {e}. Logging...", position.Number, position.LastLap, eventId);
+                    Logger.LogTrace("Car {n} completed new lap {l} in event {e}. Logging...", position.Number, position.LastLapCompleted, eventId);
 
                     // Update pit stops
                     pitProcessor?.UpdateCarPositionForLogging(position);
@@ -81,7 +81,7 @@ public class LapLogger
                     //}
 
                     // New lap completed
-                    carLastLapLookup[position.Number] = position.LastLap;
+                    carLastLapLookup[position.Number] = position.LastLapCompleted;
 
                     var log = new CarLapLog
                     {
@@ -89,11 +89,11 @@ public class LapLogger
                         SessionId = sessionId,
                         Timestamp = DateTime.UtcNow,
                         CarNumber = position.Number,
-                        LapNumber = position.LastLap,
-                        Flag = (int)position.Flag,
+                        LapNumber = position.LastLapCompleted,
+                        Flag = (int)position.TrackFlag,
                         LapData = JsonSerializer.Serialize(position),
                     };
-                    lapLogs.Add((log, position.LastLap));
+                    lapLogs.Add((log, position.LastLapCompleted));
                 }
             }
         }
@@ -156,14 +156,14 @@ public class LapLogger
 
         if (lastCarPositionLookup.TryGetValue(carPosition.Number, out var old))
         {
-            if (carPosition.LastLap > old.LastLap)
+            if (carPosition.LastLapCompleted > old.LastLapCompleted)
             {
                 lastCarPositionLookup[carPosition.Number] = carPosition;
                 return true;
             }
-            else if (carPosition.LastLap == old.LastLap && 
+            else if (carPosition.LastLapCompleted == old.LastLapCompleted && 
                 (carPosition.OverallPosition != old.OverallPosition ||
-                 carPosition.LastTime != old.LastTime))
+                 carPosition.LastLapTime != old.LastLapTime))
             {
                 lastCarPositionLookup[carPosition.Number] = carPosition;
                 return true;

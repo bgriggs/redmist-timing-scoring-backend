@@ -13,9 +13,9 @@ public class PositionMetadataProcessorTests
     {
         var secondaryProcessor = new PositionMetadataProcessor();
 
-        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", OverallPosition = 1 };
-        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", OverallPosition = 2 };
-        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:10:02.000", LastLap = 10, LastTime = "00:01:02.000", OverallPosition = 3 };
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 10, LastLapTime = "00:01:00.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLapCompleted = 10, LastLapTime = "00:01:01.000", OverallPosition = 2 };
+        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:10:02.000", LastLapCompleted = 10, LastLapTime = "00:01:02.000", OverallPosition = 3 };
 
         secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
 
@@ -40,9 +40,9 @@ public class PositionMetadataProcessorTests
     {
         var secondaryProcessor = new PositionMetadataProcessor();
 
-        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", OverallPosition = 1 };
-        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 9, LastTime = "00:01:01.000", OverallPosition = 2 };
-        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:10:02.000", LastLap = 5, LastTime = "00:01:02.000", OverallPosition = 3 };
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 10, LastLapTime = "00:01:00.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLapCompleted = 9, LastLapTime = "00:01:01.000", OverallPosition = 2 };
+        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:10:02.000", LastLapCompleted = 5, LastLapTime = "00:01:02.000", OverallPosition = 3 };
 
         secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
 
@@ -67,11 +67,11 @@ public class PositionMetadataProcessorTests
     {
         var secondaryProcessor = new PositionMetadataProcessor();
 
-        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", OverallPosition = 1 };
-        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", OverallPosition = 2 };
-        var car3 = new CarPosition { Number = "3", Class = "B", TotalTime = "00:10:02.000", LastLap = 10, LastTime = "00:01:02.000", OverallPosition = 3 };
-        var car4 = new CarPosition { Number = "4", Class = "A", TotalTime = "00:10:03.000", LastLap = 10, LastTime = "00:01:03.000", OverallPosition = 4 };
-        var car5 = new CarPosition { Number = "5", Class = "B", TotalTime = "00:10:04.000", LastLap = 10, LastTime = "00:01:04.000", OverallPosition = 5 };
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 10, LastLapTime = "00:01:00.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLapCompleted = 10, LastLapTime = "00:01:01.000", OverallPosition = 2 };
+        var car3 = new CarPosition { Number = "3", Class = "B", TotalTime = "00:10:02.000", LastLapCompleted = 10, LastLapTime = "00:01:02.000", OverallPosition = 3 };
+        var car4 = new CarPosition { Number = "4", Class = "A", TotalTime = "00:10:03.000", LastLapCompleted = 10, LastLapTime = "00:01:03.000", OverallPosition = 4 };
+        var car5 = new CarPosition { Number = "5", Class = "B", TotalTime = "00:10:04.000", LastLapCompleted = 10, LastLapTime = "00:01:04.000", OverallPosition = 5 };
 
         secondaryProcessor.UpdateCarPositions([car1, car2, car3, car4, car5]);
 
@@ -106,9 +106,9 @@ public class PositionMetadataProcessorTests
     {
         var secondaryProcessor = new PositionMetadataProcessor();
 
-        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", OverallPosition = 1 };
-        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:11:01.000", LastLap = 10, LastTime = "00:01:01.000", OverallPosition = 2 };
-        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:12:02.000", LastLap = 10, LastTime = "00:01:02.000", OverallPosition = 3 };
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 10, LastLapTime = "00:01:00.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:11:01.000", LastLapCompleted = 10, LastLapTime = "00:01:01.000", OverallPosition = 2 };
+        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:12:02.000", LastLapCompleted = 10, LastLapTime = "00:01:02.000", OverallPosition = 3 };
 
         secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
 
@@ -137,11 +137,11 @@ public class PositionMetadataProcessorTests
     {
         var secondaryProcessor = new PositionMetadataProcessor();
 
-        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", OverallPosition = 1 };
-        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", OverallPosition = 2 };
-        var car3 = new CarPosition { Number = "3", Class = "B", TotalTime = "00:10:02.000", LastLap = 10, LastTime = "00:01:02.000", OverallPosition = 3 };
-        var car4 = new CarPosition { Number = "4", Class = "A", TotalTime = "00:10:03.000", LastLap = 10, LastTime = "00:01:03.000", OverallPosition = 4 };
-        var car5 = new CarPosition { Number = "5", Class = "B", TotalTime = "00:10:04.000", LastLap = 10, LastTime = "00:01:04.000", OverallPosition = 5 };
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 10, LastLapTime = "00:01:00.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLapCompleted = 10, LastLapTime = "00:01:01.000", OverallPosition = 2 };
+        var car3 = new CarPosition { Number = "3", Class = "B", TotalTime = "00:10:02.000", LastLapCompleted = 10, LastLapTime = "00:01:02.000", OverallPosition = 3 };
+        var car4 = new CarPosition { Number = "4", Class = "A", TotalTime = "00:10:03.000", LastLapCompleted = 10, LastLapTime = "00:01:03.000", OverallPosition = 4 };
+        var car5 = new CarPosition { Number = "5", Class = "B", TotalTime = "00:10:04.000", LastLapCompleted = 10, LastLapTime = "00:01:04.000", OverallPosition = 5 };
 
         secondaryProcessor.UpdateCarPositions([car1, car2, car3, car4, car5]);
 
@@ -161,11 +161,11 @@ public class PositionMetadataProcessorTests
     {
         var secondaryProcessor = new PositionMetadataProcessor();
 
-        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", BestTime = "00:01:00.000" };
-        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", BestTime = "00:02:00.000" };
-        var car3 = new CarPosition { Number = "3", Class = "B", TotalTime = "00:10:02.000", LastLap = 10, LastTime = "00:01:02.000", BestTime = "00:03:00.000" };
-        var car4 = new CarPosition { Number = "4", Class = "A", TotalTime = "00:10:03.000", LastLap = 10, LastTime = "00:01:03.000", BestTime = "00:04:00.000" };
-        var car5 = new CarPosition { Number = "5", Class = "B", TotalTime = "00:10:04.000", LastLap = 10, LastTime = "00:01:04.000", BestTime = "00:05:00.000" };
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 10, LastLapTime = "00:01:00.000", BestTime = "00:01:00.000" };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLapCompleted = 10, LastLapTime = "00:01:01.000", BestTime = "00:02:00.000" };
+        var car3 = new CarPosition { Number = "3", Class = "B", TotalTime = "00:10:02.000", LastLapCompleted = 10, LastLapTime = "00:01:02.000", BestTime = "00:03:00.000" };
+        var car4 = new CarPosition { Number = "4", Class = "A", TotalTime = "00:10:03.000", LastLapCompleted = 10, LastLapTime = "00:01:03.000", BestTime = "00:04:00.000" };
+        var car5 = new CarPosition { Number = "5", Class = "B", TotalTime = "00:10:04.000", LastLapCompleted = 10, LastLapTime = "00:01:04.000", BestTime = "00:05:00.000" };
 
         secondaryProcessor.UpdateCarPositions([car1, car2, car3, car4, car5]);
 
@@ -201,9 +201,9 @@ public class PositionMetadataProcessorTests
     {
         var secondaryProcessor = new PositionMetadataProcessor();
 
-        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLap = 10, LastTime = "00:01:00.000", BestTime = "00:00:00.000" };
-        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLap = 10, LastTime = "00:01:01.000", BestTime = "00:02:00.000" };
-        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:10:02.000", LastLap = 10, LastTime = "00:01:02.000", BestTime = "00:03:00.000" };
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 10, LastLapTime = "00:01:00.000", BestTime = "00:00:00.000" };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:01.000", LastLapCompleted = 10, LastLapTime = "00:01:01.000", BestTime = "00:02:00.000" };
+        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:10:02.000", LastLapCompleted = 10, LastLapTime = "00:01:02.000", BestTime = "00:03:00.000" };
 
         secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
 

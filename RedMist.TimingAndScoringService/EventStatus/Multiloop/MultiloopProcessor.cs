@@ -1,7 +1,10 @@
-﻿namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
+﻿using RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
+using RedMist.TimingAndScoringService.Models;
+
+namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
 /// <summary>
-/// 
+/// Responsible to decode and maintain the state of a Multiloop timing system.
 /// </summary>
 /// <see cref="https://www.scribd.com/document/212233593/Multiloop-Timing-Protocol"/>
 public class MultiloopProcessor
@@ -12,7 +15,10 @@ public class MultiloopProcessor
     public Heartbeat Heartbeat { get; } = new Heartbeat();
     public Dictionary<string, Entry> Entries { get; } = [];
     public Dictionary<string, CompletedLap> CompletedLaps { get; } = [];
-    public Dictionary<string, CompletedSection> CompletedSections { get; } = [];
+    /// <summary>
+    /// Key1: Car number, Key2: Section identifier
+    /// </summary>
+    public Dictionary<string, Dictionary<string, CompletedSection>> CompletedSections { get; } = [];
     public Dictionary<string, LineCrossing> LineCrossings { get; } = [];
     public FlagInformation FlagInformation { get; } = new FlagInformation();
     public NewLeader NewLeader { get; } = new NewLeader();
@@ -28,9 +34,14 @@ public class MultiloopProcessor
     }
 
 
-    public async Task Process(string data, CancellationToken stoppingToken = default)
+    public async Task<SessionStateUpdate?> Process(TimingMessage message, CancellationToken stoppingToken = default)
     {
-        var commands = data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (message.Type != "multiloop")
+            return null;
+
+        var changes = new List<ISessionStateChange>();
+        
+        var commands = message.Data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         await _lock.WaitAsync(stoppingToken);
         try
         {
@@ -40,7 +51,8 @@ public class MultiloopProcessor
                     continue;
                 try
                 {
-                    ProcessCommand(command);
+                    var updates = ProcessCommand(command);
+                    changes.AddRange(updates);
                 }
                 catch (Exception ex)
                 {
@@ -52,49 +64,92 @@ public class MultiloopProcessor
         {
             _lock.Release();
         }
+        return new SessionStateUpdate("multiloop", changes);
     }
 
-    private void ProcessCommand(string data)
+    private List<ISessionStateChange> ProcessCommand(string data)
     {
+        var changes = new List<ISessionStateChange>();
         if (data.StartsWith("$H"))
         {
             Heartbeat.ProcessH(data);
         }
         else if (data.StartsWith("$E"))
         {
-            var entry = new Entry();
-            entry.ProcessE(data);
-            if (!string.IsNullOrWhiteSpace(entry.Number))
+            var num = Entry.GetEntryNumber(data);
+            if (string.IsNullOrEmpty(num))
             {
-                Entries[entry.Number] = entry;
+                Logger.LogWarning("Entry message received with no car number: {data}", data);
+                return changes;
             }
+            if (!Entries.TryGetValue(num, out var entry))
+            {
+                entry = new Entry();
+                Entries[num] = entry;
+            }
+            entry.ProcessE(data);
         }
         else if (data.StartsWith("$C"))
         {
-            var cl = new CompletedLap();
-            cl.ProcessC(data);
-            if (!string.IsNullOrWhiteSpace(cl.Number))
+            var num = CompletedLap.GetNumber(data);
+            if (string.IsNullOrEmpty(num))
             {
-                CompletedLaps[cl.Number] = cl;
+                Logger.LogWarning("Completed lap message received with no car number: {data}", data);
+                return changes;
+            }
+            if (!CompletedLaps.TryGetValue(num, out var cl))
+            {
+                cl = new CompletedLap();
+                CompletedLaps[num] = cl;
+            }
+            var chs = cl.ProcessC(data);
+            changes.AddRange(chs);
+
+            // Reset sections for the car as they have completed a lap
+            if (CompletedSections.TryGetValue(num, out var sections))
+            {
+                sections.Clear();
+                var update = new SectionStateUpdate(num, [.. sections.Values]);
+                changes.Add(update);
             }
         }
         else if (data.StartsWith("$S"))
         {
-            var s = new CompletedSection();
-            s.ProcessS(data);
-            if (!string.IsNullOrWhiteSpace(s.Number))
+            var (num, section) = CompletedSection.GetNumberAndSection(data);
+            if (string.IsNullOrEmpty(num) || string.IsNullOrEmpty(section))
             {
-                CompletedSections[s.Number] = s;
+                Logger.LogWarning("Completed section message received with no car number or section: {data}", data);
+                return changes;
             }
+            if (!CompletedSections.TryGetValue(num, out var sections))
+            {
+                sections = [];
+                CompletedSections[num] = sections;
+            }
+            if (!sections.TryGetValue(section, out var cs))
+            {
+                cs = new CompletedSection();
+                sections[section] = cs;
+            }
+            cs.ProcessS(data);
+            var update = new SectionStateUpdate(num, [.. sections.Values]);
+            changes.Add(update);
         }
         else if (data.StartsWith("$L"))
         {
-            var l = new LineCrossing();
-            l.ProcessL(data);
-            if (!string.IsNullOrWhiteSpace(l.Number))
+            var num = LineCrossing.GetNumber(data);
+            if (string.IsNullOrEmpty(num))
             {
-                LineCrossings[l.Number] = l;
+                Logger.LogWarning("Line crossing message received with no car number: {data}", data);
+                return changes;
             }
+            if (!LineCrossings.TryGetValue(num, out var lc))
+            {
+                lc = new LineCrossing();
+                LineCrossings[num] = lc;
+            }
+            var chs = lc.ProcessL(data);
+            changes.AddRange(chs);
         }
         else if (data.StartsWith("$I"))
         {
@@ -104,6 +159,11 @@ public class MultiloopProcessor
         else if (data.StartsWith("$F"))
         {
             FlagInformation.ProcessF(data);
+            if (FlagInformation.IsDirty)
+            {
+                changes.Add(new FlagMetricsStateUpdate(FlagInformation));
+                FlagInformation.ResetDirty();
+            }
         }
         else if (data.StartsWith("$N"))
         {
@@ -122,10 +182,14 @@ public class MultiloopProcessor
             var a = new Announcement();
             a.ProcessA(data);
             Announcements[a.MessageNumber] = a;
+            var update = new AnnouncementStateUpdate(Announcements);
+            changes.Add(update);
         }
         else if (data.StartsWith("$V"))
         {
             Version.ProcessV(data);
         }
+
+        return changes;
     }
 }

@@ -1,11 +1,18 @@
-﻿using System.Globalization;
+﻿using Riok.Mapperly.Abstractions;
+using System.Globalization;
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
+/// <summary>
+/// Base class for a Multiloop message.
+/// </summary>
 public class Message
 {
+    [MapperIgnore]
     public RecordType RecordType { get; set; }
+    [MapperIgnore]
     public uint Sequence { get; set; }
+    [MapperIgnore]
     public string Preamble { get; set; } = string.Empty;
 
     /// <summary>

@@ -26,7 +26,7 @@ public partial class CarPositionMetadata
     public void Update(CarPosition? car)
     {
         Number = car?.Number ?? string.Empty;
-        LastTime = car?.LastTime ?? string.Empty;
+        LastTime = car?.LastLapTime ?? string.Empty;
         PositionInClass = car?.ClassPosition ?? CarPosition.InvalidPosition;
         PositionOverall = car?.OverallPosition ?? CarPosition.InvalidPosition;
 
@@ -73,7 +73,7 @@ public partial class CarPositionMetadata
 
     private void UpdateGapGainLoss(CarPosition driver, CarPosition car)
     {
-        if (car.LastLap == driver.LastLap)
+        if (car.LastLapCompleted == driver.LastLapCompleted)
         {
             // Gap
             var carTime = PositionMetadataProcessor.ParseRMTime(car.TotalTime ?? string.Empty);
@@ -90,7 +90,7 @@ public partial class CarPositionMetadata
         }
         else
         {
-            int laps = car.LastLap - driver.LastLap;
+            int laps = car.LastLapCompleted - driver.LastLapCompleted;
             if (laps < 0)
             {
                 // No gap - car ahead is behind/stale
@@ -103,8 +103,8 @@ public partial class CarPositionMetadata
         }
 
         // Gain/Loss
-        var carLap = PositionMetadataProcessor.ParseRMTime(car.LastTime ?? string.Empty);
-        var driverLap = PositionMetadataProcessor.ParseRMTime(driver.LastTime ?? string.Empty);
+        var carLap = PositionMetadataProcessor.ParseRMTime(car.LastLapTime ?? string.Empty);
+        var driverLap = PositionMetadataProcessor.ParseRMTime(driver.LastLapTime ?? string.Empty);
         if (carLap == default || driverLap == default)
         {
             GainLoss = string.Empty;

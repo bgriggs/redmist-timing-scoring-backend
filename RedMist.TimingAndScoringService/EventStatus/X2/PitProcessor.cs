@@ -182,14 +182,14 @@ public class PitProcessor
                         laps = [];
                         carLapsWithPitStops[pos.Number] = laps;
                     }
-                    laps.Add(pos.LastLap + 1);
+                    laps.Add(pos.LastLapCompleted + 1);
                 }
 
                 // Check if the lap was included in a pit stop
                 pos.LapIncludedPit = pos.IsInPit;
                 if (!pos.IsInPit && !string.IsNullOrEmpty(pos.Number))
                 {
-                    pos.LapIncludedPit = carLapsWithPitStops.TryGetValue(pos.Number, out var laps) && laps.Contains(pos.LastLap);
+                    pos.LapIncludedPit = carLapsWithPitStops.TryGetValue(pos.Number, out var laps) && laps.Contains(pos.LastLapCompleted);
                 }
             }
         }
@@ -199,7 +199,7 @@ public class PitProcessor
     {
         if (carPosition.Number != null && !carLapsWithPitStops.TryGetValue(carPosition.Number, out var laps) && laps != null)
         {
-            carPosition.LapIncludedPit = laps.Contains(carPosition.LastLap);
+            carPosition.LapIncludedPit = laps.Contains(carPosition.LastLapCompleted);
         }
     }
 

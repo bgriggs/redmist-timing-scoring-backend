@@ -1,28 +1,34 @@
-﻿using System.Globalization;
+﻿using Riok.Mapperly.Abstractions;
+using System.Globalization;
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
-[Reactive]
-public partial class CompletedSection : Message
+public class CompletedSection : Message
 {
-    public partial string Number { get; private set; } = string.Empty;
-    public partial uint UniqueIdentifier { get; private set; }
-    public partial string SectionIdentifier { get; private set; } = string.Empty;
-    public partial uint ElapsedTimeMs { get; private set; }
+    public string Number { get; private set; } = string.Empty;
+    [MapperIgnore]
+    public uint UniqueIdentifier { get; private set; }
+    public string SectionIdentifier { get; private set; } = string.Empty;
+    public uint ElapsedTimeMs { get; private set; }
+    [MapperIgnore]
     public TimeSpan ElapsedTime => TimeSpan.FromMilliseconds(ElapsedTimeMs);
-    public partial uint LastSectionTimeMs { get; private set; }
+    public uint LastSectionTimeMs { get; private set; }
+    [MapperIgnore]
     public TimeSpan LastSectionTime => TimeSpan.FromMilliseconds(LastSectionTimeMs);
-    public partial ushort LastLap { get; private set; }
-
-    public bool IsDirty { get; private set; }
+    public ushort LastLap { get; private set; }
 
 
-    public CompletedSection()
+    /// <summary>
+    /// Gets the car number and section ID from a completed section message.
+    /// </summary>
+    /// <param name="data"></param>
+    /// <returns>car number or empty if the data is malformed</returns>
+    public static (string number, string section) GetNumberAndSection(string data)
     {
-        PropertyChanged += (sender, args) =>
-        {
-            IsDirty = true;
-        };
+        var parts = data.Split(Consts.DELIM);
+        if (parts.Length > 6)
+            return (parts[4].Trim(), parts[6].Trim());
+        return (string.Empty, string.Empty);
     }
 
 
@@ -33,6 +39,7 @@ public partial class CompletedSection : Message
     public void ProcessS(string data)
     {
         var parts = ProcessHeader(data);
+
         // Number
         Number = parts[4].Trim();
 

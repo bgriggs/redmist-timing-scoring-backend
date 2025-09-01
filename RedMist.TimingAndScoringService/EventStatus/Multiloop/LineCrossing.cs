@@ -1,51 +1,52 @@
-﻿using RedMist.TimingCommon.Models;
+﻿using RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
+using RedMist.TimingCommon.Models;
 using System.Globalization;
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
-[Reactive]
-public partial class LineCrossing : Message
+public class LineCrossing : Message
 {
-    public partial string Number { get; private set; } = string.Empty;
-    public partial uint UniqueIdentifier { get; private set; }
-    public partial string TimeLine { get; private set; } = string.Empty;
-    public partial string SourceStr { get; private set; } = string.Empty;
+    public string Number { get; private set; } = string.Empty;
+    public uint UniqueIdentifier { get; private set; }
+    public string TimeLine { get; private set; } = string.Empty;
+    public string SourceStr { get; private set; } = string.Empty;
     public LineCrossingSource Source => SourceStr switch
     {
         "A" => LineCrossingSource.Antenna,
         "M" => LineCrossingSource.Manual,
         _ => LineCrossingSource.Photocell,
     };
-    public partial uint ElapsedTimeMs { get; private set; }
+    public uint ElapsedTimeMs { get; private set; }
     public TimeSpan ElapsedTime => TimeSpan.FromMilliseconds(ElapsedTimeMs);
-    public partial string TrackStatus { get; private set; } = string.Empty;
+    public string TrackStatus { get; private set; } = string.Empty;
     public Flags Flag { get; private set; }
-    public partial string CrossingStatusStr { get; private set; } = string.Empty;
+    public string CrossingStatusStr { get; private set; } = string.Empty;
     public LineCrossingStatus CrossingStatus => CrossingStatusStr switch
     {
         "P" => LineCrossingStatus.Pit,
         _ => LineCrossingStatus.Track,
     };
 
-    public bool IsDirty { get; private set; }
 
-
-    public LineCrossing()
+    /// <summary>
+    /// Gets the car number from a line crossing message without fully processing it.
+    /// </summary>
+    /// <param name="data"></param>
+    /// <returns>car number or empty if the data is malformed</returns>
+    public static string GetNumber(string data)
     {
-        PropertyChanged += (sender, args) =>
-        {
-            IsDirty = true;
-        };
+        var parts = data.Split(Consts.DELIM);
+        return parts.Length > 4 ? parts[4].Trim() : string.Empty;
     }
-
 
     /// <summary>
     /// 
     /// </summary>
     /// <example>$L�N�EF325�Q1�89�5�SF�A�9B82E�G�T</example>
-    public void ProcessL(string data)
+    public List<ISessionStateChange> ProcessL(string data)
     {
         var parts = ProcessHeader(data);
+        var changes = new List<ISessionStateChange>();
 
         // Number
         Number = parts[4].Trim();
@@ -69,6 +70,13 @@ public partial class LineCrossing : Message
         Flag = Heartbeat.ConvertTrackState(TrackStatus);
 
         // CrossingStatus
-        CrossingStatusStr = parts[10].Trim();
+        var cs = parts[10].Trim();
+        if (cs != CrossingStatusStr)
+        {
+            CrossingStatusStr = cs;
+            changes.Add(new PitSfCrossingStateUpdate(this));
+        }
+
+        return changes;
     }
 }

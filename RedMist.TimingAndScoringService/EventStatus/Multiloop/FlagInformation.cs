@@ -27,12 +27,11 @@ public partial class FlagInformation : Message
 
     public FlagInformation()
     {
-        PropertyChanged += (sender, args) =>
-        {
-            IsDirty = true;
-        };
+        PropertyChanged += (sender, args) => IsDirty = true;
     }
 
+
+    public void ResetDirty() =>  IsDirty = false;
 
     /// <summary>
     /// 

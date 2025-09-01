@@ -1,34 +1,26 @@
-﻿using System.Globalization;
+﻿using Riok.Mapperly.Abstractions;
+using System.Globalization;
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
-[Reactive]
-public partial class Announcement : Message
+public class Announcement : Message
 {
     private readonly DateTime epoch = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    public partial ushort MessageNumber { get; private set; }
-    public partial string ActionStr { get; private set; } = string.Empty;
-    public partial string PriorityStr { get; private set; } = string.Empty;
+    [MapperIgnore] 
+    public ushort MessageNumber { get; private set; }
+    [MapperIgnore] 
+    public string ActionStr { get; private set; } = string.Empty;
+    public string PriorityStr { get; private set; } = string.Empty;
 
     /// <summary>
     /// Time in seconds since 1/1/1970.
     /// </summary>
+    [MapperIgnore] 
     public uint TimestampSecs { get; private set; }
 
     public DateTime Timestamp => epoch.AddSeconds(TimestampSecs);
-    public partial string Text { get; private set; } = string.Empty;
-
-    public bool IsDirty { get; private set; }
-
-
-    public Announcement()
-    {
-        PropertyChanged += (sender, args) =>
-        {
-            IsDirty = true;
-        };
-    }
+    public string Text { get; private set; } = string.Empty;
 
 
     /// <summary>

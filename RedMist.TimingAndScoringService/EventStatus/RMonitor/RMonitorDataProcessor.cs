@@ -95,7 +95,7 @@ public class RMonitorDataProcessor
         // Multiloop Protocol
         else if (type == "multiloop")
         {
-            await multiloopProcessor.Process(data, stoppingToken);
+            //await multiloopProcessor.Process(data, stoppingToken);
         }
         // X2 Passings
         else if (type == "x2pass")
@@ -599,7 +599,7 @@ public class RMonitorDataProcessor
         // Put flag state on all car positions
         foreach (var carPosition in carPositions)
         {
-            carPosition.Flag = eventStatus.Flag;
+            carPosition.TrackFlag = eventStatus.Flag;
         }
 
         var payload = new Payload
@@ -645,7 +645,7 @@ public class RMonitorDataProcessor
                 Number = raceInfo.RegistrationNumber,
                 OverallPosition = raceInfo.Position,
                 TotalTime = raceInfo.RaceTime,
-                LastLap = raceInfo.Laps,
+                LastLapCompleted = raceInfo.Laps,
                 Class = GetCarsClass(raceInfo.RegistrationNumber),
             };
 
@@ -668,7 +668,7 @@ public class RMonitorDataProcessor
             // Last lap time
             if (passingInformation.TryGetValue(reg, out var pass))
             {
-                carPos.LastTime = pass.LapTime;
+                carPos.LastLapTime = pass.LapTime;
             }
 
             // Best time
@@ -676,7 +676,7 @@ public class RMonitorDataProcessor
             {
                 carPos.BestTime = pq.BestLapTime;
                 carPos.BestLap = pq.BestLap;
-                carPos.IsBestTime = carPos.BestLap == carPos.LastLap;
+                carPos.IsBestTime = carPos.BestLap == carPos.LastLapCompleted;
             }
 
             if (includeChangedOnly)
@@ -798,7 +798,7 @@ public class RMonitorDataProcessor
             // Put flag state on all car positions
             foreach (var carPosition in carPositions)
             {
-                carPosition.Flag = eventStatus.Flag;
+                carPosition.TrackFlag = eventStatus.Flag;
             }
 
             payload.EventId = EventId;

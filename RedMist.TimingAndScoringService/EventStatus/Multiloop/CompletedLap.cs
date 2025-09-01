@@ -1,60 +1,60 @@
-﻿using RedMist.TimingCommon.Models;
+﻿using RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
+using RedMist.TimingCommon.Models;
 using System.Globalization;
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
-[Reactive]
-public partial class CompletedLap : Message
+public class CompletedLap : Message
 {
-    public partial ushort Rank { get; private set; }
-    public partial string Number { get; private set; } = string.Empty;
-    public partial uint UniqueIdentifier { get; private set; }
-    public partial ushort CompletedLaps { get; private set; }
-    public partial uint ElapsedTimeMs { get; private set; }
+    public ushort Rank { get; private set; }
+    public string Number { get; private set; } = string.Empty;
+    public uint UniqueIdentifier { get; private set; }
+    public ushort CompletedLaps { get; private set; }
+    public uint ElapsedTimeMs { get; private set; }
     public TimeSpan ElapsedTime => TimeSpan.FromMilliseconds(ElapsedTimeMs);
-    public partial uint LastLapTimeMs { get; private set; }
+    public uint LastLapTimeMs { get; private set; }
     public TimeSpan LastLapTime => TimeSpan.FromMilliseconds(LastLapTimeMs);
-    public partial string LapStatus { get; private set; } = string.Empty;
-    public partial uint FastestLapTimeMs { get; private set; }
+    public string LapStatus { get; private set; } = string.Empty;
+    public uint FastestLapTimeMs { get; private set; }
     public TimeSpan FastestLapTime => TimeSpan.FromMilliseconds(FastestLapTimeMs);
-    public partial ushort FastestLap { get; private set; }
-    public partial uint TimeBehindLeaderMs { get; private set; }
+    public ushort FastestLap { get; private set; }
+    public uint TimeBehindLeaderMs { get; private set; }
     public TimeSpan TimeBehindLeader => TimeSpan.FromMilliseconds(TimeBehindLeaderMs);
-    public partial ushort LapsBehindLeader { get; private set; }
-    public partial uint TimeBehindPrecedingCarMs { get; private set; }
+    public ushort LapsBehindLeader { get; private set; }
+    public uint TimeBehindPrecedingCarMs { get; private set; }
     public TimeSpan TimeBehindPrecedingCar => TimeSpan.FromMilliseconds(TimeBehindPrecedingCarMs);
-    public partial ushort LapsBehindPrecedingCar { get; private set; }
-    public partial ushort OverallRank { get; private set; }
-    public partial uint OverallBestLapTimeMs { get; private set; }
+    public ushort LapsBehindPrecedingCar { get; private set; }
+    public ushort OverallRank { get; private set; }
+    public uint OverallBestLapTimeMs { get; private set; }
     public TimeSpan OverallBestLapTime => TimeSpan.FromMilliseconds(OverallBestLapTimeMs);
-    public partial string CurrentStatus { get; private set; } = string.Empty;
-    public partial string TrackStatus { get; private set; } = string.Empty;
+    public string CurrentStatus { get; private set; } = string.Empty;
+    public string TrackStatus { get; private set; } = string.Empty;
     public Flags Flag { get; private set; }
-    public partial ushort PitStopCount { get; private set; }
-    public partial ushort LastLapPitted { get; private set; }
-    public partial ushort StartPosition { get; private set; }
-    public partial ushort LapsLed { get; private set; }
+    public ushort PitStopCount { get; private set; }
+    public ushort LastLapPitted { get; private set; }
+    public ushort StartPosition { get; private set; }
+    public ushort LapsLed { get; private set; }
 
 
-    public bool IsDirty { get; private set; }
-
-
-    public CompletedLap()
+    /// <summary>
+    /// Gets the car number from the message.
+    /// </summary>
+    /// <param name="data"></param>
+    /// <returns>Car number or empty if malformed message</returns>
+    public static string GetNumber(string data)
     {
-        PropertyChanged += (sender, args) =>
-        {
-            IsDirty = true;
-        };
+        var parts = data.Split(Consts.DELIM);
+        return parts.Length > 5 ? parts[5] : string.Empty;
     }
-
 
     /// <summary>
     /// 
     /// </summary>
     /// <example>$C�U�80004�Q1�C�0�8�4�83DDF�1CB83�T�1CB83�4�2E6A�0�649�0�C�1CB83�Unknown�G�1�0�9�0</example>
-    public void ProcessC(string data)
+    public List<ISessionStateChange> ProcessC(string data)
     {
         var parts = ProcessHeader(data);
+        var changes = new List<ISessionStateChange>();
 
         // Rank
         if (ushort.TryParse(parts[4], NumberStyles.HexNumber, null, out var r))
@@ -115,26 +115,71 @@ public partial class CompletedLap : Message
             OverallBestLapTimeMs = obl;
 
         // CurrentStatus
-        CurrentStatus = parts[19];
+        bool isStatusDirty = false;
+        if (CurrentStatus != parts[19])
+        {
+            isStatusDirty = true;
+            CurrentStatus = parts[19];
+        }
 
         // TrackStatus
         TrackStatus = parts[20].Trim();
         Flag = Heartbeat.ConvertTrackState(TrackStatus);
 
         // PitStopCount
+        bool isPitStopCountDirty = false;
         if (ushort.TryParse(parts[21], NumberStyles.HexNumber, null, out var psc))
-            PitStopCount = psc;
+        {
+            if (psc != PitStopCount)
+            {
+                isPitStopCountDirty = true;
+                PitStopCount = psc;
+            }
+        }
 
         // LastLapPitted
+        bool isLastLapPittedDirty = false;
         if (ushort.TryParse(parts[22], NumberStyles.HexNumber, null, out var llp))
-            LastLapPitted = llp;
+        {
+            if (llp != LastLapPitted)
+            {
+                isLastLapPittedDirty = true;
+                LastLapPitted = llp;
+            }
+        }
 
         // StartPosition
+        bool isStartPositionDirty = false;
         if (ushort.TryParse(parts[23], NumberStyles.HexNumber, null, out var sp))
-            StartPosition = sp;
+        {
+            if (sp != StartPosition)
+            {
+                isStartPositionDirty = true;
+                StartPosition = sp;
+            }
+        }
 
         // LapsLed
+        bool isLapsLedDirty = false;
         if (ushort.TryParse(parts[24], NumberStyles.HexNumber, null, out var ll))
-            LapsLed = ll;
+        {
+            if (ll != LapsLed)
+            {
+                isLapsLedDirty = true;
+                LapsLed = ll;
+            }
+        }
+
+        if (isStartPositionDirty || isLapsLedDirty || isStatusDirty)
+        {
+            changes.Add(new PositionInfoStateUpdate(this));
+        }
+
+        if (isLastLapPittedDirty || isPitStopCountDirty)
+        {
+            changes.Add(new PitStateUpdate(this));
+        }
+
+        return changes;
     }
 }

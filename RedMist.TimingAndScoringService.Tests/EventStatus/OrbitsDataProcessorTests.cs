@@ -513,7 +513,7 @@ public class OrbitsDataProcessorTests
         var car = await processor.GetCarPositions(includeChangedOnly: true);
         Assert.AreEqual(1, car.Length);
         Assert.AreEqual("1234BE", car[0].Number);
-        Assert.AreEqual(14, car[0].LastLap);
+        Assert.AreEqual(14, car[0].LastLapCompleted);
         Assert.AreEqual(3, car[0].BestLap);
         Assert.AreEqual("00:02:17.872", car[0].BestTime);
         Assert.AreEqual("01:12:47.872", car[0].TotalTime);
@@ -545,7 +545,7 @@ public class OrbitsDataProcessorTests
 
         car = await processor.GetCarPositions(includeChangedOnly: false);
         Assert.AreEqual(1, car.Length);
-        Assert.AreEqual(15, car[0].LastLap);
+        Assert.AreEqual(15, car[0].LastLapCompleted);
     }
 
     #endregion

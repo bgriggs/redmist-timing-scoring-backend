@@ -2,29 +2,24 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
-[Reactive]
-public partial class Entry : Message
+public class Entry : Message
 {
-    public partial string Number { get; private set; } = string.Empty;
-    public partial uint UniqueIdentifier { get; private set; }
-    public partial string DriverName { get; private set; } = string.Empty;
-    public partial ushort StartPosition { get; private set; }
-    public partial byte FieldCount { get; private set; }
+    public string Number { get; private set; } = string.Empty;
+    public uint UniqueIdentifier { get; private set; }
+    public string DriverName { get; private set; } = string.Empty;
+    public ushort StartPosition { get; private set; }
+    public byte FieldCount { get; private set; }
     public List<string> Fields { get; } = [];
     public uint CompetitorIdentifier { get; set; }
 
 
-    public bool IsDirty { get; private set; }
-
-
-    public Entry()
+    public static string GetEntryNumber(string data)
     {
-        PropertyChanged += (sender, args) =>
-        {
-            IsDirty = true;
-        };
+        var parts = data.Split(Consts.DELIM);
+        if (parts.Length > 4)
+            return parts[4].Trim();
+        return string.Empty;
     }
-
 
     /// <summary>
     /// 

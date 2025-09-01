@@ -89,7 +89,7 @@ public class PositionMetadataProcessor
                 }
 
                 // Overall Gap
-                if (positionAhead.LastLap == currentPosition.LastLap)
+                if (positionAhead.LastLapCompleted == currentPosition.LastLapCompleted)
                 {
                     var pat = ParseRMTime(positionAhead.TotalTime);
                     var g = cpt - pat;
@@ -97,7 +97,7 @@ public class PositionMetadataProcessor
                 }
                 else
                 {
-                    int laps = positionAhead.LastLap - currentPosition.LastLap;
+                    int laps = positionAhead.LastLapCompleted - currentPosition.LastLapCompleted;
                     if (laps < 0)
                     {
                         // No gap - car ahead is behind/stale
@@ -110,14 +110,14 @@ public class PositionMetadataProcessor
                 }
 
                 // Overall Difference
-                if (leader.LastLap == currentPosition.LastLap)
+                if (leader.LastLapCompleted == currentPosition.LastLapCompleted)
                 {
                     var diff = cpt - leaderTime;
                     setDiff(currentPosition, diff.ToString(GetTimeFormat(diff)));
                 }
                 else
                 {
-                    int laps = leader.LastLap - currentPosition.LastLap;
+                    int laps = leader.LastLapCompleted - currentPosition.LastLapCompleted;
                     if (laps < 0)
                     {
                         // No diff - car ahead is behind/stale

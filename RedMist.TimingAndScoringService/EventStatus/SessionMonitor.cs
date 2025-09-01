@@ -221,7 +221,7 @@ public class SessionMonitor
         {
             if (carPosition.Number != null &&
                 checkeredCarPositionsLookup.TryGetValue(carPosition.Number, out var checkeredPos) &&
-                carPosition.LastLap != checkeredPos.LastLap)
+                carPosition.LastLapCompleted != checkeredPos.LastLapCompleted)
             {
                 changes++;
             }
