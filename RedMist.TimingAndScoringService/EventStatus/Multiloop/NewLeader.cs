@@ -8,8 +8,8 @@ public partial class NewLeader : Message
     public partial string Number { get; private set; } = string.Empty;
     public partial uint UniqueIdentifier { get; private set; }
     public partial ushort LapNumber { get; private set; }
-    public partial uint ElaspedTimeMs { get; private set; }
-    public TimeSpan ElaspedTime => TimeSpan.FromMilliseconds(ElaspedTimeMs);
+    public partial uint ElapsedTimeMs { get; private set; }
+    public TimeSpan ElapsedTime => TimeSpan.FromMilliseconds(ElapsedTimeMs);
     public partial ushort LeadChangeIndex { get; private set; }
 
 
@@ -44,9 +44,9 @@ public partial class NewLeader : Message
         if (ushort.TryParse(parts[6], NumberStyles.HexNumber, null, out var ln))
             LapNumber = ln;
 
-        // ElaspedTimeMs
+        // ElapsedTimeMs
         if (uint.TryParse(parts[7], NumberStyles.HexNumber, null, out var et))
-            ElaspedTimeMs = et;
+            ElapsedTimeMs = et;
 
         // LeadChangeIndex
         if (ushort.TryParse(parts[8], NumberStyles.HexNumber, null, out var lci))

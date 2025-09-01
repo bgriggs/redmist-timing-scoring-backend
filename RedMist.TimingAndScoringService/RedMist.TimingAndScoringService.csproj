@@ -20,24 +20,24 @@
 
 	<ItemGroup>
 		<PackageReference Include="MediatR" Version="13.0.0" />
-		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.6" />
+		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.8" />
 		<PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="9.0.0" />
 		<PackageReference Include="Keycloak.AuthServices.Authorization" Version="2.6.1" />
-		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="9.6.0" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="9.8.0" />
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
-		<PackageReference Include="NLog.Extensions.Logging" Version="6.0.1" />
+		<PackageReference Include="NLog.Extensions.Logging" Version="6.0.3" />
 		<PackageReference Include="ReactiveGenerator" Version="0.12.0">
 		  <PrivateAssets>all</PrivateAssets>
 		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.1" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.4" />
 		<PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.System" Version="9.0.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.SqlServer" Version="9.0.0" />
-		<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="9.0.6" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="9.0.8" />
 		<PackageReference Include="Keycloak.AuthServices.Authentication" Version="2.6.1" />
 		<PackageReference Include="BigMission.TestHelpers" Version="3.0.8" />
-		<PackageReference Include="BigMission.Shared" Version="1.0.2" />
+		<PackageReference Include="BigMission.Shared" Version="1.0.3" />
 		<PackageReference Include="RedLock.net" Version="2.3.2" />
 	</ItemGroup>
 

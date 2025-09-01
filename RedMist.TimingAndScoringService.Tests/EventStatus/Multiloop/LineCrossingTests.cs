@@ -16,7 +16,7 @@ public class LineCrossingTests
         Assert.AreEqual<uint>(5, l.UniqueIdentifier);
         Assert.AreEqual("SF", l.TimeLine);
         Assert.AreEqual("A", l.SourceStr);
-        Assert.AreEqual<uint>(636974, l.ElaspedTimeMs);
+        Assert.AreEqual<uint>(636974, l.ElapsedTimeMs);
         Assert.AreEqual("G", l.TrackStatus);
         Assert.AreEqual("T", l.CrossingStatusStr);
     }

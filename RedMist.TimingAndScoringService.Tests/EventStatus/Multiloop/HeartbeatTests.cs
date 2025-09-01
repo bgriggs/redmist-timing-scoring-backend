@@ -14,7 +14,7 @@ public class HeartbeatTests
 
         Assert.AreEqual("G", h.TrackStatus);
         Assert.AreEqual<uint>(1751030575, h.TimeDateSec);
-        Assert.AreEqual<uint>(630955, h.ElaspedTimeMs);
+        Assert.AreEqual<uint>(630955, h.ElapsedTimeMs);
         Assert.AreEqual(0, h.LapsToGo);
         Assert.AreEqual<uint>(869044, h.TimeToGoMs);
     }

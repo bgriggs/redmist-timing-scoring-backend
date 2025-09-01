@@ -16,7 +16,7 @@ public class CompletedLapTests
         Assert.AreEqual("0", c.Number);
         Assert.AreEqual<uint>(8, c.UniqueIdentifier);
         Assert.AreEqual(4, c.CompletedLaps);
-        Assert.AreEqual<uint>(540127, c.ElaspedTimeMs);
+        Assert.AreEqual<uint>(540127, c.ElapsedTimeMs);
         Assert.AreEqual<uint>(117635, c.LastLapTimeMs);
         Assert.AreEqual("T", c.LapStatus);
         Assert.AreEqual<uint>(117635, c.FastestLapTimeMs);

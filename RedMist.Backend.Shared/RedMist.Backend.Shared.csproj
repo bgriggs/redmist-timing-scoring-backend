@@ -15,7 +15,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="StackExchange.Redis" Version="2.8.41" />
+		<PackageReference Include="StackExchange.Redis" Version="2.9.11" />
 		<PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
 	</ItemGroup>
 

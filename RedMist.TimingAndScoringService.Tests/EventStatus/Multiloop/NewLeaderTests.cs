@@ -15,7 +15,7 @@ public class NewLeaderTests
         Assert.AreEqual("01", n.Number);
         Assert.AreEqual<uint>(18077, n.UniqueIdentifier);
         Assert.AreEqual(69, n.LapNumber);
-        Assert.AreEqual<uint>(5025123, n.ElaspedTimeMs);
+        Assert.AreEqual<uint>(5025123, n.ElapsedTimeMs);
         Assert.AreEqual(32, n.LeadChangeIndex);
     }
 }

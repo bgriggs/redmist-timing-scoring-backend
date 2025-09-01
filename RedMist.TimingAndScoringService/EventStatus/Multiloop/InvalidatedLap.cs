@@ -7,8 +7,8 @@ public partial class InvalidatedLap : Message
 {
     public partial string Number { get; private set; } = string.Empty;
     public partial uint UniqueIdentifier { get; private set; }
-    public partial uint ElaspedTimeMs { get; private set; }
-    public TimeSpan ElaspedTime => TimeSpan.FromMilliseconds(ElaspedTimeMs);
+    public partial uint ElapsedTimeMs { get; private set; }
+    public TimeSpan ElapsedTime => TimeSpan.FromMilliseconds(ElapsedTimeMs);
 
     public bool IsDirty { get; private set; }
 
@@ -37,8 +37,8 @@ public partial class InvalidatedLap : Message
         if (uint.TryParse(parts[5], NumberStyles.HexNumber, null, out var ui))
             UniqueIdentifier = ui;
 
-        // ElaspedTimeMs
+        // ElapsedTimeMs
         if (uint.TryParse(parts[6], NumberStyles.HexNumber, null, out var et))
-            ElaspedTimeMs = et;
+            ElapsedTimeMs = et;
     }
 }

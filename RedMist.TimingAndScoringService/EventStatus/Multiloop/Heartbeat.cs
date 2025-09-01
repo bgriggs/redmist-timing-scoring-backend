@@ -24,10 +24,10 @@ public partial class Heartbeat : Message
     public DateTime TimeDate => epoch.AddSeconds(TimeDateSec);
 
     /// <summary>
-    /// Elasped time in milliseconds.
+    /// Elapsed time in milliseconds.
     /// </summary>
-    public uint ElaspedTimeMs { get; private set; }
-    public TimeSpan ElaspedTime => TimeSpan.FromMilliseconds(ElaspedTimeMs);
+    public uint ElapsedTimeMs { get; private set; }
+    public TimeSpan ElapsedTime => TimeSpan.FromMilliseconds(ElapsedTimeMs);
 
     public partial int LapsToGo { get; private set; }
 
@@ -62,7 +62,7 @@ public partial class Heartbeat : Message
         if (uint.TryParse(parts[5], NumberStyles.HexNumber, null, out var td))
             TimeDateSec = td;
         if (uint.TryParse(parts[6], NumberStyles.HexNumber, null, out var et))
-            ElaspedTimeMs = et;
+            ElapsedTimeMs = et;
         if (int.TryParse(parts[7], out var ltg))
             LapsToGo = ltg;
         if (uint.TryParse(parts[8], NumberStyles.HexNumber, null, out var ttg))

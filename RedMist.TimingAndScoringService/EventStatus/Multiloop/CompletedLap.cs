@@ -10,8 +10,8 @@ public partial class CompletedLap : Message
     public partial string Number { get; private set; } = string.Empty;
     public partial uint UniqueIdentifier { get; private set; }
     public partial ushort CompletedLaps { get; private set; }
-    public partial uint ElaspedTimeMs { get; private set; }
-    public TimeSpan ElaspedTime => TimeSpan.FromMilliseconds(ElaspedTimeMs);
+    public partial uint ElapsedTimeMs { get; private set; }
+    public TimeSpan ElapsedTime => TimeSpan.FromMilliseconds(ElapsedTimeMs);
     public partial uint LastLapTimeMs { get; private set; }
     public TimeSpan LastLapTime => TimeSpan.FromMilliseconds(LastLapTimeMs);
     public partial string LapStatus { get; private set; } = string.Empty;
@@ -71,9 +71,9 @@ public partial class CompletedLap : Message
         if (ushort.TryParse(parts[7], NumberStyles.HexNumber, null, out var cl))
             CompletedLaps = cl;
 
-        // ElaspedTimeMs
+        // ElapsedTimeMs
         if (uint.TryParse(parts[8], NumberStyles.HexNumber, null, out var et))
-            ElaspedTimeMs = et;
+            ElapsedTimeMs = et;
 
         // LastLapTimeMs
         if (uint.TryParse(parts[9], NumberStyles.HexNumber, null, out var llt))

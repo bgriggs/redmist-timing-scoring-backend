@@ -19,7 +19,7 @@ public class InvalidatedLapTests
 
         Assert.AreEqual("31", i.Number);
         Assert.AreEqual<uint>(983130, i.UniqueIdentifier);
-        Assert.AreEqual<uint>(2126, i.ElaspedTimeMs);
+        Assert.AreEqual<uint>(2126, i.ElapsedTimeMs);
     }
 
     [TestMethod]
@@ -31,6 +31,6 @@ public class InvalidatedLapTests
 
         Assert.AreEqual("??", i.Number);
         Assert.AreEqual<uint>(983130, i.UniqueIdentifier);
-        Assert.AreEqual<uint>(0, i.ElaspedTimeMs);
+        Assert.AreEqual<uint>(0, i.ElapsedTimeMs);
     }
 }

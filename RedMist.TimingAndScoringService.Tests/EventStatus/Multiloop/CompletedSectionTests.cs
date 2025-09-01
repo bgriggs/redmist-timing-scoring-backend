@@ -15,7 +15,7 @@ public class CompletedSectionTests
         Assert.AreEqual("99", s.Number);
         Assert.AreEqual<uint>(979735, s.UniqueIdentifier);
         Assert.AreEqual("S1", s.SectionIdentifier);
-        Assert.AreEqual<uint>(48184334, s.ElaspedTimeMs);
+        Assert.AreEqual<uint>(48184334, s.ElapsedTimeMs);
         Assert.AreEqual<uint>(31751, s.LastSectionTimeMs);
         Assert.AreEqual(5, s.LastLap);
     }

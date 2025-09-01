@@ -8,8 +8,8 @@ public partial class CompletedSection : Message
     public partial string Number { get; private set; } = string.Empty;
     public partial uint UniqueIdentifier { get; private set; }
     public partial string SectionIdentifier { get; private set; } = string.Empty;
-    public partial uint ElaspedTimeMs { get; private set; }
-    public TimeSpan ElaspedTime => TimeSpan.FromMilliseconds(ElaspedTimeMs);
+    public partial uint ElapsedTimeMs { get; private set; }
+    public TimeSpan ElapsedTime => TimeSpan.FromMilliseconds(ElapsedTimeMs);
     public partial uint LastSectionTimeMs { get; private set; }
     public TimeSpan LastSectionTime => TimeSpan.FromMilliseconds(LastSectionTimeMs);
     public partial ushort LastLap { get; private set; }
@@ -43,9 +43,9 @@ public partial class CompletedSection : Message
         // SectionIdentifier
         SectionIdentifier = parts[6].Trim();
 
-        // ElaspedTimeMs
+        // ElapsedTimeMs
         if (uint.TryParse(parts[7], NumberStyles.HexNumber, null, out var et))
-            ElaspedTimeMs = et;
+            ElapsedTimeMs = et;
 
         // LastSectionTimeMs
         if (uint.TryParse(parts[8], NumberStyles.HexNumber, null, out var lst))

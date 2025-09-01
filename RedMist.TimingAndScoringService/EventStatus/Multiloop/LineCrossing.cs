@@ -10,14 +10,14 @@ public partial class LineCrossing : Message
     public partial uint UniqueIdentifier { get; private set; }
     public partial string TimeLine { get; private set; } = string.Empty;
     public partial string SourceStr { get; private set; } = string.Empty;
-    public LineCorssingSource Source => SourceStr switch
+    public LineCrossingSource Source => SourceStr switch
     {
-        "A" => LineCorssingSource.Antenna,
-        "M" => LineCorssingSource.Manual,
-        _ => LineCorssingSource.Photocell,
+        "A" => LineCrossingSource.Antenna,
+        "M" => LineCrossingSource.Manual,
+        _ => LineCrossingSource.Photocell,
     };
-    public partial uint ElaspedTimeMs { get; private set; }
-    public TimeSpan ElaspedTime => TimeSpan.FromMilliseconds(ElaspedTimeMs);
+    public partial uint ElapsedTimeMs { get; private set; }
+    public TimeSpan ElapsedTime => TimeSpan.FromMilliseconds(ElapsedTimeMs);
     public partial string TrackStatus { get; private set; } = string.Empty;
     public Flags Flag { get; private set; }
     public partial string CrossingStatusStr { get; private set; } = string.Empty;
@@ -60,9 +60,9 @@ public partial class LineCrossing : Message
         // SourceStr
         SourceStr = parts[7].Trim();
 
-        // ElaspedTimeMs
+        // ElapsedTimeMs
         if (uint.TryParse(parts[8], NumberStyles.HexNumber, null, out var et))
-            ElaspedTimeMs = et;
+            ElapsedTimeMs = et;
 
         // TrackStatus
         TrackStatus = parts[9].Trim();

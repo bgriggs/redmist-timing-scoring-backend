@@ -1,6 +1,6 @@
 ﻿namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
-public enum LineCorssingSource
+public enum LineCrossingSource
 {
     /// <summary>
     /// A
