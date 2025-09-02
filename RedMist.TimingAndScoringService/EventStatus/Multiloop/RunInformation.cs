@@ -31,12 +31,11 @@ public partial class RunInformation : Message
 
     public RunInformation()
     {
-        PropertyChanged += (sender, args) =>
-        {
-            IsDirty = true;
-        };
+        PropertyChanged += (sender, args) => IsDirty = true;
     }
 
+
+    public void ResetDirty() => IsDirty = false;
 
     /// <summary>
     /// 

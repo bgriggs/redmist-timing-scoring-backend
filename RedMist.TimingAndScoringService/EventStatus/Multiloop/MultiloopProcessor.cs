@@ -172,6 +172,11 @@ public class MultiloopProcessor
         else if (data.StartsWith("$R"))
         {
             RunInformation.ProcessR(data);
+            if (RunInformation.IsDirty)
+            {
+                changes.Add(new PracticeQualifyingStateUpdate(RunInformation));
+                RunInformation.ResetDirty();
+            }
         }
         else if (data.StartsWith("$T"))
         {

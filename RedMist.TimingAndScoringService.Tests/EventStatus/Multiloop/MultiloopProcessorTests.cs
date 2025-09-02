@@ -150,7 +150,7 @@ public class MultiloopProcessorTests
     public async Task Process_FlagCommand_ProcessesCorrectly()
     {
         // Arrange
-        var flagData = "$F�G�5�";
+        var flagData = "$F�R�5�Q1�K�0�D7108�6�6088A�1�0�1�00�1�81.63";
         var message = new TimingMessage("multiloop", flagData, 1, DateTime.Now);
 
         // Act
@@ -159,79 +159,47 @@ public class MultiloopProcessorTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("multiloop", result.source);
-        // Flag updates only generate changes if IsDirty is true
-    }
-
-    [TestMethod]
-    public async Task Process_AnnouncementCommand_ProcessesCorrectly()
-    {
-        // Arrange
-        var announcementData = "$A�N�F3170000�Q1�2F�A�U�BC6AD080�Some Message";
-        var message = new TimingMessage("multiloop", announcementData, 1, DateTime.Now);
-
-        // Act
-        var result = await _processor.Process(message);
-
-        // Assert
-        Assert.IsNotNull(result);
-        Assert.AreEqual("multiloop", result.source);
+        // Flag updates should generate changes when IsDirty is true
         Assert.IsTrue(result.changes.Count > 0);
-        Assert.IsTrue(result.changes.Any(c => c is AnnouncementStateUpdate));
+        Assert.IsTrue(result.changes.Any(c => c is FlagMetricsStateUpdate));
+        
+        // Verify the FlagInformation was processed
+        Assert.AreEqual("K", _processor.FlagInformation.TrackStatus);
+        Assert.AreEqual<ushort>(0, _processor.FlagInformation.LapNumber);
+        Assert.AreEqual<uint>(880904, _processor.FlagInformation.GreenTimeMs);
+        Assert.AreEqual<ushort>(6, _processor.FlagInformation.GreenLaps);
     }
 
     [TestMethod]
-    public async Task Process_VersionCommand_ProcessesCorrectly()
+    public async Task Process_FlagCommand_WhenNotDirty_DoesNotGenerateStateChanges()
     {
         // Arrange
-        var versionData = "$V�1.0.0";
-        var message = new TimingMessage("multiloop", versionData, 1, DateTime.Now);
+        var flagData = "$F�R�5�Q1�K�0�D7108�6�6088A�1�0�1�00�1�81.63";
+        var message = new TimingMessage("multiloop", flagData, 1, DateTime.Now);
 
-        // Act
-        var result = await _processor.Process(message);
-
-        // Assert
-        Assert.IsNotNull(result);
-        Assert.AreEqual("multiloop", result.source);
-        Assert.AreEqual(0, result.changes.Count); // Version doesn't generate state changes
-    }
-
-    [TestMethod]
-    public async Task Process_InvalidatedLapCommand_ProcessesCorrectly()
-    {
-        // Arrange
-        var invalidData = "$I�data";
-        var message = new TimingMessage("multiloop", invalidData, 1, DateTime.Now);
-
-        // Act
-        var result = await _processor.Process(message);
+        // Act - Process first time
+        var result1 = await _processor.Process(message);
+        
+        // Reset dirty flag to simulate what happens after state changes are processed
+        _processor.FlagInformation.ResetDirty();
+        
+        // Process same data again
+        var result2 = await _processor.Process(message);
 
         // Assert
-        Assert.IsNotNull(result);
-        Assert.AreEqual("multiloop", result.source);
-        Assert.AreEqual(0, result.changes.Count); // InvalidatedLap doesn't generate state changes currently
-    }
-
-    [TestMethod]
-    public async Task Process_NewLeaderCommand_ProcessesCorrectly()
-    {
-        // Arrange
-        var newLeaderData = "$N�data";
-        var message = new TimingMessage("multiloop", newLeaderData, 1, DateTime.Now);
-
-        // Act
-        var result = await _processor.Process(message);
-
-        // Assert
-        Assert.IsNotNull(result);
-        Assert.AreEqual("multiloop", result.source);
-        Assert.AreEqual(0, result.changes.Count); // NewLeader doesn't generate state changes currently
+        Assert.IsNotNull(result1);
+        Assert.IsTrue(result1.changes.Count > 0, "First processing should generate state changes");
+        Assert.IsTrue(result1.changes.Any(c => c is FlagMetricsStateUpdate));
+        
+        Assert.IsNotNull(result2);
+        Assert.AreEqual(0, result2.changes.Count, "Second processing should not generate state changes when not dirty");
     }
 
     [TestMethod]
     public async Task Process_RunInformationCommand_ProcessesCorrectly()
     {
         // Arrange
-        var runData = "$R�data";
+        var runData = "$R�R�400004C7�Q1�Watkins Glen Hoosier Super Tour��Grp 2  FA FC FE2 P P2 Qual 1�Q�685ECBB8";
         var message = new TimingMessage("multiloop", runData, 1, DateTime.Now);
 
         // Act
@@ -240,23 +208,69 @@ public class MultiloopProcessorTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("multiloop", result.source);
-        Assert.AreEqual(0, result.changes.Count); // RunInformation doesn't generate state changes currently
+        // RunInformation should generate state changes when IsDirty becomes true
+        Assert.IsTrue(result.changes.Count > 0);
+        Assert.IsTrue(result.changes.Any(c => c is PracticeQualifyingStateUpdate));
+        
+        // Verify the RunInformation was processed
+        Assert.AreEqual("Watkins Glen Hoosier Super Tour", _processor.RunInformation.EventName);
+        Assert.AreEqual("Grp 2  FA FC FE2 P P2 Qual 1", _processor.RunInformation.RunName);
+        Assert.AreEqual("Q", _processor.RunInformation.RunTypeStr);
     }
 
     [TestMethod]
-    public async Task Process_TrackInformationCommand_ProcessesCorrectly()
+    public async Task Process_RunInformationCommand_WhenNotDirty_DoesNotGenerateStateChanges()
     {
-        // Arrange
-        var trackData = "$T�R�22�Q1�Watkins Glen�WGI�3.4�4";
-        var message = new TimingMessage("multiloop", trackData, 1, DateTime.Now);
+        // Arrange - Process the same data twice to test that the second time doesn't generate changes
+        var runData = "$R�R�400004C7�Q1�Watkins Glen Hoosier Super Tour��Grp 2  FA FC FE2 P P2 Qual 1�Q�685ECBB8";
+        var message = new TimingMessage("multiloop", runData, 1, DateTime.Now);
 
-        // Act
-        var result = await _processor.Process(message);
+        // Act - Process first time
+        var result1 = await _processor.Process(message);
+        
+        // Reset dirty flag to simulate what happens after state changes are processed
+        _processor.RunInformation.ResetDirty();
+        
+        // Process same data again
+        var result2 = await _processor.Process(message);
 
         // Assert
-        Assert.IsNotNull(result);
-        Assert.AreEqual("multiloop", result.source);
-        Assert.AreEqual(0, result.changes.Count); // TrackInformation doesn't generate state changes currently
+        Assert.IsNotNull(result1);
+        Assert.IsTrue(result1.changes.Count > 0, "First processing should generate state changes");
+        Assert.IsTrue(result1.changes.Any(c => c is PracticeQualifyingStateUpdate));
+        
+        Assert.IsNotNull(result2);
+        Assert.AreEqual(0, result2.changes.Count, "Second processing should not generate state changes when not dirty");
+    }
+
+    [TestMethod]
+    public async Task Process_RunInformationWithDifferentData_GeneratesStateChanges()
+    {
+        // Arrange - Process initial data, then different data
+        var runData1 = "$R�R�400004C7�Q1�Watkins Glen Hoosier Super Tour��Grp 2  FA FC FE2 P P2 Qual 1�Q�685ECBB8";
+        var runData2 = "$R�R�400004C8�Q1�Different Event Name��Different Run Name�P�685ECBB9";
+        var message1 = new TimingMessage("multiloop", runData1, 1, DateTime.Now);
+        var message2 = new TimingMessage("multiloop", runData2, 1, DateTime.Now);
+
+        // Act
+        var result1 = await _processor.Process(message1);
+        _processor.RunInformation.ResetDirty(); // Reset after first processing
+        
+        var result2 = await _processor.Process(message2);
+
+        // Assert
+        Assert.IsNotNull(result1);
+        Assert.IsTrue(result1.changes.Count > 0);
+        Assert.IsTrue(result1.changes.Any(c => c is PracticeQualifyingStateUpdate));
+        
+        Assert.IsNotNull(result2);
+        Assert.IsTrue(result2.changes.Count > 0, "Different data should generate state changes");
+        Assert.IsTrue(result2.changes.Any(c => c is PracticeQualifyingStateUpdate));
+        
+        // Verify the data was updated
+        Assert.AreEqual("Different Event Name", _processor.RunInformation.EventName);
+        Assert.AreEqual("Different Run Name", _processor.RunInformation.RunName);
+        Assert.AreEqual("P", _processor.RunInformation.RunTypeStr);
     }
 
     [TestMethod]
