@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
+using System.Globalization;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
@@ -27,21 +28,29 @@ public partial class PracticeQualifying
 
     public PracticeQualifying()
     {
-        PropertyChanged += (sender, args) =>
-        {
-            IsDirty = true;
-        };
+        PropertyChanged += (sender, args) => IsDirty = true;
     }
 
     /// <summary>
     /// Processes $H messages.
     /// </summary>
     /// <example>$H,2,"1234BE",3,"00:02:17.872"</example>
-    public void ProcessH(string[] parts)
+    public ISessionStateChange? ProcessH(string[] parts)
     {
         Position = int.Parse(parts[1]);
         RegistrationNumber = parts[2].Replace("\"", "").Trim();
+
+        var lastBestLap = BestLap;
         BestLap = int.Parse(parts[3]);
+
+        var lastBestLapTime = BestLapTime;
         BestLapTime = parts[4].Replace("\"", "").Trim();
+
+        if (lastBestLap != BestLap || lastBestLapTime != BestLapTime)
+        {
+            return new CarBestLapStateUpdate(this);
+        }
+
+        return null;
     }
 }

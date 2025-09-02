@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
+using System.Globalization;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
@@ -8,7 +9,7 @@ public partial class PassingInformation
     [IgnoreReactive]
     public string RegistrationNumber { get; set; } = string.Empty;
     public partial string LapTime { get; set; } = string.Empty;
-    
+
     [IgnoreReactive]
     public DateTime LapTimestamp
     {
@@ -36,10 +37,7 @@ public partial class PassingInformation
 
     public PassingInformation()
     {
-        PropertyChanged += (sender, args) =>
-        {
-            IsDirty = true;
-        };
+        PropertyChanged += (sender, args) => IsDirty = true;
     }
 
 
@@ -47,10 +45,19 @@ public partial class PassingInformation
     /// Processes $J messages.
     /// </summary>
     /// <example>$J,"1234BE","00:02:03.826","01:42:17.672"</example>
-    public void ProcessJ(string[] parts)
+    public ISessionStateChange? ProcessJ(string[] parts)
     {
         RegistrationNumber = parts[1].Replace("\"", "").Trim();
+
+        var lastLapTime = LapTime;
         LapTime = parts[2].Replace("\"", "").Trim();
         RaceTime = parts[3].Replace("\"", "").Trim();
+
+        // Check for changed lap time, ignore race time as not warranting a direction update.
+        if (lastLapTime != LapTime)
+        {
+            return new CarLapTimeStateUpdate(this);
+        }
+        return null;
     }
 }

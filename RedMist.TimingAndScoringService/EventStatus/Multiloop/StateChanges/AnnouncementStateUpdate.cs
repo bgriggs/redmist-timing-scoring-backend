@@ -2,7 +2,7 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 
-public class AnnouncementStateUpdate(Dictionary<ushort, Announcement> announcements) : ISessionStateChange
+public record AnnouncementStateUpdate(Dictionary<ushort, Announcement> Announcements) : ISessionStateChange
 {
     private static readonly AnnouncementMapper mapper = new();
 
@@ -11,7 +11,7 @@ public class AnnouncementStateUpdate(Dictionary<ushort, Announcement> announceme
     public Task<bool> ApplyToState(SessionState state)
     {
         state.Announcements.Clear();
-        state.Announcements.AddRange(announcements.Values.Select(mapper.ToTimingCommonAnnouncement));
+        state.Announcements.AddRange(Announcements.Values.Select(mapper.ToTimingCommonAnnouncement));
         return Task.FromResult(true);
     }
 }

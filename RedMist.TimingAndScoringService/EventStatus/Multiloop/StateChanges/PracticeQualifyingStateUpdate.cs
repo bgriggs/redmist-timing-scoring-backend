@@ -2,14 +2,14 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 
-public class PracticeQualifyingStateUpdate(RunInformation runInformation) : ISessionStateChange
+public record PracticeQualifyingStateUpdate(RunInformation RunInformation) : ISessionStateChange
 {
     public List<string> Targets => [nameof(SessionState.IsPracticeQualifying)];
 
     public Task<bool> ApplyToState(SessionState state)
     {
-        state.IsPracticeQualifying = runInformation.RunType == 
-            RunType.Practice || runInformation.RunType == RunType.Qualifying || runInformation.RunType == RunType.SingleCarQualifying;
+        state.IsPracticeQualifying = RunInformation.RunType == 
+            RunType.Practice || RunInformation.RunType == RunType.Qualifying || RunInformation.RunType == RunType.SingleCarQualifying;
         return Task.FromResult(true);
     }
 }

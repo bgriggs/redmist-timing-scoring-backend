@@ -14,6 +14,7 @@ using StackExchange.Redis;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks.Dataflow;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
@@ -44,6 +45,9 @@ public class EventAggregator : BackgroundService
     private DateTime? lastFullStatusTimestamp;
     private string? lastFullStatusData;
     private DateTime? lastPayloadChangedTimestamp;
+
+    //private SessionStateProcessingPipeline sessionStateProcessorPipeline;
+    //private readonly SessionState sessionState;
 
 
     public EventAggregator(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
@@ -80,6 +84,14 @@ public class EventAggregator : BackgroundService
 
         // Publish reset event to get full set of data from the relay
         await mediator.Publish(new RelayResetRequest { EventId = eventId, ForceTimingDataReset = true }, stoppingToken);
+
+        // Subscribe to state changes for broadcasting
+        //var stateSubscriber = new ActionBlock<SessionState>(async state =>
+        //{
+        //    await BroadcastStateChange(state, stoppingToken);
+        //});
+        //sessionStateProcessorPipeline.Subscribe().LinkTo(stateSubscriber);
+
 
         // Start a task to read timing source data from this service's stream.
         // The SignalR hub is responsible for sending timing data to the stream.
@@ -180,6 +192,7 @@ public class EventAggregator : BackgroundService
             streamCheckLock.Release();
         }
     }
+
 
     #region Event Status Requests
 

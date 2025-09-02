@@ -12,10 +12,10 @@ using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using StackExchange.Redis;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus;
+namespace RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
 
 [TestClass]
-public class OrbitsDataProcessorTests
+public class RMonitorProcessorTests
 {
     private readonly DebugLoggerFactory lf = new();
 

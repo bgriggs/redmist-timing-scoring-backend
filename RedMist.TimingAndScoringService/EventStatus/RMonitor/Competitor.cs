@@ -19,10 +19,7 @@ public partial class Competitor
 
     public Competitor()
     {
-        PropertyChanged += (sender, args) =>
-        {
-            IsDirty = true;
-        };
+        PropertyChanged += (sender, args) => IsDirty = true;
     }
 
 

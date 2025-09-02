@@ -2,7 +2,7 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 
-public class PitStateUpdate(CompletedLap completedLap) : ISessionStateChange
+public record PitStateUpdate(CompletedLap CompletedLap) : ISessionStateChange
 {
     public List<string> Targets => 
     [
@@ -12,11 +12,11 @@ public class PitStateUpdate(CompletedLap completedLap) : ISessionStateChange
 
     public Task<bool> ApplyToState(SessionState state)
     {
-        var c = state.CarPositions.FirstOrDefault(c => c.Number == completedLap.Number);
+        var c = state.CarPositions.FirstOrDefault(c => c.Number == CompletedLap.Number);
         if (c != null)
         {
-            c.LastLapPitted = completedLap.LastLapPitted;
-            c.PitStopCount = completedLap.PitStopCount;
+            c.LastLapPitted = CompletedLap.LastLapPitted;
+            c.PitStopCount = CompletedLap.PitStopCount;
             return Task.FromResult(true);
         }
         return Task.FromResult(false);

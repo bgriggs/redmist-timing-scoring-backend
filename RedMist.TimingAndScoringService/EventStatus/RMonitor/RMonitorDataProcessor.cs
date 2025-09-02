@@ -42,7 +42,6 @@ public class RMonitorDataProcessor
     private readonly Dictionary<string, PassingInformation> passingInformation = [];
 
 
-    public MultiloopProcessor multiloopProcessor;
     public int SessionReference { get; set; }
     public string SessionName { get; set; } = string.Empty;
     public string TrackName { get; set; } = string.Empty;
@@ -78,7 +77,6 @@ public class RMonitorDataProcessor
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
         this.driverModeProcessor = driverModeProcessor;
-        multiloopProcessor = new MultiloopProcessor(loggerFactory); 
     }
 
 
@@ -91,11 +89,6 @@ public class RMonitorDataProcessor
         if (type == "rmonitor")
         {
             await ProcessResultMonitorAsync(data, stoppingToken);
-        }
-        // Multiloop Protocol
-        else if (type == "multiloop")
-        {
-            //await multiloopProcessor.Process(data, stoppingToken);
         }
         // X2 Passings
         else if (type == "x2pass")

@@ -2,7 +2,7 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 
-public class SectionStateUpdate(string carNumber, List<CompletedSection> multiloopCompletedSections) : ISessionStateChange
+public record SectionStateUpdate(string CarNumber, List<CompletedSection> MultiloopCompletedSections) : ISessionStateChange
 {
     private static readonly CompletedSectionMapper mapper = new();
     
@@ -10,11 +10,11 @@ public class SectionStateUpdate(string carNumber, List<CompletedSection> multilo
 
     public Task<bool> ApplyToState(SessionState state)
     {
-        var c = state.CarPositions.FirstOrDefault(c => c.Number == carNumber);
+        var c = state.CarPositions.FirstOrDefault(c => c.Number == CarNumber);
         if (c != null)
         {
             c.CompletedSections.Clear();
-            var timingCommonCompletedSections = multiloopCompletedSections.Select(mapper.ToTimingCommonCompletedSection).ToList();
+            var timingCommonCompletedSections = MultiloopCompletedSections.Select(mapper.ToTimingCommonCompletedSection).ToList();
             c.CompletedSections.AddRange(timingCommonCompletedSections);
             return Task.FromResult(true);
         }

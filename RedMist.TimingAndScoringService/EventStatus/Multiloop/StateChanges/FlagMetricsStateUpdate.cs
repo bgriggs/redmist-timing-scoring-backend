@@ -2,7 +2,7 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 
-public class FlagMetricsStateUpdate(FlagInformation flagInformation) : ISessionStateChange
+public record FlagMetricsStateUpdate(FlagInformation FlagInformation) : ISessionStateChange
 {
     public List<string> Targets =>
     [
@@ -18,14 +18,14 @@ public class FlagMetricsStateUpdate(FlagInformation flagInformation) : ISessionS
 
     public Task<bool> ApplyToState(SessionState state)
     {
-        state.GreenTimeMs = (int)flagInformation.GreenTime.TotalMilliseconds;
-        state.GreenLaps = flagInformation.GreenLaps;
-        state.YellowTimeMs = (int)flagInformation.YellowTime.TotalMilliseconds;
-        state.YellowLaps = flagInformation.YellowLaps;
-        state.NumberOfYellows = flagInformation.NumberOfYellows;
-        state.RedTimeMs = (int)flagInformation.RedTime.TotalMilliseconds;
-        state.AverageRaceSpeed = flagInformation.AverageRaceSpeedMph;
-        state.LeadChanges = flagInformation.LeadChanges;
+        state.GreenTimeMs = (int)FlagInformation.GreenTime.TotalMilliseconds;
+        state.GreenLaps = FlagInformation.GreenLaps;
+        state.YellowTimeMs = (int)FlagInformation.YellowTime.TotalMilliseconds;
+        state.YellowLaps = FlagInformation.YellowLaps;
+        state.NumberOfYellows = FlagInformation.NumberOfYellows;
+        state.RedTimeMs = (int)FlagInformation.RedTime.TotalMilliseconds;
+        state.AverageRaceSpeed = FlagInformation.AverageRaceSpeedMph;
+        state.LeadChanges = FlagInformation.LeadChanges;
         return Task.FromResult(true);
     }
 }
