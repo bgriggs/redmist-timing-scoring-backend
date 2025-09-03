@@ -9,6 +9,7 @@ using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
 using RedMist.ControlLogs;
 using RedMist.Database;
+using StackExchange.Redis;
 
 namespace RedMist.EventManagement;
 
@@ -68,10 +69,13 @@ public class Program
 
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
+
+        string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
+        builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 10; c.ConnectTimeout = 10; }));
+
         builder.Services.AddHealthChecks()
-            //.AddCheck<StartupHealthCheck>("Startup", tags: ["startup"])
             .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])
-            //.AddRedis(redisConn, tags: ["cache", "redis"])
+            .AddRedis(redisConn, tags: ["cache", "redis"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);
 
         builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();

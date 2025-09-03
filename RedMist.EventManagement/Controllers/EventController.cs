@@ -1,8 +1,10 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.TimingCommon.Models.Configuration;
+using StackExchange.Redis;
 using System.Security.Claims;
 
 namespace RedMist.EventManagement.Controllers;
@@ -13,14 +15,18 @@ namespace RedMist.EventManagement.Controllers;
 public class EventController : ControllerBase
 {
     private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly IConnectionMultiplexer cacheMux;
 
     private ILogger Logger { get; }
 
-    public EventController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
+
+    public EventController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IConnectionMultiplexer cacheMux)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
+        this.cacheMux = cacheMux;
     }
+
 
     [HttpGet]
     [ProducesResponseType<List<EventSummary>>(StatusCodes.Status200OK)]
@@ -64,6 +70,10 @@ public class EventController : ControllerBase
         newEvent.OrganizationId = org.Id;
         context.Events.Add(newEvent);
         await context.SaveChangesAsync();
+        
+        // Publish event configuration change notification
+        await PublishEventConfigurationChangedAsync(newEvent.Id);
+        
         return newEvent.Id;
     }
 
@@ -91,6 +101,9 @@ public class EventController : ControllerBase
             dbEvent.Broadcast = @event.Broadcast;
             dbEvent.LoopsMetadata = @event.LoopsMetadata;
             await context.SaveChangesAsync();
+            
+            // Publish event configuration change notification
+            await PublishEventConfigurationChangedAsync(@event.Id);
         }
     }
 
@@ -107,6 +120,9 @@ public class EventController : ControllerBase
         {
             await context.Database.ExecuteSqlRawAsync("UPDATE Events SET IsActive=0 WHERE OrganizationId=@p0", org.Id);
             await context.Database.ExecuteSqlRawAsync("UPDATE Events SET IsActive=1 WHERE ID=@p0", eventId);
+            
+            // Publish event configuration change notification
+            await PublishEventConfigurationChangedAsync(eventId);
         }
     }
 
@@ -124,6 +140,9 @@ public class EventController : ControllerBase
             dbEvent.IsDeleted = true;
             await context.SaveChangesAsync();
 
+            // Publish event configuration change notification
+            await PublishEventConfigurationChangedAsync(eventId);
+
             // If the deleted event was active, set the newest event as active
             if (dbEvent.IsActive)
             {
@@ -133,6 +152,45 @@ public class EventController : ControllerBase
                     Logger.LogDebug("Reassigning active event for organization {orgId} to event ID {newestEventId}", org.Id, newestEvent.Id);
                     await UpdateEventStatusActive(newestEvent.Id);
                 }
+            }
+        }
+    }
+
+    private async Task PublishEventConfigurationChangedAsync(int eventId)
+    {
+        const int maxRetries = 3;
+        var retryCount = 0;
+
+        while (retryCount < maxRetries)
+        {
+            try
+            {
+                var cache = cacheMux.GetDatabase();
+                var streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
+                var fieldName = $"event-changed-{eventId}-999999";
+                
+                await cache.StreamAddAsync(streamKey, fieldName, eventId.ToString());
+                Logger.LogDebug("Published event configuration change notification for event {EventId}", eventId);
+                return;
+            }
+            catch (RedisConnectionException ex)
+            {
+                retryCount++;
+                Logger.LogWarning("Redis connection issue publishing event configuration change for event {EventId}, attempt {AttemptNumber}/{MaxRetries}: {Exception}", 
+                    eventId, retryCount, maxRetries, ex.Message);
+                
+                if (retryCount >= maxRetries)
+                {
+                    Logger.LogError("Failed to publish event configuration change notification for event {EventId} after {MaxRetries} attempts", eventId, maxRetries);
+                    throw;
+                }
+                
+                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, retryCount))); // Exponential backoff
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error publishing event configuration change notification for event {EventId}", eventId);
+                throw;
             }
         }
     }

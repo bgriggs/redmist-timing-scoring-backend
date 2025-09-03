@@ -27,6 +27,7 @@ public class Consts
     public const string EVENT_PAYLOAD = "evt-{0}-payload";
     public const string IN_CAR_EVENT_SUB = "in-car-evt-{0}-car-{1}";
     public const string IN_CAR_DATA = "in-car-data-{0}-{1}";
+    public const string EVENT_CONFIGURATION_CHANGED = "event-configuration-changed";
 
     #region Metrics
     public const string CLIENT_CONNECTIONS_KEY = "total_client_connections";

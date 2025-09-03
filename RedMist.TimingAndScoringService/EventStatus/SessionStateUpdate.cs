@@ -1,3 +1,3 @@
 ﻿namespace RedMist.TimingAndScoringService.EventStatus;
 
-public record SessionStateUpdate(string source, List<ISessionStateChange> changes);
+public record SessionStateUpdate(string Source, List<ISessionStateChange> Changes);

@@ -12,6 +12,8 @@ using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
+using RedMist.TimingAndScoringService.EventStatus.RMonitor;
+using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
 
@@ -80,8 +82,11 @@ public class Program
         builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(100), LocalCacheExpiration = TimeSpan.FromDays(100) });
         builder.Services.AddSingleton<LapLogger>();
         builder.Services.AddSingleton<IDateTimeHelper, DateTimeHelper>();
-        builder.Services.AddSingleton<SessionState>();
+        builder.Services.AddSingleton<SessionContext>();
         builder.Services.AddSingleton<MultiloopProcessor>();
+        builder.Services.AddSingleton<RMonitorDataProcessorV2>();
+        builder.Services.AddSingleton<PitProcessorV2>();
+        
         builder.Services.AddHostedService<EventAggregator>();
         builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<Program>());
 

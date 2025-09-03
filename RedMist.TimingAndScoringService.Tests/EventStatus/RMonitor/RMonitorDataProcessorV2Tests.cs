@@ -30,31 +30,31 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessResultMonitorAsync_NonRMonitorMessage_ReturnsNull()
+    public async Task Process_NonRMonitorMessage_ReturnsNull()
     {
         // Arrange
         var message = new TimingMessage("other", "data", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(message, CancellationToken.None);
+        var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNull(result);
     }
 
     [TestMethod]
-    public async Task ProcessResultMonitorAsync_RMonitorMessage_ReturnsSessionStateUpdate()
+    public async Task Process_RMonitorMessage_ReturnsSessionStateUpdate()
     {
         // Arrange
         var message = new TimingMessage("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(message, CancellationToken.None);
+        var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual("rmonitor", result.source);
-        Assert.IsNotNull(result.changes);
+        Assert.AreEqual("rmonitor", result.Source);
+        Assert.IsNotNull(result.Changes);
     }
 
     #region Heartbeat Tests ($F)
@@ -66,12 +66,12 @@ public class RMonitorDataProcessorV2Tests
         var message = new TimingMessage("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(message, CancellationToken.None);
+        var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.changes.Count);
-        Assert.IsTrue(result.changes.Any(c => c is HeartbeatStateUpdate));
+        Assert.AreEqual(1, result.Changes.Count);
+        Assert.IsTrue(result.Changes.Any(c => c is HeartbeatStateUpdate));
         
         Assert.AreEqual(14, _processor.Heartbeat.LapsToGo);
         Assert.AreEqual("00:12:45", _processor.Heartbeat.TimeToGo);
@@ -92,11 +92,11 @@ public class RMonitorDataProcessorV2Tests
             "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(competitorMessage, CancellationToken.None);
+        var result = await _processor.Process(competitorMessage);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
     }
 
     [TestMethod]
@@ -107,11 +107,11 @@ public class RMonitorDataProcessorV2Tests
             "$COMP,\"1234BE\",\"12X\",5,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(competitorMessage, CancellationToken.None);
+        var result = await _processor.Process(competitorMessage);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
     }
 
     [TestMethod]
@@ -123,11 +123,11 @@ public class RMonitorDataProcessorV2Tests
         var message = new TimingMessage("rmonitor", multipleCompetitors, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(message, CancellationToken.None);
+        var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
     }
 
     #endregion
@@ -141,7 +141,7 @@ public class RMonitorDataProcessorV2Tests
         var sessionMessage = new TimingMessage("rmonitor", "$B,5,\"Friday free practice\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(sessionMessage, CancellationToken.None);
+        var result = await _processor.Process(sessionMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -162,11 +162,11 @@ public class RMonitorDataProcessorV2Tests
         var sessionMessage = new TimingMessage("rmonitor", "$B,5,\"Friday free practice\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(sessionMessage, CancellationToken.None);
+        var result = await _processor.Process(sessionMessage);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsFalse(result.changes.Any(c => c is SessionStateUpdated));
+        Assert.IsFalse(result.Changes.Any(c => c is SessionStateUpdated));
     }
 
     [TestMethod]
@@ -177,7 +177,7 @@ public class RMonitorDataProcessorV2Tests
         var sessionMessage = new TimingMessage("rmonitor", "$B,5,\"Friday free practice\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(sessionMessage, CancellationToken.None);
+        var result = await _processor.Process(sessionMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -198,11 +198,11 @@ public class RMonitorDataProcessorV2Tests
         var classMessage = new TimingMessage("rmonitor", "$C,5,\"Formula 300\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(classMessage, CancellationToken.None);
+        var result = await _processor.Process(classMessage);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
     }
 
     [TestMethod]
@@ -213,11 +213,11 @@ public class RMonitorDataProcessorV2Tests
         var message = new TimingMessage("rmonitor", multipleClasses, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(message, CancellationToken.None);
+        var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
     }
 
     #endregion
@@ -231,7 +231,7 @@ public class RMonitorDataProcessorV2Tests
         var trackMessage = new TimingMessage("rmonitor", "$E,\"TRACKNAME\",\"Indianapolis Motor Speedway\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(trackMessage, CancellationToken.None);
+        var result = await _processor.Process(trackMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -245,7 +245,7 @@ public class RMonitorDataProcessorV2Tests
         var trackMessage = new TimingMessage("rmonitor", "$E,\"TRACKLENGTH\",\"2.500\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(trackMessage, CancellationToken.None);
+        var result = await _processor.Process(trackMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -259,7 +259,7 @@ public class RMonitorDataProcessorV2Tests
         var trackMessage = new TimingMessage("rmonitor", "$E,\"UNKNOWN\",\"Some Value\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(trackMessage, CancellationToken.None);
+        var result = await _processor.Process(trackMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -278,7 +278,7 @@ public class RMonitorDataProcessorV2Tests
         var raceMessage = new TimingMessage("rmonitor", "$G,3,\"1234BE\",14,\"01:12:47.872\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(raceMessage, CancellationToken.None);
+        var result = await _processor.Process(raceMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -293,7 +293,7 @@ public class RMonitorDataProcessorV2Tests
         var raceMessage = new TimingMessage("rmonitor", "$G,10,\"89\",,\"00:00:00.000\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(raceMessage, CancellationToken.None);
+        var result = await _processor.Process(raceMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -311,7 +311,7 @@ public class RMonitorDataProcessorV2Tests
         var practiceMessage = new TimingMessage("rmonitor", "$H,2,\"1234BE\",3,\"00:02:17.872\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(practiceMessage, CancellationToken.None);
+        var result = await _processor.Process(practiceMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -331,7 +331,7 @@ public class RMonitorDataProcessorV2Tests
             "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5\n" +
             "$G,3,\"1234BE\",14,\"01:12:47.872\"\n" +
             "$H,2,\"1234BE\",3,\"00:02:17.872\"", 1, DateTime.Now);
-        await _processor.ProcessResultMonitorAsync(setupMessage, CancellationToken.None);
+        await _processor.Process(setupMessage);
 
         // Set heartbeat to unknown to trigger full reset
         _processor.Heartbeat.FlagStatus = "Unknown";
@@ -339,7 +339,7 @@ public class RMonitorDataProcessorV2Tests
         var initMessage = new TimingMessage("rmonitor", "$I,\"16:36:08.000\",\"12 jan 01\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(initMessage, CancellationToken.None);
+        var result = await _processor.Process(initMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -354,12 +354,12 @@ public class RMonitorDataProcessorV2Tests
         var setupMessage = new TimingMessage("rmonitor", 
             "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5\n" +
             "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
-        await _processor.ProcessResultMonitorAsync(setupMessage, CancellationToken.None);
+        await _processor.Process(setupMessage);
 
         var initMessage = new TimingMessage("rmonitor", "$I,\"16:36:08.000\",\"12 jan 01\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(initMessage, CancellationToken.None);
+        var result = await _processor.Process(initMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -377,7 +377,7 @@ public class RMonitorDataProcessorV2Tests
         var passingMessage = new TimingMessage("rmonitor", "$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(passingMessage, CancellationToken.None);
+        var result = await _processor.Process(passingMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -396,7 +396,7 @@ public class RMonitorDataProcessorV2Tests
         var corMessage = new TimingMessage("rmonitor", "$COR,\"123BE\",\"658\",2,\"00:00:35.272\",\"+00:00:00.012\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(corMessage, CancellationToken.None);
+        var result = await _processor.Process(corMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -408,13 +408,13 @@ public class RMonitorDataProcessorV2Tests
     #region Error Handling Tests
 
     [TestMethod]
-    public async Task ProcessResultMonitorAsync_ExceptionInCommand_LogsError()
+    public async Task Process_ExceptionInCommand_LogsError()
     {
         // Arrange - Create a malformed command that will cause parsing errors
         var malformedMessage = new TimingMessage("rmonitor", "$B,invalid", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(malformedMessage, CancellationToken.None);
+        var result = await _processor.Process(malformedMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -422,13 +422,13 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessResultMonitorAsync_UnknownCommand_LogsWarning()
+    public async Task Process_UnknownCommand_LogsWarning()
     {
         // Arrange
         var unknownMessage = new TimingMessage("rmonitor", "$UNKNOWN,data", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(unknownMessage, CancellationToken.None);
+        var result = await _processor.Process(unknownMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -440,14 +440,14 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessResultMonitorAsync_MultipleUnknownCommands_LogsWarnings()
+    public async Task Process_MultipleUnknownCommands_LogsWarnings()
     {
         // Arrange
         var unknownCommands = "$UNKNOWN1,data1\n$UNKNOWN2,data2\n$UNKNOWN3,data3";
         var message = new TimingMessage("rmonitor", unknownCommands, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(message, CancellationToken.None);
+        var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -455,31 +455,31 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessResultMonitorAsync_EmptyData_HandlesGracefully()
+    public async Task Process_EmptyData_HandlesGracefully()
     {
         // Arrange
         var emptyMessage = new TimingMessage("rmonitor", "", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(emptyMessage, CancellationToken.None);
+        var result = await _processor.Process(emptyMessage);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.changes.Count);
+        Assert.AreEqual(0, result.Changes.Count);
     }
 
     [TestMethod]
-    public async Task ProcessResultMonitorAsync_WhitespaceOnlyData_HandlesGracefully()
+    public async Task Process_WhitespaceOnlyData_HandlesGracefully()
     {
         // Arrange
         var whitespaceMessage = new TimingMessage("rmonitor", "   \n  \t  ", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(whitespaceMessage, CancellationToken.None);
+        var result = await _processor.Process(whitespaceMessage);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.changes.Count);
+        Assert.AreEqual(0, result.Changes.Count);
     }
 
     #endregion
@@ -487,7 +487,7 @@ public class RMonitorDataProcessorV2Tests
     #region Multiple Commands Tests
 
     [TestMethod]
-    public async Task ProcessResultMonitorAsync_MultipleCommands_ProcessesAllCorrectly()
+    public async Task Process_MultipleCommands_ProcessesAllCorrectly()
     {
         // Arrange
         var multipleCommands = "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"\n" +
@@ -497,14 +497,14 @@ public class RMonitorDataProcessorV2Tests
         var message = new TimingMessage("rmonitor", multipleCommands, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(message, CancellationToken.None);
+        var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.changes.Count > 0);
-        Assert.IsTrue(result.changes.Any(c => c is HeartbeatStateUpdate));
+        Assert.IsTrue(result.Changes.Count > 0);
+        Assert.IsTrue(result.Changes.Any(c => c is HeartbeatStateUpdate));
         // Note: SessionStateUpdated may not be generated due to ProcessB being called twice
-        Assert.IsTrue(result.changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
         
         // Verify properties are set correctly
         Assert.AreEqual(5, _processor.SessionReference);
@@ -516,7 +516,7 @@ public class RMonitorDataProcessorV2Tests
     #region Concurrency Tests
 
     [TestMethod]
-    public async Task ProcessResultMonitorAsync_ConcurrentAccess_IsSafe()
+    public async Task Process_ConcurrentAccess_IsSafe()
     {
         // Arrange
         var message = new TimingMessage("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
@@ -525,14 +525,14 @@ public class RMonitorDataProcessorV2Tests
         // Act
         for (int i = 0; i < 10; i++)
         {
-            tasks.Add(_processor.ProcessResultMonitorAsync(message, CancellationToken.None));
+            tasks.Add(_processor.Process(message));
         }
 
         var results = await Task.WhenAll(tasks);
 
         // Assert
         Assert.IsTrue(results.All(r => r is not null));
-        Assert.IsTrue(results.All(r => r!.source == "rmonitor"));
+        Assert.IsTrue(results.All(r => r!.Source == "rmonitor"));
     }
 
     #endregion
@@ -555,7 +555,7 @@ public class RMonitorDataProcessorV2Tests
     #region Integration Tests
 
     [TestMethod]
-    public async Task ProcessResultMonitorAsync_CompleteRaceScenario_ProcessesCorrectly()
+    public async Task Process_CompleteRaceScenario_ProcessesCorrectly()
     {
         // Arrange - Simulate a complete race data scenario
         var raceScenario = 
@@ -588,11 +588,11 @@ public class RMonitorDataProcessorV2Tests
         var message = new TimingMessage("rmonitor", raceScenario, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.ProcessResultMonitorAsync(message, CancellationToken.None);
+        var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.changes.Count > 0);
+        Assert.IsTrue(result.Changes.Count > 0);
         
         // Verify session data
         Assert.AreEqual(1, _processor.SessionReference);
@@ -605,8 +605,8 @@ public class RMonitorDataProcessorV2Tests
         Assert.AreEqual("Green", _processor.Heartbeat.FlagStatus);
         
         // Verify we have expected state change types (accounting for ProcessB bug)
-        Assert.IsTrue(result.changes.Any(c => c is HeartbeatStateUpdate));
-        Assert.IsTrue(result.changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.Changes.Any(c => c is HeartbeatStateUpdate));
+        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
         
         // Note: SessionStateUpdated may not be present due to ProcessB being called twice
         // but the properties should be set correctly
@@ -663,7 +663,7 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task Debug_ProcessResultMonitorAsync_CheckCommandProcessing()
+    public async Task Debug_Process_CheckCommandProcessing()
     {
         // Arrange
         var logCalls = new List<string>();
@@ -694,7 +694,7 @@ public class RMonitorDataProcessorV2Tests
             var message = new TimingMessage("rmonitor", command, 1, DateTime.Now);
 
             // Act
-            var result = await _processor.ProcessResultMonitorAsync(message, CancellationToken.None);
+            var result = await _processor.Process(message);
 
             // Assert
             Assert.IsNotNull(result);

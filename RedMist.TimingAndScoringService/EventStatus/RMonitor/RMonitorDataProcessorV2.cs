@@ -32,14 +32,14 @@ public class RMonitorDataProcessorV2
     }
 
 
-    public async Task<SessionStateUpdate?> ProcessResultMonitorAsync(TimingMessage message, CancellationToken stoppingToken)
+    public async Task<SessionStateUpdate?> Process(TimingMessage message)
     {
         if (message.Type != "rmonitor")
             return null;
 
         var changes = new List<ISessionStateChange>();
 
-        await _lock.WaitAsync(stoppingToken);
+        await _lock.WaitAsync();
         try
         {
             bool competitorChanged = false;

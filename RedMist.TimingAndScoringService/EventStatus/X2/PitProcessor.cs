@@ -197,7 +197,7 @@ public class PitProcessor
 
     public void UpdateCarPositionForLogging(CarPosition carPosition)
     {
-        if (carPosition.Number != null && !carLapsWithPitStops.TryGetValue(carPosition.Number, out var laps) && laps != null)
+        if (carPosition.Number != null && carLapsWithPitStops.TryGetValue(carPosition.Number, out var laps) && laps != null)
         {
             carPosition.LapIncludedPit = laps.Contains(carPosition.LastLapCompleted);
         }

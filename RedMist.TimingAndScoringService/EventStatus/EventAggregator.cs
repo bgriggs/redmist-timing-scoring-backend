@@ -46,12 +46,15 @@ public class EventAggregator : BackgroundService
     private string? lastFullStatusData;
     private DateTime? lastPayloadChangedTimestamp;
 
-    //private SessionStateProcessingPipeline sessionStateProcessorPipeline;
+    private SessionStateProcessingPipeline processingPipeline;
+    private readonly PitProcessorV2 pitProcessorV2;
+    private IDisposable? pipelineSubscription;
     //private readonly SessionState sessionState;
 
 
     public EventAggregator(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IMediator mediator, HybridCache hcache, IDbContextFactory<TsContext> tsContext, IHubContext<StatusHub> hubContext)
+        IMediator mediator, HybridCache hcache, IDbContextFactory<TsContext> tsContext, IHubContext<StatusHub> hubContext,
+        SessionStateProcessingPipeline processingPipeline, PitProcessorV2 pitProcessorV2)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.loggerFactory = loggerFactory;
@@ -60,6 +63,8 @@ public class EventAggregator : BackgroundService
         this.hcache = hcache;
         this.tsContext = tsContext;
         this.hubContext = hubContext;
+        this.processingPipeline = processingPipeline;
+        this.pitProcessorV2 = pitProcessorV2;
         eventId = configuration.GetValue("event_id", 0);
         streamKey = string.Format(Backend.Shared.Consts.EVENT_STATUS_STREAM_KEY, eventId);
         cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
@@ -79,19 +84,21 @@ public class EventAggregator : BackgroundService
         await EnsureStream();
         await EnsureCacheSubscriptions(stoppingToken);
 
+        // Initialize PitProcessorV2 with the current event
+        await pitProcessorV2.Initialize(eventId);
+
+        // Subscribe to state changes from the processing pipeline
+        var stateSubscriber = new ActionBlock<SessionState>(async state =>
+        {
+            await BroadcastStateChange(state, stoppingToken);
+        });
+        pipelineSubscription = processingPipeline.Subscribe(stateSubscriber);
+
         // Start a task to send a full update every so often
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
 
         // Publish reset event to get full set of data from the relay
         await mediator.Publish(new RelayResetRequest { EventId = eventId, ForceTimingDataReset = true }, stoppingToken);
-
-        // Subscribe to state changes for broadcasting
-        //var stateSubscriber = new ActionBlock<SessionState>(async state =>
-        //{
-        //    await BroadcastStateChange(state, stoppingToken);
-        //});
-        //sessionStateProcessorPipeline.Subscribe().LinkTo(stateSubscriber);
-
 
         // Start a task to read timing source data from this service's stream.
         // The SignalR hub is responsible for sending timing data to the stream.
@@ -121,7 +128,17 @@ public class EventAggregator : BackgroundService
                         var sessionId = int.Parse(tags[2]);
                         var data = field.Value.ToString();
 
-                        // Process the update
+                        // Create timing message and send to processing pipeline
+                        var timingMessage = new TimingMessage(type, data, sessionId, DateTime.UtcNow);
+                        
+                        // Post message to the new processing pipeline
+                        if (!processingPipeline.Post(timingMessage))
+                        {
+                            Logger.LogWarning("Failed to post timing message to processing pipeline: {type}", type);
+                        }
+
+                        // Process the update using legacy processor for backward compatibility
+                        // This can be removed once the TPL pipeline is fully tested and validated
                         await dataProcessor.ProcessUpdate(type, data, sessionId, stoppingToken);
                     }
 
@@ -137,6 +154,38 @@ public class EventAggregator : BackgroundService
                 await EnsureCacheSubscriptions(stoppingToken);
             }
         }
+    }
+
+    private async Task BroadcastStateChange(SessionState state, CancellationToken stoppingToken)
+    {
+        try
+        {
+            Logger.LogTrace("Broadcasting state change from processing pipeline");
+            
+            // Convert SessionState to appropriate format for broadcasting
+            // This would need to be implemented based on how SessionState relates to existing payload structure
+            // For now, we'll continue using the existing dataProcessor for payload generation
+            
+            // You may want to implement a method to convert SessionState to the required broadcast format
+            // or modify the existing payload generation to work with SessionState
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error broadcasting state change");
+        }
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        Logger.LogInformation("Event Aggregator stopping...");
+        
+        // Dispose of pipeline subscription
+        pipelineSubscription?.Dispose();
+        
+        // Complete the processing pipeline
+        await processingPipeline.CompleteAsync();
+        
+        await base.StopAsync(cancellationToken);
     }
 
     private async Task EnsureCacheSubscriptions(CancellationToken stoppingToken = default)

@@ -11,6 +11,7 @@ public class MultiloopProcessor
 {
     private ILogger Logger { get; }
     private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly SessionContext context;
 
     public Heartbeat Heartbeat { get; } = new Heartbeat();
     public Dictionary<string, Entry> Entries { get; } = [];
@@ -28,21 +29,23 @@ public class MultiloopProcessor
     public Version Version { get; } = new Version();
 
 
-    public MultiloopProcessor(ILoggerFactory loggerFactory)
+    public MultiloopProcessor(ILoggerFactory loggerFactory, SessionContext context)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
+        this.context = context;
     }
 
 
-    public async Task<SessionStateUpdate?> Process(TimingMessage message, CancellationToken stoppingToken = default)
+    public async Task<SessionStateUpdate?> Process(TimingMessage message)
     {
         if (message.Type != "multiloop")
             return null;
 
         var changes = new List<ISessionStateChange>();
-        
+        context.IsMultiloopActive = true;
+
         var commands = message.Data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        await _lock.WaitAsync(stoppingToken);
+        await _lock.WaitAsync();
         try
         {
             foreach (var command in commands)
