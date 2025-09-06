@@ -4,16 +4,17 @@ namespace RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 
 public record SessionStateUpdated(int SessionId, string SessionName) : ISessionStateChange
 {
-    public List<string> Targets => 
-    [
-        nameof(SessionState.SessionId),
-        nameof(SessionState.SessionName)
-    ];
-
-    public Task<bool> ApplyToState(SessionState state)
+    public SessionStatePatch? GetChanges(SessionState state)
     {
-        state.SessionId = SessionId;
-        state.SessionName = SessionName;
-        return Task.FromResult(true);
+        if (state.SessionId == SessionId && state.SessionName == SessionName)
+        {
+            return null;
+        }
+
+        return new SessionStatePatch
+        {
+            SessionId = SessionId,
+            SessionName = SessionName
+        };
     }
 }

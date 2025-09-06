@@ -2,23 +2,17 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 
-public record CarBestLapStateUpdate(PracticeQualifying PracticeQualifying) : ISessionStateChange
+public record CarBestLapStateUpdate(PracticeQualifying PracticeQualifying) : ICarStateChange
 {
-    public List<string> Targets => 
-    [
-        nameof(CarPosition.BestLap),
-        nameof(CarPosition.BestTime)
-    ];
-
-    public Task<bool> ApplyToState(SessionState state)
+    public CarPositionPatch? GetChanges(CarPosition state)
     {
-        var c = state.CarPositions.FirstOrDefault(cp => cp.Number == PracticeQualifying.RegistrationNumber);
-        if (c != null)
-        {
-            c.BestLap = PracticeQualifying.BestLap;
-            c.BestTime = PracticeQualifying.BestLapTime;
-            return Task.FromResult(true);
-        }
-        return Task.FromResult(false);
+        var patch = new CarPositionPatch();
+
+        if (state.BestLap != PracticeQualifying.BestLap)
+            patch.BestLap = PracticeQualifying.BestLap;
+        if (state.BestTime != PracticeQualifying.BestLapTime)
+            patch.BestTime = PracticeQualifying.BestLapTime;
+
+        return patch;
     }
 }

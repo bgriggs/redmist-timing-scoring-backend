@@ -29,7 +29,7 @@ public class CompletedLap : Message
     public TimeSpan OverallBestLapTime => TimeSpan.FromMilliseconds(OverallBestLapTimeMs);
     public string CurrentStatus { get; private set; } = string.Empty;
     public string TrackStatus { get; private set; } = string.Empty;
-    public Flags Flag { get; private set; }
+    public TimingCommon.Models.Flags Flag { get; private set; }
     public ushort PitStopCount { get; private set; }
     public ushort LastLapPitted { get; private set; }
     public ushort StartPosition { get; private set; }
@@ -51,10 +51,10 @@ public class CompletedLap : Message
     /// 
     /// </summary>
     /// <example>$C�U�80004�Q1�C�0�8�4�83DDF�1CB83�T�1CB83�4�2E6A�0�649�0�C�1CB83�Unknown�G�1�0�9�0</example>
-    public List<ISessionStateChange> ProcessC(string data)
+    public List<ICarStateChange> ProcessC(string data)
     {
         var parts = ProcessHeader(data);
-        var changes = new List<ISessionStateChange>();
+        var changes = new List<ICarStateChange>();
 
         // Rank
         if (ushort.TryParse(parts[4], NumberStyles.HexNumber, null, out var r))

@@ -4,22 +4,22 @@ namespace RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 
 public record HeartbeatStateUpdate(Heartbeat Heartbeat) : ISessionStateChange
 {
-    public List<string> Targets => 
-    [
-        nameof(SessionState.LapsToGo),
-        nameof(SessionState.TimeToGo),
-        nameof(SessionState.LocalTimeOfDay),
-        nameof(SessionState.RunningRaceTime),
-        nameof(SessionState.CurrentFlag)
-    ];
-
-    public Task<bool> ApplyToState(SessionState state)
+    public SessionStatePatch? GetChanges(SessionState state)
     {
-        state.LapsToGo = Heartbeat.LapsToGo;
-        state.TimeToGo = Heartbeat.TimeToGo;
-        state.LocalTimeOfDay = Heartbeat.TimeOfDay;
-        state.RunningRaceTime = Heartbeat.RaceTime;
-        state.CurrentFlag = Heartbeat.FlagStatus.ToFlag();
-        return Task.FromResult(true);
+        var patch = new SessionStatePatch();
+
+        if (state.LapsToGo != Heartbeat.LapsToGo)
+            patch.LapsToGo = Heartbeat.LapsToGo;
+        if (state.TimeToGo != Heartbeat.TimeToGo)
+            patch.TimeToGo = Heartbeat.TimeToGo;
+        if (state.LocalTimeOfDay != Heartbeat.TimeOfDay)
+            patch.LocalTimeOfDay = Heartbeat.TimeOfDay;
+        if (state.RunningRaceTime != Heartbeat.RaceTime)
+            patch.RunningRaceTime = Heartbeat.RaceTime;
+        var f = Heartbeat.FlagStatus.ToFlag();
+        if (state.CurrentFlag != f)
+            patch.CurrentFlag = f;
+
+        return patch;
     }
 }

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
 using RedMist.Database;
+using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
@@ -156,7 +157,7 @@ public class EventAggregator : BackgroundService
         }
     }
 
-    private async Task BroadcastStateChange(SessionState state, CancellationToken stoppingToken)
+    private Task BroadcastStateChange(SessionState state, CancellationToken stoppingToken)
     {
         try
         {
@@ -173,6 +174,7 @@ public class EventAggregator : BackgroundService
         {
             Logger.LogError(ex, "Error broadcasting state change");
         }
+        return Task.CompletedTask;
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)

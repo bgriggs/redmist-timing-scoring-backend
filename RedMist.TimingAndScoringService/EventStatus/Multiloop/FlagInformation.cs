@@ -1,5 +1,4 @@
-﻿using RedMist.TimingCommon.Models;
-using System.Globalization;
+﻿using System.Globalization;
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
@@ -7,7 +6,7 @@ namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 public partial class FlagInformation : Message
 {
     public partial string TrackStatus { get; private set; } = string.Empty;
-    public Flags Flag { get; private set; }
+    public TimingCommon.Models.Flags Flag { get; private set; }
     public partial ushort LapNumber { get; private set; }
     public partial uint GreenTimeMs { get; private set; }
     public TimeSpan GreenTime => TimeSpan.FromMilliseconds(GreenTimeMs);

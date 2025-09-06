@@ -14,7 +14,7 @@ public partial class Heartbeat : Message
 
     public partial string TrackStatus { get; private set; } = string.Empty;
 
-    public Flags Flag { get; private set; }
+    public TimingCommon.Models.Flags Flag { get; private set; }
 
     /// <summary>
     /// Time in seconds since 1/1/1970.
@@ -69,18 +69,18 @@ public partial class Heartbeat : Message
             TimeToGoMs = ttg;
     }
 
-    public static Flags ConvertTrackState(string ts)
+    public static TimingCommon.Models.Flags ConvertTrackState(string ts)
     {
         return ts switch
         {
-            "G" => Flags.Green,
-            "Y" => Flags.Yellow,
-            "R" => Flags.Red,
-            "W" => Flags.White,
-            "K" => Flags.Checkered,
-            "U" => Flags.Unknown,
-            "C" => Flags.Unknown,
-            _ => Flags.Unknown,
+            "G" => TimingCommon.Models.Flags.Green,
+            "Y" => TimingCommon.Models.Flags.Yellow,
+            "R" => TimingCommon.Models.Flags.Red,
+            "W" => TimingCommon.Models.Flags.White,
+            "K" => TimingCommon.Models.Flags.Checkered,
+            "U" => TimingCommon.Models.Flags.Unknown,
+            "C" => TimingCommon.Models.Flags.Unknown,
+            _ => TimingCommon.Models.Flags.Unknown,
         };
     }
 }

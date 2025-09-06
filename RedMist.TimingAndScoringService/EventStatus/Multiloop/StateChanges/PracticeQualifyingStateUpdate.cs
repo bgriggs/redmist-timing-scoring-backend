@@ -4,12 +4,20 @@ namespace RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 
 public record PracticeQualifyingStateUpdate(RunInformation RunInformation) : ISessionStateChange
 {
-    public List<string> Targets => [nameof(SessionState.IsPracticeQualifying)];
-
-    public Task<bool> ApplyToState(SessionState state)
+    public SessionStatePatch? GetChanges(SessionState state)
     {
-        state.IsPracticeQualifying = RunInformation.RunType == 
-            RunType.Practice || RunInformation.RunType == RunType.Qualifying || RunInformation.RunType == RunType.SingleCarQualifying;
-        return Task.FromResult(true);
+        var patch = new SessionStatePatch { SessionId = state.SessionId };
+
+        var isPracticeQualifying = 
+            RunInformation.RunType == RunType.Practice || 
+            RunInformation.RunType == RunType.Qualifying || 
+            RunInformation.RunType == RunType.SingleCarQualifying;
+
+        if (state.IsPracticeQualifying != isPracticeQualifying)
+        {
+            patch.IsPracticeQualifying = isPracticeQualifying;
+        }
+
+        return patch;
     }
 }

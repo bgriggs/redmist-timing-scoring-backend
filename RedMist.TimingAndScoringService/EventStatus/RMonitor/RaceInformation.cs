@@ -35,7 +35,7 @@ public partial class RaceInformation
     /// Processes $G messages.
     /// </summary>
     /// <example>$G,3,"1234BE",14,"01:12:47.872"</example>
-    public ISessionStateChange? ProcessG(string[] parts)
+    public ICarStateChange? ProcessG(string[] parts)
     {
         Position = int.Parse(parts[1]);
         RegistrationNumber = parts[2].Replace("\"", "");

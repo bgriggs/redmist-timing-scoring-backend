@@ -3,7 +3,7 @@ using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.EventStatus;
+namespace RedMist.TimingAndScoringService.EventStatus.FlagData;
 
 public class FlagProcessor
 {

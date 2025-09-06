@@ -4,14 +4,12 @@ namespace RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 
 public record CompetitorStateUpdate(List<Competitor> Competitors, Dictionary<int, string> Classes) : ISessionStateChange
 {
-    public List<string> Targets => [nameof(SessionState.EventEntries)];
-
-    public Task<bool> ApplyToState(SessionState state)
+    public SessionStatePatch? GetChanges(SessionState state)
     {
-        state.EventEntries.Clear();
-        var entries = Competitors.Select(c => c.ToEventEntry(GetClassName));
-        state.EventEntries.AddRange(entries);
-        return Task.FromResult(true);
+        return new SessionStatePatch
+        {
+            EventEntries = [.. Competitors.Select(c => c.ToEventEntry(GetClassName))]
+        };
     }
 
     private string? GetClassName(int classId)

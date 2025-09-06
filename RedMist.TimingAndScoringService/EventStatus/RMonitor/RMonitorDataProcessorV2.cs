@@ -37,7 +37,8 @@ public class RMonitorDataProcessorV2
         if (message.Type != "rmonitor")
             return null;
 
-        var changes = new List<ISessionStateChange>();
+        var sessionChanges = new List<ISessionStateChange>();
+        var carChanges = new List<ICarStateChange>();
 
         await _lock.WaitAsync();
         try
@@ -55,7 +56,7 @@ public class RMonitorDataProcessorV2
                     {
                         // Heartbeat message
                         var ch = ProcessF(command);
-                        changes.Add(ch);
+                        sessionChanges.Add(ch);
                     }
                     else if (command.StartsWith("$A"))
                     {
@@ -74,7 +75,7 @@ public class RMonitorDataProcessorV2
                         // Session/run information
                         var ch = ProcessB(command);
                         if (ch != null)
-                            changes.Add(ch);
+                            sessionChanges.Add(ch);
                     }
                     else if (command.StartsWith("$C"))
                     {
@@ -92,14 +93,14 @@ public class RMonitorDataProcessorV2
                         // Race information
                         var ch = ProcessG(command);
                         if (ch != null)
-                            changes.Add(ch);
+                            carChanges.Add(ch);
                     }
                     else if (command.StartsWith("$H"))
                     {
                         // Practice/qualifying information
                         var ch = ProcessH(command);
                         if (ch != null)
-                            changes.Add(ch);
+                            carChanges.Add(ch);
                     }
                     else if (command.StartsWith("$I"))
                     {
@@ -111,7 +112,7 @@ public class RMonitorDataProcessorV2
                         // Passing information
                         var ch = ProcessJ(command);
                         if (ch != null)
-                            changes.Add(ch);
+                            carChanges.Add(ch);
                     }
                     else if (command.StartsWith("$COR"))
                     {
@@ -131,7 +132,7 @@ public class RMonitorDataProcessorV2
 
             if (competitorChanged)
             {
-                changes.Add(new CompetitorStateUpdate([.. competitors.Values], classes.ToDictionary()));
+                sessionChanges.Add(new CompetitorStateUpdate([.. competitors.Values], classes.ToDictionary()));
             }
         }
         finally
@@ -139,7 +140,7 @@ public class RMonitorDataProcessorV2
             _lock.Release();
         }
 
-        return new SessionStateUpdate("rmonitor", changes);
+        return new SessionStateUpdate(sessionChanges, carChanges);
     }
 
     #region Result Monitor
@@ -260,7 +261,7 @@ public class RMonitorDataProcessorV2
     /// </summary>
     /// <example>$G,3,"1234BE",14,"01:12:47.872"</example>
     /// <example>$G,10,"89",,"00:00:00.000"</example>
-    private ISessionStateChange? ProcessG(string data)
+    private ICarStateChange? ProcessG(string data)
     {
         var parts = data.Split(',');
         var regNum = parts[2].Replace("\"", "");
@@ -328,7 +329,7 @@ public class RMonitorDataProcessorV2
     /// Processes $H messages.
     /// </summary>
     /// <example>$H,2,"1234BE",3,"00:02:17.872"</example>
-    private ISessionStateChange? ProcessH(string data)
+    private ICarStateChange? ProcessH(string data)
     {
         var parts = data.Split(',');
         var regNum = parts[2].Replace("\"", "");
@@ -359,7 +360,7 @@ public class RMonitorDataProcessorV2
         // Allow for reset when the event is initializing. Once it has started,
         // suppress the resets to reduce user confusion
         var flag = Heartbeat.FlagStatus.ToFlag();
-        if (flag == Flags.Unknown)
+        if (flag == TimingCommon.Models.Flags.Unknown)
         {
             classes.Clear();
             passingInformation.Clear();
@@ -377,7 +378,7 @@ public class RMonitorDataProcessorV2
     /// Processes $J messages.
     /// </summary>
     /// <example>$J,"1234BE","00:02:03.826","01:42:17.672"</example>
-    private ISessionStateChange? ProcessJ(string data)
+    private ICarStateChange? ProcessJ(string data)
     {
         var parts = data.Split(',');
         var regNum = parts[1].Replace("\"", "");

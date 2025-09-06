@@ -2,23 +2,18 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 
-public record PitStateUpdate(CompletedLap CompletedLap) : ISessionStateChange
+public record PitStateUpdate(CompletedLap CompletedLap) : ICarStateChange
 {
-    public List<string> Targets => 
-    [
-        nameof(CarPosition.LastLapPitted),
-        nameof(CarPosition.PitStopCount)
-    ];
-
-    public Task<bool> ApplyToState(SessionState state)
+    public CarPositionPatch? GetChanges(CarPosition state)
     {
-        var c = state.CarPositions.FirstOrDefault(c => c.Number == CompletedLap.Number);
-        if (c != null)
-        {
-            c.LastLapPitted = CompletedLap.LastLapPitted;
-            c.PitStopCount = CompletedLap.PitStopCount;
-            return Task.FromResult(true);
-        }
-        return Task.FromResult(false);
+        var patch = new CarPositionPatch { Number = state.Number };
+
+        if (state.LastLapPitted != CompletedLap.LastLapPitted)
+            patch.LastLapPitted = CompletedLap.LastLapPitted;
+
+        if (state.PitStopCount != CompletedLap.PitStopCount)
+            patch.PitStopCount = CompletedLap.PitStopCount;
+
+        return patch;
     }
 }

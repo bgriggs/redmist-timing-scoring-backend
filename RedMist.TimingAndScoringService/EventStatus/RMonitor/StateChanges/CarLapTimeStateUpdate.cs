@@ -2,23 +2,17 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 
-public record CarLapTimeStateUpdate(PassingInformation PassingInformation) : ISessionStateChange
+public record CarLapTimeStateUpdate(PassingInformation PassingInformation) : ICarStateChange
 {
-    public List<string> Targets =>
-    [
-        nameof(CarPosition.LastLapTime),
-        nameof(CarPosition.TotalTime)
-    ];
-
-    public Task<bool> ApplyToState(SessionState state)
+    public CarPositionPatch? GetChanges(CarPosition state)
     {
-        var c = state.CarPositions.FirstOrDefault(cp => cp.Number == PassingInformation.RegistrationNumber);
-        if (c != null)
-        {
-            c.LastLapTime = PassingInformation.LapTime;
-            c.TotalTime = PassingInformation.RaceTime;
-            return Task.FromResult(true);
-        }
-        return Task.FromResult(false);
+        var patch = new CarPositionPatch();
+
+        if (state.LastLapTime != PassingInformation.LapTime)
+            patch.LastLapTime = PassingInformation.LapTime;
+        if (state.TotalTime != PassingInformation.RaceTime)
+            patch.TotalTime = PassingInformation.RaceTime;
+
+        return patch;
     }
 }

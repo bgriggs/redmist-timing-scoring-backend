@@ -41,7 +41,8 @@ public class MultiloopProcessor
         if (message.Type != "multiloop")
             return null;
 
-        var changes = new List<ISessionStateChange>();
+        var sessionChanges = new List<ISessionStateChange>();
+        var carChanges = new List<ICarStateChange>();
         context.IsMultiloopActive = true;
 
         var commands = message.Data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
@@ -54,8 +55,9 @@ public class MultiloopProcessor
                     continue;
                 try
                 {
-                    var updates = ProcessCommand(command);
-                    changes.AddRange(updates);
+                    var (sessionUpdates, carUpdates) = ProcessCommand(command);
+                    sessionChanges.AddRange(sessionUpdates);
+                    carChanges.AddRange(carUpdates);
                 }
                 catch (Exception ex)
                 {
@@ -67,12 +69,14 @@ public class MultiloopProcessor
         {
             _lock.Release();
         }
-        return new SessionStateUpdate("multiloop", changes);
+        return new SessionStateUpdate(sessionChanges, carChanges);
     }
 
-    private List<ISessionStateChange> ProcessCommand(string data)
+    private (List<ISessionStateChange> SessionChanges, List<ICarStateChange> CarChanges) ProcessCommand(string data)
     {
-        var changes = new List<ISessionStateChange>();
+        var sessionChanges = new List<ISessionStateChange>();
+        var carChanges = new List<ICarStateChange>();
+
         if (data.StartsWith("$H"))
         {
             Heartbeat.ProcessH(data);
@@ -83,7 +87,7 @@ public class MultiloopProcessor
             if (string.IsNullOrEmpty(num))
             {
                 Logger.LogWarning("Entry message received with no car number: {data}", data);
-                return changes;
+                return (sessionChanges, carChanges);
             }
             if (!Entries.TryGetValue(num, out var entry))
             {
@@ -98,7 +102,7 @@ public class MultiloopProcessor
             if (string.IsNullOrEmpty(num))
             {
                 Logger.LogWarning("Completed lap message received with no car number: {data}", data);
-                return changes;
+                return (sessionChanges, carChanges);
             }
             if (!CompletedLaps.TryGetValue(num, out var cl))
             {
@@ -106,14 +110,14 @@ public class MultiloopProcessor
                 CompletedLaps[num] = cl;
             }
             var chs = cl.ProcessC(data);
-            changes.AddRange(chs);
+            carChanges.AddRange(chs);
 
             // Reset sections for the car as they have completed a lap
             if (CompletedSections.TryGetValue(num, out var sections))
             {
                 sections.Clear();
                 var update = new SectionStateUpdate(num, [.. sections.Values]);
-                changes.Add(update);
+                carChanges.Add(update);
             }
         }
         else if (data.StartsWith("$S"))
@@ -122,7 +126,7 @@ public class MultiloopProcessor
             if (string.IsNullOrEmpty(num) || string.IsNullOrEmpty(section))
             {
                 Logger.LogWarning("Completed section message received with no car number or section: {data}", data);
-                return changes;
+                return (sessionChanges, carChanges);
             }
             if (!CompletedSections.TryGetValue(num, out var sections))
             {
@@ -136,7 +140,7 @@ public class MultiloopProcessor
             }
             cs.ProcessS(data);
             var update = new SectionStateUpdate(num, [.. sections.Values]);
-            changes.Add(update);
+            carChanges.Add(update);
         }
         else if (data.StartsWith("$L"))
         {
@@ -144,7 +148,7 @@ public class MultiloopProcessor
             if (string.IsNullOrEmpty(num))
             {
                 Logger.LogWarning("Line crossing message received with no car number: {data}", data);
-                return changes;
+                return (sessionChanges, carChanges);
             }
             if (!LineCrossings.TryGetValue(num, out var lc))
             {
@@ -152,7 +156,7 @@ public class MultiloopProcessor
                 LineCrossings[num] = lc;
             }
             var chs = lc.ProcessL(data);
-            changes.AddRange(chs);
+            carChanges.AddRange(chs);
         }
         else if (data.StartsWith("$I"))
         {
@@ -164,7 +168,7 @@ public class MultiloopProcessor
             FlagInformation.ProcessF(data);
             if (FlagInformation.IsDirty)
             {
-                changes.Add(new FlagMetricsStateUpdate(FlagInformation));
+                sessionChanges.Add(new FlagMetricsStateUpdate(FlagInformation));
                 FlagInformation.ResetDirty();
             }
         }
@@ -177,7 +181,7 @@ public class MultiloopProcessor
             RunInformation.ProcessR(data);
             if (RunInformation.IsDirty)
             {
-                changes.Add(new PracticeQualifyingStateUpdate(RunInformation));
+                sessionChanges.Add(new PracticeQualifyingStateUpdate(RunInformation));
                 RunInformation.ResetDirty();
             }
         }
@@ -191,13 +195,13 @@ public class MultiloopProcessor
             a.ProcessA(data);
             Announcements[a.MessageNumber] = a;
             var update = new AnnouncementStateUpdate(Announcements);
-            changes.Add(update);
+            sessionChanges.Add(update);
         }
         else if (data.StartsWith("$V"))
         {
             Version.ProcessV(data);
         }
 
-        return changes;
+        return (sessionChanges, carChanges);
     }
 }

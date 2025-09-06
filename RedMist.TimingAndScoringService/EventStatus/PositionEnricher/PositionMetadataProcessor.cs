@@ -1,7 +1,7 @@
 ﻿using RedMist.TimingCommon.Models;
 using System.Globalization;
 
-namespace RedMist.TimingAndScoringService.EventStatus;
+namespace RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 
 /// <summary>
 /// Responsible for second pass on data from the Result Monitor such as for derived data, e.g. gap, diff, etc.
@@ -83,17 +83,16 @@ public class PositionMetadataProcessor
             else // Behind the leader
             {
                 var positionAhead = carPositions[i - 1];
-                if (positionAhead.TotalTime == null)
-                {
-                    continue;
-                }
+                var pat = ParseRMTime(positionAhead.TotalTime ?? string.Empty);
 
                 // Overall Gap
                 if (positionAhead.LastLapCompleted == currentPosition.LastLapCompleted)
                 {
-                    var pat = ParseRMTime(positionAhead.TotalTime);
-                    var g = cpt - pat;
-                    setGap(currentPosition, g.ToString(GetTimeFormat(g)));
+                    if (pat != default)
+                    {
+                        var g = cpt - pat;
+                        setGap(currentPosition, g.ToString(GetTimeFormat(g)));
+                    }
                 }
                 else
                 {

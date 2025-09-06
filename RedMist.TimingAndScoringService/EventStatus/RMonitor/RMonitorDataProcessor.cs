@@ -4,8 +4,10 @@ using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
+using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
@@ -400,10 +402,10 @@ public class RMonitorDataProcessor
         }
     }
 
-    private void UpdateStartingPosition(string[] parts, string regNum, Flags flag)
+    private void UpdateStartingPosition(string[] parts, string regNum, TimingCommon.Models.Flags flag)
     {
         // Allow capture of starting positions during lap 0 up to and including the green flag
-        if (flag == Flags.Unknown || flag == Flags.Yellow || flag == Flags.Green)
+        if (flag == TimingCommon.Models.Flags.Unknown || flag == TimingCommon.Models.Flags.Yellow || flag == TimingCommon.Models.Flags.Green)
         {
             // Make a copy for storing off
             var sp = new RaceInformation();
@@ -498,7 +500,7 @@ public class RMonitorDataProcessor
         // Allow for reset when the event is initializing. Once it has started,
         // suppress the resets to reduce user confusion
         var flag = Heartbeat.FlagStatus.ToFlag();
-        if (flag == Flags.Unknown)
+        if (flag == TimingCommon.Models.Flags.Unknown)
         {
             classes.Clear();
             passingInformation.Clear();
@@ -978,7 +980,7 @@ public class RMonitorDataProcessor
                     {
                         string g = $"$G,{pos.OverallPosition},\"{lap.CarNumber}\",{lap.LapNumber},\"00:00:00.000\"";
                         var parts = g.Split(',');
-                        UpdateStartingPosition(parts, lap.CarNumber, (Flags)lap.Flag);
+                        UpdateStartingPosition(parts, lap.CarNumber, (TimingCommon.Models.Flags)lap.Flag);
                     }
                 }
                 catch (Exception ex)

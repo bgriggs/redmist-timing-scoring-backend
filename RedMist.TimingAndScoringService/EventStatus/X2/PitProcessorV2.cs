@@ -160,7 +160,7 @@ public class PitProcessorV2
             PitOther: pitOther.ToImmutableDictionary(),
             Other: other.ToImmutableDictionary(),
             LoopMetadata: loopMetadata);
-        return new SessionStateUpdate("PitProcessorV2", [change]);
+        return new SessionStateUpdate([], [change]);
     }
 
     private async Task RefreshEventConfiguration(TimingMessage message)

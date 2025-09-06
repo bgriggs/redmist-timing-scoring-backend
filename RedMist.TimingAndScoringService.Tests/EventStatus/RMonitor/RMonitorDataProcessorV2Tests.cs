@@ -53,8 +53,7 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual("rmonitor", result.Source);
-        Assert.IsNotNull(result.Changes);
+        Assert.IsGreaterThan(0, result.SessionChanges.Count);
     }
 
     #region Heartbeat Tests ($F)
@@ -70,9 +69,9 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.Changes.Count);
-        Assert.IsTrue(result.Changes.Any(c => c is HeartbeatStateUpdate));
-        
+        Assert.AreEqual(1, result.SessionChanges.Count);
+        Assert.IsTrue(result.SessionChanges.Any(c => c is HeartbeatStateUpdate));
+
         Assert.AreEqual(14, _processor.Heartbeat.LapsToGo);
         Assert.AreEqual("00:12:45", _processor.Heartbeat.TimeToGo);
         Assert.AreEqual("13:34:23", _processor.Heartbeat.TimeOfDay);
@@ -96,7 +95,7 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
     }
 
     [TestMethod]
@@ -111,7 +110,7 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
     }
 
     [TestMethod]
@@ -127,7 +126,7 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
     }
 
     #endregion
@@ -166,7 +165,7 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsFalse(result.Changes.Any(c => c is SessionStateUpdated));
+        Assert.IsFalse(result.SessionChanges.Any(c => c is SessionStateUpdated));
     }
 
     [TestMethod]
@@ -202,7 +201,7 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
     }
 
     [TestMethod]
@@ -217,7 +216,7 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
     }
 
     #endregion
@@ -465,7 +464,8 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.Changes.Count);
+        Assert.AreEqual(0, result.SessionChanges.Count);
+        Assert.AreEqual(0, result.CarChanges.Count);
     }
 
     [TestMethod]
@@ -479,7 +479,8 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.Changes.Count);
+        Assert.AreEqual(0, result.SessionChanges.Count);
+        Assert.AreEqual(0, result.CarChanges.Count);
     }
 
     #endregion
@@ -501,10 +502,10 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.Changes.Count > 0);
-        Assert.IsTrue(result.Changes.Any(c => c is HeartbeatStateUpdate));
+        Assert.IsTrue(result.SessionChanges.Count > 0);
+        Assert.IsTrue(result.SessionChanges.Any(c => c is HeartbeatStateUpdate));
         // Note: SessionStateUpdated may not be generated due to ProcessB being called twice
-        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
+        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
         
         // Verify properties are set correctly
         Assert.AreEqual(5, _processor.SessionReference);
@@ -532,7 +533,6 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsTrue(results.All(r => r is not null));
-        Assert.IsTrue(results.All(r => r!.Source == "rmonitor"));
     }
 
     #endregion
@@ -592,8 +592,9 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.Changes.Count > 0);
-        
+        Assert.IsTrue(result.SessionChanges.Count > 0);
+        Assert.IsTrue(result.CarChanges.Count > 0);
+
         // Verify session data
         Assert.AreEqual(1, _processor.SessionReference);
         Assert.AreEqual("Race 1", _processor.SessionName);
@@ -604,9 +605,9 @@ public class RMonitorDataProcessorV2Tests
         Assert.AreEqual(50, _processor.Heartbeat.LapsToGo);
         Assert.AreEqual("Green", _processor.Heartbeat.FlagStatus);
         
-        // Verify we have expected state change types (accounting for ProcessB bug)
-        Assert.IsTrue(result.Changes.Any(c => c is HeartbeatStateUpdate));
-        Assert.IsTrue(result.Changes.Any(c => c is CompetitorStateUpdate));
+        // Verify we have expected state change types
+        Assert.IsTrue(result.SessionChanges.Any(c => c is HeartbeatStateUpdate));
+        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
         
         // Note: SessionStateUpdated may not be present due to ProcessB being called twice
         // but the properties should be set correctly

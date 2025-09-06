@@ -2,18 +2,15 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 
-public record PitSfCrossingStateUpdate(LineCrossing LineCrossing) : ISessionStateChange
+public record PitSfCrossingStateUpdate(LineCrossing LineCrossing) : ICarStateChange
 {
-    public List<string> Targets => [nameof(CarPosition.IsPitStartFinish)];
-
-    public Task<bool> ApplyToState(SessionState state)
+    public CarPositionPatch? GetChanges(CarPosition state)
     {
-        var c = state.CarPositions.FirstOrDefault(c => c.Number == LineCrossing.Number);
-        if (c != null)
-        {
-            c.IsPitStartFinish = LineCrossing.CrossingStatus == LineCrossingStatus.Pit;
-            return Task.FromResult(true);
-        }
-        return Task.FromResult(false);
+        var patch = new CarPositionPatch { Number = state.Number };
+
+        if (state.IsPitStartFinish != (LineCrossing.CrossingStatus == LineCrossingStatus.Pit))
+            patch.IsPitStartFinish = LineCrossing.CrossingStatus == LineCrossingStatus.Pit;
+
+        return patch;
     }
 }

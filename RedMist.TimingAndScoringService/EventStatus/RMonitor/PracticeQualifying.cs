@@ -35,7 +35,7 @@ public partial class PracticeQualifying
     /// Processes $H messages.
     /// </summary>
     /// <example>$H,2,"1234BE",3,"00:02:17.872"</example>
-    public ISessionStateChange? ProcessH(string[] parts)
+    public ICarStateChange? ProcessH(string[] parts)
     {
         Position = int.Parse(parts[1]);
         RegistrationNumber = parts[2].Replace("\"", "").Trim();

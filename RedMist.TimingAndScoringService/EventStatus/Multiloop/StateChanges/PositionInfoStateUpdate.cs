@@ -2,29 +2,24 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 
-public record PositionInfoStateUpdate(CompletedLap CompletedLap) : ISessionStateChange
+public record PositionInfoStateUpdate(CompletedLap CompletedLap) : ICarStateChange
 {
-    public List<string> Targets => 
-    [
-        nameof(CarPosition.OverallStartingPosition),
-        nameof(CarPosition.LapsLedOverall),
-        nameof(CarPosition.CurrentStatus)
-    ];
-
-    public Task<bool> ApplyToState(SessionState state)
+    public CarPositionPatch? GetChanges(CarPosition state)
     {
-        var c = state.CarPositions.FirstOrDefault(c => c.Number == CompletedLap.Number);
-        if (c != null)
-        {
-            c.OverallStartingPosition = CompletedLap.StartPosition;
-            c.LapsLedOverall = CompletedLap.LapsLed;
-            c.CurrentStatus = string.IsNullOrEmpty(CompletedLap.CurrentStatus)
-                ? string.Empty
-                : CompletedLap.CurrentStatus.Length > 12
-                    ? CompletedLap.CurrentStatus[..12]
-                    : CompletedLap.CurrentStatus;
-            return Task.FromResult(true);
-        }
-        return Task.FromResult(false);
+        var patch = new CarPositionPatch { Number = state.Number };
+        if (state.OverallStartingPosition != CompletedLap.StartPosition)
+            patch.OverallStartingPosition = CompletedLap.StartPosition;
+        if (state.LapsLedOverall != CompletedLap.LapsLed)
+            patch.LapsLedOverall = CompletedLap.LapsLed;
+
+        // Make sure the status is at most 12 characters long
+        var status = string.IsNullOrEmpty(CompletedLap.CurrentStatus)
+            ? string.Empty
+            : CompletedLap.CurrentStatus.Length > 12
+                ? CompletedLap.CurrentStatus[..12]
+                : CompletedLap.CurrentStatus;
+        if (state.CurrentStatus != status)
+            patch.CurrentStatus = status;
+        return patch;
     }
 }

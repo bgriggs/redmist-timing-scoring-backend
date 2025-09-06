@@ -192,11 +192,10 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual("PitProcessorV2", result.Source);
-        Assert.AreEqual(1, result.Changes.Count);
-        Assert.IsTrue(result.Changes[0] is PitStateUpdate);
+        Assert.AreEqual(1, result.CarChanges.Count);
+        Assert.IsTrue(result.CarChanges[0] is PitStateUpdate);
 
-        var pitStateUpdate = (PitStateUpdate)result.Changes[0];
+        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         Assert.IsTrue(pitStateUpdate.InPit.ContainsKey(123));
         Assert.IsTrue(pitStateUpdate.PitEntrance.ContainsKey(123));
         Assert.IsTrue(pitStateUpdate.PitExit.ContainsKey(456));
@@ -221,7 +220,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        var pitStateUpdate = (PitStateUpdate)result.Changes[0];
+        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         Assert.IsTrue(pitStateUpdate.PitEntrance.ContainsKey(123));
         Assert.IsFalse(pitStateUpdate.InPit.ContainsKey(123)); // IsInPit was false
     }
@@ -245,7 +244,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        var pitStateUpdate = (PitStateUpdate)result.Changes[0];
+        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         Assert.IsTrue(pitStateUpdate.PitExit.ContainsKey(123));
     }
 
@@ -268,7 +267,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        var pitStateUpdate = (PitStateUpdate)result.Changes[0];
+        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         Assert.IsTrue(pitStateUpdate.PitSf.ContainsKey(123));
     }
 
@@ -291,7 +290,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        var pitStateUpdate = (PitStateUpdate)result.Changes[0];
+        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         Assert.IsTrue(pitStateUpdate.PitOther.ContainsKey(123));
     }
 
@@ -314,7 +313,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        var pitStateUpdate = (PitStateUpdate)result.Changes[0];
+        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         Assert.IsTrue(pitStateUpdate.Other.ContainsKey(123));
     }
 
@@ -342,7 +341,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        var pitStateUpdate = (PitStateUpdate)result.Changes[0];
+        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         
         // Should only have the latest passing for transponder 123
         Assert.IsFalse(pitStateUpdate.PitEntrance.ContainsKey(123)); // Should be removed
@@ -369,7 +368,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        var pitStateUpdate = (PitStateUpdate)result.Changes[0];
+        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         
         // Should only update InPit based on IsInPit flag, not any loop-specific collections
         Assert.IsTrue(pitStateUpdate.InPit.ContainsKey(123));
@@ -543,10 +542,9 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual("PitProcessorV2", result.Source);
-        Assert.AreEqual(1, result.Changes.Count);
+        Assert.AreEqual(1, result.CarChanges.Count);
 
-        var pitStateUpdate = (PitStateUpdate)result.Changes[0];
+        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         
         // Verify InPit collection
         Assert.IsTrue(pitStateUpdate.InPit.ContainsKey(100));
@@ -606,7 +604,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        var pitStateUpdate = (PitStateUpdate)result.Changes[0];
+        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         
         // Should still process InPit
         Assert.IsTrue(pitStateUpdate.InPit.ContainsKey(123));
@@ -861,7 +859,7 @@ public class PitProcessorV2Tests
 
         // Verify first result uses original configuration
         Assert.IsNotNull(firstResult);
-        var firstPitStateUpdate = (PitStateUpdate)firstResult.Changes[0];
+        var firstPitStateUpdate = (PitStateUpdate)firstResult.CarChanges[0];
         Assert.IsTrue(firstPitStateUpdate.PitEntrance.ContainsKey(123)); // Should be in PitEntrance
 
         // Setup modified configuration for reload - change loop 1 from PitIn to PitExit
@@ -899,7 +897,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(secondResult);
-        var secondPitStateUpdate = (PitStateUpdate)secondResult.Changes[0];
+        var secondPitStateUpdate = (PitStateUpdate)secondResult.CarChanges[0];
         
         // Now loop 1 should be treated as PitExit instead of PitIn
         Assert.IsFalse(secondPitStateUpdate.PitEntrance.ContainsKey(123)); // Should NOT be in PitEntrance anymore
@@ -1022,7 +1020,6 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsTrue(results.All(r => r is not null));
-        Assert.IsTrue(results.All(r => r!.Source == "PitProcessorV2"));
     }
 
     #endregion

@@ -28,7 +28,7 @@ public class DriverModeProcessor
     private readonly IConnectionMultiplexer cacheMux;
     private readonly Dictionary<string, CarPosition> carPositionsLookup = [];
     private readonly Dictionary<string, CarSet> carSetsLookup = [];
-    private Flags lastFlag = Flags.Unknown;
+    private TimingCommon.Models.Flags lastFlag = TimingCommon.Models.Flags.Unknown;
 
 
     public DriverModeProcessor(int eventId, IHubContext<StatusHub> hubContext, ILoggerFactory loggerFactory, HybridCache hcache, 
@@ -43,7 +43,7 @@ public class DriverModeProcessor
     }
 
 
-    public async Task UpdateCarPositions(List<CarPosition> positions, Dictionary<string, Competitor> competitors, Flags currentFlag)
+    public async Task UpdateCarPositions(List<CarPosition> positions, Dictionary<string, Competitor> competitors, TimingCommon.Models.Flags currentFlag)
     {
         foreach (var position in positions)
         {

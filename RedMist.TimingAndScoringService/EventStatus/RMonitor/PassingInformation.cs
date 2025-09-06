@@ -45,7 +45,7 @@ public partial class PassingInformation
     /// Processes $J messages.
     /// </summary>
     /// <example>$J,"1234BE","00:02:03.826","01:42:17.672"</example>
-    public ISessionStateChange? ProcessJ(string[] parts)
+    public ICarStateChange? ProcessJ(string[] parts)
     {
         RegistrationNumber = parts[1].Replace("\"", "").Trim();
 

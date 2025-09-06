@@ -2,7 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus;
+using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus;

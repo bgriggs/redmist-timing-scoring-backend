@@ -13,74 +13,72 @@ public record PitStateUpdate(
     ImmutableDictionary<uint, Passing> PitSf,
     ImmutableDictionary<uint, Passing> PitOther,
     ImmutableDictionary<uint, Passing> Other,
-    ImmutableDictionary<uint, LoopMetadata> LoopMetadata) : ISessionStateChange
+    ImmutableDictionary<uint, LoopMetadata> LoopMetadata) : ICarStateChange
 {
-    public List<string> Targets => 
-    [
-        nameof(CarPosition.IsInPit),
-        nameof(CarPosition.IsEnteredPit),
-        nameof(CarPosition.IsPitStartFinish),
-        nameof(CarPosition.IsExitedPit),
-    ];
-
-    public Task<bool> ApplyToState(SessionState state)
+    public CarPositionPatch? GetChanges(CarPosition state)
     {
-        foreach (var pos in state.CarPositions)
+        var patch = new CarPositionPatch { Number = state.Number };
+
+        if (InPit.TryGetValue(state.TransponderId, out _) && !state.IsInPit)
         {
-            //ClearPositionLoopData(pos);
-
-            if (InPit.TryGetValue(pos.TransponderId, out _))
-            {
-                pos.IsInPit = true;
-            }
-
-            if (PitEntrance.TryGetValue(pos.TransponderId, out _))
-            {
-                pos.IsEnteredPit = true;
-                pos.IsInPit = true;
-            }
-
-            if (PitExit.TryGetValue(pos.TransponderId, out _))
-            {
-                pos.IsExitedPit = true;
-                pos.IsInPit = true;
-            }
-
-            if (PitSf.TryGetValue(pos.TransponderId, out _))
-            {
-                pos.IsPitStartFinish = true;
-                pos.IsInPit = true;
-            }
-
-            if (PitOther.TryGetValue(pos.TransponderId, out _))
-            {
-                pos.IsInPit = true;
-            }
-
-            if (Other.TryGetValue(pos.TransponderId, out var otherPass) && LoopMetadata.TryGetValue(otherPass.Id, out var lm))
-            {
-                pos.LastLoopName = lm.Name;
-            }
-
-            // Keep track of laps where cars have pitted
-            if (pos.IsInPit && !string.IsNullOrEmpty(pos.Number))
-            {
-                if (!CarLapsWithPitStops.TryGetValue(pos.Number, out var laps))
-                {
-                    laps = [];
-                    CarLapsWithPitStops[pos.Number] = laps;
-                }
-                laps.Add(pos.LastLapCompleted + 1);
-            }
-
-            // Check if the lap was included in a pit stop
-            pos.LapIncludedPit = pos.IsInPit;
-            if (!pos.IsInPit && !string.IsNullOrEmpty(pos.Number))
-            {
-                pos.LapIncludedPit = CarLapsWithPitStops.TryGetValue(pos.Number, out var laps) && laps.Contains(pos.LastLapCompleted);
-            }
+            patch.IsInPit = true;
+        }
+        else if (state.IsInPit)
+        {
+            patch.IsInPit = false;
         }
 
-        return Task.FromResult(true);
+        if (PitEntrance.TryGetValue(state.TransponderId, out _) && !state.IsEnteredPit)
+        {
+            patch.IsEnteredPit = true;
+
+            if (!state.IsInPit)
+                patch.IsInPit = true;
+        }
+
+        if (PitExit.TryGetValue(state.TransponderId, out _) && !state.IsExitedPit)
+        {
+            patch.IsExitedPit = true;
+            if (state.IsInPit)
+                patch.IsInPit = false;
+        }
+
+        if (PitSf.TryGetValue(state.TransponderId, out _) && !state.IsPitStartFinish)
+        {
+            patch.IsPitStartFinish = true;
+            if (!state.IsInPit)
+                patch.IsInPit = true;
+        }
+
+        if (PitOther.TryGetValue(state.TransponderId, out _) && !state.IsInPit)
+        {
+            patch.IsInPit = true;
+        }
+
+        if (Other.TryGetValue(state.TransponderId, out var otherPass) && 
+            LoopMetadata.TryGetValue(otherPass.Id, out var lm) && state.LastLoopName != lm.Name)
+        {
+            patch.LastLoopName = lm.Name;
+        }
+
+        // Keep track of laps where cars have pitted
+        if (patch.IsInPit ?? false && !string.IsNullOrEmpty(patch.Number))
+        {
+            if (!CarLapsWithPitStops.TryGetValue(patch.Number!, out var laps))
+            {
+                laps = [];
+                CarLapsWithPitStops[patch.Number!] = laps;
+            }
+            laps.Add(state.LastLapCompleted + 1);
+        }
+
+        // Check if the lap was included in a pit stop
+        patch.LapIncludedPit = patch.IsInPit;
+        if (!patch.IsInPit ?? false && !string.IsNullOrEmpty(patch.Number))
+        {
+            patch.LapIncludedPit = CarLapsWithPitStops.TryGetValue(patch.Number!, out var laps) && laps.Contains(state.LastLapCompleted);
+        }
+
+        return patch;
     }
 }

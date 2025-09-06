@@ -19,7 +19,7 @@ public class LineCrossing : Message
     public uint ElapsedTimeMs { get; private set; }
     public TimeSpan ElapsedTime => TimeSpan.FromMilliseconds(ElapsedTimeMs);
     public string TrackStatus { get; private set; } = string.Empty;
-    public Flags Flag { get; private set; }
+    public TimingCommon.Models.Flags Flag { get; private set; }
     public string CrossingStatusStr { get; private set; } = string.Empty;
     public LineCrossingStatus CrossingStatus => CrossingStatusStr switch
     {
@@ -43,10 +43,10 @@ public class LineCrossing : Message
     /// 
     /// </summary>
     /// <example>$L�N�EF325�Q1�89�5�SF�A�9B82E�G�T</example>
-    public List<ISessionStateChange> ProcessL(string data)
+    public List<ICarStateChange> ProcessL(string data)
     {
         var parts = ProcessHeader(data);
-        var changes = new List<ISessionStateChange>();
+        var changes = new List<ICarStateChange>();
 
         // Number
         Number = parts[4].Trim();
