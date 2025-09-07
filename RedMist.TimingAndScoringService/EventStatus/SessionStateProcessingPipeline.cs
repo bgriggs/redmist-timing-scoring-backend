@@ -1,5 +1,6 @@
 ﻿using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
+using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
@@ -8,6 +9,10 @@ using System.Threading.Tasks.Dataflow;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
+/// <summary>
+/// 
+/// </summary>
+/// <see cref="DataflowPipeline.md"/>
 public class SessionStateProcessingPipeline
 {
     private ILogger Logger { get; }
@@ -18,13 +23,12 @@ public class SessionStateProcessingPipeline
     private readonly BufferBlock<TimingMessage> input;
 
     // Specialized processors for different message types
-    private readonly ActionBlock<TimingMessage> rmonitorProcessorBlock;
-    private readonly ActionBlock<TimingMessage> multiloopProcessorBlock;
-    private readonly ActionBlock<TimingMessage> pitProcessorBlock;
-    private readonly ActionBlock<TimingMessage> flagProcessorBlock;
+    private readonly TransformBlock<TimingMessage, SessionStateUpdate?> rmonitorProcessorBlock;
+    private readonly TransformBlock<TimingMessage, SessionStateUpdate?> multiloopProcessorBlock;
+    private readonly TransformBlock<TimingMessage, SessionStateUpdate?> pitProcessorBlock;
+    private readonly TransformBlock<TimingMessage, SessionStateUpdate?> flagProcessorBlock;
 
-    // Aggregator that applies updates to session state
-    private readonly ActionBlock<SessionStateUpdate> stateUpdater;
+    
 
     // Output for broadcasting state changes
     private readonly BroadcastBlock<SessionState> stateChangeBroadcast;
@@ -33,12 +37,14 @@ public class SessionStateProcessingPipeline
     private readonly MultiloopProcessor multiloopProcessor;
     private readonly PitProcessorV2 pitProcessorV2;
     private readonly FlagProcessorV2 flagProcessorV2;
+    private readonly PositionDataEnricher positionEnricher;
 
     public SessionStateProcessingPipeline(SessionState initialState, ILoggerFactory loggerFactory,
         RMonitorDataProcessorV2 rMonitorDataProcessorV2,
         MultiloopProcessor multiloopProcessor,
         PitProcessorV2 pitProcessorV2,
-        FlagProcessorV2 flagProcessorV2)
+        FlagProcessorV2 flagProcessorV2,
+        PositionDataEnricher positionEnricher)
     {
         sessionState = initialState;
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -46,23 +52,23 @@ public class SessionStateProcessingPipeline
         this.multiloopProcessor = multiloopProcessor;
         this.pitProcessorV2 = pitProcessorV2;
         this.flagProcessorV2 = flagProcessorV2;
+        this.positionEnricher = positionEnricher;
 
         // Configure dataflow options
         //var linkOptions = new DataflowLinkOptions { PropagateCompletion = true };
         var executionOptions = new ExecutionDataflowBlockOptions
         {
             MaxDegreeOfParallelism = 1, // Ensure sequential state updates
-            //BoundedCapacity = 100
         };
 
         // Input buffer - distributes incoming messages to processors
         input = new BufferBlock<TimingMessage>();
 
         // Individual message processors - each examines and optionally handles messages
-        rmonitorProcessorBlock = new ActionBlock<TimingMessage>(rMonitorDataProcessorV2.Process);
-        multiloopProcessorBlock = new ActionBlock<TimingMessage>(multiloopProcessor.Process);
-        pitProcessorBlock = new ActionBlock<TimingMessage>(pitProcessorV2.Process);
-        flagProcessorBlock = new ActionBlock<TimingMessage>(flagProcessorV2.Process);
+        rmonitorProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(rMonitorDataProcessorV2.Process);
+        multiloopProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(multiloopProcessor.Process);
+        pitProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(pitProcessorV2.Process);
+        flagProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(flagProcessorV2.Process);
 
         // Link input to processors
         //input.LinkTo(rmonitorProcessorBlock, linkOptions);
@@ -180,20 +186,20 @@ public class SessionStateProcessingPipeline
     //    }
     //}
 
-    /// <summary>
-    /// Completes the pipeline and waits for all processing to finish.
-    /// </summary>
-    public async Task CompleteAsync()
-    {
-        input.Complete();
+    ///// <summary>
+    ///// Completes the pipeline and waits for all processing to finish.
+    ///// </summary>
+    //public async Task CompleteAsync()
+    //{
+    //    input.Complete();
         
-        await Task.WhenAll(
-            rmonitorProcessorBlock.Completion,
-            multiloopProcessorBlock.Completion,
-            pitProcessorBlock.Completion,
-            stateUpdater.Completion);
+    //    await Task.WhenAll(
+    //        rmonitorProcessorBlock.Completion,
+    //        multiloopProcessorBlock.Completion,
+    //        pitProcessorBlock.Completion,
+    //        stateUpdater.Completion);
         
-        stateChangeBroadcast.Complete();
-        await stateChangeBroadcast.Completion;
-    }
+    //    stateChangeBroadcast.Complete();
+    //    await stateChangeBroadcast.Completion;
+    //}
 }

@@ -26,16 +26,18 @@ public class FlagProcessorV2
     }
 
 
-    public async Task<ISessionStateChange?> Process(TimingMessage message)
+    public async Task<SessionStateUpdate?> Process(TimingMessage message)
     {
         if (message.Type != "flags")
             return null;
         var fs = JsonSerializer.Deserialize<List<FlagDuration>>(message.Data);
         if (fs != null)
         {
+            var sessionStateUpdate = new SessionStateUpdate([], []);
             await flagProcessor.ProcessFlags(sessionContext.SessionState.SessionId, fs, sessionContext.CancellationToken);
             var flagDurations = await flagProcessor.GetFlagsAsync(sessionContext.CancellationToken);
-            return new FlagsStateChange(flagDurations);
+            sessionStateUpdate.SessionChanges.Add(new FlagsStateChange(flagDurations));
+            return sessionStateUpdate;
         }
         return null;
     }

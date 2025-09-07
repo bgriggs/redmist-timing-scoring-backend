@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using RedMist.TimingAndScoringService.EventStatus.FlagData.StateChanges;
+﻿using RedMist.TimingAndScoringService.EventStatus.FlagData.StateChanges;
 using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus.FlagData.StateChanges;

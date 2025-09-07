@@ -185,7 +185,7 @@ public class EventAggregator : BackgroundService
         pipelineSubscription?.Dispose();
         
         // Complete the processing pipeline
-        await processingPipeline.CompleteAsync();
+        //await processingPipeline.CompleteAsync();
         
         await base.StopAsync(cancellationToken);
     }
