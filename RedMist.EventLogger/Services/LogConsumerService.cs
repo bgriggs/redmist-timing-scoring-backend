@@ -69,11 +69,11 @@ public class LogConsumerService : BackgroundService
                         await LogStatusData(type, eventId, sessionId, data, stoppingToken);
 
                         // Parse RMonitor data
-                        if (type == "rmonitor")
+                        if (type == Backend.Shared.Consts.RMONITOR_TYPE)
                         {
                         }
                         // Passings
-                        else if (type == "x2pass")
+                        else if (type == Backend.Shared.Consts.X2PASS_TYPE)
                         {
                             await SavePassings(data, stoppingToken);
                         }
@@ -83,7 +83,7 @@ public class LogConsumerService : BackgroundService
                             await SaveLoops(data, stoppingToken);
                         }
                         // Flags
-                        else if (type == "flags")
+                        else if (type == Backend.Shared.Consts.FLAGS_TYPE)
                         {
                         }
                         // Competitor Metadata

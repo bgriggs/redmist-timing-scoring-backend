@@ -16,35 +16,37 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 public class SessionStateProcessingPipeline
 {
     private ILogger Logger { get; }
-    private readonly SessionState sessionState;
+    private readonly SessionContext sessionState;
     private readonly SemaphoreSlim stateLock = new(1, 1);
 
     // Input buffer for all incoming timing data
-    private readonly BufferBlock<TimingMessage> input;
+    private readonly BroadcastBlock<TimingMessage> input = new(tm => tm);
 
     // Specialized processors for different message types
     private readonly TransformBlock<TimingMessage, SessionStateUpdate?> rmonitorProcessorBlock;
     private readonly TransformBlock<TimingMessage, SessionStateUpdate?> multiloopProcessorBlock;
     private readonly TransformBlock<TimingMessage, SessionStateUpdate?> pitProcessorBlock;
     private readonly TransformBlock<TimingMessage, SessionStateUpdate?> flagProcessorBlock;
+    private readonly TransformBlock<SessionStateUpdate?, SessionStateUpdate?> positionMetadataBlock;
+    private readonly TransformBlock<SessionStateUpdate?, (SessionStatePatch?, CarPositionPatch[])> updateConsolidatorBlock;
+    private readonly ActionBlock<(SessionStatePatch?, CarPositionPatch[])> statusAggregatorBlock;
 
-    
-
-    // Output for broadcasting state changes
-    private readonly BroadcastBlock<SessionState> stateChangeBroadcast;
-    
     private readonly RMonitorDataProcessorV2 rMonitorDataProcessorV2;
     private readonly MultiloopProcessor multiloopProcessor;
     private readonly PitProcessorV2 pitProcessorV2;
     private readonly FlagProcessorV2 flagProcessorV2;
     private readonly PositionDataEnricher positionEnricher;
+    private readonly UpdateConsolidator updateConsolidator;
 
-    public SessionStateProcessingPipeline(SessionState initialState, ILoggerFactory loggerFactory,
+
+    public SessionStateProcessingPipeline(SessionContext initialState, ILoggerFactory loggerFactory,
         RMonitorDataProcessorV2 rMonitorDataProcessorV2,
         MultiloopProcessor multiloopProcessor,
         PitProcessorV2 pitProcessorV2,
         FlagProcessorV2 flagProcessorV2,
-        PositionDataEnricher positionEnricher)
+        PositionDataEnricher positionEnricher,
+        UpdateConsolidator updateConsolidator,
+        StatusAggregatorV2 statusAggregatorV2)
     {
         sessionState = initialState;
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -53,6 +55,7 @@ public class SessionStateProcessingPipeline
         this.pitProcessorV2 = pitProcessorV2;
         this.flagProcessorV2 = flagProcessorV2;
         this.positionEnricher = positionEnricher;
+        this.updateConsolidator = updateConsolidator;
 
         // Configure dataflow options
         //var linkOptions = new DataflowLinkOptions { PropagateCompletion = true };
@@ -61,44 +64,34 @@ public class SessionStateProcessingPipeline
             MaxDegreeOfParallelism = 1, // Ensure sequential state updates
         };
 
-        // Input buffer - distributes incoming messages to processors
-        input = new BufferBlock<TimingMessage>();
-
         // Individual message processors - each examines and optionally handles messages
-        rmonitorProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(rMonitorDataProcessorV2.Process);
-        multiloopProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(multiloopProcessor.Process);
-        pitProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(pitProcessorV2.Process);
-        flagProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(flagProcessorV2.Process);
+        rmonitorProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(rMonitorDataProcessorV2.Process, executionOptions);
+        multiloopProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(multiloopProcessor.Process, executionOptions);
+        pitProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(pitProcessorV2.Process, executionOptions);
+        flagProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(flagProcessorV2.Process, executionOptions);
+        positionMetadataBlock = new TransformBlock<SessionStateUpdate?, SessionStateUpdate?>(positionEnricher.Process, executionOptions);
+        updateConsolidatorBlock = new TransformBlock<SessionStateUpdate?, (SessionStatePatch?, CarPositionPatch[])>(updateConsolidator.Process, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 20 });
+        statusAggregatorBlock = new ActionBlock<(SessionStatePatch?, CarPositionPatch[])>(statusAggregatorV2.Process, executionOptions);
 
-        // Link input to processors
-        //input.LinkTo(rmonitorProcessorBlock, linkOptions);
+        // Link input to processors based on message type -- this is where the message decoding happens
+        input.LinkTo(rmonitorProcessorBlock, tm => tm.Type == Backend.Shared.Consts.RMONITOR_TYPE);
+        input.LinkTo(multiloopProcessorBlock, tm => tm.Type == Backend.Shared.Consts.MULTILOOP_TYPE);
+        input.LinkTo(pitProcessorBlock, tm => tm.Type == Backend.Shared.Consts.X2PASS_TYPE || tm.Type == Backend.Shared.Consts.EVENT_CHANGED_TYPE);
+        input.LinkTo(flagProcessorBlock, tm => tm.Type == Backend.Shared.Consts.FLAGS_TYPE);
 
-        // Output broadcast for state changes
-        stateChangeBroadcast = new BroadcastBlock<SessionState>(state => state,
-            new DataflowBlockOptions { BoundedCapacity = 10 });
+        // Link RMonitor to position metadata enricher (filtering out null updates) -- this is inferred position data
+        rmonitorProcessorBlock.LinkTo(positionMetadataBlock, update => update != null);
 
-        // Link the pipeline
-        //SetupPipeline(linkOptions);
+        // Link processors to update consolidator (filtering out null updates) -- this batches updates to reduce client update frequency
+        rmonitorProcessorBlock.LinkTo(updateConsolidatorBlock, update => update != null);
+        positionMetadataBlock.LinkTo(updateConsolidatorBlock, update => update != null);
+        multiloopProcessorBlock.LinkTo(updateConsolidatorBlock, update => update != null);
+        pitProcessorBlock.LinkTo(updateConsolidatorBlock, update => update != null);
+        flagProcessorBlock.LinkTo(updateConsolidatorBlock, update => update != null);
+
+        // Link updates to status aggregator -- this applies updates to session state and sends to clients
+        updateConsolidatorBlock.LinkTo(statusAggregatorBlock);
     }
-
-    //private void SetupPipeline(DataflowLinkOptions linkOptions)
-    //{
-    //    // Connect input to all processors
-    //    input.LinkTo(rmonitorProcessorBlock, linkOptions);
-    //    input.LinkTo(multiloopProcessorBlock, linkOptions);
-    //    input.LinkTo(pitProcessorBlock, linkOptions);
-
-    //    // Connect processors to state updater (filtering out null updates)
-    //    rmonitorProcessorBlock.LinkTo(stateUpdater, linkOptions, update => update != null);
-    //    multiloopProcessorBlock.LinkTo(stateUpdater, linkOptions, update => update != null);
-    //    pitProcessorBlock.LinkTo(stateUpdater, linkOptions, update => update != null);
-
-    //    // Discard null updates
-    //    var nullTarget = DataflowBlock.NullTarget<SessionStateUpdate?>();
-    //    rmonitorProcessorBlock.LinkTo(nullTarget, update => update == null);
-    //    multiloopProcessorBlock.LinkTo(nullTarget, update => update == null);
-    //    pitProcessorBlock.LinkTo(nullTarget, update => update == null);
-    //}
 
     /// <summary>
     /// Posts a timing message to the input of the processing pipeline.
@@ -109,97 +102,4 @@ public class SessionStateProcessingPipeline
     {
         return input.Post(message);
     }
-
-    /// <summary>
-    /// Subscribes to state changes from the pipeline.
-    /// </summary>
-    /// <returns>IDisposable that represents the subscription</returns>
-    public IDisposable Subscribe(ITargetBlock<SessionState> target)
-    {
-        var link = stateChangeBroadcast.LinkTo(target);
-        return link;
-    }
-
-    /// <summary>
-    /// Gets the current session state.
-    /// </summary>
-    public async Task<SessionState> GetCurrentStateAsync()
-    {
-        await stateLock.WaitAsync();
-        try
-        {
-            // Return a copy of the current state to avoid concurrent modification
-            return new SessionState
-            {
-                // Copy relevant properties from sessionState
-                // This would need to be implemented based on SessionState structure
-                // For now, return the reference as the exact structure is not visible
-            };
-        }
-        finally
-        {
-            stateLock.Release();
-        }
-    }
-
-    ///// <summary>
-    ///// Applies state updates to the session state and broadcasts changes.
-    ///// </summary>
-    //private async Task ApplyStateUpdate(SessionStateUpdate update)
-    //{
-    //    Logger.LogTrace("Applying state update from {Source} with {ChangeCount} changes", 
-    //        update.Source, update.Changes.Count);
-
-    //    await stateLock.WaitAsync();
-    //    try
-    //    {
-    //        bool hasChanges = false;
-    //        foreach (var change in update.Changes)
-    //        {
-    //            try
-    //            {
-    //                var applied = await change.ApplyToState(sessionState);
-    //                if (applied)
-    //                {
-    //                    hasChanges = true;
-    //                    Logger.LogTrace("Applied state change from {Source}: {ChangeType}", 
-    //                        update.Source, change.GetType().Name);
-    //                }
-    //            }
-    //            catch (Exception ex)
-    //            {
-    //                Logger.LogError(ex, "Error applying state change from {Source}: {ChangeType}", 
-    //                    update.Source, change.GetType().Name);
-    //            }
-    //        }
-
-    //        // Broadcast the updated state if there were changes
-    //        if (hasChanges)
-    //        {
-    //            Logger.LogTrace("Broadcasting state change from {Source}", update.Source);
-    //            await stateChangeBroadcast.SendAsync(sessionState);
-    //        }
-    //    }
-    //    finally
-    //    {
-    //        stateLock.Release();
-    //    }
-    //}
-
-    ///// <summary>
-    ///// Completes the pipeline and waits for all processing to finish.
-    ///// </summary>
-    //public async Task CompleteAsync()
-    //{
-    //    input.Complete();
-        
-    //    await Task.WhenAll(
-    //        rmonitorProcessorBlock.Completion,
-    //        multiloopProcessorBlock.Completion,
-    //        pitProcessorBlock.Completion,
-    //        stateUpdater.Completion);
-        
-    //    stateChangeBroadcast.Complete();
-    //    await stateChangeBroadcast.Completion;
-    //}
 }

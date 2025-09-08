@@ -28,7 +28,7 @@ public class FlagProcessorV2
 
     public async Task<SessionStateUpdate?> Process(TimingMessage message)
     {
-        if (message.Type != "flags")
+        if (message.Type != Backend.Shared.Consts.FLAGS_TYPE)
             return null;
         var fs = JsonSerializer.Deserialize<List<FlagDuration>>(message.Data);
         if (fs != null)

@@ -6,6 +6,8 @@ public record SectionStateUpdate(string CarNumber, List<CompletedSection> Multil
 {
     private static readonly CompletedSectionMapper mapper = new();
 
+    public string Number => CarNumber;
+
     public CarPositionPatch? GetChanges(CarPosition state)
     {
         var patch = new CarPositionPatch { Number = state.Number };

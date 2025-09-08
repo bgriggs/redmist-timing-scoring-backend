@@ -6,6 +6,7 @@ using System.Collections.Immutable;
 namespace RedMist.TimingAndScoringService.EventStatus.X2.StateChanges;
 
 public record PitStateUpdate(
+    string CarNumber,
     Dictionary<string, HashSet<int>> CarLapsWithPitStops,
     ImmutableDictionary<uint, Passing> InPit,
     ImmutableDictionary<uint, Passing> PitEntrance,
@@ -15,9 +16,11 @@ public record PitStateUpdate(
     ImmutableDictionary<uint, Passing> Other,
     ImmutableDictionary<uint, LoopMetadata> LoopMetadata) : ICarStateChange
 {
+    public string Number => CarNumber;
+
     public CarPositionPatch? GetChanges(CarPosition state)
     {
-        var patch = new CarPositionPatch { Number = state.Number };
+        var patch = new CarPositionPatch { Number = CarNumber };
 
         if (InPit.TryGetValue(state.TransponderId, out _) && !state.IsInPit)
         {
@@ -55,7 +58,7 @@ public record PitStateUpdate(
             patch.IsInPit = true;
         }
 
-        if (Other.TryGetValue(state.TransponderId, out var otherPass) && 
+        if (Other.TryGetValue(state.TransponderId, out var otherPass) &&
             LoopMetadata.TryGetValue(otherPass.Id, out var lm) && state.LastLoopName != lm.Name)
         {
             patch.LastLoopName = lm.Name;

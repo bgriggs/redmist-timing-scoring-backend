@@ -48,14 +48,13 @@ public class EventAggregator : BackgroundService
     private DateTime? lastPayloadChangedTimestamp;
 
     private SessionStateProcessingPipeline processingPipeline;
+    private readonly SessionContext sessionContext;
     private readonly PitProcessorV2 pitProcessorV2;
-    private IDisposable? pipelineSubscription;
-    //private readonly SessionState sessionState;
 
 
     public EventAggregator(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
         IMediator mediator, HybridCache hcache, IDbContextFactory<TsContext> tsContext, IHubContext<StatusHub> hubContext,
-        SessionStateProcessingPipeline processingPipeline, PitProcessorV2 pitProcessorV2)
+        SessionStateProcessingPipeline processingPipeline, SessionContext sessionContext, PitProcessorV2 pitProcessorV2)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.loggerFactory = loggerFactory;
@@ -65,6 +64,7 @@ public class EventAggregator : BackgroundService
         this.tsContext = tsContext;
         this.hubContext = hubContext;
         this.processingPipeline = processingPipeline;
+        this.sessionContext = sessionContext;
         this.pitProcessorV2 = pitProcessorV2;
         eventId = configuration.GetValue("event_id", 0);
         streamKey = string.Format(Backend.Shared.Consts.EVENT_STATUS_STREAM_KEY, eventId);
@@ -88,13 +88,7 @@ public class EventAggregator : BackgroundService
         // Initialize PitProcessorV2 with the current event
         await pitProcessorV2.Initialize(eventId);
 
-        // Subscribe to state changes from the processing pipeline
-        var stateSubscriber = new ActionBlock<SessionState>(async state =>
-        {
-            await BroadcastStateChange(state, stoppingToken);
-        });
-        pipelineSubscription = processingPipeline.Subscribe(stateSubscriber);
-
+       
         // Start a task to send a full update every so often
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
 
@@ -175,19 +169,6 @@ public class EventAggregator : BackgroundService
             Logger.LogError(ex, "Error broadcasting state change");
         }
         return Task.CompletedTask;
-    }
-
-    public override async Task StopAsync(CancellationToken cancellationToken)
-    {
-        Logger.LogInformation("Event Aggregator stopping...");
-        
-        // Dispose of pipeline subscription
-        pipelineSubscription?.Dispose();
-        
-        // Complete the processing pipeline
-        //await processingPipeline.CompleteAsync();
-        
-        await base.StopAsync(cancellationToken);
     }
 
     private async Task EnsureCacheSubscriptions(CancellationToken stoppingToken = default)

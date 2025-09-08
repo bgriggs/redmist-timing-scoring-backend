@@ -1,15 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
+using RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 using RedMist.TimingCommon.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus.PositionEnricher;
 
@@ -28,10 +30,16 @@ public class PositionDataEnricherTests
         _mockDbContextFactory = new Mock<IDbContextFactory<TsContext>>();
         _mockLoggerFactory = new Mock<ILoggerFactory>();
         _mockLogger = new Mock<ILogger>();
-        
+
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
-        
-        _sessionContext = new SessionContext();
+
+        var dict = new Dictionary<string, string?> { { "event_id", "1" }, };
+
+        IConfiguration config = new ConfigurationBuilder()
+            .AddInMemoryCollection(dict)
+            .Build();
+
+        _sessionContext = new SessionContext(config);
         _enricher = new PositionDataEnricher(_mockDbContextFactory.Object, _mockLoggerFactory.Object, _sessionContext);
     }
 
@@ -54,9 +62,10 @@ public class PositionDataEnricherTests
     {
         // Arrange
         _sessionContext.SessionState.CarPositions.Clear();
+        var sessionStateUpdate = new SessionStateUpdate([], []);
 
         // Act
-        var result = _enricher.Process();
+        var result = _enricher.Process(sessionStateUpdate);
 
         // Assert
         Assert.IsNull(result);
@@ -71,17 +80,18 @@ public class PositionDataEnricherTests
         car.LastLapCompleted = 10;
         car.OverallPosition = 1;
         car.ClassPosition = 0; // This will be updated by the processor
-        
+
         _sessionContext.SessionState.CarPositions.Add(car);
+        var sessionStateUpdate = new SessionStateUpdate([], [new CarLapStateUpdate(new TimingAndScoringService.EventStatus.RMonitor.RaceInformation())]);
 
         // Act
-        var result = _enricher.Process();
+        var result = _enricher.Process(sessionStateUpdate);
 
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(0, result.SessionChanges.Count);
         Assert.IsTrue(result.CarChanges.Count > 0);
-        
+
         var carChange = result.CarChanges.First();
         var patch = carChange.GetChanges(car);
         Assert.IsNotNull(patch);
@@ -103,9 +113,10 @@ public class PositionDataEnricherTests
         car2.ClassPosition = 0; // Will be updated to 2
 
         _sessionContext.SessionState.CarPositions.AddRange([car1, car2]);
+        var sessionStateUpdate = new SessionStateUpdate([], [new CarLapStateUpdate(new TimingAndScoringService.EventStatus.RMonitor.RaceInformation())]);
 
         // Act
-        var result = _enricher.Process();
+        var result = _enricher.Process(sessionStateUpdate);
 
         // Assert
         Assert.IsNotNull(result);
@@ -114,7 +125,7 @@ public class PositionDataEnricherTests
         // Verify class positions were set
         var car1Patch = result.CarChanges.First().GetChanges(car1);
         var car2Patch = result.CarChanges.Last().GetChanges(car2);
-        
+
         Assert.AreEqual(1, car1Patch?.ClassPosition);
         Assert.AreEqual(2, car2Patch?.ClassPosition);
     }
@@ -139,9 +150,10 @@ public class PositionDataEnricherTests
         car3.LastLapCompleted = 10;
 
         _sessionContext.SessionState.CarPositions.AddRange([car1, car2, car3]);
+        var sessionStateUpdate = new SessionStateUpdate([], [new CarLapStateUpdate(new TimingAndScoringService.EventStatus.RMonitor.RaceInformation())]);
 
         // Act
-        var result = _enricher.Process();
+        var result = _enricher.Process(sessionStateUpdate);
 
         // Assert
         Assert.IsNotNull(result);
@@ -150,7 +162,7 @@ public class PositionDataEnricherTests
         // Verify gaps and differences were calculated
         var car2Patch = result.CarChanges.Skip(1).First().GetChanges(car2);
         var car3Patch = result.CarChanges.Skip(2).First().GetChanges(car3);
-        
+
         Assert.AreEqual("1.000", car2Patch?.OverallGap);
         Assert.AreEqual("1.000", car2Patch?.OverallDifference);
         Assert.AreEqual("1.000", car3Patch?.OverallGap);
@@ -172,16 +184,17 @@ public class PositionDataEnricherTests
         car2.IsBestTimeClass = false; // Will remain false
 
         _sessionContext.SessionState.CarPositions.AddRange([car1, car2]);
+        var sessionStateUpdate = new SessionStateUpdate([], [new CarLapStateUpdate(new TimingAndScoringService.EventStatus.RMonitor.RaceInformation())]);
 
         // Act
-        var result = _enricher.Process();
+        var result = _enricher.Process(sessionStateUpdate);
 
         // Assert
         Assert.IsNotNull(result);
-        
+
         var car1Patch = result.CarChanges.First().GetChanges(car1);
         var car2Patch = result.CarChanges.Last().GetChanges(car2);
-        
+
         Assert.IsTrue(car1Patch?.IsBestTime);
         Assert.IsTrue(car1Patch?.IsBestTimeClass);
         // No change so no patch should be created
@@ -202,13 +215,14 @@ public class PositionDataEnricherTests
         car1.InClassPositionsGained = CarPosition.InvalidPosition; // Will be updated
 
         _sessionContext.SessionState.CarPositions.Add(car1);
+        var sessionStateUpdate = new SessionStateUpdate([], [new CarLapStateUpdate(new TimingAndScoringService.EventStatus.RMonitor.RaceInformation())]);
 
         // Act
-        var result = _enricher.Process();
+        var result = _enricher.Process(sessionStateUpdate);
 
         // Assert
         Assert.IsNotNull(result);
-        
+
         var car1Patch = result.CarChanges.First().GetChanges(car1);
         Assert.AreEqual(2, car1Patch?.OverallPositionsGained);
         Assert.AreEqual(1, car1Patch?.InClassPositionsGained);
@@ -222,11 +236,12 @@ public class PositionDataEnricherTests
         car.TotalTime = "00:10:00.000";
         car.OverallPosition = 1;
         car.ClassPosition = 0; // Original value
-        
+
         _sessionContext.SessionState.CarPositions.Add(car);
+        var sessionStateUpdate = new SessionStateUpdate([], [new CarLapStateUpdate(new TimingAndScoringService.EventStatus.RMonitor.RaceInformation())]);
 
         // Act
-        _enricher.Process();
+        _enricher.Process(sessionStateUpdate);
 
         // Assert - Original car should not be modified
         Assert.AreEqual(0, car.ClassPosition);
@@ -246,16 +261,17 @@ public class PositionDataEnricherTests
         car.OverallPosition = 1;
         car.OverallStartingPosition = 3;
         _sessionContext.SessionState.CarPositions.Add(car);
-        
+        var sessionStateUpdate = new SessionStateUpdate([], [new CarLapStateUpdate(new TimingAndScoringService.EventStatus.RMonitor.RaceInformation())]);
+
         // Process once to populate internal state
-        _enricher.Process();
+        _enricher.Process(sessionStateUpdate);
 
         // Act
         _enricher.Clear();
 
         // Assert
         // After clear, processing the same car again should treat it as new
-        var result = _enricher.Process();
+        var result = _enricher.Process(sessionStateUpdate);
         Assert.IsNotNull(result);
     }
 
@@ -270,12 +286,12 @@ public class PositionDataEnricherTests
         var mapper = new CarPositionMapper();
         var original = CreateTestCarPosition("1", "A", 1);
         original.TotalTime = "00:10:00.000";
-        
-        var completedSection = new CompletedSection 
-        { 
-            Number = "1", 
-            SectionId = "Sector1", 
-            ElapsedTimeMs = 30000 
+
+        var completedSection = new CompletedSection
+        {
+            Number = "1",
+            SectionId = "Sector1",
+            ElapsedTimeMs = 30000
         };
         original.CompletedSections.Add(completedSection);
 
@@ -286,33 +302,33 @@ public class PositionDataEnricherTests
 
         // Assert
         Assert.AreEqual(1, cloned.Count);
-        
+
         // Verify the CarPosition objects are different instances using ReferenceEquals
         Assert.IsFalse(ReferenceEquals(original, cloned[0]), "Original and cloned CarPosition should be different instances");
-        
+
         // Verify the properties are correctly copied
         Assert.AreEqual(original.Number, cloned[0].Number);
         Assert.AreEqual(original.TotalTime, cloned[0].TotalTime);
         Assert.AreEqual(original.Class, cloned[0].Class);
         Assert.AreEqual(original.OverallPosition, cloned[0].OverallPosition);
-        
+
         // Verify CompletedSections collection is a different instance using ReferenceEquals
-        Assert.IsFalse(ReferenceEquals(original.CompletedSections, cloned[0].CompletedSections), 
+        Assert.IsFalse(ReferenceEquals(original.CompletedSections, cloned[0].CompletedSections),
             "Original and cloned CompletedSections collections should be different instances");
-        
+
         // Verify CompletedSections collection has the same count
         Assert.AreEqual(original.CompletedSections.Count, cloned[0].CompletedSections.Count);
-        
+
         // Verify the CompletedSection objects are different instances but have same values
         if (original.CompletedSections.Count > 0 && cloned[0].CompletedSections.Count > 0)
         {
             var originalSection = original.CompletedSections[0];
             var clonedSection = cloned[0].CompletedSections[0];
-            
+
             // Use ReferenceEquals to verify different instances
-            Assert.IsFalse(ReferenceEquals(originalSection, clonedSection), 
+            Assert.IsFalse(ReferenceEquals(originalSection, clonedSection),
                 "Original and cloned CompletedSection should be different instances");
-            
+
             // Verify the values are correctly copied
             Assert.AreEqual(originalSection.Number, clonedSection.Number);
             Assert.AreEqual(originalSection.SectionId, clonedSection.SectionId);

@@ -55,7 +55,7 @@ public class SessionMonitorTests
             //    Console.WriteLine("Finish command");
             //}
 
-            await processor.ProcessUpdate("rmonitor", cmd, 36);
+            await processor.ProcessUpdate(Backend.Shared.Consts.RMONITOR_TYPE, cmd, 36);
 
             if (count % 10 == 0)
             {
@@ -99,7 +99,7 @@ public class SessionMonitorTests
                 //Console.WriteLine("Finish command");
             }
 
-            await processor.ProcessUpdate("rmonitor", cmd, 36);
+            await processor.ProcessUpdate(Backend.Shared.Consts.RMONITOR_TYPE, cmd, 36);
 
             if (count % 10 == 0)
             {
@@ -148,7 +148,7 @@ public class SessionMonitorTests
                 //Console.WriteLine("Finish command");
             }
 
-            await processor.ProcessUpdate("rmonitor", cmd, 36);
+            await processor.ProcessUpdate(Backend.Shared.Consts.RMONITOR_TYPE, cmd, 36);
 
             if (count % 10 == 0)
             {

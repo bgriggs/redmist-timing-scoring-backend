@@ -38,7 +38,7 @@ public partial class RaceInformation
     public ICarStateChange? ProcessG(string[] parts)
     {
         Position = int.Parse(parts[1]);
-        RegistrationNumber = parts[2].Replace("\"", "");
+        RegistrationNumber = parts[2].Replace("\"", "").Trim();
         var lastLap = Laps;
         if (int.TryParse(parts[3], out var l))
         {

@@ -4,6 +4,8 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 
 public interface ICarStateChange
 {
+    string Number { get; }
+
     /// <summary>
     /// Gets changes relative to the specified car state.
     /// </summary>

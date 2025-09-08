@@ -86,13 +86,13 @@ public class PitProcessorV2
     public async Task<SessionStateUpdate?> Process(TimingMessage message)
     {
         // Handle event configuration change notifications
-        if (message.Type == "event-changed")
+        if (message.Type == Backend.Shared.Consts.EVENT_CHANGED_TYPE)
         {
             await RefreshEventConfiguration(message);
             return null;
         }
 
-        if (message.Type != "x2pass")
+        if (message.Type != Backend.Shared.Consts.X2PASS_TYPE)
             return null;
 
         if (sessionContext.IsMultiloopActive)
@@ -117,6 +117,7 @@ public class PitProcessorV2
 
         var loopMetadata = GetLoopMetadata();
 
+        var changes = new List<ICarStateChange>();
         foreach (var pass in passings)
         {
             RemoveTransponderFromAllPassings(pass.TransponderId);
@@ -149,18 +150,25 @@ public class PitProcessorV2
                     other[pass.TransponderId] = pass;
                 }
             }
-        }
 
-        var change = new PitStateUpdate(
-            CarLapsWithPitStops: carLapsWithPitStops,
-            InPit: inPit.ToImmutableDictionary(),
-            PitEntrance: pitEntrance.ToImmutableDictionary(),
-            PitExit: pitExit.ToImmutableDictionary(),
-            PitSf: pitSf.ToImmutableDictionary(),
-            PitOther: pitOther.ToImmutableDictionary(),
-            Other: other.ToImmutableDictionary(),
-            LoopMetadata: loopMetadata);
-        return new SessionStateUpdate([], [change]);
+            var carNumber = sessionContext.GetCarNumberForTransponder(pass.TransponderId);
+            if (carNumber == null)
+                continue;
+
+            var change = new PitStateUpdate(
+                carNumber,
+                CarLapsWithPitStops: carLapsWithPitStops,
+                InPit: inPit.ToImmutableDictionary(),
+                PitEntrance: pitEntrance.ToImmutableDictionary(),
+                PitExit: pitExit.ToImmutableDictionary(),
+                PitSf: pitSf.ToImmutableDictionary(),
+                PitOther: pitOther.ToImmutableDictionary(),
+                Other: other.ToImmutableDictionary(),
+                LoopMetadata: loopMetadata);
+            changes.Add(change);
+        }
+        
+        return new SessionStateUpdate([], changes);
     }
 
     private async Task RefreshEventConfiguration(TimingMessage message)

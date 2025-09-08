@@ -61,7 +61,7 @@ public class CompletedLap : Message
             Rank = r;
 
         // Number
-        Number = parts[5];
+        Number = parts[5].Trim();
 
         // UniqueIdentifier
         if (uint.TryParse(parts[6], NumberStyles.HexNumber, null, out var ui))

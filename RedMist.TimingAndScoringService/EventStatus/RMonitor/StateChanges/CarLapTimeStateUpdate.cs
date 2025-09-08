@@ -4,6 +4,8 @@ namespace RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 
 public record CarLapTimeStateUpdate(PassingInformation PassingInformation) : ICarStateChange
 {
+    public string Number => PassingInformation.RegistrationNumber;
+
     public CarPositionPatch? GetChanges(CarPosition state)
     {
         var patch = new CarPositionPatch();

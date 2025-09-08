@@ -11,7 +11,6 @@ namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 public class RMonitorDataProcessorV2
 {
     private ILogger Logger { get; }
-    private readonly SemaphoreSlim _lock = new(1, 1);
     public Heartbeat Heartbeat { get; } = new();
     private readonly Dictionary<int, string> classes = [];
     private readonly Dictionary<string, Competitor> competitors = [];
@@ -32,112 +31,104 @@ public class RMonitorDataProcessorV2
     }
 
 
-    public async Task<SessionStateUpdate?> Process(TimingMessage message)
+    public SessionStateUpdate? Process(TimingMessage message)
     {
-        if (message.Type != "rmonitor")
+        if (message.Type != Backend.Shared.Consts.RMONITOR_TYPE)
             return null;
 
         var sessionChanges = new List<ISessionStateChange>();
         var carChanges = new List<ICarStateChange>();
 
-        await _lock.WaitAsync();
-        try
+        bool competitorChanged = false;
+        var commands = message.Data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        foreach (var command in commands)
         {
-            bool competitorChanged = false;
-            var commands = message.Data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-            foreach (var command in commands)
-            {
-                if (string.IsNullOrWhiteSpace(command))
-                    continue;
+            if (string.IsNullOrWhiteSpace(command))
+                continue;
 
-                try
+            try
+            {
+                if (command.StartsWith("$F"))
                 {
-                    if (command.StartsWith("$F"))
-                    {
-                        // Heartbeat message
-                        var ch = ProcessF(command);
-                        sessionChanges.Add(ch);
-                    }
-                    else if (command.StartsWith("$A"))
-                    {
-                        // Competitor information
-                        ProcessA(command);
-                        competitorChanged = true;
-                    }
-                    else if (command.StartsWith("$COMP"))
-                    {
-                        // Competitor information
-                        ProcessComp(command);
-                        competitorChanged = true;
-                    }
-                    else if (command.StartsWith("$B"))
-                    {
-                        // Session/run information
-                        var ch = ProcessB(command);
-                        if (ch != null)
-                            sessionChanges.Add(ch);
-                    }
-                    else if (command.StartsWith("$C"))
-                    {
-                        // Class information
-                        ProcessC(command);
-                        competitorChanged = true;
-                    }
-                    else if (command.StartsWith("$E"))
-                    {
-                        // Setting (track) information
-                        ProcessE(command);
-                    }
-                    else if (command.StartsWith("$G"))
-                    {
-                        // Race information
-                        var ch = ProcessG(command);
-                        if (ch != null)
-                            carChanges.Add(ch);
-                    }
-                    else if (command.StartsWith("$H"))
-                    {
-                        // Practice/qualifying information
-                        var ch = ProcessH(command);
-                        if (ch != null)
-                            carChanges.Add(ch);
-                    }
-                    else if (command.StartsWith("$I"))
-                    {
-                        // Init record (reset)
-                        ProcessI();
-                    }
-                    else if (command.StartsWith("$J"))
-                    {
-                        // Passing information
-                        var ch = ProcessJ(command);
-                        if (ch != null)
-                            carChanges.Add(ch);
-                    }
-                    else if (command.StartsWith("$COR"))
-                    {
-                        // Corrected Finish Time
-                        ProcessCor(command);
-                    }
-                    else
-                    {
-                        Logger.LogWarning("Unknown command: {cmd}", command);
-                    }
+                    // Heartbeat message
+                    var ch = ProcessF(command);
+                    sessionChanges.Add(ch);
                 }
-                catch (Exception ex)
+                else if (command.StartsWith("$A"))
                 {
-                    Logger.LogError(ex, "Error processing command: {cmd}", command);
+                    // Competitor information
+                    ProcessA(command);
+                    competitorChanged = true;
+                }
+                else if (command.StartsWith("$COMP"))
+                {
+                    // Competitor information
+                    ProcessComp(command);
+                    competitorChanged = true;
+                }
+                else if (command.StartsWith("$B"))
+                {
+                    // Session/run information
+                    var ch = ProcessB(command);
+                    if (ch != null)
+                        sessionChanges.Add(ch);
+                }
+                else if (command.StartsWith("$C"))
+                {
+                    // Class information
+                    ProcessC(command);
+                    competitorChanged = true;
+                }
+                else if (command.StartsWith("$E"))
+                {
+                    // Setting (track) information
+                    ProcessE(command);
+                }
+                else if (command.StartsWith("$G"))
+                {
+                    // Race information
+                    var ch = ProcessG(command);
+                    if (ch != null)
+                        carChanges.Add(ch);
+                }
+                else if (command.StartsWith("$H"))
+                {
+                    // Practice/qualifying information
+                    var ch = ProcessH(command);
+                    if (ch != null)
+                        carChanges.Add(ch);
+                }
+                else if (command.StartsWith("$I"))
+                {
+                    // Init record (reset)
+                    ProcessI();
+                }
+                else if (command.StartsWith("$J"))
+                {
+                    // Passing information
+                    var ch = ProcessJ(command);
+                    if (ch != null)
+                        carChanges.Add(ch);
+                }
+                else if (command.StartsWith("$COR"))
+                {
+                    // Corrected Finish Time
+                    ProcessCor(command);
+                }
+                else
+                {
+                    Logger.LogWarning("Unknown command: {cmd}", command);
                 }
             }
-
-            if (competitorChanged)
+            catch (Exception ex)
             {
-                sessionChanges.Add(new CompetitorStateUpdate([.. competitors.Values], classes.ToDictionary()));
+                Logger.LogError(ex, "Error processing command: {cmd}", command);
             }
         }
-        finally
+
+        if (competitorChanged)
         {
-            _lock.Release();
+            sessionChanges.Add(new CompetitorStateUpdate([.. competitors.Values], classes.ToDictionary()));
         }
 
         return new SessionStateUpdate(sessionChanges, carChanges);
@@ -271,7 +262,7 @@ public class RMonitorDataProcessorV2
             raceInformation[regNum] = raceInfo;
         }
         return raceInfo.ProcessG(parts);
-       
+
 
         //TODO: infer starting positions
         //// Save off starting positions

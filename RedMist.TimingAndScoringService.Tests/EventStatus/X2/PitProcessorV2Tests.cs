@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Database;
@@ -30,7 +31,13 @@ public class PitProcessorV2Tests
         _mockDbContextFactory = new Mock<IDbContextFactory<TsContext>>();
         _mockLoggerFactory = new Mock<ILoggerFactory>();
         _mockLogger = new Mock<ILogger>();
-        _mockSessionContext = new Mock<SessionContext>();
+
+        var dict = new Dictionary<string, string?> { { "event_id", "1" }, };
+        IConfiguration config = new ConfigurationBuilder()
+            .AddInMemoryCollection(dict)
+            .Build();
+
+        _mockSessionContext = new Mock<SessionContext>(config);
 
         // Create a real TsContext with InMemory database instead of mocking it
         var databaseName = $"TestDatabase_{Guid.NewGuid()}";
@@ -45,7 +52,22 @@ public class PitProcessorV2Tests
         _mockDbContextFactory.Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(realDbContext);
 
+        // Setup default transponder to car number mapping
+        SetupTransponderMapping();
+
         _processor = new PitProcessorV2(_mockDbContextFactory.Object, _mockLoggerFactory.Object, _mockSessionContext.Object);
+    }
+
+    private void SetupTransponderMapping()
+    {
+        // Setup transponder to car number mapping for common test scenarios
+        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(123)).Returns("123");
+        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(456)).Returns("456");
+        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(100)).Returns("100");
+        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(200)).Returns("200");
+        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(300)).Returns("300");
+        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(400)).Returns("400");
+        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(500)).Returns("500");
     }
 
     #region Initialization Tests
@@ -117,7 +139,7 @@ public class PitProcessorV2Tests
     public async Task Process_X2PassMessage_ReturnsNull()
     {
         // Arrange
-        var message = new TimingMessage("x2pass", "data", 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "data", 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
@@ -131,7 +153,7 @@ public class PitProcessorV2Tests
     {
         // Arrange
         _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(true);
-        var message = new TimingMessage("x2pass", "data", 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "data", 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
@@ -145,7 +167,7 @@ public class PitProcessorV2Tests
     {
         // Arrange
         _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
-        var message = new TimingMessage("x2pass", "[]", 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "[]", 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
@@ -159,7 +181,7 @@ public class PitProcessorV2Tests
     {
         // Arrange
         _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
-        var message = new TimingMessage("x2pass", "null", 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "null", 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
@@ -185,20 +207,29 @@ public class PitProcessorV2Tests
             new Passing { TransponderId = 456, LoopId = 2, IsInPit = false }
         };
 
-        var message = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarChanges.Count);
-        Assert.IsTrue(result.CarChanges[0] is PitStateUpdate);
+        Assert.AreEqual(2, result.CarChanges.Count); // Now creates one change per passing with valid car number
+        Assert.IsTrue(result.CarChanges.All(c => c is PitStateUpdate));
 
-        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
-        Assert.IsTrue(pitStateUpdate.InPit.ContainsKey(123));
-        Assert.IsTrue(pitStateUpdate.PitEntrance.ContainsKey(123));
-        Assert.IsTrue(pitStateUpdate.PitExit.ContainsKey(456));
+        // Find the specific state updates
+        var pitStateUpdate123 = result.CarChanges.OfType<PitStateUpdate>().FirstOrDefault(p => p.CarNumber == "123");
+        var pitStateUpdate456 = result.CarChanges.OfType<PitStateUpdate>().FirstOrDefault(p => p.CarNumber == "456");
+
+        Assert.IsNotNull(pitStateUpdate123);
+        Assert.IsNotNull(pitStateUpdate456);
+
+        // Check that transponder 123 is in the InPit and PitEntrance collections
+        Assert.IsTrue(pitStateUpdate123.InPit.ContainsKey(123));
+        Assert.IsTrue(pitStateUpdate123.PitEntrance.ContainsKey(123));
+
+        // Check that transponder 456 is in the PitExit collection
+        Assert.IsTrue(pitStateUpdate456.PitExit.ContainsKey(456));
     }
 
     [TestMethod]
@@ -213,14 +244,16 @@ public class PitProcessorV2Tests
             new Passing { TransponderId = 123, LoopId = 1, IsInPit = false } // LoopId 1 is PitIn
         };
 
-        var message = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.CarChanges.Count);
         var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
+        Assert.AreEqual("123", pitStateUpdate.CarNumber);
         Assert.IsTrue(pitStateUpdate.PitEntrance.ContainsKey(123));
         Assert.IsFalse(pitStateUpdate.InPit.ContainsKey(123)); // IsInPit was false
     }
@@ -237,14 +270,16 @@ public class PitProcessorV2Tests
             new Passing { TransponderId = 123, LoopId = 2, IsInPit = false } // LoopId 2 is PitExit
         };
 
-        var message = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.CarChanges.Count);
         var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
+        Assert.AreEqual("123", pitStateUpdate.CarNumber);
         Assert.IsTrue(pitStateUpdate.PitExit.ContainsKey(123));
     }
 
@@ -260,14 +295,16 @@ public class PitProcessorV2Tests
             new Passing { TransponderId = 123, LoopId = 3, IsInPit = false } // LoopId 3 is PitStartFinish
         };
 
-        var message = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.CarChanges.Count);
         var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
+        Assert.AreEqual("123", pitStateUpdate.CarNumber);
         Assert.IsTrue(pitStateUpdate.PitSf.ContainsKey(123));
     }
 
@@ -283,14 +320,16 @@ public class PitProcessorV2Tests
             new Passing { TransponderId = 123, LoopId = 4, IsInPit = false } // LoopId 4 is PitOther
         };
 
-        var message = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.CarChanges.Count);
         var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
+        Assert.AreEqual("123", pitStateUpdate.CarNumber);
         Assert.IsTrue(pitStateUpdate.PitOther.ContainsKey(123));
     }
 
@@ -306,14 +345,16 @@ public class PitProcessorV2Tests
             new Passing { TransponderId = 123, LoopId = 5, IsInPit = false } // LoopId 5 is Other
         };
 
-        var message = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.CarChanges.Count);
         var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
+        Assert.AreEqual("123", pitStateUpdate.CarNumber);
         Assert.IsTrue(pitStateUpdate.Other.ContainsKey(123));
     }
 
@@ -334,19 +375,22 @@ public class PitProcessorV2Tests
             new Passing { TransponderId = 123, LoopId = 2, IsInPit = false }  // Second passing (should replace first)
         };
 
-        var message = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
+        Assert.AreEqual(2, result.CarChanges.Count); // Two separate PitStateUpdate instances
+
+        // Get the last state update for transponder 123 (should reflect final state)
+        var lastStateUpdate = result.CarChanges.OfType<PitStateUpdate>().Last(p => p.CarNumber == "123");
         
         // Should only have the latest passing for transponder 123
-        Assert.IsFalse(pitStateUpdate.PitEntrance.ContainsKey(123)); // Should be removed
-        Assert.IsTrue(pitStateUpdate.PitExit.ContainsKey(123)); // Should contain latest
-        Assert.IsFalse(pitStateUpdate.InPit.ContainsKey(123)); // IsInPit was false in latest
+        Assert.IsFalse(lastStateUpdate.PitEntrance.ContainsKey(123)); // Should be removed by second passing
+        Assert.IsTrue(lastStateUpdate.PitExit.ContainsKey(123)); // Should contain latest
+        Assert.IsFalse(lastStateUpdate.InPit.ContainsKey(123)); // IsInPit was false in latest
     }
 
     [TestMethod]
@@ -361,13 +405,14 @@ public class PitProcessorV2Tests
             new Passing { TransponderId = 123, LoopId = 999, IsInPit = true } // Unknown loop
         };
 
-        var message = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.CarChanges.Count);
         var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         
         // Should only update InPit based on IsInPit flag, not any loop-specific collections
@@ -377,6 +422,29 @@ public class PitProcessorV2Tests
         Assert.IsFalse(pitStateUpdate.PitSf.ContainsKey(123));
         Assert.IsFalse(pitStateUpdate.PitOther.ContainsKey(123));
         Assert.IsFalse(pitStateUpdate.Other.ContainsKey(123));
+    }
+
+    [TestMethod]
+    public async Task Process_UnknownTransponder_SkipsProcessing()
+    {
+        // Arrange
+        await SetupEventWithLoops();
+        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(999)).Returns((string?)null); // Unknown transponder
+
+        var passings = new List<Passing>
+        {
+            new Passing { TransponderId = 999, LoopId = 1, IsInPit = true } // Unknown transponder
+        };
+
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
+
+        // Act
+        var result = await _processor.Process(message);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.AreEqual(0, result.CarChanges.Count); // Should skip processing for unknown transponder
     }
 
     #endregion
@@ -535,37 +603,45 @@ public class PitProcessorV2Tests
             new Passing { TransponderId = 500, LoopId = 5, IsInPit = false }  // Other loop
         };
 
-        var message = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarChanges.Count);
+        Assert.AreEqual(5, result.CarChanges.Count); // One change per valid transponder
 
-        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
+        var pitStateUpdates = result.CarChanges.OfType<PitStateUpdate>().ToList();
+        Assert.AreEqual(5, pitStateUpdates.Count);
+
+        // Find updates by car number
+        var update100 = pitStateUpdates.First(p => p.CarNumber == "100");
+        var update200 = pitStateUpdates.First(p => p.CarNumber == "200");
+        var update300 = pitStateUpdates.First(p => p.CarNumber == "300");
+        var update400 = pitStateUpdates.First(p => p.CarNumber == "400");
+        var update500 = pitStateUpdates.First(p => p.CarNumber == "500");
         
         // Verify InPit collection
-        Assert.IsTrue(pitStateUpdate.InPit.ContainsKey(100));
-        Assert.IsTrue(pitStateUpdate.InPit.ContainsKey(200));
-        Assert.IsTrue(pitStateUpdate.InPit.ContainsKey(300));
-        Assert.IsFalse(pitStateUpdate.InPit.ContainsKey(400)); // IsInPit was false
-        Assert.IsFalse(pitStateUpdate.InPit.ContainsKey(500)); // IsInPit was false
+        Assert.IsTrue(update100.InPit.ContainsKey(100));
+        Assert.IsTrue(update200.InPit.ContainsKey(200));
+        Assert.IsTrue(update300.InPit.ContainsKey(300));
+        Assert.IsFalse(update400.InPit.ContainsKey(400)); // IsInPit was false
+        Assert.IsFalse(update500.InPit.ContainsKey(500)); // IsInPit was false
 
         // Verify loop-specific collections
-        Assert.IsTrue(pitStateUpdate.PitEntrance.ContainsKey(100));
-        Assert.IsTrue(pitStateUpdate.PitExit.ContainsKey(200));
-        Assert.IsTrue(pitStateUpdate.PitSf.ContainsKey(300));
-        Assert.IsTrue(pitStateUpdate.PitOther.ContainsKey(400));
-        Assert.IsTrue(pitStateUpdate.Other.ContainsKey(500));
+        Assert.IsTrue(update100.PitEntrance.ContainsKey(100));
+        Assert.IsTrue(update200.PitExit.ContainsKey(200));
+        Assert.IsTrue(update300.PitSf.ContainsKey(300));
+        Assert.IsTrue(update400.PitOther.ContainsKey(400));
+        Assert.IsTrue(update500.Other.ContainsKey(500));
 
-        // Verify loop metadata is included
-        Assert.IsTrue(pitStateUpdate.LoopMetadata.ContainsKey(1));
-        Assert.IsTrue(pitStateUpdate.LoopMetadata.ContainsKey(2));
-        Assert.IsTrue(pitStateUpdate.LoopMetadata.ContainsKey(3));
-        Assert.IsTrue(pitStateUpdate.LoopMetadata.ContainsKey(4));
-        Assert.IsTrue(pitStateUpdate.LoopMetadata.ContainsKey(5));
+        // Verify loop metadata is included (each update should have the full metadata)
+        Assert.IsTrue(update100.LoopMetadata.ContainsKey(1));
+        Assert.IsTrue(update100.LoopMetadata.ContainsKey(2));
+        Assert.IsTrue(update100.LoopMetadata.ContainsKey(3));
+        Assert.IsTrue(update100.LoopMetadata.ContainsKey(4));
+        Assert.IsTrue(update100.LoopMetadata.ContainsKey(5));
     }
 
     #endregion
@@ -577,7 +653,7 @@ public class PitProcessorV2Tests
     {
         // Arrange
         _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
-        var message = new TimingMessage("x2pass", "invalid json", 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "invalid json", 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
@@ -597,13 +673,14 @@ public class PitProcessorV2Tests
             new Passing { TransponderId = 123, LoopId = 1, IsInPit = true }
         };
 
-        var message = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
 
         // Act
         var result = await _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.CarChanges.Count);
         var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
         
         // Should still process InPit
@@ -627,7 +704,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage("event-changed", eventId.ToString(), 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, eventId.ToString(), 1, DateTime.Now);
 
         // Setup a modified event configuration for reload
         var modifiedEventConfig = new ConfigurationEvent
@@ -683,7 +760,7 @@ public class PitProcessorV2Tests
         var differentEventId = 456;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage("event-changed", differentEventId.ToString(), 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, differentEventId.ToString(), 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -717,7 +794,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage("event-changed", "invalid-event-id", 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, "invalid-event-id", 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -751,7 +828,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage("event-changed", "", 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, "", 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -785,7 +862,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage("event-changed", null!, 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, null!, 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -816,7 +893,7 @@ public class PitProcessorV2Tests
     public async Task Process_EventChangedMessage_ProcessorNotInitialized_HandlesGracefully()
     {
         // Arrange - Don't call SetupEventWithLoops or Initialize, so eventId is default (0)
-        var eventChangedMessage = new TimingMessage("event-changed", "123", 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, "123", 1, DateTime.Now);
 
         // Reset the mock to track calls
         _mockDbContextFactory.Reset();
@@ -854,11 +931,12 @@ public class PitProcessorV2Tests
         {
             new Passing { TransponderId = 123, LoopId = 1, IsInPit = true } // LoopId 1 is PitIn in original config
         };
-        var passingMessage = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var passingMessage = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
         var firstResult = await _processor.Process(passingMessage);
 
         // Verify first result uses original configuration
         Assert.IsNotNull(firstResult);
+        Assert.AreEqual(1, firstResult.CarChanges.Count);
         var firstPitStateUpdate = (PitStateUpdate)firstResult.CarChanges[0];
         Assert.IsTrue(firstPitStateUpdate.PitEntrance.ContainsKey(123)); // Should be in PitEntrance
 
@@ -888,7 +966,7 @@ public class PitProcessorV2Tests
             });
 
         // Act - Send event changed message to reload configuration
-        var eventChangedMessage = new TimingMessage("event-changed", eventId.ToString(), 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, eventId.ToString(), 1, DateTime.Now);
         var reloadResult = await _processor.Process(eventChangedMessage);
         Assert.IsNull(reloadResult); // Event changed messages return null
 
@@ -897,6 +975,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(secondResult);
+        Assert.AreEqual(1, secondResult.CarChanges.Count);
         var secondPitStateUpdate = (PitStateUpdate)secondResult.CarChanges[0];
         
         // Now loop 1 should be treated as PitExit instead of PitIn
@@ -1007,7 +1086,7 @@ public class PitProcessorV2Tests
             new Passing { TransponderId = 123, LoopId = 1, IsInPit = true }
         };
 
-        var message = new TimingMessage("x2pass", JsonSerializer.Serialize(passings), 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
         var tasks = new List<Task<SessionStateUpdate?>>();
 
         // Act - Run multiple concurrent processes

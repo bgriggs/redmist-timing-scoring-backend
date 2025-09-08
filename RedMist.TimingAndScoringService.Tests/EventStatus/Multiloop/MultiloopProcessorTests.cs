@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
@@ -21,31 +22,37 @@ public class MultiloopProcessorTests
         _mockLoggerFactory = new Mock<ILoggerFactory>();
         _mockLogger = new Mock<ILogger<MultiloopProcessor>>();
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
-        _mockContext = new Mock<SessionContext>();
+
+        var dict = new Dictionary<string, string?> { { "event_id", "1" }, };
+        IConfiguration config = new ConfigurationBuilder()
+            .AddInMemoryCollection(dict)
+            .Build();
+
+        _mockContext = new Mock<SessionContext>(config);
         _processor = new MultiloopProcessor(_mockLoggerFactory.Object, _mockContext.Object);
     }
 
     [TestMethod]
-    public async Task Process_NonMultiloopMessage_ReturnsNull()
+    public void Process_NonMultiloopMessage_ReturnsNull()
     {
         // Arrange
         var message = new TimingMessage("other", "data", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNull(result);
     }
 
     [TestMethod]
-    public async Task Process_MultiloopMessage_ReturnsSessionStateUpdate()
+    public void Process_MultiloopMessage_ReturnsSessionStateUpdate()
     {
         // Arrange
-        var message = new TimingMessage("multiloop", "$H", 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, "$H", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -53,13 +60,13 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_HeartbeatCommand_ProcessesCorrectly()
+    public void Process_HeartbeatCommand_ProcessesCorrectly()
     {
         // Arrange
-        var message = new TimingMessage("multiloop", "$H�R�", 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, "$H�R�", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -68,14 +75,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_EntryCommand_ProcessesCorrectly()
+    public void Process_EntryCommand_ProcessesCorrectly()
     {
         // Arrange
         var entryData = "$E�R�17�Q1�12�17�Steve Introne�18�B�B-Spec�Honda Fit�Windham NH�NER�180337�White�Sripath/PurposeEnergy/BlackHog Beer/BostonMobileTire/Hyperco/G-Loc Brakes/Introne Comm�����17�";
-        var message = new TimingMessage("multiloop", entryData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, entryData, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -88,19 +95,19 @@ public class MultiloopProcessorTests
             var first = _processor.Entries.First();
             Console.WriteLine($"First entry key: '{first.Key}', Number: '{first.Value.Number}'");
         }
-        
+
         Assert.IsTrue(_processor.Entries.ContainsKey("12"), $"Expected entry with key '12', but found keys: {string.Join(", ", _processor.Entries.Keys.Select(k => $"'{k}'"))}");
     }
 
     [TestMethod]
-    public async Task Process_CompletedLapCommand_ProcessesCorrectly()
+    public void Process_CompletedLapCommand_ProcessesCorrectly()
     {
         // Arrange
         var lapData = "$C�U�80004�Q1�C�0�8�4�83DDF�1CB83�T�1CB83�4�2E6A�0�649�0�C�1CB83�Unknown�G�1�0�9�0";
-        var message = new TimingMessage("multiloop", lapData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, lapData, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -109,14 +116,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_CompletedSectionCommand_ProcessesCorrectly()
+    public void Process_CompletedSectionCommand_ProcessesCorrectly()
     {
         // Arrange
         var sectionData = "$S�N�F3170000�Q1�99�EF317�S1�2DF3C0E�7C07�5";
-        var message = new TimingMessage("multiloop", sectionData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, sectionData, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -127,14 +134,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_LineCrossingCommand_ProcessesCorrectly()
+    public void Process_LineCrossingCommand_ProcessesCorrectly()
     {
         // Arrange
         var lineData = "$L�N�EF325�Q1�89�5�SF�A�9B82E�G�T";
-        var message = new TimingMessage("multiloop", lineData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, lineData, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -143,14 +150,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_FlagCommand_ProcessesCorrectly()
+    public void Process_FlagCommand_ProcessesCorrectly()
     {
         // Arrange
         var flagData = "$F�R�5�Q1�K�0�D7108�6�6088A�1�0�1�00�1�81.63";
-        var message = new TimingMessage("multiloop", flagData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, flagData, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -166,20 +173,20 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_FlagCommand_WhenNotDirty_DoesNotGenerateStateChanges()
+    public void Process_FlagCommand_WhenNotDirty_DoesNotGenerateStateChanges()
     {
         // Arrange
         var flagData = "$F�R�5�Q1�K�0�D7108�6�6088A�1�0�1�00�1�81.63";
-        var message = new TimingMessage("multiloop", flagData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, flagData, 1, DateTime.Now);
 
         // Act - Process first time
-        var result1 = await _processor.Process(message);
-        
+        var result1 = _processor.Process(message);
+
         // Reset dirty flag to simulate what happens after state changes are processed
         _processor.FlagInformation.ResetDirty();
-        
+
         // Process same data again
-        var result2 = await _processor.Process(message);
+        var result2 = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result1);
@@ -191,14 +198,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_RunInformationCommand_ProcessesCorrectly()
+    public void Process_RunInformationCommand_ProcessesCorrectly()
     {
         // Arrange
         var runData = "$R�R�400004C7�Q1�Watkins Glen Hoosier Super Tour��Grp 2  FA FC FE2 P P2 Qual 1�Q�685ECBB8";
-        var message = new TimingMessage("multiloop", runData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, runData, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -213,20 +220,20 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_RunInformationCommand_WhenNotDirty_DoesNotGenerateStateChanges()
+    public void Process_RunInformationCommand_WhenNotDirty_DoesNotGenerateStateChanges()
     {
         // Arrange - Process the same data twice to test that the second time doesn't generate changes
         var runData = "$R�R�400004C7�Q1�Watkins Glen Hoosier Super Tour��Grp 2  FA FC FE2 P P2 Qual 1�Q�685ECBB8";
-        var message = new TimingMessage("multiloop", runData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, runData, 1, DateTime.Now);
 
         // Act - Process first time
-        var result1 = await _processor.Process(message);
-        
+        var result1 = _processor.Process(message);
+
         // Reset dirty flag to simulate what happens after state changes are processed
         _processor.RunInformation.ResetDirty();
-        
+
         // Process same data again
-        var result2 = await _processor.Process(message);
+        var result2 = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result1);
@@ -238,29 +245,29 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_RunInformationWithDifferentData_GeneratesStateChanges()
+    public void Process_RunInformationWithDifferentData_GeneratesStateChanges()
     {
         // Arrange - Process initial data, then different data
         var runData1 = "$R�R�400004C7�Q1�Watkins Glen Hoosier Super Tour��Grp 2  FA FC FE2 P P2 Qual 1�Q�685ECBB8";
         var runData2 = "$R�R�400004C8�Q1�Different Event Name��Different Run Name�P�685ECBB9";
-        var message1 = new TimingMessage("multiloop", runData1, 1, DateTime.Now);
-        var message2 = new TimingMessage("multiloop", runData2, 1, DateTime.Now);
+        var message1 = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, runData1, 1, DateTime.Now);
+        var message2 = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, runData2, 1, DateTime.Now);
 
         // Act
-        var result1 = await _processor.Process(message1);
+        var result1 = _processor.Process(message1);
         _processor.RunInformation.ResetDirty(); // Reset after first processing
-        
-        var result2 = await _processor.Process(message2);
+
+        var result2 = _processor.Process(message2);
 
         // Assert
         Assert.IsNotNull(result1);
         Assert.IsTrue(result1.SessionChanges.Count > 0);
         Assert.IsTrue(result1.SessionChanges.Any(c => c is PracticeQualifyingStateUpdate));
-        
+
         Assert.IsNotNull(result2);
         Assert.IsTrue(result2.SessionChanges.Count > 0, "Different data should generate state changes");
         Assert.IsTrue(result2.SessionChanges.Any(c => c is PracticeQualifyingStateUpdate));
-        
+
         // Verify the data was updated
         Assert.AreEqual("Different Event Name", _processor.RunInformation.EventName);
         Assert.AreEqual("Different Run Name", _processor.RunInformation.RunName);
@@ -268,13 +275,13 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_EmptyData_HandlesGracefully()
+    public void Process_EmptyData_HandlesGracefully()
     {
         // Arrange
-        var message = new TimingMessage("multiloop", "", 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, "", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -283,13 +290,13 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_WhitespaceOnlyData_HandlesGracefully()
+    public void Process_WhitespaceOnlyData_HandlesGracefully()
     {
         // Arrange
-        var message = new TimingMessage("multiloop", "   \n  \t  ", 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, "   \n  \t  ", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -298,14 +305,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_MalformedCompletedLapData_LogsWarning()
+    public void Process_MalformedCompletedLapData_LogsWarning()
     {
         // Arrange
         var malformedData = "$C�"; // Missing car number
-        var message = new TimingMessage("multiloop", malformedData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, malformedData, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -313,14 +320,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_MalformedCompletedSectionData_LogsWarning()
+    public void Process_MalformedCompletedSectionData_LogsWarning()
     {
         // Arrange
         var malformedData = "$S�"; // Missing car number and section
-        var message = new TimingMessage("multiloop", malformedData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, malformedData, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -328,14 +335,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_MalformedLineCrossingData_LogsWarning()
+    public void Process_MalformedLineCrossingData_LogsWarning()
     {
         // Arrange
         var malformedData = "$L�"; // Missing car number
-        var message = new TimingMessage("multiloop", malformedData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, malformedData, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -343,14 +350,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_UnknownCommand_HandlesGracefully()
+    public void Process_UnknownCommand_HandlesGracefully()
     {
         // Arrange
         var unknownCommand = "$X�unknown�command";
-        var message = new TimingMessage("multiloop", unknownCommand, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, unknownCommand, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -358,24 +365,6 @@ public class MultiloopProcessorTests
         Assert.AreEqual(0, result.CarChanges.Count);
     }
 
-    [TestMethod]
-    public async Task Process_ConcurrentAccess_IsSafe()
-    {
-        // Arrange
-        var message = new TimingMessage("multiloop", "$H�R�", 1, DateTime.Now);
-        var tasks = new List<Task<SessionStateUpdate?>>();
-
-        // Act
-        for (int i = 0; i < 10; i++)
-        {
-            tasks.Add(_processor.Process(message));
-        }
-
-        var results = await Task.WhenAll(tasks);
-
-        // Assert
-        Assert.IsTrue(results.All(r => r is not null));
-    }
 
     [TestMethod]
     public void Properties_InitializedCorrectly()
@@ -395,21 +384,21 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_CompletedLapAfterSections_ClearsSections()
+    public void Process_CompletedLapAfterSections_ClearsSections()
     {
         // Arrange - First add some sections
         var sectionData = "$S�N�F3170000�Q1�99�EF317�S1�2DF3C0E�7C07�5";
-        var sectionMessage = new TimingMessage("multiloop", sectionData, 1, DateTime.Now);
-        
+        var sectionMessage = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, sectionData, 1, DateTime.Now);
+
         var lapData = "$C�U�80004�Q1�C�99�8�4�83DDF�1CB83�T�1CB83�4�2E6A�0�649�0�C�1CB83�Unknown�G�1�0�9�0";
-        var lapMessage = new TimingMessage("multiloop", lapData, 1, DateTime.Now);
+        var lapMessage = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, lapData, 1, DateTime.Now);
 
         // Act
-        await _processor.Process(sectionMessage);
+        _processor.Process(sectionMessage);
         Assert.IsTrue(_processor.CompletedSections.ContainsKey("99"));
         Assert.IsTrue(_processor.CompletedSections["99"].Count > 0, "Section should be added");
-        
-        await _processor.Process(lapMessage);
+
+        _processor.Process(lapMessage);
 
         // Assert
         Assert.IsTrue(_processor.CompletedSections.ContainsKey("99"));
@@ -417,14 +406,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_EntryWithoutNumber_HandlesGracefully()
+    public void Process_EntryWithoutNumber_HandlesGracefully()
     {
         // Arrange
         var entryData = "$E�R�17�Q1���Steve Introne�18�B"; // Missing number (empty field)
-        var message = new TimingMessage("multiloop", entryData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, entryData, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -435,14 +424,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_SectionWithoutExistingCarData_CreatesNewSectionDictionary()
+    public void Process_SectionWithoutExistingCarData_CreatesNewSectionDictionary()
     {
         // Arrange
         var sectionData = "$S�N�F3170000�Q1�42�EF317�S2�2DF3C0E�7C07�3";
-        var message = new TimingMessage("multiloop", sectionData, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, sectionData, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -452,17 +441,17 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_DuplicateEntrySameNumber_OverwritesPrevious()
+    public void Process_DuplicateEntrySameNumber_OverwritesPrevious()
     {
         // Arrange
         var entryData1 = "$E�R�17�Q1�10�17�First Driver�18�B�B-Spec�Honda Fit�Windham NH�NER�180337�White����17�";
         var entryData2 = "$E�R�17�Q1�10�18�Second Driver�19�A�A-Spec�Toyota Corolla�Boston MA�NER�180338�Blue����18�";
-        var message1 = new TimingMessage("multiloop", entryData1, 1, DateTime.Now);
-        var message2 = new TimingMessage("multiloop", entryData2, 1, DateTime.Now);
+        var message1 = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, entryData1, 1, DateTime.Now);
+        var message2 = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, entryData2, 1, DateTime.Now);
 
         // Act
-        await _processor.Process(message1);
-        await _processor.Process(message2);
+        _processor.Process(message1);
+        _processor.Process(message2);
 
         // Assert
         Assert.IsTrue(_processor.Entries.ContainsKey("10"));
@@ -472,14 +461,14 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public async Task Process_FlagInformationBecomingDirty_GeneratesStateChange()
+    public void Process_FlagInformationBecomingDirty_GeneratesStateChange()
     {
         // Act - Process a flag command that will make FlagInformation dirty
         // The actual flag processing logic should set IsDirty to true when state changes
         var flagData = "$F�Y�10�100�5�200�3�50�1"; // Yellow flag with timing data
-        var message = new TimingMessage("multiloop", flagData, 1, DateTime.Now);
-        
-        var result = await _processor.Process(message);
+        var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, flagData, 1, DateTime.Now);
+
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);

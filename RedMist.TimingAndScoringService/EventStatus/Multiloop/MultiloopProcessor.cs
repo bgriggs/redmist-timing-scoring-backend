@@ -10,7 +10,6 @@ namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 public class MultiloopProcessor
 {
     private ILogger Logger { get; }
-    private readonly SemaphoreSlim _lock = new(1, 1);
     private readonly SessionContext context;
 
     public Heartbeat Heartbeat { get; } = new Heartbeat();
@@ -36,9 +35,9 @@ public class MultiloopProcessor
     }
 
 
-    public async Task<SessionStateUpdate?> Process(TimingMessage message)
+    public SessionStateUpdate? Process(TimingMessage message)
     {
-        if (message.Type != "multiloop")
+        if (message.Type != Backend.Shared.Consts.MULTILOOP_TYPE)
             return null;
 
         var sessionChanges = new List<ISessionStateChange>();
@@ -46,29 +45,22 @@ public class MultiloopProcessor
         context.IsMultiloopActive = true;
 
         var commands = message.Data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        await _lock.WaitAsync();
-        try
+        foreach (var command in commands)
         {
-            foreach (var command in commands)
+            if (string.IsNullOrWhiteSpace(command))
+                continue;
+            try
             {
-                if (string.IsNullOrWhiteSpace(command))
-                    continue;
-                try
-                {
-                    var (sessionUpdates, carUpdates) = ProcessCommand(command);
-                    sessionChanges.AddRange(sessionUpdates);
-                    carChanges.AddRange(carUpdates);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError(ex, "Error processing multiloop command: {cmd}", command);
-                }
+                var (sessionUpdates, carUpdates) = ProcessCommand(command);
+                sessionChanges.AddRange(sessionUpdates);
+                carChanges.AddRange(carUpdates);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error processing multiloop command: {cmd}", command);
             }
         }
-        finally
-        {
-            _lock.Release();
-        }
+
         return new SessionStateUpdate(sessionChanges, carChanges);
     }
 

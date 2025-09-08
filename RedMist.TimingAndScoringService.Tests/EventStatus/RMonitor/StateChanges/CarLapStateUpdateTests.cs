@@ -25,26 +25,6 @@ public class CarLapStateUpdateTests
 
     #endregion
 
-    #region Targets Property Tests
-
-    [TestMethod]
-    public void Targets_Property_ReturnsCorrectTargets()
-    {
-        // Arrange
-        var raceInformation = CreateRaceInformation(position: 1, laps: 10, raceTime: "00:30:15.456");
-        var stateUpdate = new CarLapStateUpdate(raceInformation);
-
-        // Act
-        var targets = stateUpdate.Targets;
-
-        // Assert
-        Assert.IsNotNull(targets);
-        Assert.AreEqual(1, targets.Count);
-        Assert.AreEqual(nameof(CarPosition.LastLapCompleted), targets[0]);
-    }
-
-    #endregion
-
     #region GetChanges Tests - Both Properties Changed
 
     [TestMethod]

@@ -37,4 +37,14 @@ public class Consts
     public const string IN_CAR_CONNECTIONS_KEY = "total_in_car_connections";
 
     #endregion
+
+    #region Data Types
+
+    public const string RMONITOR_TYPE = "rmonitor";
+    public const string MULTILOOP_TYPE = "multiloop";
+    public const string X2PASS_TYPE = "x2pass";
+    public const string FLAGS_TYPE = "flags";
+    public const string EVENT_CHANGED_TYPE = "event-changed";
+
+    #endregion
 }

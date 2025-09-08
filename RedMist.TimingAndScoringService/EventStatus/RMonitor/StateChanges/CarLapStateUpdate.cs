@@ -4,7 +4,7 @@ namespace RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 
 public record CarLapStateUpdate(RaceInformation RaceInformation) : ICarStateChange
 {
-    public List<string> Targets => [nameof(CarPosition.LastLapCompleted)];
+    public string Number => RaceInformation.RegistrationNumber;
 
     public CarPositionPatch? GetChanges(CarPosition state)
     {

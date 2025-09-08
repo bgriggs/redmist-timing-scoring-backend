@@ -29,8 +29,11 @@ public class PositionDataEnricher
     /// are returned as a SessionStateUpdate. The session state is not modified.
     /// </summary>
     /// <returns></returns>
-    public SessionStateUpdate? Process()
+    public SessionStateUpdate? Process(SessionStateUpdate? rmonitorUpdates)
     {
+        if (rmonitorUpdates == null || rmonitorUpdates.CarChanges.Count == 0)
+            return null;
+
         // Make a deep copy of the car positions so that the position processor does not modify the session state.
         var originalCarPositions = sessionContext.SessionState.CarPositions;
         var copiedCarPositions = carPositionMapper.CloneCarPositions(originalCarPositions);
@@ -51,6 +54,7 @@ public class PositionDataEnricher
 
             if (TimingCommon.Models.Mappers.CarPositionMapper.IsValidPatch(patch))
             {
+                patch.Number = original.Number; // Ensure number is set
                 var stateChange = new PositionMetadataStateUpdate(patch);
                 carChanges.Add(stateChange);
             }
@@ -87,9 +91,7 @@ public partial class CarPositionMapper
 /// </summary>
 public record PositionMetadataStateUpdate(CarPositionPatch Patch) : ICarStateChange
 {
-    public CarPositionPatch? GetChanges(CarPosition state)
-    {
-        Patch.Number = state.Number;
-        return Patch;
-    }
+    public string Number => Patch.Number ?? string.Empty;
+
+    public CarPositionPatch? GetChanges(CarPosition state) => Patch;
 }

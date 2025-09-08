@@ -30,26 +30,26 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task Process_NonRMonitorMessage_ReturnsNull()
+    public void Process_NonRMonitorMessage_ReturnsNull()
     {
         // Arrange
         var message = new TimingMessage("other", "data", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNull(result);
     }
 
     [TestMethod]
-    public async Task Process_RMonitorMessage_ReturnsSessionStateUpdate()
+    public void Process_RMonitorMessage_ReturnsSessionStateUpdate()
     {
         // Arrange
-        var message = new TimingMessage("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -59,13 +59,13 @@ public class RMonitorDataProcessorV2Tests
     #region Heartbeat Tests ($F)
 
     [TestMethod]
-    public async Task ProcessF_ValidHeartbeat_GeneratesHeartbeatStateUpdate()
+    public void ProcessF_ValidHeartbeat_GeneratesHeartbeatStateUpdate()
     {
         // Arrange
-        var message = new TimingMessage("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -84,14 +84,14 @@ public class RMonitorDataProcessorV2Tests
     #region Competitor Tests ($A and $COMP)
 
     [TestMethod]
-    public async Task ProcessA_ValidCompetitor_GeneratesCompetitorStateUpdate()
+    public void ProcessA_ValidCompetitor_GeneratesCompetitorStateUpdate()
     {
         // Arrange
-        var competitorMessage = new TimingMessage("rmonitor", 
+        var competitorMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, 
             "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(competitorMessage);
+        var result = _processor.Process(competitorMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -99,14 +99,14 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessComp_ValidCompetitor_GeneratesCompetitorStateUpdate()
+    public void ProcessComp_ValidCompetitor_GeneratesCompetitorStateUpdate()
     {
         // Arrange
-        var competitorMessage = new TimingMessage("rmonitor", 
+        var competitorMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, 
             "$COMP,\"1234BE\",\"12X\",5,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(competitorMessage);
+        var result = _processor.Process(competitorMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -114,15 +114,15 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessA_MultipleCompetitors_GeneratesCompetitorStateUpdate()
+    public void ProcessA_MultipleCompetitors_GeneratesCompetitorStateUpdate()
     {
         // Arrange
         var multipleCompetitors = "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5\n" +
                                  "$A,\"5678CD\",\"34Y\",12345,\"Jane\",\"Smith\",\"CAN\",3";
-        var message = new TimingMessage("rmonitor", multipleCompetitors, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, multipleCompetitors, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -134,13 +134,13 @@ public class RMonitorDataProcessorV2Tests
     #region Session Information Tests ($B)
 
     [TestMethod]
-    public async Task ProcessB_ValidSessionInfo_GeneratesSessionStateUpdated()
+    public void ProcessB_ValidSessionInfo_GeneratesSessionStateUpdated()
     {
         // Arrange
-        var sessionMessage = new TimingMessage("rmonitor", "$B,5,\"Friday free practice\"", 1, DateTime.Now);
+        var sessionMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$B,5,\"Friday free practice\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(sessionMessage);
+        var result = _processor.Process(sessionMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -154,14 +154,14 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessB_SameSessionReference_DoesNotGenerateStateUpdate()
+    public void ProcessB_SameSessionReference_DoesNotGenerateStateUpdate()
     {
         // Arrange
         _processor.SessionReference = 5;
-        var sessionMessage = new TimingMessage("rmonitor", "$B,5,\"Friday free practice\"", 1, DateTime.Now);
+        var sessionMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$B,5,\"Friday free practice\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(sessionMessage);
+        var result = _processor.Process(sessionMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -169,14 +169,14 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessB_DifferentSessionReference_GeneratesStateUpdate()
+    public void ProcessB_DifferentSessionReference_GeneratesStateUpdate()
     {
         // Arrange - Set initial session reference
         _processor.SessionReference = 1;
-        var sessionMessage = new TimingMessage("rmonitor", "$B,5,\"Friday free practice\"", 1, DateTime.Now);
+        var sessionMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$B,5,\"Friday free practice\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(sessionMessage);
+        var result = _processor.Process(sessionMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -191,13 +191,13 @@ public class RMonitorDataProcessorV2Tests
     #region Class Information Tests ($C)
 
     [TestMethod]
-    public async Task ProcessC_ValidClass_GeneratesCompetitorStateUpdate()
+    public void ProcessC_ValidClass_GeneratesCompetitorStateUpdate()
     {
         // Arrange
-        var classMessage = new TimingMessage("rmonitor", "$C,5,\"Formula 300\"", 1, DateTime.Now);
+        var classMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$C,5,\"Formula 300\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(classMessage);
+        var result = _processor.Process(classMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -205,14 +205,14 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessC_MultipleClasses_ProcessesCorrectly()
+    public void ProcessC_MultipleClasses_ProcessesCorrectly()
     {
         // Arrange
         var multipleClasses = "$C,1,\"GTU\"\n$C,2,\"GTO\"\n$C,3,\"GP1\"\n$C,4,\"GP2\"";
-        var message = new TimingMessage("rmonitor", multipleClasses, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, multipleClasses, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -224,13 +224,13 @@ public class RMonitorDataProcessorV2Tests
     #region Setting Information Tests ($E)
 
     [TestMethod]
-    public async Task ProcessE_TrackName_SetsTrackName()
+    public void ProcessE_TrackName_SetsTrackName()
     {
         // Arrange
-        var trackMessage = new TimingMessage("rmonitor", "$E,\"TRACKNAME\",\"Indianapolis Motor Speedway\"", 1, DateTime.Now);
+        var trackMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$E,\"TRACKNAME\",\"Indianapolis Motor Speedway\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(trackMessage);
+        var result = _processor.Process(trackMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -238,13 +238,13 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessE_TrackLength_SetsTrackLength()
+    public void ProcessE_TrackLength_SetsTrackLength()
     {
         // Arrange
-        var trackMessage = new TimingMessage("rmonitor", "$E,\"TRACKLENGTH\",\"2.500\"", 1, DateTime.Now);
+        var trackMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$E,\"TRACKLENGTH\",\"2.500\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(trackMessage);
+        var result = _processor.Process(trackMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -252,13 +252,13 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessE_UnknownSetting_DoesNothing()
+    public void ProcessE_UnknownSetting_DoesNothing()
     {
         // Arrange
-        var trackMessage = new TimingMessage("rmonitor", "$E,\"UNKNOWN\",\"Some Value\"", 1, DateTime.Now);
+        var trackMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$E,\"UNKNOWN\",\"Some Value\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(trackMessage);
+        var result = _processor.Process(trackMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -271,13 +271,13 @@ public class RMonitorDataProcessorV2Tests
     #region Race Information Tests ($G)
 
     [TestMethod]
-    public async Task ProcessG_ValidRaceInfo_GeneratesStateChange()
+    public void ProcessG_ValidRaceInfo_GeneratesStateChange()
     {
         // Arrange
-        var raceMessage = new TimingMessage("rmonitor", "$G,3,\"1234BE\",14,\"01:12:47.872\"", 1, DateTime.Now);
+        var raceMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$G,3,\"1234BE\",14,\"01:12:47.872\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(raceMessage);
+        var result = _processor.Process(raceMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -286,13 +286,13 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessG_EmptyTime_HandlesGracefully()
+    public void ProcessG_EmptyTime_HandlesGracefully()
     {
         // Arrange
-        var raceMessage = new TimingMessage("rmonitor", "$G,10,\"89\",,\"00:00:00.000\"", 1, DateTime.Now);
+        var raceMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$G,10,\"89\",,\"00:00:00.000\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(raceMessage);
+        var result = _processor.Process(raceMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -304,13 +304,13 @@ public class RMonitorDataProcessorV2Tests
     #region Practice/Qualifying Information Tests ($H)
 
     [TestMethod]
-    public async Task ProcessH_ValidPracticeQualifying_GeneratesStateChange()
+    public void ProcessH_ValidPracticeQualifying_GeneratesStateChange()
     {
         // Arrange
-        var practiceMessage = new TimingMessage("rmonitor", "$H,2,\"1234BE\",3,\"00:02:17.872\"", 1, DateTime.Now);
+        var practiceMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$H,2,\"1234BE\",3,\"00:02:17.872\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(practiceMessage);
+        var result = _processor.Process(practiceMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -323,22 +323,22 @@ public class RMonitorDataProcessorV2Tests
     #region Init Record Tests ($I)
 
     [TestMethod]
-    public async Task ProcessI_Init_ClearsDataStructures()
+    public void ProcessI_Init_ClearsDataStructures()
     {
         // Arrange - First populate some data
-        var setupMessage = new TimingMessage("rmonitor", 
+        var setupMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, 
             "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5\n" +
             "$G,3,\"1234BE\",14,\"01:12:47.872\"\n" +
             "$H,2,\"1234BE\",3,\"00:02:17.872\"", 1, DateTime.Now);
-        await _processor.Process(setupMessage);
+        _processor.Process(setupMessage);
 
         // Set heartbeat to unknown to trigger full reset
         _processor.Heartbeat.FlagStatus = "Unknown";
 
-        var initMessage = new TimingMessage("rmonitor", "$I,\"16:36:08.000\",\"12 jan 01\"", 1, DateTime.Now);
+        var initMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$I,\"16:36:08.000\",\"12 jan 01\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(initMessage);
+        var result = _processor.Process(initMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -347,18 +347,18 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task ProcessI_InitWithNonUnknownFlag_PartialReset()
+    public void ProcessI_InitWithNonUnknownFlag_PartialReset()
     {
         // Arrange - First populate some data
-        var setupMessage = new TimingMessage("rmonitor", 
+        var setupMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, 
             "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5\n" +
             "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
-        await _processor.Process(setupMessage);
+        _processor.Process(setupMessage);
 
-        var initMessage = new TimingMessage("rmonitor", "$I,\"16:36:08.000\",\"12 jan 01\"", 1, DateTime.Now);
+        var initMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$I,\"16:36:08.000\",\"12 jan 01\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(initMessage);
+        var result = _processor.Process(initMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -370,13 +370,13 @@ public class RMonitorDataProcessorV2Tests
     #region Passing Information Tests ($J)
 
     [TestMethod]
-    public async Task ProcessJ_ValidPassingInfo_GeneratesStateChange()
+    public void ProcessJ_ValidPassingInfo_GeneratesStateChange()
     {
         // Arrange
-        var passingMessage = new TimingMessage("rmonitor", "$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 1, DateTime.Now);
+        var passingMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(passingMessage);
+        var result = _processor.Process(passingMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -389,13 +389,13 @@ public class RMonitorDataProcessorV2Tests
     #region Corrected Finish Time Tests ($COR)
 
     [TestMethod]
-    public async Task ProcessCor_ValidCorrectedTime_HandlesGracefully()
+    public void ProcessCor_ValidCorrectedTime_HandlesGracefully()
     {
         // Arrange
-        var corMessage = new TimingMessage("rmonitor", "$COR,\"123BE\",\"658\",2,\"00:00:35.272\",\"+00:00:00.012\"", 1, DateTime.Now);
+        var corMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$COR,\"123BE\",\"658\",2,\"00:00:35.272\",\"+00:00:00.012\"", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(corMessage);
+        var result = _processor.Process(corMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -407,13 +407,13 @@ public class RMonitorDataProcessorV2Tests
     #region Error Handling Tests
 
     [TestMethod]
-    public async Task Process_ExceptionInCommand_LogsError()
+    public void Process_ExceptionInCommand_LogsError()
     {
         // Arrange - Create a malformed command that will cause parsing errors
-        var malformedMessage = new TimingMessage("rmonitor", "$B,invalid", 1, DateTime.Now);
+        var malformedMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$B,invalid", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(malformedMessage);
+        var result = _processor.Process(malformedMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -421,13 +421,13 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task Process_UnknownCommand_LogsWarning()
+    public void Process_UnknownCommand_LogsWarning()
     {
         // Arrange
-        var unknownMessage = new TimingMessage("rmonitor", "$UNKNOWN,data", 1, DateTime.Now);
+        var unknownMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$UNKNOWN,data", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(unknownMessage);
+        var result = _processor.Process(unknownMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -439,14 +439,14 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task Process_MultipleUnknownCommands_LogsWarnings()
+    public void Process_MultipleUnknownCommands_LogsWarnings()
     {
         // Arrange
         var unknownCommands = "$UNKNOWN1,data1\n$UNKNOWN2,data2\n$UNKNOWN3,data3";
-        var message = new TimingMessage("rmonitor", unknownCommands, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, unknownCommands, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -454,13 +454,13 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task Process_EmptyData_HandlesGracefully()
+    public void Process_EmptyData_HandlesGracefully()
     {
         // Arrange
-        var emptyMessage = new TimingMessage("rmonitor", "", 1, DateTime.Now);
+        var emptyMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(emptyMessage);
+        var result = _processor.Process(emptyMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -469,13 +469,13 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task Process_WhitespaceOnlyData_HandlesGracefully()
+    public void Process_WhitespaceOnlyData_HandlesGracefully()
     {
         // Arrange
-        var whitespaceMessage = new TimingMessage("rmonitor", "   \n  \t  ", 1, DateTime.Now);
+        var whitespaceMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "   \n  \t  ", 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(whitespaceMessage);
+        var result = _processor.Process(whitespaceMessage);
 
         // Assert
         Assert.IsNotNull(result);
@@ -488,17 +488,17 @@ public class RMonitorDataProcessorV2Tests
     #region Multiple Commands Tests
 
     [TestMethod]
-    public async Task Process_MultipleCommands_ProcessesAllCorrectly()
+    public void Process_MultipleCommands_ProcessesAllCorrectly()
     {
         // Arrange
         var multipleCommands = "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"\n" +
                               "$B,5,\"Friday free practice\"\n" +
                               "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5\n" +
                               "$C,5,\"Formula 300\"";
-        var message = new TimingMessage("rmonitor", multipleCommands, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, multipleCommands, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -510,29 +510,6 @@ public class RMonitorDataProcessorV2Tests
         // Verify properties are set correctly
         Assert.AreEqual(5, _processor.SessionReference);
         Assert.AreEqual("Friday free practice", _processor.SessionName);
-    }
-
-    #endregion
-
-    #region Concurrency Tests
-
-    [TestMethod]
-    public async Task Process_ConcurrentAccess_IsSafe()
-    {
-        // Arrange
-        var message = new TimingMessage("rmonitor", "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
-        var tasks = new List<Task<SessionStateUpdate?>>();
-
-        // Act
-        for (int i = 0; i < 10; i++)
-        {
-            tasks.Add(_processor.Process(message));
-        }
-
-        var results = await Task.WhenAll(tasks);
-
-        // Assert
-        Assert.IsTrue(results.All(r => r is not null));
     }
 
     #endregion
@@ -555,7 +532,7 @@ public class RMonitorDataProcessorV2Tests
     #region Integration Tests
 
     [TestMethod]
-    public async Task Process_CompleteRaceScenario_ProcessesCorrectly()
+    public void Process_CompleteRaceScenario_ProcessesCorrectly()
     {
         // Arrange - Simulate a complete race data scenario
         var raceScenario = 
@@ -585,10 +562,10 @@ public class RMonitorDataProcessorV2Tests
             "$J,\"1234BE\",\"01:45.123\",\"00:15:30.123\"\n" +
             "$J,\"5678CD\",\"01:47.456\",\"00:15:45.456\"";
 
-        var message = new TimingMessage("rmonitor", raceScenario, 1, DateTime.Now);
+        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, raceScenario, 1, DateTime.Now);
 
         // Act
-        var result = await _processor.Process(message);
+        var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
@@ -664,7 +641,7 @@ public class RMonitorDataProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task Debug_Process_CheckCommandProcessing()
+    public void Debug_Process_CheckCommandProcessing()
     {
         // Arrange
         var logCalls = new List<string>();
@@ -692,10 +669,10 @@ public class RMonitorDataProcessorV2Tests
         foreach (var command in commands)
         {
             Console.WriteLine($"Testing command: {command}");
-            var message = new TimingMessage("rmonitor", command, 1, DateTime.Now);
+            var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, command, 1, DateTime.Now);
 
             // Act
-            var result = await _processor.Process(message);
+            var result = _processor.Process(message);
 
             // Assert
             Assert.IsNotNull(result);

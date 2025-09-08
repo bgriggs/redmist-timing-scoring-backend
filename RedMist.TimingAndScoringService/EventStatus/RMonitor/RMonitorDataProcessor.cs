@@ -88,19 +88,19 @@ public class RMonitorDataProcessor
         await sessionMonitor.ProcessSessionAsync(sessionId, stoppingToken);
 
         // Parse RMonitor data
-        if (type == "rmonitor")
+        if (type == Backend.Shared.Consts.RMONITOR_TYPE)
         {
             await ProcessResultMonitorAsync(data, stoppingToken);
         }
         // X2 Passings
-        else if (type == "x2pass")
+        else if (type == Backend.Shared.Consts.X2PASS_TYPE)
         {
             await ProcessPassings(data, stoppingToken);
         }
         // X2 Loops
         else if (type == "x2loop") { }
         // Flags
-        else if (type == "flags")
+        else if (type == Backend.Shared.Consts.FLAGS_TYPE)
         {
             _ = UpdateFlagsAsync(data, stoppingToken);
         }
