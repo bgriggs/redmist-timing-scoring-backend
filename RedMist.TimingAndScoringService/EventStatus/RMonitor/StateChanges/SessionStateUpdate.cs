@@ -2,7 +2,7 @@
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 
-public record SessionStateUpdated(int SessionId, string SessionName) : ISessionStateChange
+public record SessionStateUpdate(int SessionId, string SessionName) : ISessionStateChange
 {
     public SessionStatePatch? GetChanges(SessionState state)
     {

@@ -1,7 +1,7 @@
 ﻿using BigMission.TestHelpers.Testing;
 using Microsoft.EntityFrameworkCore;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus;
+using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus;
 

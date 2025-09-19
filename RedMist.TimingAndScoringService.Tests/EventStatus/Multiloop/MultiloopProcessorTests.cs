@@ -3,8 +3,8 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
-using RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 using RedMist.TimingAndScoringService.Models;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus.Multiloop;
 
@@ -15,6 +15,7 @@ public class MultiloopProcessorTests
     private Mock<ILoggerFactory> _mockLoggerFactory = null!;
     private Mock<ILogger<MultiloopProcessor>> _mockLogger = null!;
     private Mock<SessionContext> _mockContext = null!;
+    private SessionContext _context = null!;
 
     [TestInitialize]
     public void Setup()
@@ -28,8 +29,8 @@ public class MultiloopProcessorTests
             .AddInMemoryCollection(dict)
             .Build();
 
-        _mockContext = new Mock<SessionContext>(config);
-        _processor = new MultiloopProcessor(_mockLoggerFactory.Object, _mockContext.Object);
+        _context = new SessionContext(config);
+        _processor = new MultiloopProcessor(_mockLoggerFactory.Object, _context);
     }
 
     [TestMethod]
@@ -46,7 +47,7 @@ public class MultiloopProcessorTests
     }
 
     [TestMethod]
-    public void Process_MultiloopMessage_ReturnsSessionStateUpdate()
+    public void Process_MultiloopMessage_ReturnsPatchUpdates()
     {
         // Arrange
         var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, "$H", 1, DateTime.Now);
@@ -56,7 +57,7 @@ public class MultiloopProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsNotNull(result.SessionChanges);
+        Assert.IsNotNull(result.SessionPatches);
     }
 
     [TestMethod]
@@ -71,7 +72,8 @@ public class MultiloopProcessorTests
         // Assert
         Assert.IsNotNull(result);
         // Heartbeat doesn't generate state changes
-        Assert.AreEqual(0, result.SessionChanges.Count);
+        Assert.AreEqual(0, result.SessionPatches.Count);
+        Assert.AreEqual(0, result.CarPatches.Count);
     }
 
     [TestMethod]
@@ -86,7 +88,8 @@ public class MultiloopProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionChanges.Count); // Entry doesn't generate state changes
+        Assert.AreEqual(0, result.SessionPatches.Count); // Entry doesn't generate state changes
+        Assert.AreEqual(0, result.CarPatches.Count);
 
         // Debug output
         Console.WriteLine($"Entries count: {_processor.Entries.Count}");
@@ -105,13 +108,14 @@ public class MultiloopProcessorTests
         // Arrange
         var lapData = "$C�U�80004�Q1�C�0�8�4�83DDF�1CB83�T�1CB83�4�2E6A�0�649�0�C�1CB83�Unknown�G�1�0�9�0";
         var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, lapData, 1, DateTime.Now);
+        _context.UpdateCars([new CarPosition { Number = "0" }]);
 
         // Act
         var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsGreaterThan(0, result.CarChanges.Count);
+        Assert.IsTrue(result.CarPatches.Count > 0);
         Assert.IsTrue(_processor.CompletedLaps.ContainsKey("0"));
     }
 
@@ -121,14 +125,16 @@ public class MultiloopProcessorTests
         // Arrange
         var sectionData = "$S�N�F3170000�Q1�99�EF317�S1�2DF3C0E�7C07�5";
         var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, sectionData, 1, DateTime.Now);
+        _context.UpdateCars([new CarPosition { Number = "99" }]);
 
         // Act
         var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.CarChanges.Count > 0);
-        Assert.IsTrue(result.CarChanges.Any(c => c is SectionStateUpdate));
+        Assert.IsTrue(result.CarPatches.Count > 0);
+
+        // Verify that section data was processed by checking the processor state
         Assert.IsTrue(_processor.CompletedSections.ContainsKey("99"));
         Assert.IsTrue(_processor.CompletedSections["99"].ContainsKey("S1"));
     }
@@ -162,8 +168,7 @@ public class MultiloopProcessorTests
         // Assert
         Assert.IsNotNull(result);
         // Flag updates should generate changes when IsDirty is true
-        Assert.IsTrue(result.SessionChanges.Count > 0);
-        Assert.IsTrue(result.SessionChanges.Any(c => c is FlagMetricsStateUpdate));
+        Assert.IsTrue(result.SessionPatches.Count > 0);
 
         // Verify the FlagInformation was processed
         Assert.AreEqual("K", _processor.FlagInformation.TrackStatus);
@@ -190,11 +195,11 @@ public class MultiloopProcessorTests
 
         // Assert
         Assert.IsNotNull(result1);
-        Assert.IsTrue(result1.SessionChanges.Count > 0, "First processing should generate state changes");
-        Assert.IsTrue(result1.SessionChanges.Any(c => c is FlagMetricsStateUpdate));
+        Assert.IsTrue(result1.SessionPatches.Count > 0, "First processing should generate state changes");
 
         Assert.IsNotNull(result2);
-        Assert.AreEqual(0, result2.SessionChanges.Count, "Second processing should not generate state changes when not dirty");
+        Assert.AreEqual(0, result2.SessionPatches.Count, "Second processing should not generate state changes when not dirty");
+        Assert.AreEqual(0, result2.CarPatches.Count, "Second processing should not generate state changes when not dirty");
     }
 
     [TestMethod]
@@ -210,8 +215,7 @@ public class MultiloopProcessorTests
         // Assert
         Assert.IsNotNull(result);
         // RunInformation should generate state changes when IsDirty becomes true
-        Assert.IsTrue(result.SessionChanges.Count > 0);
-        Assert.IsTrue(result.SessionChanges.Any(c => c is PracticeQualifyingStateUpdate));
+        Assert.IsTrue(result.SessionPatches.Count > 0);
 
         // Verify the RunInformation was processed
         Assert.AreEqual("Watkins Glen Hoosier Super Tour", _processor.RunInformation.EventName);
@@ -237,11 +241,11 @@ public class MultiloopProcessorTests
 
         // Assert
         Assert.IsNotNull(result1);
-        Assert.IsTrue(result1.SessionChanges.Count > 0, "First processing should generate state changes");
-        Assert.IsTrue(result1.SessionChanges.Any(c => c is PracticeQualifyingStateUpdate));
+        Assert.IsTrue(result1.SessionPatches.Count > 0, "First processing should generate state changes");
 
         Assert.IsNotNull(result2);
-        Assert.AreEqual(0, result2.SessionChanges.Count, "Second processing should not generate state changes when not dirty");
+        Assert.AreEqual(0, result2.SessionPatches.Count, "Second processing should not generate state changes when not dirty");
+        Assert.AreEqual(0, result2.CarPatches.Count, "Second processing should not generate state changes when not dirty");
     }
 
     [TestMethod]
@@ -261,12 +265,10 @@ public class MultiloopProcessorTests
 
         // Assert
         Assert.IsNotNull(result1);
-        Assert.IsTrue(result1.SessionChanges.Count > 0);
-        Assert.IsTrue(result1.SessionChanges.Any(c => c is PracticeQualifyingStateUpdate));
+        Assert.IsTrue(result1.SessionPatches.Count > 0);
 
         Assert.IsNotNull(result2);
-        Assert.IsTrue(result2.SessionChanges.Count > 0, "Different data should generate state changes");
-        Assert.IsTrue(result2.SessionChanges.Any(c => c is PracticeQualifyingStateUpdate));
+        Assert.IsTrue(result2.SessionPatches.Count > 0, "Different data should generate state changes");
 
         // Verify the data was updated
         Assert.AreEqual("Different Event Name", _processor.RunInformation.EventName);
@@ -285,8 +287,8 @@ public class MultiloopProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionChanges.Count);
-        Assert.AreEqual(0, result.CarChanges.Count);
+        Assert.AreEqual(0, result.SessionPatches.Count);
+        Assert.AreEqual(0, result.CarPatches.Count);
     }
 
     [TestMethod]
@@ -300,8 +302,8 @@ public class MultiloopProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionChanges.Count);
-        Assert.AreEqual(0, result.CarChanges.Count);
+        Assert.AreEqual(0, result.SessionPatches.Count);
+        Assert.AreEqual(0, result.CarPatches.Count);
     }
 
     [TestMethod]
@@ -361,10 +363,9 @@ public class MultiloopProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionChanges.Count);
-        Assert.AreEqual(0, result.CarChanges.Count);
+        Assert.AreEqual(0, result.SessionPatches.Count);
+        Assert.AreEqual(0, result.CarPatches.Count);
     }
-
 
     [TestMethod]
     public void Properties_InitializedCorrectly()
@@ -417,8 +418,8 @@ public class MultiloopProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionChanges.Count);
-        Assert.AreEqual(0, result.CarChanges.Count);
+        Assert.AreEqual(0, result.SessionPatches.Count);
+        Assert.AreEqual(0, result.CarPatches.Count);
         // Should not add entry with empty number
         Assert.IsFalse(_processor.Entries.ContainsKey(""));
     }
@@ -429,13 +430,14 @@ public class MultiloopProcessorTests
         // Arrange
         var sectionData = "$S�N�F3170000�Q1�42�EF317�S2�2DF3C0E�7C07�3";
         var message = new TimingMessage(Backend.Shared.Consts.MULTILOOP_TYPE, sectionData, 1, DateTime.Now);
+        _context.UpdateCars([new CarPosition { Number = "42" }]);
 
         // Act
         var result = _processor.Process(message);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.CarChanges.Count > 0);
+        Assert.IsTrue(result.CarPatches.Count > 0);
         Assert.IsTrue(_processor.CompletedSections.ContainsKey("42"));
         Assert.IsTrue(_processor.CompletedSections["42"].ContainsKey("S2"));
     }

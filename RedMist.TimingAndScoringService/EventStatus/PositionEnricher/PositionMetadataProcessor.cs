@@ -10,7 +10,7 @@ public class PositionMetadataProcessor
 {
     private const string MinTimeFormat = @"m\:ss\.fff";
     private const string SecTimeFormat = @"s\.fff";
-
+    private static readonly PositionComparer positionComparer = new();
     private readonly Dictionary<string, CarPosition> carPositionsLookup = [];
 
     public List<CarPosition> UpdateCarPositions(List<CarPosition> positions)
@@ -60,7 +60,7 @@ public class PositionMetadataProcessor
         if (carPositions.Count == 0)
             return;
 
-        carPositions.Sort(new PositionComparer());
+        carPositions.Sort(positionComparer);
 
         var leader = carPositions[0];
         var leaderTime = ParseRMTime(leader.TotalTime ?? string.Empty);
@@ -133,8 +133,13 @@ public class PositionMetadataProcessor
 
     private static void UpdateClassPositions(List<CarPosition> classCars)
     {
-        // Class positions
-        var sortedClassGroup = classCars.OrderBy(p => p.OverallPosition).ToList();
+        if (classCars.Count == 0) return;
+        
+        // Class positions - sort by overall position, but put cars with position 0 at the end
+        var sortedClassGroup = classCars
+            .OrderBy(p => p.OverallPosition == 0 ? int.MaxValue : p.OverallPosition)
+            .ToList();
+        
         for (int i = 0; i < sortedClassGroup.Count; i++)
         {
             sortedClassGroup[i].ClassPosition = i + 1;
@@ -219,8 +224,6 @@ public class PositionMetadataProcessor
         carPositionsLookup.Clear();
     }
 
-
-
     public static DateTime ParseRMTime(string time)
     {
         if (DateTime.TryParseExact(time, "HH:mm:ss.fff", null, DateTimeStyles.None, out var result))
@@ -259,10 +262,20 @@ public class PositionMetadataProcessor
                 return 0;
             }
 
+            // Handle cars with no position (0) - they should be sorted last
+            if (x.OverallPosition == 0 && y.OverallPosition == 0)
+            {
+                return 0; // Both have no position, consider them equal
+            }
             if (x.OverallPosition == 0)
             {
-                return -1;
+                return 1; // x should come after y (x has no position)
             }
+            if (y.OverallPosition == 0)
+            {
+                return -1; // x should come before y (y has no position)
+            }
+            
             return x.OverallPosition.CompareTo(y.OverallPosition);
         }
     }

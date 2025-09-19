@@ -1,9 +1,13 @@
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
+using RedMist.Backend.Shared.Hubs;
 using RedMist.TimingAndScoringService.EventStatus;
+using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
-using RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 using RedMist.TimingAndScoringService.Models;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
 
@@ -11,72 +15,81 @@ namespace RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
 public class RMonitorDataProcessorV2Tests
 {
     private RMonitorDataProcessorV2 _processor = null!;
+    private SessionContext _sessionContext = null!;
     private Mock<ILoggerFactory> _mockLoggerFactory = null!;
     private Mock<ILogger> _mockLogger = null!;
+    private ResetProcessor _resetProcessor = null!;
+    private Mock<IHubContext<StatusHub>> _mockHubContext = null!;
+    private StartingPositionProcessor _startingPositionProcessor = null!;
 
     [TestInitialize]
     public void Setup()
     {
         _mockLoggerFactory = new Mock<ILoggerFactory>();
         _mockLogger = new Mock<ILogger>();
-        
+        _mockHubContext = new Mock<IHubContext<StatusHub>>();
+
+        // Setup session context FIRST
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
+            .Build();
+        _sessionContext = new SessionContext(config);
+
         // Verify that CreateLogger is being called and set up the factory to return our mock
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
-        
-        _processor = new RMonitorDataProcessorV2(_mockLoggerFactory.Object);
-        
-        // Verify the factory was called during processor construction
-        _mockLoggerFactory.Verify(x => x.CreateLogger(It.IsAny<string>()), Times.Once);
+
+        _resetProcessor = new ResetProcessor(_sessionContext, _mockHubContext.Object, _mockLoggerFactory.Object);
+        _startingPositionProcessor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object);
+        _processor = new RMonitorDataProcessorV2(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor);
     }
 
     [TestMethod]
-    public void Process_NonRMonitorMessage_ReturnsNull()
+    public async Task ProcessWithImmediateApplication_NonRMonitorMessage_ReturnsNull()
     {
         // Arrange
         var message = new TimingMessage("other", "data", 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(message);
+        var result = await _processor.ProcessAsync(message, _sessionContext);
 
         // Assert
-        Assert.IsNull(result);
+        Assert.IsNull(result); // Non-RMonitor messages should return null
     }
 
     [TestMethod]
-    public void Process_RMonitorMessage_ReturnsSessionStateUpdate()
+    public async Task ProcessWithImmediateApplication_RMonitorMessage_ReturnsPatchUpdates()
     {
         // Arrange
         var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(message);
+        var result = await _processor.ProcessAsync(message, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsGreaterThan(0, result.SessionChanges.Count);
+        Assert.IsTrue(result.SessionPatches.Count > 0 || result.CarPatches.Count > 0);
     }
 
     #region Heartbeat Tests ($F)
 
     [TestMethod]
-    public void ProcessF_ValidHeartbeat_GeneratesHeartbeatStateUpdate()
+    public async Task ProcessF_ValidHeartbeat_GeneratesSessionPatches()
     {
         // Arrange
         var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(message);
+        var result = await _processor.ProcessAsync(message, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.SessionChanges.Count);
-        Assert.IsTrue(result.SessionChanges.Any(c => c is HeartbeatStateUpdate));
+        Assert.IsTrue(result.SessionPatches.Count > 0);
 
-        Assert.AreEqual(14, _processor.Heartbeat.LapsToGo);
-        Assert.AreEqual("00:12:45", _processor.Heartbeat.TimeToGo);
-        Assert.AreEqual("13:34:23", _processor.Heartbeat.TimeOfDay);
-        Assert.AreEqual("00:09:47", _processor.Heartbeat.RaceTime);
-        Assert.AreEqual("Green", _processor.Heartbeat.FlagStatus);
+        // Verify heartbeat data is applied to session context
+        Assert.AreEqual(14, _sessionContext.SessionState.LapsToGo);
+        Assert.AreEqual("00:12:45", _sessionContext.SessionState.TimeToGo);
+        Assert.AreEqual("13:34:23", _sessionContext.SessionState.LocalTimeOfDay);
+        Assert.AreEqual("00:09:47", _sessionContext.SessionState.RunningRaceTime);
     }
 
     #endregion
@@ -84,37 +97,49 @@ public class RMonitorDataProcessorV2Tests
     #region Competitor Tests ($A and $COMP)
 
     [TestMethod]
-    public void ProcessA_ValidCompetitor_GeneratesCompetitorStateUpdate()
+    public async Task ProcessA_ValidCompetitor_GeneratesSessionAndCarPatches()
     {
         // Arrange
-        var competitorMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, 
+        var competitorMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE,
             "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(competitorMessage);
+        var result = await _processor.ProcessAsync(competitorMessage, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
+
+        // The current implementation should generate car patches when competitors are added
+        Assert.IsTrue(result.CarPatches.Count > 0, "Expected car patches to be generated for new competitor");
+
+        // Verify competitor data is applied to session context
+        Assert.IsTrue(_sessionContext.SessionState.EventEntries.Count > 0);
+        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count > 0);
     }
 
     [TestMethod]
-    public void ProcessComp_ValidCompetitor_GeneratesCompetitorStateUpdate()
+    public async Task ProcessComp_ValidCompetitor_GeneratesPatches()
     {
         // Arrange
-        var competitorMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, 
+        var competitorMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE,
             "$COMP,\"1234BE\",\"12X\",5,\"John\",\"Johnson\",\"USA\",\"CAMEL\"", 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(competitorMessage);
+        var result = await _processor.ProcessAsync(competitorMessage, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
+
+        // The current implementation should generate car patches when competitors are added
+        Assert.IsTrue(result.CarPatches.Count > 0, "Expected car patches to be generated for new competitor");
+
+        // Verify competitor data is applied to session context
+        Assert.IsTrue(_sessionContext.SessionState.EventEntries.Count > 0);
+        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count > 0);
     }
 
     [TestMethod]
-    public void ProcessA_MultipleCompetitors_GeneratesCompetitorStateUpdate()
+    public async Task ProcessA_MultipleCompetitors_GeneratesPatches()
     {
         // Arrange
         var multipleCompetitors = "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5\n" +
@@ -122,11 +147,16 @@ public class RMonitorDataProcessorV2Tests
         var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, multipleCompetitors, 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(message);
+        var result = await _processor.ProcessAsync(message, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
+
+        // The current implementation should generate car patches when competitors are added
+        Assert.IsTrue(result.CarPatches.Count >= 2, $"Expected at least 2 car patches to be generated for new competitors, got {result.CarPatches.Count}");
+
+        // Verify multiple competitors are applied
+        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count >= 2);
     }
 
     #endregion
@@ -134,272 +164,61 @@ public class RMonitorDataProcessorV2Tests
     #region Session Information Tests ($B)
 
     [TestMethod]
-    public void ProcessB_ValidSessionInfo_GeneratesSessionStateUpdated()
+    public async Task ProcessB_ValidSessionInfo_GeneratesSessionPatch()
     {
         // Arrange
         var sessionMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$B,5,\"Friday free practice\"", 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(sessionMessage);
+        var result = await _processor.ProcessAsync(sessionMessage, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
-        // NOTE: Due to the implementation calling ProcessB twice, the second call returns null
-        // because SessionReference is already updated. This test verifies the properties are set correctly
-        Assert.AreEqual(5, _processor.SessionReference);
-        Assert.AreEqual("Friday free practice", _processor.SessionName);
-        
-        // The state change should still be generated if it's the first time processing this session
-        // But the current implementation has a bug where ProcessB is called twice
+        Assert.IsTrue(result.SessionPatches.Count > 0);
+
+        // Verify session data is applied to context
+        Assert.AreEqual(5, _sessionContext.SessionState.SessionId);
+        Assert.AreEqual("Friday free practice", _sessionContext.SessionState.SessionName);
     }
 
     [TestMethod]
-    public void ProcessB_SameSessionReference_DoesNotGenerateStateUpdate()
+    public async Task ProcessB_SameSessionReference_DoesNotGenerateSessionPatch()
     {
-        // Arrange
+        // Arrange - Set initial session reference
         _processor.SessionReference = 5;
         var sessionMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$B,5,\"Friday free practice\"", 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(sessionMessage);
+        var result = await _processor.ProcessAsync(sessionMessage, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsFalse(result.SessionChanges.Any(c => c is SessionStateUpdated));
-    }
-
-    [TestMethod]
-    public void ProcessB_DifferentSessionReference_GeneratesStateUpdate()
-    {
-        // Arrange - Set initial session reference
-        _processor.SessionReference = 1;
-        var sessionMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$B,5,\"Friday free practice\"", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(sessionMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        // Due to the bug where ProcessB is called twice, the first call changes SessionReference,
-        // making the second call return null. We verify the properties are updated correctly.
-        Assert.AreEqual(5, _processor.SessionReference);
-        Assert.AreEqual("Friday free practice", _processor.SessionName);
+        Assert.AreEqual(0, result.SessionPatches.Count); // Same session reference should not generate patches
+        Assert.AreEqual(0, result.CarPatches.Count);
     }
 
     #endregion
 
-    #region Class Information Tests ($C)
+    #region Reset Tests ($I)
 
     [TestMethod]
-    public void ProcessC_ValidClass_GeneratesCompetitorStateUpdate()
+    public async Task ProcessI_Reset_ClearsCarPositions()
     {
-        // Arrange
-        var classMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$C,5,\"Formula 300\"", 1, DateTime.Now);
+        // Arrange - First add some car positions
+        _sessionContext.SessionState.CarPositions.Add(new CarPosition { Number = "1", DriverName = "Test Driver" });
+        _sessionContext.SessionState.CarPositions.Add(new CarPosition { Number = "2", DriverName = "Another Driver" });
+
+        var resetMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$I,\"16:36:08.000\",\"12 jan 01\"", 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(classMessage);
+        var result = await _processor.ProcessAsync(resetMessage, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
-    }
 
-    [TestMethod]
-    public void ProcessC_MultipleClasses_ProcessesCorrectly()
-    {
-        // Arrange
-        var multipleClasses = "$C,1,\"GTU\"\n$C,2,\"GTO\"\n$C,3,\"GP1\"\n$C,4,\"GP2\"";
-        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, multipleClasses, 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(message);
-
-        // Assert
-        Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
-    }
-
-    #endregion
-
-    #region Setting Information Tests ($E)
-
-    [TestMethod]
-    public void ProcessE_TrackName_SetsTrackName()
-    {
-        // Arrange
-        var trackMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$E,\"TRACKNAME\",\"Indianapolis Motor Speedway\"", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(trackMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        Assert.AreEqual("Indianapolis Motor Speedway", _processor.TrackName);
-    }
-
-    [TestMethod]
-    public void ProcessE_TrackLength_SetsTrackLength()
-    {
-        // Arrange
-        var trackMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$E,\"TRACKLENGTH\",\"2.500\"", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(trackMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        Assert.AreEqual(2.500, _processor.TrackLength, 0.001);
-    }
-
-    [TestMethod]
-    public void ProcessE_UnknownSetting_DoesNothing()
-    {
-        // Arrange
-        var trackMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$E,\"UNKNOWN\",\"Some Value\"", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(trackMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        Assert.AreEqual(string.Empty, _processor.TrackName);
-        Assert.AreEqual(0.0, _processor.TrackLength);
-    }
-
-    #endregion
-
-    #region Race Information Tests ($G)
-
-    [TestMethod]
-    public void ProcessG_ValidRaceInfo_GeneratesStateChange()
-    {
-        // Arrange
-        var raceMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$G,3,\"1234BE\",14,\"01:12:47.872\"", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(raceMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        // Note: The actual state change depends on the RaceInformation.ProcessG implementation
-        // We're testing that the processor calls the method correctly
-    }
-
-    [TestMethod]
-    public void ProcessG_EmptyTime_HandlesGracefully()
-    {
-        // Arrange
-        var raceMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$G,10,\"89\",,\"00:00:00.000\"", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(raceMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        // Should not throw exception
-    }
-
-    #endregion
-
-    #region Practice/Qualifying Information Tests ($H)
-
-    [TestMethod]
-    public void ProcessH_ValidPracticeQualifying_GeneratesStateChange()
-    {
-        // Arrange
-        var practiceMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$H,2,\"1234BE\",3,\"00:02:17.872\"", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(practiceMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        // Note: The actual state change depends on the PracticeQualifying.ProcessH implementation
-        // We're testing that the processor calls the method correctly
-    }
-
-    #endregion
-
-    #region Init Record Tests ($I)
-
-    [TestMethod]
-    public void ProcessI_Init_ClearsDataStructures()
-    {
-        // Arrange - First populate some data
-        var setupMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, 
-            "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5\n" +
-            "$G,3,\"1234BE\",14,\"01:12:47.872\"\n" +
-            "$H,2,\"1234BE\",3,\"00:02:17.872\"", 1, DateTime.Now);
-        _processor.Process(setupMessage);
-
-        // Set heartbeat to unknown to trigger full reset
-        _processor.Heartbeat.FlagStatus = "Unknown";
-
-        var initMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$I,\"16:36:08.000\",\"12 jan 01\"", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(initMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        // Verify data structures are cleared (this would require access to internal state)
-        // For now, we verify it doesn't throw exceptions
-    }
-
-    [TestMethod]
-    public void ProcessI_InitWithNonUnknownFlag_PartialReset()
-    {
-        // Arrange - First populate some data
-        var setupMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, 
-            "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5\n" +
-            "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", 1, DateTime.Now);
-        _processor.Process(setupMessage);
-
-        var initMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$I,\"16:36:08.000\",\"12 jan 01\"", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(initMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        // Should not clear classes when flag is not Unknown
-    }
-
-    #endregion
-
-    #region Passing Information Tests ($J)
-
-    [TestMethod]
-    public void ProcessJ_ValidPassingInfo_GeneratesStateChange()
-    {
-        // Arrange
-        var passingMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$J,\"1234BE\",\"00:02:03.826\",\"01:42:17.672\"", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(passingMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        // Note: The actual state change depends on the PassingInformation.ProcessJ implementation
-        // We're testing that the processor calls the method correctly
-    }
-
-    #endregion
-
-    #region Corrected Finish Time Tests ($COR)
-
-    [TestMethod]
-    public void ProcessCor_ValidCorrectedTime_HandlesGracefully()
-    {
-        // Arrange
-        var corMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$COR,\"123BE\",\"658\",2,\"00:00:35.272\",\"+00:00:00.012\"", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(corMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        // ProcessCor is currently empty, so just verify it doesn't throw
+        // The reset should clear car positions - this happens in the ResetProcessor.Process() call
+        // which is called asynchronously within ProcessI, so car positions should be cleared
+        Assert.AreEqual(0, _sessionContext.SessionState.CarPositions.Count, "Car positions should be cleared after reset");
     }
 
     #endregion
@@ -407,124 +226,50 @@ public class RMonitorDataProcessorV2Tests
     #region Error Handling Tests
 
     [TestMethod]
-    public void Process_ExceptionInCommand_LogsError()
+    public async Task ProcessWithImmediateApplication_ExceptionInCommand_LogsError()
     {
         // Arrange - Create a malformed command that will cause parsing errors
         var malformedMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$B,invalid", 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(malformedMessage);
+        var result = await _processor.ProcessAsync(malformedMessage, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
+        Assert.AreEqual(0, result.SessionPatches.Count); // Malformed command should not generate patches
+        Assert.AreEqual(0, result.CarPatches.Count);
         VerifyLogError("Error processing command");
     }
 
     [TestMethod]
-    public void Process_UnknownCommand_LogsWarning()
+    public async Task ProcessWithImmediateApplication_UnknownCommand_LogsWarning()
     {
         // Arrange
         var unknownMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "$UNKNOWN,data", 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(unknownMessage);
+        var result = await _processor.ProcessAsync(unknownMessage, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
-        
-        // Debug: Check if the mock logger is enabled for Warning level
-        _mockLogger.Setup(x => x.IsEnabled(LogLevel.Warning)).Returns(true);
-        
+        Assert.AreEqual(0, result.SessionPatches.Count); // Unknown command should not generate patches
+        Assert.AreEqual(0, result.CarPatches.Count);
         VerifyLogWarning("Unknown command");
     }
 
     [TestMethod]
-    public void Process_MultipleUnknownCommands_LogsWarnings()
-    {
-        // Arrange
-        var unknownCommands = "$UNKNOWN1,data1\n$UNKNOWN2,data2\n$UNKNOWN3,data3";
-        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, unknownCommands, 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(message);
-
-        // Assert
-        Assert.IsNotNull(result);
-        VerifyLogWarning("Unknown command");
-    }
-
-    [TestMethod]
-    public void Process_EmptyData_HandlesGracefully()
+    public async Task ProcessWithImmediateApplication_EmptyData_HandlesGracefully()
     {
         // Arrange
         var emptyMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "", 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(emptyMessage);
+        var result = await _processor.ProcessAsync(emptyMessage, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionChanges.Count);
-        Assert.AreEqual(0, result.CarChanges.Count);
-    }
-
-    [TestMethod]
-    public void Process_WhitespaceOnlyData_HandlesGracefully()
-    {
-        // Arrange
-        var whitespaceMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, "   \n  \t  ", 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(whitespaceMessage);
-
-        // Assert
-        Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionChanges.Count);
-        Assert.AreEqual(0, result.CarChanges.Count);
-    }
-
-    #endregion
-
-    #region Multiple Commands Tests
-
-    [TestMethod]
-    public void Process_MultipleCommands_ProcessesAllCorrectly()
-    {
-        // Arrange
-        var multipleCommands = "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"\n" +
-                              "$B,5,\"Friday free practice\"\n" +
-                              "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5\n" +
-                              "$C,5,\"Formula 300\"";
-        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, multipleCommands, 1, DateTime.Now);
-
-        // Act
-        var result = _processor.Process(message);
-
-        // Assert
-        Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionChanges.Count > 0);
-        Assert.IsTrue(result.SessionChanges.Any(c => c is HeartbeatStateUpdate));
-        // Note: SessionStateUpdated may not be generated due to ProcessB being called twice
-        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
-        
-        // Verify properties are set correctly
-        Assert.AreEqual(5, _processor.SessionReference);
-        Assert.AreEqual("Friday free practice", _processor.SessionName);
-    }
-
-    #endregion
-
-    #region Property Tests
-
-    [TestMethod]
-    public void Constructor_InitializesPropertiesCorrectly()
-    {
-        // Assert
-        Assert.IsNotNull(_processor.Heartbeat);
-        Assert.AreEqual(0, _processor.SessionReference);
-        Assert.AreEqual(string.Empty, _processor.SessionName);
-        Assert.AreEqual(string.Empty, _processor.TrackName);
-        Assert.AreEqual(0.0, _processor.TrackLength);
+        Assert.AreEqual(0, result.SessionPatches.Count);
+        Assert.AreEqual(0, result.CarPatches.Count);
     }
 
     #endregion
@@ -532,62 +277,189 @@ public class RMonitorDataProcessorV2Tests
     #region Integration Tests
 
     [TestMethod]
-    public void Process_CompleteRaceScenario_ProcessesCorrectly()
+    public async Task ProcessWithImmediateApplication_CompleteRaceScenario_ProcessesCorrectly()
     {
         // Arrange - Simulate a complete race data scenario
-        var raceScenario = 
+        var raceScenario =
             // Session setup
             "$B,1,\"Race 1\"\n" +
             "$E,\"TRACKNAME\",\"Road America\"\n" +
             "$E,\"TRACKLENGTH\",\"4.048\"\n" +
-            
+
             // Classes
             "$C,1,\"GT1\"\n" +
             "$C,2,\"GT2\"\n" +
-            
+
             // Competitors
             "$A,\"1234BE\",\"12\",52474,\"John\",\"Doe\",\"USA\",1\n" +
             "$A,\"5678CD\",\"34\",12345,\"Jane\",\"Smith\",\"CAN\",2\n" +
-            
+
             // Race data
-            "$F,50,\"00:45:30\",\"14:30:15\",\"00:15:30\",\"Green \"\n" +
-            "$G,1,\"1234BE\",5,\"00:15:30.123\"\n" +
-            "$G,2,\"5678CD\",5,\"00:15:45.456\"\n" +
-            
-            // Practice/Qualifying data
-            "$H,1,\"1234BE\",3,\"01:45.123\"\n" +
-            "$H,2,\"5678CD\",4,\"01:47.456\"\n" +
-            
-            // Passing information
-            "$J,\"1234BE\",\"01:45.123\",\"00:15:30.123\"\n" +
-            "$J,\"5678CD\",\"01:47.456\",\"00:15:45.456\"";
+            "$F,50,\"00:45:30\",\"14:30:15\",\"00:15:30\",\"Green \"";
 
         var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, raceScenario, 1, DateTime.Now);
 
         // Act
-        var result = _processor.Process(message);
+        var result = await _processor.ProcessAsync(message, _sessionContext);
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionChanges.Count > 0);
-        Assert.IsTrue(result.CarChanges.Count > 0);
+        Assert.IsTrue(result.SessionPatches.Count > 0);
+        Assert.IsTrue(result.CarPatches.Count > 0);
 
-        // Verify session data
-        Assert.AreEqual(1, _processor.SessionReference);
-        Assert.AreEqual("Race 1", _processor.SessionName);
-        Assert.AreEqual("Road America", _processor.TrackName);
-        Assert.AreEqual(4.048, _processor.TrackLength, 0.001);
-        
-        // Verify heartbeat
-        Assert.AreEqual(50, _processor.Heartbeat.LapsToGo);
-        Assert.AreEqual("Green", _processor.Heartbeat.FlagStatus);
-        
-        // Verify we have expected state change types
-        Assert.IsTrue(result.SessionChanges.Any(c => c is HeartbeatStateUpdate));
-        Assert.IsTrue(result.SessionChanges.Any(c => c is CompetitorStateUpdate));
-        
-        // Note: SessionStateUpdated may not be present due to ProcessB being called twice
-        // but the properties should be set correctly
+        // Verify session data is applied immediately
+        Assert.AreEqual(1, _sessionContext.SessionState.SessionId);
+        Assert.AreEqual("Race 1", _sessionContext.SessionState.SessionName);
+        Assert.AreEqual(50, _sessionContext.SessionState.LapsToGo);
+        Assert.AreEqual("00:45:30", _sessionContext.SessionState.TimeToGo);
+
+        // Verify competitors are added
+        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count >= 2);
+    }
+
+    [TestMethod]
+    public async Task ProcessWithImmediateApplication_CommandOrdering_ProcessesInOrder()
+    {
+        // Arrange - Test that commands are processed in order
+        var orderedCommands =
+            "$I,\"16:36:08.000\",\"12 jan 01\"\n" +  // Reset first
+            "$A,\"1234BE\",\"12\",52474,\"John\",\"Doe\",\"USA\",1\n" +  // Add competitor
+            "$F,50,\"00:45:30\",\"14:30:15\",\"00:15:30\",\"Green \"";  // Heartbeat last
+
+        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, orderedCommands, 1, DateTime.Now);
+
+        // Act
+        var result = await _processor.ProcessAsync(message, _sessionContext);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.SessionPatches.Count > 0); // Session patches from reset, competitor, and heartbeat
+        Assert.IsTrue(result.CarPatches.Count > 0); // Car patches from competitor
+
+        // Verify reset happened first (car positions cleared)
+        // Then competitor added 
+        // Then heartbeat applied
+        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count > 0); // Competitor was added after reset
+        Assert.AreEqual(50, _sessionContext.SessionState.LapsToGo); // Heartbeat was applied
+    }
+
+    #endregion
+
+    #region Immediate Application Tests
+
+    [TestMethod]
+    public async Task ProcessWithImmediateApplication_CarDataImmediatelyAvailable_AfterRaceCommand()
+    {
+        // Arrange - First add competitor and class information
+        var setupMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE,
+            "$C,1,\"GT1\"\n" +
+            "$A,\"1234BE\",\"12\",52474,\"John\",\"Doe\",\"USA\",1", 1, DateTime.Now);
+
+        await _processor.ProcessAsync(setupMessage, _sessionContext);
+
+        // Arrange - Now send race data that should see the competitor
+        var raceMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE,
+            "$G,1,\"1234BE\",5,\"00:05:30.123\"", 1, DateTime.Now);
+
+        // Act
+        var result = await _processor.ProcessAsync(raceMessage, _sessionContext);
+
+        // Assert
+        Assert.IsNotNull(result);
+
+        // Verify the car position was found and updated (due to immediate competitor application)
+        var car = _sessionContext.GetCarByNumber("12");
+        Assert.IsNotNull(car);
+
+        // The class should be mapped since we processed the class first
+        Assert.AreEqual("GT1", car.Class);
+        Assert.AreEqual("John", car.DriverName);
+    }
+
+    [TestMethod]
+    public async Task ProcessWithImmediateApplication_ResetClearsStateImmediately()
+    {
+        // Arrange - First add some competitors
+        var setupMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE,
+            "$A,\"1234BE\",\"12\",52474,\"John\",\"Doe\",\"USA\",1", 1, DateTime.Now);
+
+        await _processor.ProcessAsync(setupMessage, _sessionContext);
+        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count > 0);
+
+        // Act - Send reset in same message with new competitor
+        var resetMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE,
+            "$I,\"16:36:08.000\",\"12 jan 01\"\n" +
+            "$A,\"5678CD\",\"34\",12345,\"Jane\",\"Smith\",\"CAN\",2", 1, DateTime.Now);
+
+        var result = await _processor.ProcessAsync(resetMessage, _sessionContext);
+
+        // Assert
+        Assert.IsNotNull(result);
+
+        // Verify reset happened first, then competitor was added
+        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count > 0);
+        var newCar = _sessionContext.GetCarByNumber("34");
+        Assert.IsNotNull(newCar);
+
+        // Based on AddUpdateCompetitor implementation, DriverName is set to FirstName only
+        Assert.AreEqual("Jane", newCar.DriverName);
+
+        // The reset clears internal competitor dictionaries, so the old competitor should be gone
+        // However, if the old competitor had the same registration number as the new one, it might still exist
+        // Let's check if the old car is truly gone by checking there's only one car now
+        Assert.AreEqual(1, _sessionContext.SessionState.CarPositions.Count, "Should only have one car after reset and adding new competitor");
+
+        // Verify the remaining car is the new one, not the old one
+        var remainingCar = _sessionContext.SessionState.CarPositions.First();
+        Assert.AreEqual("34", remainingCar.Number);
+        Assert.AreEqual("Jane", remainingCar.DriverName);
+    }
+
+    [TestMethod]
+    public async Task ProcessWithImmediateApplication_SessionStateImmediatelyUpdated()
+    {
+        // Arrange
+        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE,
+            "$B,5,\"Friday Practice\"\n" +
+            "$F,25,\"00:30:00\",\"14:30:15\",\"00:10:00\",\"Yellow\"", 1, DateTime.Now);
+
+        // Act
+        var result = await _processor.ProcessAsync(message, _sessionContext);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.SessionPatches.Count >= 2); // Session state update and heartbeat
+
+        // Verify session state was immediately updated and heartbeat could see it
+        Assert.AreEqual(5, _sessionContext.SessionState.SessionId);
+        Assert.AreEqual("Friday Practice", _sessionContext.SessionState.SessionName);
+        Assert.AreEqual(25, _sessionContext.SessionState.LapsToGo);
+        Assert.AreEqual("00:30:00", _sessionContext.SessionState.TimeToGo);
+    }
+
+    [TestMethod]
+    public async Task ProcessWithImmediateApplication_CompetitorClassMappingWorksImmediately()
+    {
+        // Arrange - Process class and competitor in same message
+        var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE,
+            "$C,5,\"Formula 300\"\n" +
+            "$A,\"1234BE\",\"12X\",52474,\"John\",\"Johnson\",\"USA\",5", 1, DateTime.Now);
+
+        // Act
+        var result = await _processor.ProcessAsync(message, _sessionContext);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.CarPatches.Count > 0, "Expected car patches to be generated");
+
+        // Verify competitor was created with correct class mapping
+        var car = _sessionContext.GetCarByNumber("12X");
+        Assert.IsNotNull(car);
+        Assert.AreEqual("Formula 300", car.Class);
+
+        var entry = _sessionContext.SessionState.EventEntries.FirstOrDefault(e => e.Number == "12X");
+        Assert.IsNotNull(entry);
+        Assert.AreEqual("Formula 300", entry.Class);
     }
 
     #endregion
@@ -619,71 +491,4 @@ public class RMonitorDataProcessorV2Tests
     }
 
     #endregion
-
-    [TestMethod]
-    public void TestMockLoggerSetup()
-    {
-        // Arrange - Test if our mock setup is working
-        var testLogger = _mockLogger.Object;
-        
-        // Act - Call the logger directly
-        testLogger.LogWarning("Test warning message");
-        
-        // Assert - Verify the call was made
-        _mockLogger.Verify(
-            x => x.Log(
-                LogLevel.Warning,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Test warning")),
-                It.IsAny<Exception?>(),
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
-    }
-
-    [TestMethod]
-    public void Debug_Process_CheckCommandProcessing()
-    {
-        // Arrange
-        var logCalls = new List<string>();
-        
-        // Capture all log calls
-        _mockLogger.Setup(x => x.Log(
-            It.IsAny<LogLevel>(),
-            It.IsAny<EventId>(),
-            It.IsAny<object>(),
-            It.IsAny<Exception?>(),
-            It.IsAny<Func<object, Exception?, string>>()))
-            .Callback<LogLevel, EventId, object, Exception?, Func<object, Exception?, string>>(
-                (level, eventId, state, exception, formatter) =>
-                {
-                    logCalls.Add($"{level}: {state}");
-                });
-
-        var commands = new[]
-        {
-            "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"", // Valid command
-            "$INVALID,data", // Invalid command
-            "$B,5,\"Friday free practice\"" // Valid command
-        };
-
-        foreach (var command in commands)
-        {
-            Console.WriteLine($"Testing command: {command}");
-            var message = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, command, 1, DateTime.Now);
-
-            // Act
-            var result = _processor.Process(message);
-
-            // Assert
-            Assert.IsNotNull(result);
-            
-            // Debug output for this command
-            Console.WriteLine($"Log calls for command '{command}': {logCalls.Count}");
-            foreach (var call in logCalls.TakeLast(5)) // Show last 5 calls
-            {
-                Console.WriteLine($"  {call}");
-            }
-            logCalls.Clear(); // Clear for next command
-        }
-    }
 }

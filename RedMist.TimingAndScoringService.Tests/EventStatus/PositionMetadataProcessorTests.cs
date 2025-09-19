@@ -230,6 +230,22 @@ public class PositionMetadataProcessorTests
         Assert.AreEqual(1, car2.ClassPosition);
     }
 
+    [TestMethod]
+    public void UpdateClassPositions_Car2_Should_Be_First_In_Class_Test()
+    {
+        var processor = new PositionMetadataProcessor();
+
+        // Simulate the exact scenario from the failing test
+        var car2 = new CarPosition { Number = "2", Class = "GTO", OverallPosition = 1 };
+        var car70 = new CarPosition { Number = "70", Class = "GTO", OverallPosition = 2 };
+
+        processor.UpdateCarPositions([car2, car70]);
+
+        // Car 2 should have class position 1 since it has overall position 1
+        Assert.AreEqual(1, car2.ClassPosition, $"Car 2 should have class position 1. Car2: Overall={car2.OverallPosition}, Class={car2.ClassPosition}; Car70: Overall={car70.OverallPosition}, Class={car70.ClassPosition}");
+        Assert.AreEqual(2, car70.ClassPosition, $"Car 70 should have class position 2. Car2: Overall={car2.OverallPosition}, Class={car2.ClassPosition}; Car70: Overall={car70.OverallPosition}, Class={car70.ClassPosition}");
+    }
+
     #endregion
 
     #region Best Time

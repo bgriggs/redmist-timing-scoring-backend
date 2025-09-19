@@ -83,10 +83,10 @@ public class PitProcessorV2
         other.Remove(transponderId);
     }
 
-    public async Task<SessionStateUpdate?> Process(TimingMessage message)
+    public async Task<PatchUpdates?> Process(TimingMessage message)
     {
         // Handle event configuration change notifications
-        if (message.Type == Backend.Shared.Consts.EVENT_CHANGED_TYPE)
+        if (message.Type == Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE)
         {
             await RefreshEventConfiguration(message);
             return null;
@@ -117,7 +117,7 @@ public class PitProcessorV2
 
         var loopMetadata = GetLoopMetadata();
 
-        var changes = new List<ICarStateChange>();
+        var patches = new List<CarPositionPatch>();
         foreach (var pass in passings)
         {
             RemoveTransponderFromAllPassings(pass.TransponderId);
@@ -165,10 +165,12 @@ public class PitProcessorV2
                 PitOther: pitOther.ToImmutableDictionary(),
                 Other: other.ToImmutableDictionary(),
                 LoopMetadata: loopMetadata);
-            changes.Add(change);
+            var p = change.ApplyCarChange(sessionContext);
+            if (p != null)
+                patches.Add(p);
         }
         
-        return new SessionStateUpdate([], changes);
+        return new PatchUpdates([], [.. patches]);
     }
 
     private async Task RefreshEventConfiguration(TimingMessage message)

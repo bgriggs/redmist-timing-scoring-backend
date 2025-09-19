@@ -9,10 +9,15 @@ using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
+using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
+using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
+using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
+using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
@@ -86,7 +91,14 @@ public class Program
         builder.Services.AddSingleton<MultiloopProcessor>();
         builder.Services.AddSingleton<RMonitorDataProcessorV2>();
         builder.Services.AddSingleton<PitProcessorV2>();
-        
+        builder.Services.AddSingleton<FlagProcessorV2>();
+        builder.Services.AddSingleton<SessionMonitorV2>();
+        builder.Services.AddSingleton<PositionDataEnricher>();
+        builder.Services.AddSingleton<ResetProcessor>();
+        builder.Services.AddSingleton<UpdateConsolidator>();
+        builder.Services.AddSingleton<StatusAggregatorV2>();
+        builder.Services.AddSingleton<StartingPositionProcessor>();
+        builder.Services.AddSingleton<SessionStateProcessingPipeline>();
         builder.Services.AddHostedService<EventAggregator>();
         builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<Program>());
 
@@ -95,11 +107,7 @@ public class Program
             .AddRedis(redisConn, tags: ["cache", "redis"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 7200, name: "Process Allocated Memory", tags: ["memory"]);
 
-        builder.Services.AddSignalR(o => o.MaximumParallelInvocationsPerClient = 3)
-            .AddStackExchangeRedis(redisConn, options =>
-            {
-                options.Configuration.ChannelPrefix = RedisChannel.Literal(Backend.Shared.Consts.STATUS_CHANNEL_PREFIX);
-            });
+        builder.Services.AddRedMistSignalR(redisConn);
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();
@@ -107,7 +115,7 @@ public class Program
         // Configure the HTTP request pipeline.
         if (app.Environment.IsDevelopment())
         {
-            Console.Title = "Timing and Scoring Services";
+            Console.Title = "Event Processor";
             app.UseDeveloperExceptionPage();
             app.UseSwagger();
             app.UseSwaggerUI();

@@ -2,11 +2,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.Caching.Memory;
 using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
 using StackExchange.Redis;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace RedMist.StatusApi.Controllers;
@@ -16,19 +18,26 @@ namespace RedMist.StatusApi.Controllers;
 [Authorize]
 public class EventsController : ControllerBase
 {
+    private const string namespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
+
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly HybridCache hcache;
     private readonly IConnectionMultiplexer cacheMux;
-
+    private readonly IMemoryCache memoryCache;
+    private readonly IHttpClientFactory httpClientFactory;
     private ILogger Logger { get; }
 
 
-    public EventsController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, HybridCache hcache, IConnectionMultiplexer cacheMux)
+    public EventsController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
+        HybridCache hcache, IConnectionMultiplexer cacheMux, IMemoryCache memoryCache,
+        IHttpClientFactory httpClientFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.hcache = hcache;
         this.cacheMux = cacheMux;
+        this.memoryCache = memoryCache;
+        this.httpClientFactory = httpClientFactory;
     }
 
 
@@ -229,6 +238,83 @@ public class EventsController : ControllerBase
         return result?.Payload;
     }
 
+    [HttpGet]
+    [ProducesResponseType(typeof(SessionState), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetCurrentSessionState(int eventId, CancellationToken cancellationToken = default)
+    {
+        Logger.LogTrace("GetCurrentSessionState for event {eventId}", eventId);
+
+        var url = await GetEventProcessorEndpointAsync(eventId);
+        if (string.IsNullOrEmpty(url))
+            return NotFound("Event processor endpoint not found");
+
+        url = url.TrimEnd('/') + "/status/GetStatus";
+        var sw = Stopwatch.StartNew();
+        
+        using var httpClient = httpClientFactory.CreateClient("EventProcessor");
+        
+        try
+        {
+            var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            Logger.LogDebug("GetCurrentSessionState HTTP GET {url} completed in {elapsed} ms with status {statusCode}",
+                url, sw.ElapsedMilliseconds, response.StatusCode);
+
+            if (!response.IsSuccessStatusCode)
+                return StatusCode((int)response.StatusCode);
+
+            var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+
+            // Directly return raw MessagePack bytes
+            return File(stream, "application/x-msgpack");
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+        {
+            Logger.LogWarning("HTTP request to {url} timed out after {elapsed} ms", url, sw.ElapsedMilliseconds);
+            return StatusCode(408, "Request timeout");
+        }
+        catch (HttpRequestException ex)
+        {
+            Logger.LogError(ex, "HTTP request to {url} failed after {elapsed} ms", url, sw.ElapsedMilliseconds);
+            return StatusCode(503, "Service unavailable");
+        }
+    }
+
+
+    private async Task<string?> GetEventProcessorEndpointAsync(int eventId)
+    {
+        var key = string.Format(Consts.EVENT_SERVICE_ENDPOINT, eventId);
+        // First check in-memory cache
+        if (memoryCache.TryGetValue(key, out string? cachedValue))
+        {
+            return cachedValue;
+        }
+
+        try
+        {
+            // Check Redis if not in memory
+            var cache = cacheMux.GetDatabase();
+            var redisValue = await cache.StringGetAsync(key);
+
+            if (redisValue.HasValue)
+            {
+                var value = redisValue.ToString();
+                if (!value.StartsWith("http"))
+                    value = "http://" + value;
+                var cacheOptions = new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(1) };
+                memoryCache.Set(key, value, cacheOptions);
+                return value;
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error retrieving service endpoint for event {eventId}", eventId);
+            return null;
+        }
+    }
+
     #endregion
 
     #region Competitor Metadata
@@ -336,4 +422,5 @@ public class EventsController : ControllerBase
     }
 
     #endregion
+
 }

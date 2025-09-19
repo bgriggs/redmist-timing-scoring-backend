@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NLog.Extensions.Logging;
 using Prometheus;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.ControlLogProcessor.Services;
 using RedMist.ControlLogs;
 using RedMist.Database;
@@ -38,11 +39,7 @@ public class Program
         builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
         builder.Services.AddHostedService<StatusAggregatorService>();
 
-        builder.Services.AddSignalR(o => o.MaximumParallelInvocationsPerClient = 3)
-        .AddStackExchangeRedis(redisConn, options =>
-        {
-            options.Configuration.ChannelPrefix = RedisChannel.Literal(Consts.STATUS_CHANNEL_PREFIX);
-        });
+        builder.Services.AddRedMistSignalR(redisConn);
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();

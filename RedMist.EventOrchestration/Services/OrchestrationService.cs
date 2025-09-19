@@ -3,6 +3,7 @@ using k8s.Models;
 using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Models;
 using RedMist.Database;
+using RedMist.EventOrchestration.Models;
 using StackExchange.Redis;
 using System.Reflection;
 using System.Text.Json;
@@ -18,14 +19,10 @@ public class OrchestrationService : BackgroundService
     private const string namespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
     private readonly static TimeSpan checkInterval = TimeSpan.FromMilliseconds(10000);
     private readonly static TimeSpan eventTimeout = TimeSpan.FromMinutes(10);
-    private const string EVENT_PROCESSOR_JOB = "{0}-evt-{1}-event-processor";
-    private readonly string eventProcessorContainer;
-    private const string CONTROL_LOG_JOB = "{0}-evt-{1}-control-log";
-    private readonly string controlLogContainer;
-    private const string LOGGER_JOB = "{0}-evt-{1}-logger";
-    private readonly string loggerContainer;
-    private const string SENTINEL_VIDEO_JOB = "{0}-evt-{1}-sentinel-video";
-    private readonly string sentinelVideoContainer;
+    private readonly ContainerDetails eventProcessorContainerDetails;
+    private readonly ContainerDetails controlLogContainerDetails;
+    private readonly ContainerDetails loggerContainerDetails;
+    private readonly ContainerDetails sentinelVideoContainerDetails;
 
 
     public OrchestrationService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext)
@@ -36,10 +33,10 @@ public class OrchestrationService : BackgroundService
 
         // Get the current assembly version for container tags
         var version = GetAssemblyVersion();
-        eventProcessorContainer = $"bigmission/redmist-timing-svc:{version}";
-        controlLogContainer = $"bigmission/redmist-control-log-svc:{version}";
-        loggerContainer = $"bigmission/redmist-event-logger-svc:{version}";
-        sentinelVideoContainer = $"bigmission/redmist-sentinel-video-svc:{version}";
+        eventProcessorContainerDetails = new("bigmission/redmist-timing-svc", version, "{0}-evt-{1}-event-processor", true);
+        controlLogContainerDetails = new("bigmission/redmist-control-log-svc", version, "{0}-evt-{1}-control-log");
+        loggerContainerDetails = new("bigmission/redmist-event-logger-svc", version, "{0}-evt-{1}-logger");
+        sentinelVideoContainerDetails = new("bigmission/redmist-sentinel-video-svc", version, "{0}-evt-{1}-sentinel-video");
 
         Logger.LogInformation("OrchestrationService initialized with version {version}", version);
     }
@@ -85,7 +82,7 @@ public class OrchestrationService : BackgroundService
 
             var currentNamespace = await File.ReadAllTextAsync(namespaceFile, cancellationToken);
             currentNamespace = currentNamespace.Trim();
-            
+
             if (string.IsNullOrWhiteSpace(currentNamespace))
             {
                 Logger.LogWarning("Namespace file {namespaceFile} is empty, falling back to 'default' namespace", namespaceFile);
@@ -140,6 +137,23 @@ public class OrchestrationService : BackgroundService
                     try
                     {
                         await client.DeleteNamespacedJobAsync(job.Metadata.Name, currentNamespace, body: deleteOptions, cancellationToken: stoppingToken);
+
+                        // Also try to delete the associated service if it exists
+                        var serviceName = $"{job.Metadata.Name}-service";
+                        try
+                        {
+                            await client.DeleteNamespacedServiceAsync(serviceName, currentNamespace, body: deleteOptions, cancellationToken: stoppingToken);
+                            Logger.LogInformation("Deleted orphaned service {serviceName}", serviceName);
+                        }
+                        catch (k8s.Autorest.HttpOperationException ex) when (ex.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                        {
+                            // Service doesn't exist, which is fine
+                            Logger.LogTrace("Orphaned service {serviceName} not found (may not have been a service job)", serviceName);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogError(ex, "Failed to delete orphaned service {serviceName} in namespace {ns}", serviceName, currentNamespace);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -195,7 +209,7 @@ public class OrchestrationService : BackgroundService
             if (entry.Name.IsNullOrEmpty || entry.Value.IsNullOrEmpty) continue;
 
             var eventEntry = JsonSerializer.Deserialize<RelayConnectionEventEntry>(entry.Value!);
-            if (eventEntry != null)
+            if (eventEntry != null && eventEntry.EventId > 0)
             {
                 result.Add(eventEntry);
             }
@@ -240,9 +254,10 @@ public class OrchestrationService : BackgroundService
         // Remove the event entry from the cache
         await cache.HashDeleteAsync(hashKey, entryKey);
 
-        // Remove any associated jobs that are running
+        // Remove any associated jobs and services that are running
         var eventKey = $"evt-{eventEntry.EventId}";
         var deleteOptions = new V1DeleteOptions { PropagationPolicy = "Foreground" };
+
         foreach (var job in jobs.Items)
         {
             if (job.Metadata.Name.Contains(eventKey, StringComparison.OrdinalIgnoreCase))
@@ -250,6 +265,23 @@ public class OrchestrationService : BackgroundService
                 try
                 {
                     await client.DeleteNamespacedJobAsync(job.Metadata.Name, ns, body: deleteOptions, cancellationToken: stoppingToken);
+
+                    // Also try to delete the associated service if it exists
+                    var serviceName = $"{job.Metadata.Name}-service";
+                    try
+                    {
+                        await client.DeleteNamespacedServiceAsync(serviceName, ns, body: deleteOptions, cancellationToken: stoppingToken);
+                        Logger.LogInformation("Deleted service {serviceName} for expired event {eventId}", serviceName, eventEntry.EventId);
+                    }
+                    catch (k8s.Autorest.HttpOperationException ex) when (ex.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    {
+                        // Service doesn't exist, which is fine
+                        Logger.LogTrace("Service {serviceName} not found (may not have been a service job)", serviceName);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogError(ex, "Failed to delete service {serviceName} for expired event {eventId}", serviceName, eventEntry.EventId);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -300,20 +332,20 @@ public class OrchestrationService : BackgroundService
         // Check control log processing if enabled
         if (!string.IsNullOrWhiteSpace(org.ControlLogType))
         {
-            var clJobName = string.Format(CONTROL_LOG_JOB, org.ShortName.ToLower(), evt.EventId);
+            var clJobName = string.Format(controlLogContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
             if (!jobs.Items.Any(job => job.Metadata.Name.Equals(clJobName, StringComparison.OrdinalIgnoreCase)))
             {
                 Logger.LogInformation("Control log job {clJobName} does not exist for event {eventId}. Creating new job.", clJobName, evt.EventId);
-                await CreateJob(client, clJobName, ns, controlLogContainer, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+                await CreateJob(client, clJobName, ns, controlLogContainerDetails.ImageName, evt.EventId, eventDefinition.Name, org.Id, org.Name, controlLogContainerDetails.IsService, stoppingToken);
             }
         }
 
         // Check for logger job
-        var loggerJobName = string.Format(LOGGER_JOB, org.ShortName.ToLower(), evt.EventId);
+        var loggerJobName = string.Format(loggerContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
         if (!jobs.Items.Any(job => job.Metadata.Name.Equals(loggerJobName, StringComparison.OrdinalIgnoreCase)))
         {
             Logger.LogInformation("Logger job {loggerJobName} does not exist for event {eventId}. Creating new job.", loggerJobName, evt.EventId);
-            await CreateJob(client, loggerJobName, ns, loggerContainer, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+            await CreateJob(client, loggerJobName, ns, loggerContainerDetails.ImageName, evt.EventId, eventDefinition.Name, org.Id, org.Name, loggerContainerDetails.IsService, stoppingToken);
         }
         else
         {
@@ -321,11 +353,11 @@ public class OrchestrationService : BackgroundService
         }
 
         // Check for event processor job
-        var epJobName = string.Format(EVENT_PROCESSOR_JOB, org.ShortName.ToLower(), evt.EventId);
+        var epJobName = string.Format(eventProcessorContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
         if (!jobs.Items.Any(job => job.Metadata.Name.Equals(epJobName, StringComparison.OrdinalIgnoreCase)))
         {
             Logger.LogInformation("Event processor job {epJobName} does not exist for event {eventId}. Creating new job.", epJobName, evt.EventId);
-            await CreateJob(client, epJobName, ns, eventProcessorContainer, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+            await CreateJob(client, epJobName, ns, eventProcessorContainerDetails.ImageName, evt.EventId, eventDefinition.Name, org.Id, org.Name, eventProcessorContainerDetails.IsService, stoppingToken);
         }
         else
         {
@@ -333,11 +365,11 @@ public class OrchestrationService : BackgroundService
         }
 
         // Check for sentinel video job
-        var svJobName = string.Format(SENTINEL_VIDEO_JOB, org.ShortName.ToLower(), evt.EventId);
+        var svJobName = string.Format(sentinelVideoContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
         if (!jobs.Items.Any(job => job.Metadata.Name.Equals(svJobName, StringComparison.OrdinalIgnoreCase)))
         {
             Logger.LogInformation("Sentinel video job {svJobName} does not exist for event {eventId}. Creating new job.", svJobName, evt.EventId);
-            await CreateJob(client, svJobName, ns, sentinelVideoContainer, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+            await CreateJob(client, svJobName, ns, sentinelVideoContainerDetails.ImageName, evt.EventId, eventDefinition.Name, org.Id, org.Name, sentinelVideoContainerDetails.IsService, stoppingToken);
         }
         else
         {
@@ -345,7 +377,7 @@ public class OrchestrationService : BackgroundService
         }
     }
 
-    private async Task CreateJob(Kubernetes client, string name, string ns, string container, int eventId, string eventName, int organizationId, string organizationName, CancellationToken stoppingToken)
+    private async Task CreateJob(Kubernetes client, string name, string ns, string container, int eventId, string eventName, int organizationId, string organizationName, bool isService, CancellationToken stoppingToken)
     {
         eventName = eventName.Replace(" ", "-").ToLowerInvariant();
         organizationName = organizationName.Replace(" ", "-").ToLowerInvariant();
@@ -357,46 +389,92 @@ public class OrchestrationService : BackgroundService
             { "event_id", eventId.ToString() },
             { "event_name", eventName },
             { "organization_id", organizationId.ToString() },
-            { "organization_name", organizationName }
+            { "organization_name", organizationName },
+            { "app", name } // Add app label for service selector
         };
+
+        var podSpec = new V1PodSpec
+        {
+            Containers = [new() {
+                Name = name,
+                Image = container,
+                Env = [
+                    new V1EnvVar { Name = "event_id", Value = eventId.ToString()  },
+                    new V1EnvVar { Name = "org_id", Value = organizationId.ToString()  },
+                    new V1EnvVar { Name = "job_name", Value = name  },
+                    new V1EnvVar { Name = "job_namespace", Value = ns  },
+                    new V1EnvVar { Name = "ASPNETCORE_ENVIRONMENT", Value = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") },
+                    new V1EnvVar { Name = "ASPNETCORE_FORWARDEDHEADERS_ENABLED", Value = Environment.GetEnvironmentVariable("ASPNETCORE_FORWARDEDHEADERS_ENABLED") },
+                    new V1EnvVar { Name = "ASPNETCORE_URLS", Value = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") },
+                    new V1EnvVar { Name = "Keycloak__AuthServerUrl", Value = Environment.GetEnvironmentVariable("Keycloak__AuthServerUrl") },
+                    new V1EnvVar { Name = "Keycloak__Realm", Value = Environment.GetEnvironmentVariable("Keycloak__Realm") },
+                    new V1EnvVar { Name = "SentinelApiUrl", Value = Environment.GetEnvironmentVariable("SentinelApiUrl") },
+                    new V1EnvVar { Name = "REDIS_SVC", Value = Environment.GetEnvironmentVariable("REDIS_SVC") },
+                    new V1EnvVar { Name = "REDIS_PW", ValueFrom = new V1EnvVarSource {
+                        SecretKeyRef = new V1SecretKeySelector { Name = secretKeyName, Key = "redis" }}},
+                    new V1EnvVar { Name = "ConnectionStrings__Default", ValueFrom = new V1EnvVarSource {
+                        SecretKeyRef = new V1SecretKeySelector { Name = secretKeyName, Key = "db" }}}
+                ]
+            }],
+            RestartPolicy = "OnFailure"
+        };
+
+        // Add ports if this is a service
+        if (isService)
+        {
+            podSpec.Containers[0].Ports = [
+                new V1ContainerPort { ContainerPort = 8080, Name = "http" },
+                //new V1ContainerPort { ContainerPort = 8443, Name = "https" }
+            ];
+        }
+
         var jobSpec = new V1Job
         {
-            Metadata = new V1ObjectMeta
-            {
-                Name = name,
-                NamespaceProperty = ns,
-                Labels = labels
-            },
+            Metadata = new V1ObjectMeta { Name = name, NamespaceProperty = ns, Labels = labels },
             Spec = new V1JobSpec
             {
                 Template = new V1PodTemplateSpec
                 {
                     Metadata = new V1ObjectMeta { Labels = labels },
-                    Spec = new V1PodSpec
-                    {
-                        Containers = [new() { Name = name, Image = container, Env =
-                        [
-                            new V1EnvVar { Name = "event_id", Value = eventId.ToString()  },
-                            new V1EnvVar { Name = "org_id", Value = organizationId.ToString()  },
-                            new V1EnvVar { Name = "ASPNETCORE_ENVIRONMENT", Value = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") },
-                            new V1EnvVar { Name = "ASPNETCORE_FORWARDEDHEADERS_ENABLED", Value = Environment.GetEnvironmentVariable("ASPNETCORE_FORWARDEDHEADERS_ENABLED") },
-                            new V1EnvVar { Name = "ASPNETCORE_URLS", Value = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") },
-                            new V1EnvVar { Name = "Keycloak__AuthServerUrl", Value = Environment.GetEnvironmentVariable("Keycloak__AuthServerUrl") },
-                            new V1EnvVar { Name = "Keycloak__Realm", Value = Environment.GetEnvironmentVariable("Keycloak__Realm") },
-                            new V1EnvVar { Name = "SentinelApiUrl", Value = Environment.GetEnvironmentVariable("SentinelApiUrl") },
-                            new V1EnvVar { Name = "REDIS_SVC", Value = Environment.GetEnvironmentVariable("REDIS_SVC") },
-                            new V1EnvVar { Name = "REDIS_PW", ValueFrom = new V1EnvVarSource {
-                                SecretKeyRef = new V1SecretKeySelector { Name = secretKeyName, Key = "redis" }}},
-                            new V1EnvVar { Name = "ConnectionStrings__Default", ValueFrom = new V1EnvVarSource {
-                                SecretKeyRef = new V1SecretKeySelector { Name = secretKeyName, Key = "db" }}}
-                        ] }],
-                        RestartPolicy = "OnFailure"
-                    }
+                    Spec = podSpec
                 }
             }
         };
 
         await client.CreateNamespacedJobAsync(jobSpec, ns, cancellationToken: stoppingToken);
+
+        // Create a Service if this container should be exposed as a service
+        if (isService)
+        {
+            var serviceSpec = new V1Service
+            {
+                Metadata = new V1ObjectMeta
+                {
+                    Name = $"{name}-service",
+                    NamespaceProperty = ns,
+                    Labels = labels
+                },
+                Spec = new V1ServiceSpec
+                {
+                    Selector = new Dictionary<string, string> { { "app", name } },
+                    Ports = [
+                        new V1ServicePort { Name = "http", Port = 80, TargetPort = 8080 },
+                        //new V1ServicePort { Name = "https", Port = 443, TargetPort = 8443 }
+                    ],
+                    Type = "ClusterIP"
+                }
+            };
+
+            try
+            {
+                await client.CreateNamespacedServiceAsync(serviceSpec, ns, cancellationToken: stoppingToken);
+                Logger.LogInformation("Created service {serviceName} for job {jobName}", $"{name}-service", name);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to create service {serviceName} for job {jobName}", $"{name}-service", name);
+            }
+        }
     }
 
     private static string ResolveKeyName(string @namespace)

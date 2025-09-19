@@ -8,6 +8,7 @@ using Microsoft.Extensions.Caching.Hybrid;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using StackExchange.Redis;
 
@@ -56,11 +57,7 @@ public class Program
             .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);
 
-        builder.Services.AddSignalR(o => o.MaximumParallelInvocationsPerClient = 3)
-        .AddStackExchangeRedis(redisConn, options =>
-        {
-            options.Configuration.ChannelPrefix = RedisChannel.Literal(Consts.STATUS_CHANNEL_PREFIX);
-        });
+        builder.Services.AddRedMistSignalR(redisConn);
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();

@@ -1,7 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.FlagData.StateChanges;
-using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using System.Text.Json;
@@ -26,18 +25,20 @@ public class FlagProcessorV2
     }
 
 
-    public async Task<SessionStateUpdate?> Process(TimingMessage message)
+    public async Task<PatchUpdates?> Process(TimingMessage message)
     {
         if (message.Type != Backend.Shared.Consts.FLAGS_TYPE)
             return null;
+
         var fs = JsonSerializer.Deserialize<List<FlagDuration>>(message.Data);
         if (fs != null)
         {
-            var sessionStateUpdate = new SessionStateUpdate([], []);
             await flagProcessor.ProcessFlags(sessionContext.SessionState.SessionId, fs, sessionContext.CancellationToken);
             var flagDurations = await flagProcessor.GetFlagsAsync(sessionContext.CancellationToken);
-            sessionStateUpdate.SessionChanges.Add(new FlagsStateChange(flagDurations));
-            return sessionStateUpdate;
+            var flagChange = new FlagsStateChange(flagDurations);
+            var sp = flagChange.ApplySessionChange(sessionContext.SessionState);
+            if (sp != null)
+                return new PatchUpdates([sp], []);
         }
         return null;
     }

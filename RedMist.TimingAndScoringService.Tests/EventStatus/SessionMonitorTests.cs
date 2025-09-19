@@ -6,7 +6,6 @@ using Microsoft.Extensions.Caching.Hybrid;
 using Moq;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;

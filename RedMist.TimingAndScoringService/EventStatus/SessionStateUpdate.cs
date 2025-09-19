@@ -1,4 +1,10 @@
-﻿namespace RedMist.TimingAndScoringService.EventStatus;
+﻿using RedMist.TimingCommon.Models;
 
-public record SessionStateUpdate(
-    List<ISessionStateChange> SessionChanges, List<ICarStateChange> CarChanges);
+namespace RedMist.TimingAndScoringService.EventStatus;
+
+public class SessionStateUpdate(
+    List<ISessionStateChange> sessionChanges, List<ICarStateChange> carChanges)
+{
+    public List<ISessionStateChange> SessionChanges { get; } = sessionChanges;
+    public List<ICarStateChange> CarChanges { get; } = carChanges;    
+}

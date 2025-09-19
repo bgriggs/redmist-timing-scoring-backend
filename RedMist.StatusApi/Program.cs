@@ -8,6 +8,7 @@ using Microsoft.Extensions.Caching.Hybrid;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.StatusApi.Services;
 using StackExchange.Redis;
@@ -56,12 +57,30 @@ public class Program
             .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);
 
-        builder.Services.AddSignalR(o => o.MaximumParallelInvocationsPerClient = 3)
-            .AddStackExchangeRedis(redisConn, options =>
-            {
-                options.Configuration.ChannelPrefix = RedisChannel.Literal(Consts.STATUS_CHANNEL_PREFIX);
-            });
+        builder.Services.AddRedMistSignalR(redisConn);
 
+        builder.Services.AddMemoryCache();
+        builder.Services.AddHttpClient("EventProcessor", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.Add("User-Agent", "RedMist-StatusApi/1.0");
+            client.DefaultRequestHeaders.ConnectionClose = false;
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler()
+        {
+            MaxConnectionsPerServer = 10,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(30), 
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
+            UseCookies = false,
+            UseProxy = false,
+            ConnectTimeout = TimeSpan.FromSeconds(5), 
+            ResponseDrainTimeout = TimeSpan.FromSeconds(2),
+            EnableMultipleHttp2Connections = true
+        })
+        .ConfigureHttpClient((serviceProvider, client) =>
+        {
+            
+        }); ;
         builder.Services.AddHostedService<MetricsPublisher>();
 
         var app = builder.Build();

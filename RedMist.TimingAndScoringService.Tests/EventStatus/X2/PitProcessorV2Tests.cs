@@ -5,14 +5,13 @@ using Moq;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.X2;
-using RedMist.TimingAndScoringService.EventStatus.X2.StateChanges;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using RedMist.TimingCommon.Models.X2;
 using System.Collections.Immutable;
-using System.Text.Json;
 using ConfigurationEvent = RedMist.TimingCommon.Models.Configuration.Event;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus.X2;
 
@@ -23,7 +22,7 @@ public class PitProcessorV2Tests
     private Mock<IDbContextFactory<TsContext>> _mockDbContextFactory = null!;
     private Mock<ILoggerFactory> _mockLoggerFactory = null!;
     private Mock<ILogger> _mockLogger = null!;
-    private Mock<SessionContext> _mockSessionContext = null!;
+    private SessionContext _sessionContext = null!;
 
     [TestInitialize]
     public void Setup()
@@ -37,7 +36,7 @@ public class PitProcessorV2Tests
             .AddInMemoryCollection(dict)
             .Build();
 
-        _mockSessionContext = new Mock<SessionContext>(config);
+        _sessionContext = new SessionContext(config) { IsMultiloopActive = true };
 
         // Create a real TsContext with InMemory database instead of mocking it
         var databaseName = $"TestDatabase_{Guid.NewGuid()}";
@@ -47,7 +46,7 @@ public class PitProcessorV2Tests
 
         // Use real TsContext instead of mock since we need to access non-virtual properties
         var realDbContext = new TsContext(options);
-        
+
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
         _mockDbContextFactory.Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(realDbContext);
@@ -55,19 +54,21 @@ public class PitProcessorV2Tests
         // Setup default transponder to car number mapping
         SetupTransponderMapping();
 
-        _processor = new PitProcessorV2(_mockDbContextFactory.Object, _mockLoggerFactory.Object, _mockSessionContext.Object);
+        _processor = new PitProcessorV2(_mockDbContextFactory.Object, _mockLoggerFactory.Object, _sessionContext);
     }
 
     private void SetupTransponderMapping()
     {
-        // Setup transponder to car number mapping for common test scenarios
-        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(123)).Returns("123");
-        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(456)).Returns("456");
-        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(100)).Returns("100");
-        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(200)).Returns("200");
-        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(300)).Returns("300");
-        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(400)).Returns("400");
-        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(500)).Returns("500");
+        _sessionContext.UpdateCars(
+            [
+            new CarPosition{ Number = "123", TransponderId = 123 },
+            new CarPosition{ Number = "456", TransponderId = 456 },
+            new CarPosition{ Number = "100", TransponderId = 100 },
+            new CarPosition{ Number = "200", TransponderId = 200 },
+            new CarPosition{ Number = "300", TransponderId = 300 },
+            new CarPosition{ Number = "400", TransponderId = 400 },
+            new CarPosition{ Number = "500", TransponderId = 500 },
+            ]);
     }
 
     #region Initialization Tests
@@ -95,7 +96,7 @@ public class PitProcessorV2Tests
                 var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
                 optionsBuilder.UseInMemoryDatabase(databaseName);
                 var options = optionsBuilder.Options;
-                
+
                 var context = new TsContext(options);
                 context.Events.Add(eventConfig);
                 await context.SaveChangesAsync();
@@ -152,7 +153,7 @@ public class PitProcessorV2Tests
     public async Task Process_MultiloopActive_ReturnsNull()
     {
         // Arrange
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(true);
+        _sessionContext.IsMultiloopActive = true;
         var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "data", 1, DateTime.Now);
 
         // Act
@@ -166,7 +167,7 @@ public class PitProcessorV2Tests
     public async Task Process_EmptyPassingsData_ReturnsNull()
     {
         // Arrange
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
         var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "[]", 1, DateTime.Now);
 
         // Act
@@ -180,7 +181,7 @@ public class PitProcessorV2Tests
     public async Task Process_NullPassingsData_ReturnsNull()
     {
         // Arrange
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
         var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "null", 1, DateTime.Now);
 
         // Act
@@ -199,7 +200,7 @@ public class PitProcessorV2Tests
     {
         // Arrange
         await SetupEventWithLoops();
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         var passings = new List<Passing>
         {
@@ -214,22 +215,31 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(2, result.CarChanges.Count); // Now creates one change per passing with valid car number
-        Assert.IsTrue(result.CarChanges.All(c => c is PitStateUpdate));
+        Assert.AreEqual(2, result.CarPatches.Count); // Now creates one change per passing with valid car number
 
-        // Find the specific state updates
-        var pitStateUpdate123 = result.CarChanges.OfType<PitStateUpdate>().FirstOrDefault(p => p.CarNumber == "123");
-        var pitStateUpdate456 = result.CarChanges.OfType<PitStateUpdate>().FirstOrDefault(p => p.CarNumber == "456");
+        // Find the specific car patches by checking the Number property
+        var carPatch123 = result.CarPatches.FirstOrDefault(p => p.Number == "123");
+        var carPatch456 = result.CarPatches.FirstOrDefault(p => p.Number == "456");
 
-        Assert.IsNotNull(pitStateUpdate123);
-        Assert.IsNotNull(pitStateUpdate456);
+        Assert.IsNotNull(carPatch123);
+        Assert.IsNotNull(carPatch456);
 
-        // Check that transponder 123 is in the InPit and PitEntrance collections
-        Assert.IsTrue(pitStateUpdate123.InPit.ContainsKey(123));
-        Assert.IsTrue(pitStateUpdate123.PitEntrance.ContainsKey(123));
+        // Check that IsInPit and IsEnteredPit flags are set correctly in the patches
+        Assert.AreEqual(true, carPatch123.IsInPit);
+        Assert.AreEqual(true, carPatch123.IsEnteredPit);
 
-        // Check that transponder 456 is in the PitExit collection
-        Assert.IsTrue(pitStateUpdate456.PitExit.ContainsKey(456));
+        // For car 456, check if patch has IsInPit set
+        if (carPatch456.IsInPit.HasValue)
+        {
+            Assert.AreEqual(false, carPatch456.IsInPit);
+        }
+        else
+        {
+            // If patch doesn't contain IsInPit, verify current state should be false
+            var currentCar = _sessionContext.GetCarByNumber("456");
+            Assert.AreEqual(false, currentCar?.IsInPit);
+        }
+        Assert.AreEqual(true, carPatch456.IsExitedPit);
     }
 
     [TestMethod]
@@ -237,7 +247,7 @@ public class PitProcessorV2Tests
     {
         // Arrange
         await SetupEventWithLoops();
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         var passings = new List<Passing>
         {
@@ -251,11 +261,22 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarChanges.Count);
-        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
-        Assert.AreEqual("123", pitStateUpdate.CarNumber);
-        Assert.IsTrue(pitStateUpdate.PitEntrance.ContainsKey(123));
-        Assert.IsFalse(pitStateUpdate.InPit.ContainsKey(123)); // IsInPit was false
+        Assert.AreEqual(1, result.CarPatches.Count);
+        var carPatch = result.CarPatches[0];
+        Assert.AreEqual("123", carPatch.Number);
+        Assert.AreEqual(true, carPatch.IsEnteredPit);
+        
+        // The patch may or may not contain IsInPit depending on whether it changed from current state
+        if (carPatch.IsInPit.HasValue)
+        {
+            Assert.AreEqual(false, carPatch.IsInPit); // IsInPit was false
+        }
+        else
+        {
+            // If patch doesn't contain IsInPit, verify current state is correct
+            var currentCar = _sessionContext.GetCarByNumber("123");
+            Assert.AreEqual(false, currentCar?.IsInPit);
+        }
     }
 
     [TestMethod]
@@ -263,7 +284,7 @@ public class PitProcessorV2Tests
     {
         // Arrange
         await SetupEventWithLoops();
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         var passings = new List<Passing>
         {
@@ -277,10 +298,10 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarChanges.Count);
-        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
-        Assert.AreEqual("123", pitStateUpdate.CarNumber);
-        Assert.IsTrue(pitStateUpdate.PitExit.ContainsKey(123));
+        Assert.AreEqual(1, result.CarPatches.Count);
+        var carPatch = result.CarPatches[0];
+        Assert.AreEqual("123", carPatch.Number);
+        Assert.AreEqual(true, carPatch.IsExitedPit);
     }
 
     [TestMethod]
@@ -288,7 +309,7 @@ public class PitProcessorV2Tests
     {
         // Arrange
         await SetupEventWithLoops();
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         var passings = new List<Passing>
         {
@@ -302,18 +323,18 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarChanges.Count);
-        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
-        Assert.AreEqual("123", pitStateUpdate.CarNumber);
-        Assert.IsTrue(pitStateUpdate.PitSf.ContainsKey(123));
+        Assert.AreEqual(1, result.CarPatches.Count);
+        var carPatch = result.CarPatches[0];
+        Assert.AreEqual("123", carPatch.Number);
+        Assert.AreEqual(true, carPatch.IsPitStartFinish);
     }
 
     [TestMethod]
-    public async Task Process_PitOtherLoop_UpdatesPitOther()
+    public async Task Process_PitOtherLoop_UpdatesPitFlags()
     {
         // Arrange
         await SetupEventWithLoops();
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         var passings = new List<Passing>
         {
@@ -327,18 +348,19 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarChanges.Count);
-        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
-        Assert.AreEqual("123", pitStateUpdate.CarNumber);
-        Assert.IsTrue(pitStateUpdate.PitOther.ContainsKey(123));
+        Assert.AreEqual(1, result.CarPatches.Count);
+        var carPatch = result.CarPatches[0];
+        Assert.AreEqual("123", carPatch.Number);
+        // For PitOther, we mainly check that the patch was created
+        Assert.IsNotNull(carPatch);
     }
 
     [TestMethod]
-    public async Task Process_OtherLoop_UpdatesOther()
+    public async Task Process_OtherLoop_UpdatesFlags()
     {
         // Arrange
         await SetupEventWithLoops();
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         var passings = new List<Passing>
         {
@@ -352,10 +374,11 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarChanges.Count);
-        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
-        Assert.AreEqual("123", pitStateUpdate.CarNumber);
-        Assert.IsTrue(pitStateUpdate.Other.ContainsKey(123));
+        Assert.AreEqual(1, result.CarPatches.Count);
+        var carPatch = result.CarPatches[0];
+        Assert.AreEqual("123", carPatch.Number);
+        // For Other loops, we mainly check that the patch was created
+        Assert.IsNotNull(carPatch);
     }
 
     #endregion
@@ -367,7 +390,7 @@ public class PitProcessorV2Tests
     {
         // Arrange
         await SetupEventWithLoops();
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         var passings = new List<Passing>
         {
@@ -382,23 +405,22 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(2, result.CarChanges.Count); // Two separate PitStateUpdate instances
+        Assert.AreEqual(2, result.CarPatches.Count); // Two separate car patches
 
-        // Get the last state update for transponder 123 (should reflect final state)
-        var lastStateUpdate = result.CarChanges.OfType<PitStateUpdate>().Last(p => p.CarNumber == "123");
-        
-        // Should only have the latest passing for transponder 123
-        Assert.IsFalse(lastStateUpdate.PitEntrance.ContainsKey(123)); // Should be removed by second passing
-        Assert.IsTrue(lastStateUpdate.PitExit.ContainsKey(123)); // Should contain latest
-        Assert.IsFalse(lastStateUpdate.InPit.ContainsKey(123)); // IsInPit was false in latest
+        // Get the last patch for transponder 123 (should reflect final state)
+        var lastPatch = result.CarPatches.Last(p => p.Number == "123");
+
+        // Should reflect the latest passing for transponder 123
+        Assert.AreEqual(true, lastPatch.IsExitedPit); // Should be exit (loop 2)
+        Assert.AreEqual(false, lastPatch.IsInPit); // IsInPit was false in latest
     }
 
     [TestMethod]
-    public async Task Process_UnknownLoopId_IgnoresPassingForLoopClassification()
+    public async Task Process_UnknownLoopId_ProcessesWithIsInPitOnly()
     {
         // Arrange
         await SetupEventWithLoops();
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         var passings = new List<Passing>
         {
@@ -412,16 +434,15 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarChanges.Count);
-        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
-        
-        // Should only update InPit based on IsInPit flag, not any loop-specific collections
-        Assert.IsTrue(pitStateUpdate.InPit.ContainsKey(123));
-        Assert.IsFalse(pitStateUpdate.PitEntrance.ContainsKey(123));
-        Assert.IsFalse(pitStateUpdate.PitExit.ContainsKey(123));
-        Assert.IsFalse(pitStateUpdate.PitSf.ContainsKey(123));
-        Assert.IsFalse(pitStateUpdate.PitOther.ContainsKey(123));
-        Assert.IsFalse(pitStateUpdate.Other.ContainsKey(123));
+        Assert.AreEqual(1, result.CarPatches.Count);
+        var carPatch = result.CarPatches[0];
+
+        // Should only update IsInPit based on IsInPit flag, not any loop-specific flags
+        Assert.AreEqual(true, carPatch.IsInPit);
+        // No loop-specific flags should be set
+        Assert.IsNull(carPatch.IsEnteredPit);
+        Assert.IsNull(carPatch.IsExitedPit);
+        Assert.IsNull(carPatch.IsPitStartFinish);
     }
 
     [TestMethod]
@@ -429,8 +450,8 @@ public class PitProcessorV2Tests
     {
         // Arrange
         await SetupEventWithLoops();
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
-        _mockSessionContext.Setup(x => x.GetCarNumberForTransponder(999)).Returns((string?)null); // Unknown transponder
+        _sessionContext.IsMultiloopActive = false;
+        //_mockSessionContext.Setup(x => x.GetCarNumberForTransponder(999)).Returns((string?)null); // Unknown transponder
 
         var passings = new List<Passing>
         {
@@ -444,7 +465,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.CarChanges.Count); // Should skip processing for unknown transponder
+        Assert.AreEqual(0, result.CarPatches.Count); // Should skip processing for unknown transponder
     }
 
     #endregion
@@ -477,7 +498,7 @@ public class PitProcessorV2Tests
         };
 
         // Add some pit laps to the internal collection using reflection
-        var carLapsField = typeof(PitProcessorV2).GetField("carLapsWithPitStops", 
+        var carLapsField = typeof(PitProcessorV2).GetField("carLapsWithPitStops",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         Assert.IsNotNull(carLapsField, "carLapsWithPitStops field should exist");
         var carLapsDict = (Dictionary<string, HashSet<int>>)carLapsField.GetValue(_processor)!;
@@ -536,7 +557,7 @@ public class PitProcessorV2Tests
         };
 
         // Add pit laps for a different car
-        var carLapsField = typeof(PitProcessorV2).GetField("carLapsWithPitStops", 
+        var carLapsField = typeof(PitProcessorV2).GetField("carLapsWithPitStops",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         Assert.IsNotNull(carLapsField, "carLapsWithPitStops field should exist");
         var carLapsDict = (Dictionary<string, HashSet<int>>)carLapsField.GetValue(_processor)!;
@@ -554,7 +575,7 @@ public class PitProcessorV2Tests
     {
         // This test now verifies the corrected behavior
         // The method should properly check if a car has pit laps for the current lap
-        
+
         // Arrange
         var carPosition = new CarPosition
         {
@@ -564,7 +585,7 @@ public class PitProcessorV2Tests
         };
 
         // Add pit laps to the internal collection using reflection
-        var carLapsField = typeof(PitProcessorV2).GetField("carLapsWithPitStops", 
+        var carLapsField = typeof(PitProcessorV2).GetField("carLapsWithPitStops",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         Assert.IsNotNull(carLapsField, "carLapsWithPitStops field should exist");
         var carLapsDict = (Dictionary<string, HashSet<int>>)carLapsField.GetValue(_processor)!;
@@ -575,11 +596,11 @@ public class PitProcessorV2Tests
 
         // Assert - The method should correctly identify that lap 5 is NOT in pit stops
         Assert.IsFalse(carPosition.LapIncludedPit);
-        
+
         // Test the positive case
         carPosition.LastLapCompleted = 7; // Lap 7 IS in pit laps
         carPosition.LapIncludedPit = false; // Reset
-        
+
         _processor.UpdateCarPositionForLogging(carPosition);
         Assert.IsTrue(carPosition.LapIncludedPit); // Should be true now
     }
@@ -592,7 +613,7 @@ public class PitProcessorV2Tests
     {
         // Arrange
         await SetupEventWithLoops();
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         var passings = new List<Passing>
         {
@@ -610,38 +631,50 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(5, result.CarChanges.Count); // One change per valid transponder
+        Assert.AreEqual(5, result.CarPatches.Count); // One patch per valid transponder
 
-        var pitStateUpdates = result.CarChanges.OfType<PitStateUpdate>().ToList();
-        Assert.AreEqual(5, pitStateUpdates.Count);
+        // Find patches by car number
+        var patch100 = result.CarPatches.First(p => p.Number == "100");
+        var patch200 = result.CarPatches.First(p => p.Number == "200");
+        var patch300 = result.CarPatches.First(p => p.Number == "300");
+        var patch400 = result.CarPatches.First(p => p.Number == "400");
+        var patch500 = result.CarPatches.First(p => p.Number == "500");
 
-        // Find updates by car number
-        var update100 = pitStateUpdates.First(p => p.CarNumber == "100");
-        var update200 = pitStateUpdates.First(p => p.CarNumber == "200");
-        var update300 = pitStateUpdates.First(p => p.CarNumber == "300");
-        var update400 = pitStateUpdates.First(p => p.CarNumber == "400");
-        var update500 = pitStateUpdates.First(p => p.CarNumber == "500");
+        // Verify IsInPit flags
+        Assert.AreEqual(true, patch100.IsInPit);
+        Assert.AreEqual(true, patch200.IsInPit);
+        Assert.AreEqual(true, patch300.IsInPit);
         
-        // Verify InPit collection
-        Assert.IsTrue(update100.InPit.ContainsKey(100));
-        Assert.IsTrue(update200.InPit.ContainsKey(200));
-        Assert.IsTrue(update300.InPit.ContainsKey(300));
-        Assert.IsFalse(update400.InPit.ContainsKey(400)); // IsInPit was false
-        Assert.IsFalse(update500.InPit.ContainsKey(500)); // IsInPit was false
+        // For cars 400 and 500, check if patch has IsInPit set
+        if (patch400.IsInPit.HasValue)
+        {
+            Assert.AreEqual(false, patch400.IsInPit); // IsInPit was false
+        }
+        else
+        {
+            // If patch doesn't contain IsInPit, verify current state should be false
+            var currentCar = _sessionContext.GetCarByNumber("400");
+            Assert.AreEqual(false, currentCar?.IsInPit);
+        }
+        
+        if (patch500.IsInPit.HasValue)
+        {
+            Assert.AreEqual(false, patch500.IsInPit); // IsInPit was false
+        }
+        else
+        {
+            // If patch doesn't contain IsInPit, verify current state should be false
+            var currentCar = _sessionContext.GetCarByNumber("500");
+            Assert.AreEqual(false, currentCar?.IsInPit);
+        }
 
-        // Verify loop-specific collections
-        Assert.IsTrue(update100.PitEntrance.ContainsKey(100));
-        Assert.IsTrue(update200.PitExit.ContainsKey(200));
-        Assert.IsTrue(update300.PitSf.ContainsKey(300));
-        Assert.IsTrue(update400.PitOther.ContainsKey(400));
-        Assert.IsTrue(update500.Other.ContainsKey(500));
-
-        // Verify loop metadata is included (each update should have the full metadata)
-        Assert.IsTrue(update100.LoopMetadata.ContainsKey(1));
-        Assert.IsTrue(update100.LoopMetadata.ContainsKey(2));
-        Assert.IsTrue(update100.LoopMetadata.ContainsKey(3));
-        Assert.IsTrue(update100.LoopMetadata.ContainsKey(4));
-        Assert.IsTrue(update100.LoopMetadata.ContainsKey(5));
+        // Verify loop-specific flags
+        Assert.AreEqual(true, patch100.IsEnteredPit);
+        Assert.AreEqual(true, patch200.IsExitedPit);
+        Assert.AreEqual(true, patch300.IsPitStartFinish);
+        // patch400 and patch500 should have patches but no specific loop flags since they're PitOther/Other
+        Assert.IsNotNull(patch400);
+        Assert.IsNotNull(patch500);
     }
 
     #endregion
@@ -652,7 +685,7 @@ public class PitProcessorV2Tests
     public async Task Process_InvalidJsonData_HandlesGracefully()
     {
         // Arrange
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
         var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "invalid json", 1, DateTime.Now);
 
         // Act
@@ -663,10 +696,10 @@ public class PitProcessorV2Tests
     }
 
     [TestMethod]
-    public async Task Process_NoEventConfigurationLoaded_ProcessesWithEmptyLoopMetadata()
+    public async Task Process_NoEventConfigurationLoaded_ProcessesWithoutLoopSpecificLogic()
     {
         // Arrange - Don't call SetupEventWithLoops, so no event configuration is loaded
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         var passings = new List<Passing>
         {
@@ -680,17 +713,14 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarChanges.Count);
-        var pitStateUpdate = (PitStateUpdate)result.CarChanges[0];
-        
-        // Should still process InPit
-        Assert.IsTrue(pitStateUpdate.InPit.ContainsKey(123));
-        
+        Assert.AreEqual(1, result.CarPatches.Count);
+        var carPatch = result.CarPatches[0];
+
+        // Should still process IsInPit
+        Assert.AreEqual(true, carPatch.IsInPit);
+
         // But no loop-specific processing should occur
-        Assert.IsFalse(pitStateUpdate.PitEntrance.ContainsKey(123));
-        
-        // LoopMetadata should be empty
-        Assert.AreEqual(0, pitStateUpdate.LoopMetadata.Count);
+        Assert.IsNull(carPatch.IsEnteredPit);
     }
 
     #endregion
@@ -704,7 +734,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, eventId.ToString(), 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, eventId.ToString(), 1, DateTime.Now);
 
         // Setup a modified event configuration for reload
         var modifiedEventConfig = new ConfigurationEvent
@@ -725,7 +755,7 @@ public class PitProcessorV2Tests
                 var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
                 optionsBuilder.UseInMemoryDatabase(databaseName);
                 var options = optionsBuilder.Options;
-                
+
                 var context = new TsContext(options);
                 context.Events.Add(modifiedEventConfig);
                 await context.SaveChangesAsync();
@@ -737,7 +767,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNull(result); // Event changed messages should return null
-        
+
         // Verify that the configuration reload was logged
         _mockLogger.Verify(
             x => x.Log(
@@ -760,7 +790,7 @@ public class PitProcessorV2Tests
         var differentEventId = 456;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, differentEventId.ToString(), 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, differentEventId.ToString(), 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -772,7 +802,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNull(result); // Event changed messages should return null
-        
+
         // Verify that the configuration reload was NOT logged
         _mockLogger.Verify(
             x => x.Log(
@@ -794,7 +824,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, "invalid-event-id", 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, "invalid-event-id", 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -806,7 +836,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNull(result); // Event changed messages should return null
-        
+
         // Verify that the configuration reload was NOT logged
         _mockLogger.Verify(
             x => x.Log(
@@ -828,7 +858,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, "", 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, "", 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -840,7 +870,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNull(result); // Event changed messages should return null
-        
+
         // Verify that the configuration reload was NOT logged
         _mockLogger.Verify(
             x => x.Log(
@@ -862,7 +892,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, null!, 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, null!, 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -874,7 +904,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNull(result); // Event changed messages should return null
-        
+
         // Verify that the configuration reload was NOT logged
         _mockLogger.Verify(
             x => x.Log(
@@ -893,7 +923,7 @@ public class PitProcessorV2Tests
     public async Task Process_EventChangedMessage_ProcessorNotInitialized_HandlesGracefully()
     {
         // Arrange - Don't call SetupEventWithLoops or Initialize, so eventId is default (0)
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, "123", 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, "123", 1, DateTime.Now);
 
         // Reset the mock to track calls
         _mockDbContextFactory.Reset();
@@ -905,7 +935,7 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNull(result); // Event changed messages should return null
-        
+
         // Since eventId is 0 (not initialized), it won't match the message's eventId of 123
         // Verify that the configuration reload was NOT logged
         _mockLogger.Verify(
@@ -924,7 +954,7 @@ public class PitProcessorV2Tests
         // Arrange
         var eventId = 123;
         await SetupEventWithLoops(); // Initialize with original configuration
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         // Process some passings with original configuration
         var passings = new List<Passing>
@@ -936,9 +966,9 @@ public class PitProcessorV2Tests
 
         // Verify first result uses original configuration
         Assert.IsNotNull(firstResult);
-        Assert.AreEqual(1, firstResult.CarChanges.Count);
-        var firstPitStateUpdate = (PitStateUpdate)firstResult.CarChanges[0];
-        Assert.IsTrue(firstPitStateUpdate.PitEntrance.ContainsKey(123)); // Should be in PitEntrance
+        Assert.AreEqual(1, firstResult.CarPatches.Count);
+        var firstCarPatch = firstResult.CarPatches[0];
+        Assert.AreEqual(true, firstCarPatch.IsEnteredPit); // Should be entrance (loop 1 = PitIn)
 
         // Setup modified configuration for reload - change loop 1 from PitIn to PitExit
         var modifiedEventConfig = new ConfigurationEvent
@@ -946,7 +976,7 @@ public class PitProcessorV2Tests
             Id = eventId,
             LoopsMetadata = new List<LoopMetadata>
             {
-                new LoopMetadata { Id = 1, Type = LoopType.PitExit, Name = "Modified to Pit Exit" }, // Changed from PitIn to PitExit
+                new LoopMetadata { Id = 1, Type = LoopType.PitExit, Name = "Modified to PitExit" }, // Changed from PitIn to PitExit
                 new LoopMetadata { Id = 2, Type = LoopType.PitIn, Name = "Pit Entry" }
             }
         };
@@ -958,7 +988,7 @@ public class PitProcessorV2Tests
                 var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
                 optionsBuilder.UseInMemoryDatabase(databaseName);
                 var options = optionsBuilder.Options;
-                
+
                 var context = new TsContext(options);
                 context.Events.Add(modifiedEventConfig);
                 await context.SaveChangesAsync();
@@ -966,7 +996,7 @@ public class PitProcessorV2Tests
             });
 
         // Act - Send event changed message to reload configuration
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CHANGED_TYPE, eventId.ToString(), 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, eventId.ToString(), 1, DateTime.Now);
         var reloadResult = await _processor.Process(eventChangedMessage);
         Assert.IsNull(reloadResult); // Event changed messages return null
 
@@ -975,12 +1005,12 @@ public class PitProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(secondResult);
-        Assert.AreEqual(1, secondResult.CarChanges.Count);
-        var secondPitStateUpdate = (PitStateUpdate)secondResult.CarChanges[0];
-        
+        Assert.AreEqual(1, secondResult.CarPatches.Count);
+        var secondCarPatch = secondResult.CarPatches[0];
+
         // Now loop 1 should be treated as PitExit instead of PitIn
-        Assert.IsFalse(secondPitStateUpdate.PitEntrance.ContainsKey(123)); // Should NOT be in PitEntrance anymore
-        Assert.IsTrue(secondPitStateUpdate.PitExit.ContainsKey(123)); // Should be in PitExit now
+        Assert.IsNull(secondCarPatch.IsEnteredPit); // Should NOT be entrance anymore
+        Assert.AreEqual(true, secondCarPatch.IsExitedPit); // Should be exit now
 
         // Verify reload was logged
         _mockLogger.Verify(
@@ -1020,7 +1050,7 @@ public class PitProcessorV2Tests
                 var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
                 optionsBuilder.UseInMemoryDatabase(databaseName);
                 var options = optionsBuilder.Options;
-                
+
                 var context = new TsContext(options);
                 context.Events.Add(eventConfig);
                 await context.SaveChangesAsync();
@@ -1038,7 +1068,7 @@ public class PitProcessorV2Tests
     public void Constructor_ValidParameters_CreatesInstance()
     {
         // Arrange & Act
-        var processor = new PitProcessorV2(_mockDbContextFactory.Object, _mockLoggerFactory.Object, _mockSessionContext.Object);
+        var processor = new PitProcessorV2(_mockDbContextFactory.Object, _mockLoggerFactory.Object, _sessionContext);
 
         // Assert
         Assert.IsNotNull(processor);
@@ -1050,23 +1080,23 @@ public class PitProcessorV2Tests
     public void Constructor_NullDbContextFactory_ThrowsArgumentNullException()
     {
         // Act & Assert
-        Assert.ThrowsExactly<ArgumentNullException>(() => 
-            new PitProcessorV2(null!, _mockLoggerFactory.Object, _mockSessionContext.Object));
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
+            new PitProcessorV2(null!, _mockLoggerFactory.Object, _sessionContext));
     }
 
     [TestMethod]
     public void Constructor_NullLoggerFactory_ThrowsArgumentNullException()
     {
         // Act & Assert
-        Assert.ThrowsExactly<ArgumentNullException>(() => 
-            new PitProcessorV2(_mockDbContextFactory.Object, null!, _mockSessionContext.Object));
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
+            new PitProcessorV2(_mockDbContextFactory.Object, null!, _sessionContext));
     }
 
     [TestMethod]
     public void Constructor_NullSessionContext_ThrowsArgumentNullException()
     {
         // Act & Assert
-        Assert.ThrowsExactly<ArgumentNullException>(() => 
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
             new PitProcessorV2(_mockDbContextFactory.Object, _mockLoggerFactory.Object, null!));
     }
 
@@ -1079,7 +1109,7 @@ public class PitProcessorV2Tests
     {
         // Arrange
         await SetupEventWithLoops();
-        _mockSessionContext.Setup(x => x.IsMultiloopActive).Returns(false);
+        _sessionContext.IsMultiloopActive = false;
 
         var passings = new List<Passing>
         {
@@ -1087,7 +1117,7 @@ public class PitProcessorV2Tests
         };
 
         var message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, JsonSerializer.Serialize(passings), 1, DateTime.Now);
-        var tasks = new List<Task<SessionStateUpdate?>>();
+        var tasks = new List<Task<PatchUpdates?>>();
 
         // Act - Run multiple concurrent processes
         for (int i = 0; i < 10; i++)

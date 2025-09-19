@@ -8,6 +8,7 @@ using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
+using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
@@ -647,7 +648,7 @@ public class RMonitorDataProcessor
             // Transponder
             if (competitors.TryGetValue(reg, out var competitor))
             {
-                carPos.TransponderId = competitor.Transponder;
+                carPos.TransponderId = competitor.Transponder;  
             }
 
             // Starting position

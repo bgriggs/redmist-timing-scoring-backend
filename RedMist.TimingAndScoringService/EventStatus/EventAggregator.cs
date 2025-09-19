@@ -8,6 +8,7 @@ using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
+using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
@@ -27,6 +28,7 @@ public class EventAggregator : BackgroundService
     private const string CONSUMER_GROUP = "processor";
     private readonly int eventId;
     private readonly string streamKey;
+    private readonly string serviceName;
     private readonly RMonitorDataProcessor dataProcessor;
     private readonly ILoggerFactory loggerFactory;
     private readonly IConnectionMultiplexer cacheMux;
@@ -68,6 +70,22 @@ public class EventAggregator : BackgroundService
         this.pitProcessorV2 = pitProcessorV2;
         eventId = configuration.GetValue("event_id", 0);
         streamKey = string.Format(Backend.Shared.Consts.EVENT_STATUS_STREAM_KEY, eventId);
+        serviceName = configuration["job_name"] ?? string.Empty;
+        if (string.IsNullOrEmpty(serviceName))
+        {
+            // If job_name is not set such as in debug, try to use the host name and port from applicationUrl
+            var applicationUrl = configuration["ASPNETCORE_URLS"];
+            if (!string.IsNullOrEmpty(applicationUrl) && Uri.TryCreate(applicationUrl, UriKind.Absolute, out var uri))
+            {
+                if (uri.Host == "0.0.0.0")
+                    serviceName = $"localhost:{uri.Port}";
+                else
+                    serviceName = $"{uri.Host}:{uri.Port}";
+            }
+        }
+        if (string.IsNullOrEmpty(serviceName))
+            throw new ArgumentException("Service name could not be determined. Set job_name in configuration.");
+
         cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
 
         var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
@@ -82,18 +100,21 @@ public class EventAggregator : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         Logger.LogInformation("Event Aggregator starting...");
-        await EnsureStream();
-        await EnsureCacheSubscriptions(stoppingToken);
+        await EnsureStreamAsync();
+        await EnsureCacheSubscriptionsAsync(stoppingToken);
+        await RegisterEndpointAsync();
+
+        sessionContext.CancellationToken = stoppingToken;
 
         // Initialize PitProcessorV2 with the current event
         await pitProcessorV2.Initialize(eventId);
 
-       
-        // Start a task to send a full update every so often
-        _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
 
-        // Publish reset event to get full set of data from the relay
-        await mediator.Publish(new RelayResetRequest { EventId = eventId, ForceTimingDataReset = true }, stoppingToken);
+        //// Start a task to send a full update every so often
+        //_ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
+
+        //// Publish reset event to get full set of data from the relay
+        //await mediator.Publish(new RelayResetRequest { EventId = eventId, ForceTimingDataReset = true }, stoppingToken);
 
         // Start a task to read timing source data from this service's stream.
         // The SignalR hub is responsible for sending timing data to the stream.
@@ -125,16 +146,13 @@ public class EventAggregator : BackgroundService
 
                         // Create timing message and send to processing pipeline
                         var timingMessage = new TimingMessage(type, data, sessionId, DateTime.UtcNow);
-                        
-                        // Post message to the new processing pipeline
-                        if (!processingPipeline.Post(timingMessage))
-                        {
-                            Logger.LogWarning("Failed to post timing message to processing pipeline: {type}", type);
-                        }
 
-                        // Process the update using legacy processor for backward compatibility
-                        // This can be removed once the TPL pipeline is fully tested and validated
-                        await dataProcessor.ProcessUpdate(type, data, sessionId, stoppingToken);
+                        // Post message to the new processing pipeline
+                        await processingPipeline.Post(timingMessage);
+
+                        //// Process the update using legacy processor for backward compatibility
+                        //// This can be removed once the TPL pipeline is fully tested and validated
+                        //await dataProcessor.ProcessUpdate(type, data, sessionId, stoppingToken);
                     }
 
                     await cache.StreamAcknowledgeAsync(streamKey, CONSUMER_GROUP, entry.Id);
@@ -145,33 +163,13 @@ public class EventAggregator : BackgroundService
                 Logger.LogError(ex, "Error reading event status stream");
                 Logger.LogInformation("Throttling service for 5 secs");
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-                await EnsureStream();
-                await EnsureCacheSubscriptions(stoppingToken);
+                await EnsureStreamAsync();
+                await EnsureCacheSubscriptionsAsync(stoppingToken);
             }
         }
     }
 
-    private Task BroadcastStateChange(SessionState state, CancellationToken stoppingToken)
-    {
-        try
-        {
-            Logger.LogTrace("Broadcasting state change from processing pipeline");
-            
-            // Convert SessionState to appropriate format for broadcasting
-            // This would need to be implemented based on how SessionState relates to existing payload structure
-            // For now, we'll continue using the existing dataProcessor for payload generation
-            
-            // You may want to implement a method to convert SessionState to the required broadcast format
-            // or modify the existing payload generation to work with SessionState
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error broadcasting state change");
-        }
-        return Task.CompletedTask;
-    }
-
-    private async Task EnsureCacheSubscriptions(CancellationToken stoppingToken = default)
+    private async Task EnsureCacheSubscriptionsAsync(CancellationToken stoppingToken = default)
     {
         await subscriptionCheckLock.WaitAsync(stoppingToken);
         try
@@ -195,14 +193,14 @@ public class EventAggregator : BackgroundService
 
     private async void CacheMux_ConnectionRestored(object? sender, ConnectionFailedEventArgs e)
     {
-        await EnsureStream();
-        await EnsureCacheSubscriptions();
+        await EnsureStreamAsync();
+        await EnsureCacheSubscriptionsAsync();
 
         // Publish reset event to get full set of data from the relay
         await mediator.Publish(new RelayResetRequest { EventId = eventId });
     }
 
-    private async Task EnsureStream()
+    private async Task EnsureStreamAsync()
     {
         // Lock to avoid race condition between checking for the stream and creating it
         await streamCheckLock.WaitAsync();
@@ -223,6 +221,14 @@ public class EventAggregator : BackgroundService
         {
             streamCheckLock.Release();
         }
+    }
+
+    private async Task RegisterEndpointAsync()
+    {
+        var cache = cacheMux.GetDatabase();
+        var key = string.Format(Backend.Shared.Consts.EVENT_SERVICE_ENDPOINT, eventId);
+        await cache.StringSetAsync(key, serviceName, TimeSpan.FromDays(7), When.Always);
+        Logger.LogInformation("Registered service endpoint {s}", serviceName);
     }
 
 
@@ -297,7 +303,7 @@ public class EventAggregator : BackgroundService
             }
 
             // Save off the last payload to the cache for quick access by other services
-            await UpdateCachedPayload(dataProcessor, stoppingToken);
+            //await UpdateCachedPayload(dataProcessor, stoppingToken);
         }
     }
 

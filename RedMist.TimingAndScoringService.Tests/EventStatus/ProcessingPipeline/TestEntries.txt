@@ -1,0 +1,134 @@
+﻿##2025-04-26 12:29:44.712
+$F,9999,"08:00:00","07:29:44","00:00:00","      "
+$B,67,"Saturday 8 Hour"
+$E,"TRACKNAME","Road America"
+$E,"TRACKLENGTH","4.048"
+$B,67,"Saturday 8 Hour"
+$E,"TRACKNAME","Road America"
+$E,"TRACKLENGTH","4.048"
+$C,1,"GTO"
+$A,"70","70",58488,"Round 3 Racing","","",1
+$COMP,"70","70",1,"Round 3 Racing","","","Trim-Tex"
+$A,"2","2",7031721,"ACP - Tangerine Associates","","",1
+$COMP,"2","2",1,"ACP - Tangerine Associates","","",""
+$A,"74","74",4667890,"AOA Racing","","",1
+$COMP,"74","74",1,"AOA Racing","","","Mobil 1"
+$A,"99","99",10908083,"GTR 99","","",1
+$COMP,"99","99",1,"GTR 99","","",""
+$A,"11","11",16522850,"Kingpin Racing","","",1
+$COMP,"11","11",1,"Kingpin Racing","","",""
+$A,"91","91",4557835,"FPRS Motorsports","","",1
+$COMP,"91","91",1,"FPRS Motorsports","","",""
+$A,"52","52",15312143,"ACP - Tangerine Associates","","",1
+$COMP,"52","52",1,"ACP - Tangerine Associates","","",""
+$A,"77","77",15294666,"Kingpin Racing","","",1
+$COMP,"77","77",1,"Kingpin Racing","","","RWR"
+$A,"119","119",14039373,"AE Victory Racing","","",1
+$COMP,"119","119",1,"AE Victory Racing","","",""
+$A,"290","290",16240450,"Morehead Speed Works","","",1
+$COMP,"290","290",1,"Morehead Speed Works","","","Airbnb"
+$A,"144","144",1496079,"Forza Motorsport","","",1
+$COMP,"144","144",1,"Forza Motorsport","","","Larrabure Framing"
+$A,"92","92",1373522,"FPRS Motorsports","","",1
+$COMP,"92","92",1,"FPRS Motorsports","","",""
+$A,"111","111",8350987,"Bruce Innovations","","",1
+$COMP,"111","111",1,"Bruce Innovations","","",""
+$A,"172","172",242386,"TLM USA","","",1
+$COMP,"172","172",1,"TLM USA","","","TLM Racing"
+$A,"246","246",11650187,"TCB","","",1
+$COMP,"246","246",1,"TCB","","","TCB Racing"
+$A,"669","669",11685101,"Rapscallion","","",1
+$COMP,"669","669",1,"Rapscallion","","","STAK Racing"
+$A,"87","87",384027,"Stoic Racing","","",1
+$COMP,"87","87",1,"Stoic Racing","","",""
+
+##2025-04-26 12:29:44.715
+$C,2,"GTU"
+$A,"109","109",12681555,"Roberts Motorsports","","",2
+$COMP,"109","109",2,"Roberts Motorsports","","","RMI"
+$A,"1","1",1361474,"Round 3 Racing","","",2
+$COMP,"1","1",2,"Round 3 Racing","","",""
+$A,"58","58",13157717,"Stratus 58","","",2
+$COMP,"58","58",2,"Stratus 58","","",""
+$A,"59","59",14451114,"Stratus 59","","",2
+$COMP,"59","59",2,"Stratus 59","","",""
+$A,"60","60",11507877,"Stratus 60","","",2
+$COMP,"60","60",2,"Stratus 60","","",""
+$A,"10","10",8040857,"Round 3 Racing","","",2
+
+##2025-04-26 12:29:44.716
+$COMP,"10","10",2,"Round 3 Racing","","","OG Tax & Accounting"
+
+##2025-04-26 12:29:44.717
+$COMP,"908","908",2,"Automatic Racing","","","Stoner Car Care"
+$A,"909","909",8827890,"Automatic Racing","","",2
+$COMP,"909","909",2,"Automatic Racing","","","Stoner Car Care"
+$C,3,"GP1"
+
+##2025-04-26 12:29:44.716
+$A,"908","908",5419375,"Automatic Racing","","",2
+
+##2025-04-26 12:29:44.719
+$A,"38","38",5482235,"Palomar Racing","","",3
+$COMP,"38","38",3,"Palomar Racing","","","Palomar Solar & Roofing"
+$A,"392","392",1569226,"Harrison Motorsports","","",3
+
+##2025-04-26 12:29:44.719
+$COMP,"392","392",3,"Harrison Motorsports","","",""
+
+##2025-04-26 12:29:44.720
+$A,"195","195",15966270,"Auto Prep Club","","",3
+
+##2025-04-26 12:29:44.720
+$COMP,"195","195",3,"Auto Prep Club","","","Auto Prep Club/Meiborg Inc."
+$A,"85","85",15990734,"AOA Racing","","",3
+
+##2025-04-26 12:29:44.721
+$COMP,"85","85",3,"AOA Racing","","",""
+
+##2025-04-26 12:29:44.721
+$A,"22","22",16528833,"TCS Motorsports","","",3
+$COMP,"22","22",3,"TCS Motorsports","","",""
+$A,"46","46",16378453,"Ginger Racing","","",3
+$COMP,"46","46",3,"Ginger Racing","","","Bimmerworld"
+$A,"112","112",5176909,"TC Kline Racing","","",3
+
+##2025-04-26 12:29:44.722
+$COMP,"112","112",3,"TC Kline Racing","","","TC Kline Racing"
+$A,"981","981",5379718,"BSR Racing","","",3
+$COMP,"981","981",3,"BSR Racing","","","Frozen Rotor"
+$A,"946","946",6680467,"Flying Fur Motorsports","","",3
+$COMP,"946","946",3,"Flying Fur Motorsports","","",""
+$A,"24","24",10766169,"Bruce Innovations","","",3
+$COMP,"24","24",3,"Bruce Innovations","","",""
+$A,"64","64",14249013,"Open Throttle Racing","","",3
+$COMP,"64","64",3,"Open Throttle Racing","","","Hawk Peformance"
+$A,"555","555",3229016,"Bruce Innovations","","",3
+$COMP,"555","555",3,"Bruce Innovations","","",""
+$A,"118","118",14450594,"Blaze Racing","","",3
+$COMP,"118","118",3,"Blaze Racing","","",""
+$A,"180","180",5135911,"Sampson Racing Communications","","",3
+$COMP,"180","180",3,"Sampson Racing Communications","","","SRC Communications"
+$A,"36","36",13047403,"Ignite Performance","","",3
+$COMP,"36","36",3,"Ignite Performance","","","Ignite Performance"
+
+##2025-04-26 12:29:44.722
+$C,4,"GP2"
+$A,"21","21",3913134,"North Loop Motorsport","","",4
+$COMP,"21","21",4,"North Loop Motorsport","","","SuperWraps!"
+$A,"83","83",11092686,"Palomar Racing","","",4
+$COMP,"83","83",4,"Palomar Racing","","","Palomar Solar & Roofing"
+$A,"851","851",3171391,"AOA Racing","","",4
+$COMP,"851","851",4,"AOA Racing","","","Liqui Moly"
+$A,"106","106",16680286,"Bryan Herta Autosport","","",4
+$COMP,"106","106",4,"Bryan Herta Autosport","","","Renewable Lubricants"
+$A,"196","196",5458713,"ClubSport","","",4
+$COMP,"196","196",4,"ClubSport","","","HART"
+$A,"936","936",8777065,"TCR","","",4
+$COMP,"936","936",4,"TCR","","","TCR Motorwerks"
+$A,"149","149",16765537,"Forty48 Competition","","",4
+$COMP,"149","149",4,"Forty48 Competition","","","2X Computers"
+$A,"66","66",197948,"Open Throttle Racing","","",4
+
+##2025-04-26 12:29:44.723
+$COMP,"66","66",4,"Open Throttle Racing","","",""

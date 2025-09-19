@@ -37,6 +37,7 @@ public partial class RaceInformation
     /// <example>$G,3,"1234BE",14,"01:12:47.872"</example>
     public ICarStateChange? ProcessG(string[] parts)
     {
+        var lastPosition = Position;
         Position = int.Parse(parts[1]);
         RegistrationNumber = parts[2].Replace("\"", "").Trim();
         var lastLap = Laps;
@@ -50,8 +51,8 @@ public partial class RaceInformation
         }
         RaceTime = parts[4].Replace("\"", "").Trim();
 
-        // Check for changed laps, ignore race time as warranting an update
-        if (lastLap != Laps)
+        // Check for changes, ignore race time as warranting an update
+        if (lastLap != Laps || lastPosition != Position)
         {
             return new CarLapStateUpdate(this);
         }

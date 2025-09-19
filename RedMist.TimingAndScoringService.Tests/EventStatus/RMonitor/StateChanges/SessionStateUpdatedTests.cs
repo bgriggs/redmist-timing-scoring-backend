@@ -22,7 +22,7 @@ public class SessionStateUpdatedTests
         var sessionName = "Practice Session 1";
 
         // Act
-        var stateUpdate = new SessionStateUpdated(sessionId, sessionName);
+        var stateUpdate = new SessionStateUpdate(sessionId, sessionName);
 
         // Assert
         Assert.IsNotNull(stateUpdate);
@@ -38,7 +38,7 @@ public class SessionStateUpdatedTests
         var sessionName = "Test Session";
 
         // Act
-        var stateUpdate = new SessionStateUpdated(sessionId, sessionName);
+        var stateUpdate = new SessionStateUpdate(sessionId, sessionName);
 
         // Assert
         Assert.IsNotNull(stateUpdate);
@@ -54,7 +54,7 @@ public class SessionStateUpdatedTests
         var sessionName = "Invalid Session";
 
         // Act
-        var stateUpdate = new SessionStateUpdated(sessionId, sessionName);
+        var stateUpdate = new SessionStateUpdate(sessionId, sessionName);
 
         // Assert
         Assert.IsNotNull(stateUpdate);
@@ -70,7 +70,7 @@ public class SessionStateUpdatedTests
         var sessionName = "";
 
         // Act
-        var stateUpdate = new SessionStateUpdated(sessionId, sessionName);
+        var stateUpdate = new SessionStateUpdate(sessionId, sessionName);
 
         // Assert
         Assert.IsNotNull(stateUpdate);
@@ -86,7 +86,7 @@ public class SessionStateUpdatedTests
         string sessionName = null!;
 
         // Act
-        var stateUpdate = new SessionStateUpdated(sessionId, sessionName);
+        var stateUpdate = new SessionStateUpdate(sessionId, sessionName);
 
         // Assert
         Assert.IsNotNull(stateUpdate);
@@ -102,7 +102,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_BothSessionIdAndNameChanged_ReturnsCompletePatch()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(456, "Qualifying Session");
+        var stateUpdate = new SessionStateUpdate(456, "Qualifying Session");
         var currentState = new SessionState
         {
             SessionId = 123, // Different
@@ -122,7 +122,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_NoChanges_ReturnsNull()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(123, "Practice Session");
+        var stateUpdate = new SessionStateUpdate(123, "Practice Session");
         var currentState = new SessionState
         {
             SessionId = 123, // Same
@@ -144,7 +144,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_OnlySessionIdChanged_ReturnsCompletePatch()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(456, "Practice Session");
+        var stateUpdate = new SessionStateUpdate(456, "Practice Session");
         var currentState = new SessionState
         {
             SessionId = 123, // Different
@@ -164,7 +164,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_OnlySessionNameChanged_ReturnsCompletePatch()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(123, "Qualifying Session");
+        var stateUpdate = new SessionStateUpdate(123, "Qualifying Session");
         var currentState = new SessionState
         {
             SessionId = 123, // Same
@@ -188,7 +188,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_ZeroSessionIds_ComparedCorrectly()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(0, "Zero Session");
+        var stateUpdate = new SessionStateUpdate(0, "Zero Session");
         var currentState = new SessionState
         {
             SessionId = 0, // Same
@@ -206,7 +206,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_NegativeSessionIds_ComparedCorrectly()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(-1, "Negative Session");
+        var stateUpdate = new SessionStateUpdate(-1, "Negative Session");
         var currentState = new SessionState
         {
             SessionId = -1, // Same
@@ -224,7 +224,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_EmptySessionNames_ComparedCorrectly()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(123, "");
+        var stateUpdate = new SessionStateUpdate(123, "");
         var currentState = new SessionState
         {
             SessionId = 123, // Same
@@ -242,7 +242,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_StringToNullSessionName_ReturnsCompletePatch()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(123, null!);
+        var stateUpdate = new SessionStateUpdate(123, null!);
         var currentState = new SessionState
         {
             SessionId = 123, // Same
@@ -283,7 +283,7 @@ public class SessionStateUpdatedTests
         foreach (var sessionName in sessionNameTestCases)
         {
             // Arrange
-            var stateUpdate = new SessionStateUpdated(100, sessionName);
+            var stateUpdate = new SessionStateUpdate(100, sessionName);
             var currentState = new SessionState
             {
                 SessionId = 100, // Same
@@ -317,7 +317,7 @@ public class SessionStateUpdatedTests
         foreach (var sessionName in whitespaceTestCases)
         {
             // Arrange
-            var stateUpdate = new SessionStateUpdated(200, sessionName);
+            var stateUpdate = new SessionStateUpdate(200, sessionName);
             var currentState = new SessionState
             {
                 SessionId = 200, // Same
@@ -355,7 +355,7 @@ public class SessionStateUpdatedTests
         foreach (var sessionId in sessionIdTestCases)
         {
             // Arrange
-            var stateUpdate = new SessionStateUpdated(sessionId, "Test Session");
+            var stateUpdate = new SessionStateUpdate(sessionId, "Test Session");
             var currentState = new SessionState
             {
                 SessionId = 999, // Different
@@ -380,7 +380,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_MultipleCallsWithSameState_ConsistentResults()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(456, "Qualifying Session");
+        var stateUpdate = new SessionStateUpdate(456, "Qualifying Session");
         var currentState = new SessionState
         {
             SessionId = 123,
@@ -402,7 +402,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_DifferentStatesSequentially_ReturnsCorrectPatches()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(789, "Race Session");
+        var stateUpdate = new SessionStateUpdate(789, "Race Session");
 
         var state1 = new SessionState
         {
@@ -447,7 +447,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_RealWorldSessionTransition_WorksCorrectly()
     {
         // Arrange - Simulate session transition from Practice to Qualifying
-        var stateUpdate = new SessionStateUpdated(2, "Qualifying Session");
+        var stateUpdate = new SessionStateUpdate(2, "Qualifying Session");
         
         var currentSessionState = new SessionState
         {
@@ -497,7 +497,7 @@ public class SessionStateUpdatedTests
         foreach (var session in weekendSessions)
         {
             // Arrange
-            var stateUpdate = new SessionStateUpdated(session.Id, session.Name);
+            var stateUpdate = new SessionStateUpdate(session.Id, session.Name);
 
             // Act
             var result = stateUpdate.GetChanges(currentState);
@@ -517,7 +517,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_SessionNameUpdate_PreservesSessionId()
     {
         // Arrange - Simulate session name change without ID change
-        var stateUpdate = new SessionStateUpdated(10, "Updated Session Name");
+        var stateUpdate = new SessionStateUpdate(10, "Updated Session Name");
         
         var currentSessionState = new SessionState
         {
@@ -540,7 +540,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_SessionIdUpdate_PreservesSessionName()
     {
         // Arrange - Simulate session ID change without name change
-        var stateUpdate = new SessionStateUpdated(20, "Consistent Session Name");
+        var stateUpdate = new SessionStateUpdate(20, "Consistent Session Name");
         
         var currentSessionState = new SessionState
         {
@@ -570,7 +570,7 @@ public class SessionStateUpdatedTests
         var sessionName = "Test Session";
 
         // Act
-        var stateUpdate = new SessionStateUpdated(sessionId, sessionName);
+        var stateUpdate = new SessionStateUpdate(sessionId, sessionName);
 
         // Assert
         Assert.AreEqual(12345, stateUpdate.SessionId);
@@ -585,7 +585,7 @@ public class SessionStateUpdatedTests
         var sessionName = "Another Test Session";
 
         // Act
-        var stateUpdate = new SessionStateUpdated(sessionId, sessionName);
+        var stateUpdate = new SessionStateUpdate(sessionId, sessionName);
 
         // Assert
         Assert.AreEqual(67890, stateUpdate.SessionId);
@@ -603,8 +603,8 @@ public class SessionStateUpdatedTests
         var sessionId = 123;
         var sessionName = "Practice Session";
 
-        var stateUpdate1 = new SessionStateUpdated(sessionId, sessionName);
-        var stateUpdate2 = new SessionStateUpdated(sessionId, sessionName);
+        var stateUpdate1 = new SessionStateUpdate(sessionId, sessionName);
+        var stateUpdate2 = new SessionStateUpdate(sessionId, sessionName);
 
         // Act & Assert
         Assert.AreEqual(stateUpdate1, stateUpdate2);
@@ -616,8 +616,8 @@ public class SessionStateUpdatedTests
     public void Equals_DifferentSessionId_ReturnsFalse()
     {
         // Arrange
-        var stateUpdate1 = new SessionStateUpdated(123, "Practice Session");
-        var stateUpdate2 = new SessionStateUpdated(456, "Practice Session");
+        var stateUpdate1 = new SessionStateUpdate(123, "Practice Session");
+        var stateUpdate2 = new SessionStateUpdate(456, "Practice Session");
 
         // Act & Assert
         Assert.AreNotEqual(stateUpdate1, stateUpdate2);
@@ -628,8 +628,8 @@ public class SessionStateUpdatedTests
     public void Equals_DifferentSessionName_ReturnsFalse()
     {
         // Arrange
-        var stateUpdate1 = new SessionStateUpdated(123, "Practice Session");
-        var stateUpdate2 = new SessionStateUpdated(123, "Qualifying Session");
+        var stateUpdate1 = new SessionStateUpdate(123, "Practice Session");
+        var stateUpdate2 = new SessionStateUpdate(123, "Qualifying Session");
 
         // Act & Assert
         Assert.AreNotEqual(stateUpdate1, stateUpdate2);
@@ -640,8 +640,8 @@ public class SessionStateUpdatedTests
     public void Equals_DifferentBothParameters_ReturnsFalse()
     {
         // Arrange
-        var stateUpdate1 = new SessionStateUpdated(123, "Practice Session");
-        var stateUpdate2 = new SessionStateUpdated(456, "Qualifying Session");
+        var stateUpdate1 = new SessionStateUpdate(123, "Practice Session");
+        var stateUpdate2 = new SessionStateUpdate(456, "Qualifying Session");
 
         // Act & Assert
         Assert.AreNotEqual(stateUpdate1, stateUpdate2);
@@ -652,8 +652,8 @@ public class SessionStateUpdatedTests
     public void GetHashCode_SameParameters_SameHashCode()
     {
         // Arrange
-        var stateUpdate1 = new SessionStateUpdated(789, "Race Session");
-        var stateUpdate2 = new SessionStateUpdated(789, "Race Session");
+        var stateUpdate1 = new SessionStateUpdate(789, "Race Session");
+        var stateUpdate2 = new SessionStateUpdate(789, "Race Session");
 
         // Act & Assert
         Assert.AreEqual(stateUpdate1.GetHashCode(), stateUpdate2.GetHashCode());
@@ -663,8 +663,8 @@ public class SessionStateUpdatedTests
     public void GetHashCode_DifferentParameters_DifferentHashCode()
     {
         // Arrange
-        var stateUpdate1 = new SessionStateUpdated(111, "Session One");
-        var stateUpdate2 = new SessionStateUpdated(222, "Session Two");
+        var stateUpdate1 = new SessionStateUpdate(111, "Session One");
+        var stateUpdate2 = new SessionStateUpdate(222, "Session Two");
 
         // Act & Assert
         Assert.AreNotEqual(stateUpdate1.GetHashCode(), stateUpdate2.GetHashCode());
@@ -678,7 +678,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_HighFrequencyUpdates_PerformsEfficiently()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(1000, "Performance Test Session");
+        var stateUpdate = new SessionStateUpdate(1000, "Performance Test Session");
         var currentState = new SessionState
         {
             SessionId = 999,
@@ -700,7 +700,7 @@ public class SessionStateUpdatedTests
     {
         // Arrange
         var largeSessionName = new string('A', 10000); // Very large session name
-        var stateUpdate = new SessionStateUpdated(2000, largeSessionName);
+        var stateUpdate = new SessionStateUpdate(2000, largeSessionName);
         var currentState = new SessionState
         {
             SessionId = 2000,
@@ -725,7 +725,7 @@ public class SessionStateUpdatedTests
     public void GetChanges_ConcurrentAccess_ThreadSafe()
     {
         // Arrange
-        var stateUpdate = new SessionStateUpdated(3000, "Concurrent Session");
+        var stateUpdate = new SessionStateUpdate(3000, "Concurrent Session");
         var currentState = new SessionState
         {
             SessionId = 2999,

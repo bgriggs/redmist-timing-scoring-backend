@@ -1,5 +1,7 @@
 ﻿using RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 using RedMist.TimingAndScoringService.Models;
+using RedMist.TimingCommon.Models;
+using System.Collections.Generic;
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
@@ -35,13 +37,13 @@ public class MultiloopProcessor
     }
 
 
-    public SessionStateUpdate? Process(TimingMessage message)
+    public PatchUpdates? Process(TimingMessage message)
     {
         if (message.Type != Backend.Shared.Consts.MULTILOOP_TYPE)
             return null;
 
-        var sessionChanges = new List<ISessionStateChange>();
-        var carChanges = new List<ICarStateChange>();
+        var sessionChanges = new List<SessionStatePatch>();
+        var carChanges = new List<CarPositionPatch>();
         context.IsMultiloopActive = true;
 
         var commands = message.Data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
@@ -52,8 +54,18 @@ public class MultiloopProcessor
             try
             {
                 var (sessionUpdates, carUpdates) = ProcessCommand(command);
-                sessionChanges.AddRange(sessionUpdates);
-                carChanges.AddRange(carUpdates);
+                foreach (var su in sessionUpdates)
+                {
+                    var sp = su.ApplySessionChange(context.SessionState);
+                    if (sp != null)
+                        sessionChanges.Add(sp);
+                }
+                foreach (var cu in carUpdates)
+                {
+                    var cp = cu.ApplyCarChange(context);
+                    if (cp != null)
+                        carChanges.Add(cp);
+                }
             }
             catch (Exception ex)
             {
@@ -61,7 +73,7 @@ public class MultiloopProcessor
             }
         }
 
-        return new SessionStateUpdate(sessionChanges, carChanges);
+        return new PatchUpdates([.. sessionChanges], [.. carChanges]);
     }
 
     private (List<ISessionStateChange> SessionChanges, List<ICarStateChange> CarChanges) ProcessCommand(string data)

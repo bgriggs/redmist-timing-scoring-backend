@@ -1,96 +1,90 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.FlagData;
+﻿using Prometheus;
+using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
+using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
+using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
-using RedMist.TimingCommon.Models;
-using System.Threading.Tasks.Dataflow;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
 /// <summary>
-/// 
+/// Responsible for processing session state updates with sequential processing and immediate context.
 /// </summary>
 /// <see cref="DataflowPipeline.md"/>
 public class SessionStateProcessingPipeline
 {
     private ILogger Logger { get; }
-    private readonly SessionContext sessionState;
-    private readonly SemaphoreSlim stateLock = new(1, 1);
+    private readonly SessionContext sessionContext;
 
-    // Input buffer for all incoming timing data
-    private readonly BroadcastBlock<TimingMessage> input = new(tm => tm);
-
-    // Specialized processors for different message types
-    private readonly TransformBlock<TimingMessage, SessionStateUpdate?> rmonitorProcessorBlock;
-    private readonly TransformBlock<TimingMessage, SessionStateUpdate?> multiloopProcessorBlock;
-    private readonly TransformBlock<TimingMessage, SessionStateUpdate?> pitProcessorBlock;
-    private readonly TransformBlock<TimingMessage, SessionStateUpdate?> flagProcessorBlock;
-    private readonly TransformBlock<SessionStateUpdate?, SessionStateUpdate?> positionMetadataBlock;
-    private readonly TransformBlock<SessionStateUpdate?, (SessionStatePatch?, CarPositionPatch[])> updateConsolidatorBlock;
-    private readonly ActionBlock<(SessionStatePatch?, CarPositionPatch[])> statusAggregatorBlock;
-
-    private readonly RMonitorDataProcessorV2 rMonitorDataProcessorV2;
+    // Processor instances
+    private readonly RMonitorDataProcessorV2 rMonitorProcessor;
     private readonly MultiloopProcessor multiloopProcessor;
-    private readonly PitProcessorV2 pitProcessorV2;
-    private readonly FlagProcessorV2 flagProcessorV2;
+    private readonly PitProcessorV2 pitProcessor;
+    private readonly FlagProcessorV2 flagProcessor;
+    private readonly SessionMonitorV2 sessionMonitor;
     private readonly PositionDataEnricher positionEnricher;
+    private readonly ResetProcessor resetProcessor;
     private readonly UpdateConsolidator updateConsolidator;
+    private readonly StatusAggregatorV2 statusAggregator;
 
+    // Metrics for pipeline performance
+    private readonly PipelineMetrics _sequentialProcessorMetrics = new("sequential_processor");
+    private readonly PipelineMetrics _rmonitorMetrics = new("rmonitor_processor");
+    private readonly PipelineMetrics _multiloopMetrics = new("multiloop_processor");
+    private readonly PipelineMetrics _pitMetrics = new("pit_processor");
+    private readonly PipelineMetrics _flagMetrics = new("flag_processor");
+    private readonly PipelineMetrics _sessionMonitorMetrics = new("session_monitor");
+    private readonly PipelineMetrics _positionMetadataMetrics = new("position_metadata");
+    private readonly PipelineMetrics _resetCommandMetrics = new("reset_command");
+    private readonly PipelineMetrics _entryToCarPositionMetrics = new("entry_to_car_position");
+    private readonly PipelineMetrics _updateConsolidatorMetrics = new("update_consolidator");
+    private readonly PipelineMetrics _statusAggregatorMetrics = new("status_aggregator");
 
-    public SessionStateProcessingPipeline(SessionContext initialState, ILoggerFactory loggerFactory,
+    // Overall pipeline metrics
+    private readonly Counter _inputMessagesTotal = Metrics.CreateCounter(
+        "pipeline_input_messages_total",
+        "Total number of messages received by the pipeline",
+        ["message_type"]);
+
+    private readonly Gauge _pipelineHealth = Metrics.CreateGauge(
+        "pipeline_health_score",
+        "Overall health score of the pipeline (0-1)");
+
+    private readonly Counter _pipelineErrors = Metrics.CreateCounter(
+        "pipeline_errors_total",
+        "Total number of errors in the pipeline",
+        ["processor_name", "error_type"]);
+
+    public SessionStateProcessingPipeline(SessionContext context, ILoggerFactory loggerFactory,
         RMonitorDataProcessorV2 rMonitorDataProcessorV2,
         MultiloopProcessor multiloopProcessor,
         PitProcessorV2 pitProcessorV2,
         FlagProcessorV2 flagProcessorV2,
+        SessionMonitorV2 sessionMonitorV2,
         PositionDataEnricher positionEnricher,
+        ResetProcessor resetProcessor,
         UpdateConsolidator updateConsolidator,
         StatusAggregatorV2 statusAggregatorV2)
     {
-        sessionState = initialState;
+        sessionContext = context;
         Logger = loggerFactory.CreateLogger(GetType().Name);
-        this.rMonitorDataProcessorV2 = rMonitorDataProcessorV2;
+
+        // Store processor instances
+        rMonitorProcessor = rMonitorDataProcessorV2;
         this.multiloopProcessor = multiloopProcessor;
-        this.pitProcessorV2 = pitProcessorV2;
-        this.flagProcessorV2 = flagProcessorV2;
+        pitProcessor = pitProcessorV2;
+        flagProcessor = flagProcessorV2;
+        sessionMonitor = sessionMonitorV2;
         this.positionEnricher = positionEnricher;
+        this.resetProcessor = resetProcessor;
         this.updateConsolidator = updateConsolidator;
+        statusAggregator = statusAggregatorV2;
 
-        // Configure dataflow options
-        //var linkOptions = new DataflowLinkOptions { PropagateCompletion = true };
-        var executionOptions = new ExecutionDataflowBlockOptions
-        {
-            MaxDegreeOfParallelism = 1, // Ensure sequential state updates
-        };
-
-        // Individual message processors - each examines and optionally handles messages
-        rmonitorProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(rMonitorDataProcessorV2.Process, executionOptions);
-        multiloopProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(multiloopProcessor.Process, executionOptions);
-        pitProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(pitProcessorV2.Process, executionOptions);
-        flagProcessorBlock = new TransformBlock<TimingMessage, SessionStateUpdate?>(flagProcessorV2.Process, executionOptions);
-        positionMetadataBlock = new TransformBlock<SessionStateUpdate?, SessionStateUpdate?>(positionEnricher.Process, executionOptions);
-        updateConsolidatorBlock = new TransformBlock<SessionStateUpdate?, (SessionStatePatch?, CarPositionPatch[])>(updateConsolidator.Process, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 20 });
-        statusAggregatorBlock = new ActionBlock<(SessionStatePatch?, CarPositionPatch[])>(statusAggregatorV2.Process, executionOptions);
-
-        // Link input to processors based on message type -- this is where the message decoding happens
-        input.LinkTo(rmonitorProcessorBlock, tm => tm.Type == Backend.Shared.Consts.RMONITOR_TYPE);
-        input.LinkTo(multiloopProcessorBlock, tm => tm.Type == Backend.Shared.Consts.MULTILOOP_TYPE);
-        input.LinkTo(pitProcessorBlock, tm => tm.Type == Backend.Shared.Consts.X2PASS_TYPE || tm.Type == Backend.Shared.Consts.EVENT_CHANGED_TYPE);
-        input.LinkTo(flagProcessorBlock, tm => tm.Type == Backend.Shared.Consts.FLAGS_TYPE);
-
-        // Link RMonitor to position metadata enricher (filtering out null updates) -- this is inferred position data
-        rmonitorProcessorBlock.LinkTo(positionMetadataBlock, update => update != null);
-
-        // Link processors to update consolidator (filtering out null updates) -- this batches updates to reduce client update frequency
-        rmonitorProcessorBlock.LinkTo(updateConsolidatorBlock, update => update != null);
-        positionMetadataBlock.LinkTo(updateConsolidatorBlock, update => update != null);
-        multiloopProcessorBlock.LinkTo(updateConsolidatorBlock, update => update != null);
-        pitProcessorBlock.LinkTo(updateConsolidatorBlock, update => update != null);
-        flagProcessorBlock.LinkTo(updateConsolidatorBlock, update => update != null);
-
-        // Link updates to status aggregator -- this applies updates to session state and sends to clients
-        updateConsolidatorBlock.LinkTo(statusAggregatorBlock);
+        // Start metrics monitoring
+        StartMetricsMonitoring();
     }
 
     /// <summary>
@@ -98,8 +92,335 @@ public class SessionStateProcessingPipeline
     /// </summary>
     /// <param name="message">The timing message to process</param>
     /// <returns>True if the message was accepted for processing, false otherwise</returns>
-    public bool Post(TimingMessage message)
+    public async Task Post(TimingMessage message)
     {
-        return input.Post(message);
+        try
+        {
+            await _sequentialProcessorMetrics.TrackAsync(async () =>
+            {
+                var allAppliedChanges = new List<PatchUpdates>();
+
+                // Acquire write lock once for the entire message processing
+                using (await sessionContext.SessionStateLock.AcquireWriteLockAsync(sessionContext.CancellationToken))
+                {
+                    // ** Phase 1: Primary Message Processing  **
+                    if (message.Type == Backend.Shared.Consts.RMONITOR_TYPE)
+                    {
+                        var rmonitorChanges = await _rmonitorMetrics.TrackAsync(() =>
+                            rMonitorProcessor.ProcessAsync(message, sessionContext));
+                        if (rmonitorChanges != null)
+                            allAppliedChanges.AddRange(rmonitorChanges);
+                        
+                        // ** Phase 2: Position Enrichment **
+                        if (allAppliedChanges.SelectMany(c => c.CarPatches).Any())
+                        {
+                            var enrichmentChanges = ProcessPositionEnrichment();
+                            if (enrichmentChanges != null)
+                                allAppliedChanges.AddRange(enrichmentChanges);
+                        }
+                    }
+                    else if (message.Type == Backend.Shared.Consts.MULTILOOP_TYPE)
+                    {
+                        var multiloopChanges = ProcessMultiloop(message);
+                        if (multiloopChanges != null)
+                            allAppliedChanges.AddRange(multiloopChanges);
+                    }
+                    else if (message.Type == Backend.Shared.Consts.X2PASS_TYPE || message.Type == Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE)
+                    {
+                        var pitChanges = await ProcessPit(message);
+                        if (pitChanges != null)
+                            allAppliedChanges.AddRange(pitChanges);
+                    }
+                    else if (message.Type == Backend.Shared.Consts.FLAGS_TYPE)
+                    {
+                        var flagChanges = await ProcessFlag(message);
+                        if (flagChanges != null)
+                            allAppliedChanges.AddRange(flagChanges);
+                    }
+                    else if (message.Type == Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE)
+                    {
+                        // SessionMonitor doesn't return state changes but processes directly
+                        await _sessionMonitorMetrics.TrackAsync(() => sessionMonitor.Process(message));
+                    }
+                }
+
+                // ** Phase 3: Client Notification (outside the lock) **
+                if (allAppliedChanges.Count > 0)
+                {
+                    await NotifyClients(allAppliedChanges);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing message sequentially: {MessageType}", message.Type);
+            _pipelineErrors.WithLabels("sequential_processor", ex.GetType().Name).Inc();
+        }
+    }
+
+    /// <summary>
+    /// Processes multiloop messages with immediate application.
+    /// </summary>
+    private PatchUpdates? ProcessMultiloop(TimingMessage message)
+    {
+        try
+        {
+            return _multiloopMetrics.Track(() =>
+            {
+                return multiloopProcessor.Process(message);
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in multiloop processor");
+            _pipelineErrors.WithLabels("multiloop", ex.GetType().Name).Inc();
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Processes pit messages with immediate application.
+    /// </summary>
+    private async Task<PatchUpdates?> ProcessPit(TimingMessage message)
+    {
+        try
+        {
+            return await _pitMetrics.TrackAsync(async () =>
+            {
+                return await pitProcessor.Process(message);
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in pit processor");
+            _pipelineErrors.WithLabels("pit", ex.GetType().Name).Inc();
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Processes flag messages with immediate application.
+    /// </summary>
+    private async Task<PatchUpdates?> ProcessFlag(TimingMessage message)
+    {
+        try
+        {
+            return await _flagMetrics.TrackAsync(async () =>
+            {
+                return await flagProcessor.Process(message);
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in flag processor");
+            _pipelineErrors.WithLabels("flag", ex.GetType().Name).Inc();
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Processes position enrichment with immediate application.
+    /// </summary>
+    private PatchUpdates? ProcessPositionEnrichment()
+    {
+        try
+        {
+            return _positionMetadataMetrics.Track(positionEnricher.Process);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in position enrichment processor");
+            _pipelineErrors.WithLabels("position_enrichment", ex.GetType().Name).Inc();
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Notifies clients of the applied changes.
+    /// </summary>
+    private async Task NotifyClients(List<PatchUpdates> appliedChanges)
+    {
+        try
+        {
+            await _updateConsolidatorMetrics.TrackAsync(async () =>
+            {
+                foreach (var ap in appliedChanges)
+                {
+                    var patchSet = await updateConsolidator.Process(ap);
+                    if (patchSet != null && (patchSet.SessionPatches.Count > 0 || patchSet.CarPatches.Count > 0))
+                    {
+                        await _statusAggregatorMetrics.TrackAsync(() => statusAggregator.Process(patchSet));
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error notifying clients");
+            _pipelineErrors.WithLabels("client_notification", ex.GetType().Name).Inc();
+        }
+    }
+
+    /// <summary>
+    /// Starts the metrics monitoring task.
+    /// </summary>
+    private void StartMetricsMonitoring()
+    {
+        _ = Task.Run(async () =>
+        {
+            while (true)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(10));
+                    LogPipelineMetrics();
+
+                    // Update pipeline health score
+                    var healthScore = CalculatePipelineHealth();
+                    _pipelineHealth.Set(healthScore);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Error in pipeline metrics monitoring");
+                }
+            }
+        });
+    }
+
+    private void LogPipelineMetrics()
+    {
+        try
+        {
+            var sequentialMetrics = _sequentialProcessorMetrics.GetCurrentMetrics();
+            var rmonitorMetrics = _rmonitorMetrics.GetCurrentMetrics();
+            var multiloopMetrics = _multiloopMetrics.GetCurrentMetrics();
+            var pitMetrics = _pitMetrics.GetCurrentMetrics();
+            var flagMetrics = _flagMetrics.GetCurrentMetrics();
+            var sessionMonitorMetrics = _sessionMonitorMetrics.GetCurrentMetrics();
+            var positionMetadataMetrics = _positionMetadataMetrics.GetCurrentMetrics();
+            var resetCommandMetrics = _resetCommandMetrics.GetCurrentMetrics();
+            var entryToCarPositionMetrics = _entryToCarPositionMetrics.GetCurrentMetrics();
+            var updateConsolidatorMetrics = _updateConsolidatorMetrics.GetCurrentMetrics();
+            var statusAggregatorMetrics = _statusAggregatorMetrics.GetCurrentMetrics();
+
+            Logger.LogDebug(Environment.NewLine +
+                           "Sequential: {SeqMsgs} processed, {SeqActive} active, {SeqAvgTime:F4}s avg | " + Environment.NewLine +
+                           "RMonitor: {RMonMsgs} processed, {RMonActive} active, {RMonAvgTime:F4}s avg | " + Environment.NewLine +
+                           "Multiloop: {MLMsgs} processed, {MLActive} active, {MLAvgTime:F4}s avg | " + Environment.NewLine +
+                           "Pit: {PitMsgs} processed, {PitActive} active, {PitAvgTime:F4}s avg | " + Environment.NewLine +
+                           "Flag: {FlagMsgs} processed, {FlagActive} active, {FlagAvgTime:F4}s avg",
+                sequentialMetrics.MessagesProcessed, sequentialMetrics.ActiveMessages, sequentialMetrics.AvgProcessingTime,
+                rmonitorMetrics.MessagesProcessed, rmonitorMetrics.ActiveMessages, rmonitorMetrics.AvgProcessingTime,
+                multiloopMetrics.MessagesProcessed, multiloopMetrics.ActiveMessages, multiloopMetrics.AvgProcessingTime,
+                pitMetrics.MessagesProcessed, pitMetrics.ActiveMessages, pitMetrics.AvgProcessingTime,
+                flagMetrics.MessagesProcessed, flagMetrics.ActiveMessages, flagMetrics.AvgProcessingTime);
+
+            Logger.LogDebug(Environment.NewLine +
+                           "SessionMonitor: {SMMsgs} processed, {SMActive} active, {SMAvgTime:F4}s avg | " + Environment.NewLine +
+                           "PositionMetadata: {PMMsgs} processed, {PMActive} active, {PMAvgTime:F4}s avg | " + Environment.NewLine +
+                           "ResetCommand: {RCMsgs} processed, {RCActive} active, {RCAvgTime:F4}s avg | " + Environment.NewLine +
+                           "EntryToCarPosition: {ECPMsgs} processed, {ECPActive} active, {ECPAvgTime:F4}s avg",
+                sessionMonitorMetrics.MessagesProcessed, sessionMonitorMetrics.ActiveMessages, sessionMonitorMetrics.AvgProcessingTime,
+                positionMetadataMetrics.MessagesProcessed, positionMetadataMetrics.ActiveMessages, positionMetadataMetrics.AvgProcessingTime,
+                resetCommandMetrics.MessagesProcessed, resetCommandMetrics.ActiveMessages, resetCommandMetrics.AvgProcessingTime,
+                entryToCarPositionMetrics.MessagesProcessed, entryToCarPositionMetrics.ActiveMessages, entryToCarPositionMetrics.AvgProcessingTime);
+
+            Logger.LogDebug(Environment.NewLine +
+                           "UpdateConsolidator: {UCMsgs} processed, {UCActive} active, {UCAvgTime:F4}s avg | " + Environment.NewLine +
+                           "StatusAggregator: {SAMsgs} processed, {SAActive} active, {SAAvgTime:F4}s avg",
+                updateConsolidatorMetrics.MessagesProcessed, updateConsolidatorMetrics.ActiveMessages, updateConsolidatorMetrics.AvgProcessingTime,
+                statusAggregatorMetrics.MessagesProcessed, statusAggregatorMetrics.ActiveMessages, statusAggregatorMetrics.AvgProcessingTime);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error logging pipeline metrics");
+        }
+    }
+
+    private double CalculatePipelineHealth()
+    {
+        try
+        {
+            var allMetrics = new[]
+            {
+                _sequentialProcessorMetrics.GetCurrentMetrics(),
+                _rmonitorMetrics.GetCurrentMetrics(),
+                _multiloopMetrics.GetCurrentMetrics(),
+                _pitMetrics.GetCurrentMetrics(),
+                _flagMetrics.GetCurrentMetrics(),
+                _sessionMonitorMetrics.GetCurrentMetrics(),
+                _positionMetadataMetrics.GetCurrentMetrics(),
+                _resetCommandMetrics.GetCurrentMetrics(),
+                _entryToCarPositionMetrics.GetCurrentMetrics(),
+                _updateConsolidatorMetrics.GetCurrentMetrics(),
+                _statusAggregatorMetrics.GetCurrentMetrics()
+            };
+
+            double healthScore = 1.0;
+
+            // Check for backed up blocks (reduce health if any block has >10 active messages)
+            foreach (var metrics in allMetrics)
+            {
+                if (metrics.ActiveMessages > 10)
+                {
+                    healthScore -= 0.1;
+                }
+            }
+
+            // Check for slow processing (reduce health if any block averages >1 second)
+            foreach (var metrics in allMetrics)
+            {
+                if (metrics.AvgProcessingTime > 1.0)
+                {
+                    healthScore -= 0.1;
+                }
+            }
+
+            return Math.Max(0.0, Math.Min(1.0, healthScore));
+        }
+        catch
+        {
+            return 0.5; // Default to neutral health if calculation fails
+        }
+    }
+
+    /// <summary>
+    /// Applies state changes directly to the session context.
+    /// </summary>
+    private void ApplyChangesToContext(List<IStateChange> changes)
+    {
+        try
+        {
+            // Apply session state changes
+            var sessionChanges = changes.OfType<ISessionStateChange>();
+            foreach (var change in sessionChanges)
+            {
+                var patch = change.GetChanges(sessionContext.SessionState);
+                if (patch != null)
+                {
+                    TimingCommon.Models.Mappers.SessionStateMapper.ApplyPatch(patch, sessionContext.SessionState);
+                }
+            }
+
+            // Apply car state changes
+            var carChanges = changes.OfType<ICarStateChange>();
+            foreach (var change in carChanges)
+            {
+                var car = sessionContext.GetCarByNumber(change.Number);
+                if (car != null)
+                {
+                    var patch = change.GetChanges(car);
+                    if (patch != null)
+                    {
+                        TimingCommon.Models.Mappers.CarPositionMapper.ApplyPatch(patch, car);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error applying changes to context");
+            _pipelineErrors.WithLabels("apply_changes", ex.GetType().Name).Inc();
+        }
     }
 }

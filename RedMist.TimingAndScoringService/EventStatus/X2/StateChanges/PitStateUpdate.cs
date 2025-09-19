@@ -22,40 +22,28 @@ public record PitStateUpdate(
     {
         var patch = new CarPositionPatch { Number = CarNumber };
 
-        if (InPit.TryGetValue(state.TransponderId, out _) && !state.IsInPit)
+        // Set IsInPit based on whether the transponder is in the InPit collection
+        // This reflects the actual IsInPit flag from the passing data
+        bool newIsInPit = InPit.ContainsKey(state.TransponderId);
+        if (state.IsInPit != newIsInPit)
         {
-            patch.IsInPit = true;
-        }
-        else if (state.IsInPit)
-        {
-            patch.IsInPit = false;
+            patch.IsInPit = newIsInPit;
         }
 
+        // Set loop-specific flags based on loop types
         if (PitEntrance.TryGetValue(state.TransponderId, out _) && !state.IsEnteredPit)
         {
             patch.IsEnteredPit = true;
-
-            if (!state.IsInPit)
-                patch.IsInPit = true;
         }
 
         if (PitExit.TryGetValue(state.TransponderId, out _) && !state.IsExitedPit)
         {
             patch.IsExitedPit = true;
-            if (state.IsInPit)
-                patch.IsInPit = false;
         }
 
         if (PitSf.TryGetValue(state.TransponderId, out _) && !state.IsPitStartFinish)
         {
             patch.IsPitStartFinish = true;
-            if (!state.IsInPit)
-                patch.IsInPit = true;
-        }
-
-        if (PitOther.TryGetValue(state.TransponderId, out _) && !state.IsInPit)
-        {
-            patch.IsInPit = true;
         }
 
         if (Other.TryGetValue(state.TransponderId, out var otherPass) &&

@@ -1,6 +1,10 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
+﻿using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
+using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
+using RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
+using System.Collections.Immutable;
+using System.Diagnostics;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
@@ -23,23 +27,35 @@ public class RMonitorDataProcessorV2
     public string SessionName { get; set; } = string.Empty;
     public string TrackName { get; set; } = string.Empty;
     public double TrackLength { get; set; }
+    private SessionContext sessionContext;
+    private readonly ResetProcessor resetProcessor;
+    private readonly StartingPositionProcessor startingPositionProcessor;
 
-
-    public RMonitorDataProcessorV2(ILoggerFactory loggerFactory)
+    public RMonitorDataProcessorV2(ILoggerFactory loggerFactory, SessionContext sessionContext, 
+        ResetProcessor resetProcessor, StartingPositionProcessor startingPositionProcessor)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
+        this.sessionContext = sessionContext;
+        this.resetProcessor = resetProcessor;
+        this.startingPositionProcessor = startingPositionProcessor;
     }
 
 
-    public SessionStateUpdate? Process(TimingMessage message)
+    /// <summary>
+    /// Processes timing messages with immediate application of each command.
+    /// </summary>
+    /// <param name="message">The timing message to process</param>
+    /// <param name="sessionContext">The session context to apply changes to immediately</param>
+    /// <returns>List of all changes that were applied</returns>
+    public async Task<PatchUpdates?> ProcessAsync(TimingMessage message, SessionContext sessionContext)
     {
         if (message.Type != Backend.Shared.Consts.RMONITOR_TYPE)
             return null;
 
-        var sessionChanges = new List<ISessionStateChange>();
-        var carChanges = new List<ICarStateChange>();
-
+        var sessionPatches = new List<SessionStatePatch>();
+        var carPatches = new List<CarPositionPatch>();
         bool competitorChanged = false;
+
         var commands = message.Data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         foreach (var command in commands)
         {
@@ -50,65 +66,88 @@ public class RMonitorDataProcessorV2
             {
                 if (command.StartsWith("$F"))
                 {
-                    // Heartbeat message
-                    var ch = ProcessF(command);
-                    sessionChanges.Add(ch);
+                    // Heartbeat message - apply immediately
+                    var change = ProcessF(command);
+                    var sp = change.ApplySessionChange(sessionContext.SessionState);
+                    if (sp != null)
+                        sessionPatches.Add(sp);
                 }
                 else if (command.StartsWith("$A"))
                 {
                     // Competitor information
-                    ProcessA(command);
+                    var regNum = ProcessA(command);
+                    AddUpdateCompetitor(regNum);
                     competitorChanged = true;
                 }
                 else if (command.StartsWith("$COMP"))
                 {
                     // Competitor information
-                    ProcessComp(command);
+                    var regNum = ProcessComp(command);
+                    AddUpdateCompetitor(regNum);
                     competitorChanged = true;
                 }
                 else if (command.StartsWith("$B"))
                 {
-                    // Session/run information
-                    var ch = ProcessB(command);
-                    if (ch != null)
-                        sessionChanges.Add(ch);
+                    // Session/run information - apply immediately
+                    var change = ProcessB(command);
+                    if (change != null)
+                    {
+                        var sp = change.ApplySessionChange(sessionContext.SessionState);
+                        if (sp != null)
+                            sessionPatches.Add(sp);
+                    }
                 }
                 else if (command.StartsWith("$C"))
                 {
-                    // Class information
+                    // Class information - accumulate these
                     ProcessC(command);
                     competitorChanged = true;
                 }
                 else if (command.StartsWith("$E"))
                 {
-                    // Setting (track) information
+                    // Setting (track) information - no state change
                     ProcessE(command);
                 }
                 else if (command.StartsWith("$G"))
                 {
-                    // Race information
-                    var ch = ProcessG(command);
-                    if (ch != null)
-                        carChanges.Add(ch);
+                    // Race information - apply immediately
+                    var change = ProcessG(command);
+                    if (change != null)
+                    {
+                        var cp = change.ApplyCarChange(sessionContext);
+                        if (cp != null)
+                            carPatches.Add(cp);
+                    }
                 }
                 else if (command.StartsWith("$H"))
                 {
-                    // Practice/qualifying information
-                    var ch = ProcessH(command);
-                    if (ch != null)
-                        carChanges.Add(ch);
+                    // Practice/qualifying information - apply immediately
+                    var change = ProcessH(command);
+                    if (change != null)
+                    {
+                        var cp = change.ApplyCarChange(sessionContext);
+                        if (cp != null)
+                            carPatches.Add(cp);
+                    }
                 }
                 else if (command.StartsWith("$I"))
                 {
-                    // Init record (reset)
+                    // Init record (reset) - apply immediately
                     ProcessI();
+
+                    // Handle reset immediately as subsequent commands are likely grouped together in one string
+                    await resetProcessor.Process();
                 }
                 else if (command.StartsWith("$J"))
                 {
-                    // Passing information
-                    var ch = ProcessJ(command);
-                    if (ch != null)
-                        carChanges.Add(ch);
+                    // Passing information - apply immediately
+                    var change = ProcessJ(command);
+                    if (change != null)
+                    {
+                        var cp = change.ApplyCarChange(sessionContext);
+                        if (cp != null)
+                            carPatches.Add(cp);
+                    }
                 }
                 else if (command.StartsWith("$COR"))
                 {
@@ -126,12 +165,73 @@ public class RMonitorDataProcessorV2
             }
         }
 
+        // Apply accumulated competitor changes at the end
         if (competitorChanged)
         {
-            sessionChanges.Add(new CompetitorStateUpdate([.. competitors.Values], classes.ToDictionary()));
+            //var competitorChange = new CompetitorStateUpdate([.. competitors.Values], classes.ToDictionary(), sessionContext);
+            //var sp = competitorChange.ApplySessionChange(sessionContext.SessionState);
+            //if (sp != null)
+            //    sessionPatches.Add(sp);
+
+            var cps = GetCarPatches(sessionContext);
+            carPatches.AddRange(cps);
         }
 
-        return new SessionStateUpdate(sessionChanges, carChanges);
+        return new PatchUpdates([.. sessionPatches], [.. carPatches]);
+    }
+
+    private void AddUpdateCompetitor(string regNum)
+    {
+        if (competitors.TryGetValue(regNum, out var comp))
+        {
+            classes.TryGetValue(comp.ClassNumber, out var className);
+            var car = new CarPosition
+            {
+                Number = comp.Number,
+                TransponderId = comp.Transponder,
+                DriverName = comp.FirstName,
+                Class = className,
+                EventId = sessionContext.SessionState.EventId.ToString(),
+                SessionId = sessionContext.SessionState.SessionId.ToString(),
+                TrackFlag = sessionContext.SessionState.CurrentFlag
+            };
+            sessionContext.UpdateCars([car]);
+
+            // Update event entry
+            var entry = comp.ToEventEntry(GetClassName);
+            sessionContext.SessionState.EventEntries.RemoveAll(e => e.Number == entry.Number);
+            sessionContext.SessionState.EventEntries.Add(entry);
+        }
+    }
+
+    private string? GetClassName(int classId)
+    {
+        if (classes.TryGetValue(classId, out var className))
+        {
+            return className;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Builds patches for changes to car positions typically after a reset.
+    /// </summary>
+    private ImmutableList<CarPositionPatch> GetCarPatches(SessionContext sessionContext)
+    {
+        var patches = new List<CarPositionPatch>();
+        try
+        {
+            foreach (var car in sessionContext.SessionState.CarPositions)
+            {
+                var patch = TimingCommon.Models.Mappers.CarPositionMapper.CreatePatch(new CarPosition(), car);
+                patches.Add(patch);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error handling competitor changes");
+        }
+        return [.. patches];
     }
 
     #region Result Monitor
@@ -155,7 +255,7 @@ public class RMonitorDataProcessorV2
     /// Processes $A messages -- Competitor information
     /// </summary>
     /// <example>$A,"1234BE","12X",52474,"John","Johnson","USA",5</example>
-    private void ProcessA(string data)
+    private string ProcessA(string data)
     {
         var parts = data.Split(',');
         var regNum = parts[1].Replace("\"", "");
@@ -165,13 +265,14 @@ public class RMonitorDataProcessorV2
             competitors[regNum] = competitor;
         }
         competitor.ProcessA(parts);
+        return regNum;
     }
 
     /// <summary>
     /// Processes $COMP –- Competitor information
     /// </summary>
     /// <example>$COMP,"1234BE","12X",5,"John","Johnson","USA","CAMEL"</example>
-    private void ProcessComp(string data)
+    private string ProcessComp(string data)
     {
         var parts = data.Split(',');
         var regNum = parts[1].Replace("\"", "");
@@ -181,6 +282,7 @@ public class RMonitorDataProcessorV2
             competitors[regNum] = competitor;
         }
         competitor.ParseComp(parts);
+        return regNum;
     }
 
     #endregion
@@ -199,7 +301,7 @@ public class RMonitorDataProcessorV2
         SessionName = parts[2].Replace("\"", "");
         if (sr != SessionReference)
         {
-            return new SessionStateUpdated(SessionReference, SessionName);
+            return new StateChanges.SessionStateUpdate(SessionReference, SessionName);
         }
         return null;
     }
@@ -261,57 +363,26 @@ public class RMonitorDataProcessorV2
             raceInfo = new RaceInformation();
             raceInformation[regNum] = raceInfo;
         }
-        return raceInfo.ProcessG(parts);
+        Trace.WriteLine(data);
+        var sc = raceInfo.ProcessG(parts);
+        if (sc is CarLapStateUpdate cls)
+            cls.SessionContext = sessionContext;
 
+        // Save off starting positions
+        if (raceInfo.Laps == 0 && !RaceHasPassedStart())
+        {
+            var flag = Heartbeat.FlagStatus.ToFlag();
+            startingPositionProcessor.UpdateStartingPosition(parts, regNum, flag);
+        }
 
-        //TODO: infer starting positions
-        //// Save off starting positions
-        //if (raceInfo.Laps == 0 && !RaceHasPassedStart())
-        //{
-        //    var flag = Heartbeat.FlagStatus.ToFlag();
-        //    UpdateStartingPosition(parts, regNum, flag);
-        //}
+        return sc;
     }
 
-    //private void UpdateStartingPosition(string[] parts, string regNum, Flags flag)
-    //{
-    //    // Allow capture of starting positions during lap 0 up to and including the green flag
-    //    if (flag == Flags.Unknown || flag == Flags.Yellow || flag == Flags.Green)
-    //    {
-    //        // Make a copy for storing off
-    //        var sp = new RaceInformation();
-    //        sp.ProcessG(parts);
-    //        startingPositions[regNum] = sp;
-    //        UpdateInClassStartingPositionLookup();
-    //    }
-    //}
-
-    //private void UpdateInClassStartingPositionLookup()
-    //{
-    //    var entries = new List<(string num, int @class, int pos)>();
-    //    foreach (var regNum in startingPositions.Keys)
-    //    {
-    //        var ri = startingPositions[regNum];
-    //        if (!competitors.TryGetValue(regNum, out var comp))
-    //        {
-    //            Logger.LogWarning("Competitor {rn} not found for starting position", regNum);
-    //            continue;
-    //        }
-    //        entries.Add((regNum, comp.ClassNumber, ri.Position));
-    //    }
-
-    //    var classGroups = entries.GroupBy(x => x.@class);
-    //    foreach (var classGroup in classGroups)
-    //    {
-    //        var positions = classGroup.OrderBy(x => x.pos).ToList();
-    //        for (int i = 0; i < positions.Count; i++)
-    //        {
-    //            var entry = positions[i];
-    //            inClassStartingPositions[entry.num] = i + 1;
-    //        }
-    //    }
-    //}
-
+    /// <summary>
+    /// Determine if the race is in progress.
+    /// </summary>
+    private bool RaceHasPassedStart() => raceInformation.Values.Any(r => r.Laps > 0);
+    
     #endregion
 
     #region Practice/qualifying information
@@ -346,19 +417,16 @@ public class RMonitorDataProcessorV2
         competitors.Clear();
         raceInformation.Clear();
         practiceQualifying.Clear();
-        //secondaryProcessor.Clear();
 
         // Allow for reset when the event is initializing. Once it has started,
         // suppress the resets to reduce user confusion
         var flag = Heartbeat.FlagStatus.ToFlag();
-        if (flag == TimingCommon.Models.Flags.Unknown)
+        if (flag == Flags.Unknown)
         {
             classes.Clear();
             passingInformation.Clear();
-            //startingPositions.Clear();
-            //inClassStartingPositions.Clear();
+            sessionContext.ClearStartingPositions();
         }
-        //PublishEventReset();
     }
 
     #endregion
