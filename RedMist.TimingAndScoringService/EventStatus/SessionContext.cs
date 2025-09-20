@@ -8,13 +8,13 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 /// <summary>
 /// Holds context information shared across the processing pipeline.
 /// </summary>
-public class SessionContext(IConfiguration configuration)
+public class SessionContext
 {
     public SessionState SessionState { get; private set; } = new SessionState();
     private readonly AsyncReaderWriterLock sessionStateLock = new();
     public AsyncReaderWriterLock SessionStateLock => sessionStateLock;
 
-    public int EventId { get; } = configuration.GetValue("event_id", 0);
+    public int EventId { get; }
 
     public virtual CancellationToken CancellationToken { get; set; } = CancellationToken.None;
 
@@ -26,6 +26,13 @@ public class SessionContext(IConfiguration configuration)
     // Car starting positions by car number
     private readonly Dictionary<string, int> startingPositions = [];
     private readonly Dictionary<string, int> inClassStartingPositions = [];
+
+
+    public SessionContext(IConfiguration configuration)
+    {
+        EventId = configuration.GetValue("event_id", 0);
+        SessionState.EventId = EventId;
+    }
 
 
     /// <summary>

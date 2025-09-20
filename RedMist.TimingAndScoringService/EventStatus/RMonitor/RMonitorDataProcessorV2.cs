@@ -1,10 +1,8 @@
 ﻿using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
-using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
-using System.Diagnostics;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
@@ -19,17 +17,16 @@ public class RMonitorDataProcessorV2
     private readonly Dictionary<int, string> classes = [];
     private readonly Dictionary<string, Competitor> competitors = [];
     private readonly Dictionary<string, RaceInformation> raceInformation = [];
-    //private readonly Dictionary<string, RaceInformation> startingPositions = [];
-    //private readonly Dictionary<string, int> inClassStartingPositions = [];
     private readonly Dictionary<string, PracticeQualifying> practiceQualifying = [];
     private readonly Dictionary<string, PassingInformation> passingInformation = [];
     public int SessionReference { get; set; }
     public string SessionName { get; set; } = string.Empty;
     public string TrackName { get; set; } = string.Empty;
     public double TrackLength { get; set; }
-    private SessionContext sessionContext;
+    private readonly SessionContext sessionContext;
     private readonly ResetProcessor resetProcessor;
     private readonly StartingPositionProcessor startingPositionProcessor;
+
 
     public RMonitorDataProcessorV2(ILoggerFactory loggerFactory, SessionContext sessionContext, 
         ResetProcessor resetProcessor, StartingPositionProcessor startingPositionProcessor)
@@ -168,11 +165,6 @@ public class RMonitorDataProcessorV2
         // Apply accumulated competitor changes at the end
         if (competitorChanged)
         {
-            //var competitorChange = new CompetitorStateUpdate([.. competitors.Values], classes.ToDictionary(), sessionContext);
-            //var sp = competitorChange.ApplySessionChange(sessionContext.SessionState);
-            //if (sp != null)
-            //    sessionPatches.Add(sp);
-
             var cps = GetCarPatches(sessionContext);
             carPatches.AddRange(cps);
         }
@@ -363,7 +355,7 @@ public class RMonitorDataProcessorV2
             raceInfo = new RaceInformation();
             raceInformation[regNum] = raceInfo;
         }
-        Trace.WriteLine(data);
+
         var sc = raceInfo.ProcessG(parts);
         if (sc is CarLapStateUpdate cls)
             cls.SessionContext = sessionContext;

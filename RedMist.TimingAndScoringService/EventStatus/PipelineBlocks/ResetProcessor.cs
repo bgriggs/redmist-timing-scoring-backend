@@ -21,6 +21,7 @@ public class ResetProcessor
     {
         var eventId = sessionContext.EventId.ToString();
         Logger.LogInformation("*** Processing RESET for event {EventId} ***", eventId);
+        sessionContext.ResetCommand();
         await hubContext.Clients.Group(eventId).SendAsync("ReceiveReset", sessionContext.CancellationToken);
     }
 }

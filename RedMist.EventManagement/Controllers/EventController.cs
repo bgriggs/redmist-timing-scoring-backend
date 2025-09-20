@@ -167,7 +167,7 @@ public class EventController : ControllerBase
             {
                 var cache = cacheMux.GetDatabase();
                 var streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
-                var fieldName = $"event-changed-{eventId}-999999";
+                var fieldName = $"{Consts.EVENT_CONFIGURATION_CHANGED}-{eventId}-999999";
                 
                 await cache.StreamAddAsync(streamKey, fieldName, eventId.ToString());
                 Logger.LogDebug("Published event configuration change notification for event {EventId}", eventId);

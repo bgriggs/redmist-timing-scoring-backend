@@ -2,12 +2,12 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
+using RedMist.TimingAndScoringService.EventStatus.LapData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
 using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
@@ -16,6 +16,7 @@ using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
+using StackExchange.Redis;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus.ProcessingPipeline;
 
@@ -40,9 +41,11 @@ public class SessionStateProcessingPipelineTests
     private SessionMonitorV2 _sessionMonitor = null!;
     private PositionDataEnricher _positionEnricher = null!;
     private ResetProcessor _resetProcessor = null!;
+    private LapProcessor _lapProcessor = null!;
     private UpdateConsolidator _updateConsolidator = null!;
     private StatusAggregatorV2 _statusAggregator = null!;
     private StartingPositionProcessor _startingPositionProcessor = null!;
+    private Mock<IConnectionMultiplexer> _mockConnectionMultiplexer = null!;
 
     const string FilePrefix = "EventStatus/ProcessingPipeline/";
 
@@ -64,6 +67,7 @@ public class SessionStateProcessingPipelineTests
         _mockLoggerFactory = new Mock<ILoggerFactory>();
         _mockLogger = new Mock<ILogger>();
         _mockHubContext = new Mock<IHubContext<StatusHub>>();
+        _mockConnectionMultiplexer = new Mock<IConnectionMultiplexer>();
 
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
 
@@ -82,6 +86,15 @@ public class SessionStateProcessingPipelineTests
 
         mockGroupManager.Setup(x => x.AddToGroupAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+
+        // Setup mock Redis connection
+        var mockDatabase = new Mock<IDatabase>();
+        _mockConnectionMultiplexer.Setup(x => x.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
+            .Returns(mockDatabase.Object);
+        mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<NameValueEntry[]>(), It.IsAny<RedisValue>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(RedisValue.Null);
+        mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(RedisValue.Null);
     }
 
     private void SetupSessionContext()
@@ -116,6 +129,7 @@ public class SessionStateProcessingPipelineTests
         _flagProcessor = new FlagProcessorV2(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _sessionMonitor = new SessionMonitorV2(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _positionEnricher = new PositionDataEnricher(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
+        _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object);
         _statusAggregator = new StatusAggregatorV2(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
     }
@@ -132,6 +146,7 @@ public class SessionStateProcessingPipelineTests
             _sessionMonitor,
             _positionEnricher,
             _resetProcessor,
+            _lapProcessor,
             _updateConsolidator,
             _statusAggregator
         );

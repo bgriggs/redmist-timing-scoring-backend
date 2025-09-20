@@ -13,6 +13,7 @@ using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
+using RedMist.TimingAndScoringService.EventStatus.LapData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
 using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
@@ -95,6 +96,7 @@ public class Program
         builder.Services.AddSingleton<SessionMonitorV2>();
         builder.Services.AddSingleton<PositionDataEnricher>();
         builder.Services.AddSingleton<ResetProcessor>();
+        builder.Services.AddSingleton<LapProcessor>();
         builder.Services.AddSingleton<UpdateConsolidator>();
         builder.Services.AddSingleton<StatusAggregatorV2>();
         builder.Services.AddSingleton<StartingPositionProcessor>();

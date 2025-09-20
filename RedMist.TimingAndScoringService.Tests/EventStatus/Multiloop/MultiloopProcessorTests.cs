@@ -14,7 +14,6 @@ public class MultiloopProcessorTests
     private MultiloopProcessor _processor = null!;
     private Mock<ILoggerFactory> _mockLoggerFactory = null!;
     private Mock<ILogger<MultiloopProcessor>> _mockLogger = null!;
-    private Mock<SessionContext> _mockContext = null!;
     private SessionContext _context = null!;
 
     [TestInitialize]

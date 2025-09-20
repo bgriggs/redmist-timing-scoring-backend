@@ -28,6 +28,11 @@ public class PitProcessorV2
     private readonly Dictionary<uint, Passing> pitOther = [];
     private readonly Dictionary<uint, Passing> other = [];
 
+    /// <summary>
+    /// Callback to notify when pit messages are received for specific cars
+    /// This allows the lap processor to immediately process any pending laps for these cars
+    /// </summary>
+    public Func<HashSet<string>, Task>? NotifyLapProcessorOfPitMessages { get; set; }
 
     public PitProcessorV2(IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory, SessionContext sessionContext)
     {
@@ -35,7 +40,6 @@ public class PitProcessorV2
         Logger = (loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger(GetType().Name);
         this.sessionContext = sessionContext ?? throw new ArgumentNullException(nameof(sessionContext));
     }
-
 
     public async Task Initialize(int eventId)
     {
@@ -71,7 +75,6 @@ public class PitProcessorV2
 
         return loopMetadata.ToImmutableDictionary();
     }
-
 
     private void RemoveTransponderFromAllPassings(uint transponderId)
     {
@@ -116,8 +119,9 @@ public class PitProcessorV2
             return null;
 
         var loopMetadata = GetLoopMetadata();
-
         var patches = new List<CarPositionPatch>();
+        var carsWithPitMessages = new HashSet<string>();
+
         foreach (var pass in passings)
         {
             RemoveTransponderFromAllPassings(pass.TransponderId);
@@ -155,6 +159,8 @@ public class PitProcessorV2
             if (carNumber == null)
                 continue;
 
+            carsWithPitMessages.Add(carNumber);
+
             var change = new PitStateUpdate(
                 carNumber,
                 CarLapsWithPitStops: carLapsWithPitStops,
@@ -168,6 +174,21 @@ public class PitProcessorV2
             var p = change.ApplyCarChange(sessionContext);
             if (p != null)
                 patches.Add(p);
+        }
+
+        // Notify lap processor about cars that received pit messages
+        // This allows immediate processing of any pending laps for these cars
+        if (carsWithPitMessages.Count > 0 && NotifyLapProcessorOfPitMessages != null)
+        {
+            try
+            {
+                await NotifyLapProcessorOfPitMessages(carsWithPitMessages);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error notifying lap processor of pit messages for cars: {Cars}", 
+                    string.Join(", ", carsWithPitMessages));
+            }
         }
         
         return new PatchUpdates([], [.. patches]);

@@ -1,5 +1,6 @@
 ﻿using Prometheus;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
+using RedMist.TimingAndScoringService.EventStatus.LapData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
 using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
@@ -27,19 +28,18 @@ public class SessionStateProcessingPipeline
     private readonly SessionMonitorV2 sessionMonitor;
     private readonly PositionDataEnricher positionEnricher;
     private readonly ResetProcessor resetProcessor;
+    private readonly LapProcessor lapProcessor;
     private readonly UpdateConsolidator updateConsolidator;
     private readonly StatusAggregatorV2 statusAggregator;
 
     // Metrics for pipeline performance
-    private readonly PipelineMetrics _sequentialProcessorMetrics = new("sequential_processor");
+    private readonly PipelineMetrics _overallProcessorMetrics = new("sequential_processor");
     private readonly PipelineMetrics _rmonitorMetrics = new("rmonitor_processor");
     private readonly PipelineMetrics _multiloopMetrics = new("multiloop_processor");
     private readonly PipelineMetrics _pitMetrics = new("pit_processor");
     private readonly PipelineMetrics _flagMetrics = new("flag_processor");
     private readonly PipelineMetrics _sessionMonitorMetrics = new("session_monitor");
     private readonly PipelineMetrics _positionMetadataMetrics = new("position_metadata");
-    private readonly PipelineMetrics _resetCommandMetrics = new("reset_command");
-    private readonly PipelineMetrics _entryToCarPositionMetrics = new("entry_to_car_position");
     private readonly PipelineMetrics _updateConsolidatorMetrics = new("update_consolidator");
     private readonly PipelineMetrics _statusAggregatorMetrics = new("status_aggregator");
 
@@ -66,6 +66,7 @@ public class SessionStateProcessingPipeline
         SessionMonitorV2 sessionMonitorV2,
         PositionDataEnricher positionEnricher,
         ResetProcessor resetProcessor,
+        LapProcessor lapProcessor,
         UpdateConsolidator updateConsolidator,
         StatusAggregatorV2 statusAggregatorV2)
     {
@@ -80,8 +81,18 @@ public class SessionStateProcessingPipeline
         sessionMonitor = sessionMonitorV2;
         this.positionEnricher = positionEnricher;
         this.resetProcessor = resetProcessor;
+        this.lapProcessor = lapProcessor;
         this.updateConsolidator = updateConsolidator;
         statusAggregator = statusAggregatorV2;
+
+        // Wire up the notification from pit processor to lap processor
+        pitProcessorV2.NotifyLapProcessorOfPitMessages = async (carNumbers) =>
+        {
+            foreach (var carNumber in carNumbers)
+            {
+                await lapProcessor.ProcessPendingLapForCar(carNumber);
+            }
+        };
 
         // Start metrics monitoring
         StartMetricsMonitoring();
@@ -96,7 +107,7 @@ public class SessionStateProcessingPipeline
     {
         try
         {
-            await _sequentialProcessorMetrics.TrackAsync(async () =>
+            await _overallProcessorMetrics.TrackAsync(async () =>
             {
                 var allAppliedChanges = new List<PatchUpdates>();
 
@@ -110,13 +121,22 @@ public class SessionStateProcessingPipeline
                             rMonitorProcessor.ProcessAsync(message, sessionContext));
                         if (rmonitorChanges != null)
                             allAppliedChanges.AddRange(rmonitorChanges);
-                        
+
                         // ** Phase 2: Position Enrichment **
                         if (allAppliedChanges.SelectMany(c => c.CarPatches).Any())
                         {
                             var enrichmentChanges = ProcessPositionEnrichment();
                             if (enrichmentChanges != null)
                                 allAppliedChanges.AddRange(enrichmentChanges);
+
+                            // Check for any lap changes
+                            var lapChanges = allAppliedChanges.SelectMany(c => c.CarPatches).Where(cp => cp.LastLapCompleted != null).ToList();
+                            if (lapChanges.Count > 0)
+                            {
+                                var carNumbers = lapChanges.Select(c => c.Number).ToList();
+                                var cars = sessionContext.SessionState.CarPositions.Where(c => carNumbers.Contains(c.Number)).ToList();
+                                await lapProcessor.Process(cars);
+                            }
                         }
                     }
                     else if (message.Type == Backend.Shared.Consts.MULTILOOP_TYPE)
@@ -273,7 +293,7 @@ public class SessionStateProcessingPipeline
                 try
                 {
                     await Task.Delay(TimeSpan.FromSeconds(10));
-                    LogPipelineMetrics();
+                    PrintPipelineMetrics();
 
                     // Update pipeline health score
                     var healthScore = CalculatePipelineHealth();
@@ -287,49 +307,43 @@ public class SessionStateProcessingPipeline
         });
     }
 
-    private void LogPipelineMetrics()
+    private void PrintPipelineMetrics()
     {
         try
         {
-            var sequentialMetrics = _sequentialProcessorMetrics.GetCurrentMetrics();
+            var overallMetrics = _overallProcessorMetrics.GetCurrentMetrics();
             var rmonitorMetrics = _rmonitorMetrics.GetCurrentMetrics();
             var multiloopMetrics = _multiloopMetrics.GetCurrentMetrics();
             var pitMetrics = _pitMetrics.GetCurrentMetrics();
             var flagMetrics = _flagMetrics.GetCurrentMetrics();
             var sessionMonitorMetrics = _sessionMonitorMetrics.GetCurrentMetrics();
             var positionMetadataMetrics = _positionMetadataMetrics.GetCurrentMetrics();
-            var resetCommandMetrics = _resetCommandMetrics.GetCurrentMetrics();
-            var entryToCarPositionMetrics = _entryToCarPositionMetrics.GetCurrentMetrics();
             var updateConsolidatorMetrics = _updateConsolidatorMetrics.GetCurrentMetrics();
             var statusAggregatorMetrics = _statusAggregatorMetrics.GetCurrentMetrics();
 
             Logger.LogDebug(Environment.NewLine +
-                           "Sequential: {SeqMsgs} processed, {SeqActive} active, {SeqAvgTime:F4}s avg | " + Environment.NewLine +
-                           "RMonitor: {RMonMsgs} processed, {RMonActive} active, {RMonAvgTime:F4}s avg | " + Environment.NewLine +
-                           "Multiloop: {MLMsgs} processed, {MLActive} active, {MLAvgTime:F4}s avg | " + Environment.NewLine +
-                           "Pit: {PitMsgs} processed, {PitActive} active, {PitAvgTime:F4}s avg | " + Environment.NewLine +
-                           "Flag: {FlagMsgs} processed, {FlagActive} active, {FlagAvgTime:F4}s avg",
-                sequentialMetrics.MessagesProcessed, sequentialMetrics.ActiveMessages, sequentialMetrics.AvgProcessingTime,
-                rmonitorMetrics.MessagesProcessed, rmonitorMetrics.ActiveMessages, rmonitorMetrics.AvgProcessingTime,
-                multiloopMetrics.MessagesProcessed, multiloopMetrics.ActiveMessages, multiloopMetrics.AvgProcessingTime,
-                pitMetrics.MessagesProcessed, pitMetrics.ActiveMessages, pitMetrics.AvgProcessingTime,
-                flagMetrics.MessagesProcessed, flagMetrics.ActiveMessages, flagMetrics.AvgProcessingTime);
+                           "Overall: {SeqMsgs} processed, {SeqActive} active, {SeqAvgTime:F2}ms avg | " + Environment.NewLine +
+                           "RMonitor: {RMonMsgs} processed, {RMonActive} active, {RMonAvgTime:F2}ms avg | " + Environment.NewLine +
+                           "Multiloop: {MLMsgs} processed, {MLActive} active, {MLAvgTime:F2}ms avg | " + Environment.NewLine +
+                           "Pit: {PitMsgs} processed, {PitActive} active, {PitAvgTime:F2}ms avg | " + Environment.NewLine +
+                           "Flag: {FlagMsgs} processed, {FlagActive} active, {FlagAvgTime:F2}ms avg",
+                overallMetrics.MessagesProcessed, overallMetrics.ActiveMessages, overallMetrics.AvgProcessingTime * 1000,
+                rmonitorMetrics.MessagesProcessed, rmonitorMetrics.ActiveMessages, rmonitorMetrics.AvgProcessingTime * 1000,
+                multiloopMetrics.MessagesProcessed, multiloopMetrics.ActiveMessages, multiloopMetrics.AvgProcessingTime * 1000,
+                pitMetrics.MessagesProcessed, pitMetrics.ActiveMessages, pitMetrics.AvgProcessingTime * 1000,
+                flagMetrics.MessagesProcessed, flagMetrics.ActiveMessages, flagMetrics.AvgProcessingTime * 1000);
 
             Logger.LogDebug(Environment.NewLine +
-                           "SessionMonitor: {SMMsgs} processed, {SMActive} active, {SMAvgTime:F4}s avg | " + Environment.NewLine +
-                           "PositionMetadata: {PMMsgs} processed, {PMActive} active, {PMAvgTime:F4}s avg | " + Environment.NewLine +
-                           "ResetCommand: {RCMsgs} processed, {RCActive} active, {RCAvgTime:F4}s avg | " + Environment.NewLine +
-                           "EntryToCarPosition: {ECPMsgs} processed, {ECPActive} active, {ECPAvgTime:F4}s avg",
-                sessionMonitorMetrics.MessagesProcessed, sessionMonitorMetrics.ActiveMessages, sessionMonitorMetrics.AvgProcessingTime,
-                positionMetadataMetrics.MessagesProcessed, positionMetadataMetrics.ActiveMessages, positionMetadataMetrics.AvgProcessingTime,
-                resetCommandMetrics.MessagesProcessed, resetCommandMetrics.ActiveMessages, resetCommandMetrics.AvgProcessingTime,
-                entryToCarPositionMetrics.MessagesProcessed, entryToCarPositionMetrics.ActiveMessages, entryToCarPositionMetrics.AvgProcessingTime);
+                           "SessionMonitor: {SMMsgs} processed, {SMActive} active, {SMAvgTime:F2}ms avg | " + Environment.NewLine +
+                           "PositionMetadata: {PMMsgs} processed, {PMActive} active, {PMAvgTime:F2}ms avg",
+                sessionMonitorMetrics.MessagesProcessed, sessionMonitorMetrics.ActiveMessages, sessionMonitorMetrics.AvgProcessingTime * 1000,
+                positionMetadataMetrics.MessagesProcessed, positionMetadataMetrics.ActiveMessages, positionMetadataMetrics.AvgProcessingTime * 1000);
 
             Logger.LogDebug(Environment.NewLine +
-                           "UpdateConsolidator: {UCMsgs} processed, {UCActive} active, {UCAvgTime:F4}s avg | " + Environment.NewLine +
-                           "StatusAggregator: {SAMsgs} processed, {SAActive} active, {SAAvgTime:F4}s avg",
-                updateConsolidatorMetrics.MessagesProcessed, updateConsolidatorMetrics.ActiveMessages, updateConsolidatorMetrics.AvgProcessingTime,
-                statusAggregatorMetrics.MessagesProcessed, statusAggregatorMetrics.ActiveMessages, statusAggregatorMetrics.AvgProcessingTime);
+                           "UpdateConsolidator: {UCMsgs} processed, {UCActive} active, {UCAvgTime:F2}ms avg | " + Environment.NewLine +
+                           "StatusAggregator: {SAMsgs} processed, {SAActive} active, {SAAvgTime:F2}ms avg",
+                updateConsolidatorMetrics.MessagesProcessed, updateConsolidatorMetrics.ActiveMessages, updateConsolidatorMetrics.AvgProcessingTime * 1000,
+                statusAggregatorMetrics.MessagesProcessed, statusAggregatorMetrics.ActiveMessages, statusAggregatorMetrics.AvgProcessingTime * 1000);
         }
         catch (Exception ex)
         {
@@ -343,15 +357,13 @@ public class SessionStateProcessingPipeline
         {
             var allMetrics = new[]
             {
-                _sequentialProcessorMetrics.GetCurrentMetrics(),
+                _overallProcessorMetrics.GetCurrentMetrics(),
                 _rmonitorMetrics.GetCurrentMetrics(),
                 _multiloopMetrics.GetCurrentMetrics(),
                 _pitMetrics.GetCurrentMetrics(),
                 _flagMetrics.GetCurrentMetrics(),
                 _sessionMonitorMetrics.GetCurrentMetrics(),
                 _positionMetadataMetrics.GetCurrentMetrics(),
-                _resetCommandMetrics.GetCurrentMetrics(),
-                _entryToCarPositionMetrics.GetCurrentMetrics(),
                 _updateConsolidatorMetrics.GetCurrentMetrics(),
                 _statusAggregatorMetrics.GetCurrentMetrics()
             };
@@ -381,46 +393,6 @@ public class SessionStateProcessingPipeline
         catch
         {
             return 0.5; // Default to neutral health if calculation fails
-        }
-    }
-
-    /// <summary>
-    /// Applies state changes directly to the session context.
-    /// </summary>
-    private void ApplyChangesToContext(List<IStateChange> changes)
-    {
-        try
-        {
-            // Apply session state changes
-            var sessionChanges = changes.OfType<ISessionStateChange>();
-            foreach (var change in sessionChanges)
-            {
-                var patch = change.GetChanges(sessionContext.SessionState);
-                if (patch != null)
-                {
-                    TimingCommon.Models.Mappers.SessionStateMapper.ApplyPatch(patch, sessionContext.SessionState);
-                }
-            }
-
-            // Apply car state changes
-            var carChanges = changes.OfType<ICarStateChange>();
-            foreach (var change in carChanges)
-            {
-                var car = sessionContext.GetCarByNumber(change.Number);
-                if (car != null)
-                {
-                    var patch = change.GetChanges(car);
-                    if (patch != null)
-                    {
-                        TimingCommon.Models.Mappers.CarPositionMapper.ApplyPatch(patch, car);
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error applying changes to context");
-            _pipelineErrors.WithLabels("apply_changes", ex.GetType().Name).Inc();
         }
     }
 }

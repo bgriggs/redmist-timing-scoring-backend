@@ -36,6 +36,7 @@ public class Program
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024 * 2, name: "Process Allocated Memory", tags: ["memory"]);
 
         builder.Services.AddHostedService<LogConsumerService>();
+        builder.Services.AddHostedService<EventProcessLogger>();
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();
@@ -43,7 +44,7 @@ public class Program
         // Configure the HTTP request pipeline.
         if (app.Environment.IsDevelopment())
         {
-            Console.Title = "Event Logger";
+            Console.Title = "Logger";
             app.MapOpenApi();
         }
 

@@ -49,7 +49,7 @@ public class EventAggregator : BackgroundService
     private string? lastFullStatusData;
     private DateTime? lastPayloadChangedTimestamp;
 
-    private SessionStateProcessingPipeline processingPipeline;
+    private readonly SessionStateProcessingPipeline processingPipeline;
     private readonly SessionContext sessionContext;
     private readonly PitProcessorV2 pitProcessorV2;
 
@@ -128,9 +128,6 @@ public class EventAggregator : BackgroundService
                 {
                     foreach (var field in entry.Values)
                     {
-                        // Process update from timing system
-                        //Logger.LogTrace("Event Status Update: {e}", entry.Id);
-
                         // Check the message tag to determine the type of update (e.g. result monitor)
                         var tags = field.Name.ToString().Split('-');
                         if (tags.Length < 3)
@@ -149,10 +146,6 @@ public class EventAggregator : BackgroundService
 
                         // Post message to the new processing pipeline
                         await processingPipeline.Post(timingMessage);
-
-                        //// Process the update using legacy processor for backward compatibility
-                        //// This can be removed once the TPL pipeline is fully tested and validated
-                        //await dataProcessor.ProcessUpdate(type, data, sessionId, stoppingToken);
                     }
 
                     await cache.StreamAcknowledgeAsync(streamKey, CONSUMER_GROUP, entry.Id);
