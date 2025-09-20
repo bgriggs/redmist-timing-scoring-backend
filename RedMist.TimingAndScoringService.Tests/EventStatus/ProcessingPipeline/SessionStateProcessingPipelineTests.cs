@@ -130,8 +130,8 @@ public class SessionStateProcessingPipelineTests
         _sessionMonitor = new SessionMonitorV2(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _positionEnricher = new PositionDataEnricher(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor);
-        _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object);
         _statusAggregator = new StatusAggregatorV2(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
+        _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
     }
 
     private void CreatePipeline()

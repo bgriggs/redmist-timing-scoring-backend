@@ -1,5 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileSystemGlobbing;
 using RedMist.Database;
+using RedMist.Migrations;
 using RedMist.TimingAndScoringService.EventStatus.X2.StateChanges;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
@@ -21,7 +23,7 @@ public class PitProcessorV2
     private readonly SessionContext sessionContext;
     private TimingCommon.Models.Configuration.Event? eventConfiguration;
     private readonly Dictionary<string, HashSet<int>> carLapsWithPitStops = [];
-    private readonly Dictionary<uint, Passing> inPit = [];
+    public readonly Dictionary<uint, Passing> inPit = [];
     private readonly Dictionary<uint, Passing> pitEntrance = [];
     private readonly Dictionary<uint, Passing> pitExit = [];
     private readonly Dictionary<uint, Passing> pitSf = [];
@@ -62,7 +64,7 @@ public class PitProcessorV2
         return null;
     }
 
-    private ImmutableDictionary<uint, LoopMetadata> GetLoopMetadata()
+    private Dictionary<uint, LoopMetadata> GetLoopMetadata()
     {
         var loopMetadata = new Dictionary<uint, LoopMetadata>();
         if (eventConfiguration != null)
@@ -73,7 +75,7 @@ public class PitProcessorV2
             }
         }
 
-        return loopMetadata.ToImmutableDictionary();
+        return loopMetadata;
     }
 
     private void RemoveTransponderFromAllPassings(uint transponderId)
@@ -89,7 +91,7 @@ public class PitProcessorV2
     public async Task<PatchUpdates?> Process(TimingMessage message)
     {
         // Handle event configuration change notifications
-        if (message.Type == Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE)
+        if (message.Type == Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED)
         {
             await RefreshEventConfiguration(message);
             return null;
@@ -126,6 +128,19 @@ public class PitProcessorV2
         {
             RemoveTransponderFromAllPassings(pass.TransponderId);
 
+            var carNum = sessionContext.GetCarNumberForTransponder(pass.TransponderId);
+            if (carNum != null)
+            {
+                var car = sessionContext.GetCarByNumber(carNum);
+                if (car != null)
+                {
+                    if (pass.IsInPit)
+                        Logger.LogInformation("**** Pass InPit Number {n}", car.Number);
+                    else
+                        Logger.LogTrace("Passing for car {c}", car.Number);
+                }
+            }
+
             if (pass.IsInPit)
             {
                 inPit[pass.TransponderId] = pass;
@@ -159,21 +174,25 @@ public class PitProcessorV2
             if (carNumber == null)
                 continue;
 
-            carsWithPitMessages.Add(carNumber);
-
             var change = new PitStateUpdate(
                 carNumber,
                 CarLapsWithPitStops: carLapsWithPitStops,
-                InPit: inPit.ToImmutableDictionary(),
-                PitEntrance: pitEntrance.ToImmutableDictionary(),
-                PitExit: pitExit.ToImmutableDictionary(),
-                PitSf: pitSf.ToImmutableDictionary(),
-                PitOther: pitOther.ToImmutableDictionary(),
-                Other: other.ToImmutableDictionary(),
+                InPit: inPit,
+                PitEntrance: pitEntrance,
+                PitExit: pitExit,
+                PitSf: pitSf,
+                PitOther: pitOther,
+                Other: other,
                 LoopMetadata: loopMetadata);
+
             var p = change.ApplyCarChange(sessionContext);
             if (p != null)
+            {
                 patches.Add(p);
+
+                if (p.IsInPit ?? false)
+                    carsWithPitMessages.Add(carNumber);
+            }
         }
 
         // Notify lap processor about cars that received pit messages
@@ -192,6 +211,23 @@ public class PitProcessorV2
         }
         
         return new PatchUpdates([], [.. patches]);
+    }
+
+    public CarPositionPatch? ProcessCar(string number)
+    {
+        var loopMetadata = GetLoopMetadata();
+        var change = new PitStateUpdate(
+                number,
+                CarLapsWithPitStops: carLapsWithPitStops,
+                InPit: inPit,
+                PitEntrance: pitEntrance,
+                PitExit: pitExit,
+                PitSf: pitSf,
+                PitOther: pitOther,
+                Other: other,
+                LoopMetadata: loopMetadata);
+
+        return change.ApplyCarChange(sessionContext);
     }
 
     private async Task RefreshEventConfiguration(TimingMessage message)

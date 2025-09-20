@@ -734,7 +734,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, eventId.ToString(), 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, eventId.ToString(), 1, DateTime.Now);
 
         // Setup a modified event configuration for reload
         var modifiedEventConfig = new ConfigurationEvent
@@ -790,7 +790,7 @@ public class PitProcessorV2Tests
         var differentEventId = 456;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, differentEventId.ToString(), 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, differentEventId.ToString(), 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -824,7 +824,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, "invalid-event-id", 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, "invalid-event-id", 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -858,7 +858,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, "", 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, "", 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -892,7 +892,7 @@ public class PitProcessorV2Tests
         var eventId = 123;
         await SetupEventWithLoops(); // This calls Initialize with eventId 123
 
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, null!, 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, null!, 1, DateTime.Now);
 
         // Reset the mock to track calls after initialization
         _mockDbContextFactory.Reset();
@@ -923,7 +923,7 @@ public class PitProcessorV2Tests
     public async Task Process_EventChangedMessage_ProcessorNotInitialized_HandlesGracefully()
     {
         // Arrange - Don't call SetupEventWithLoops or Initialize, so eventId is default (0)
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, "123", 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, "123", 1, DateTime.Now);
 
         // Reset the mock to track calls
         _mockDbContextFactory.Reset();
@@ -996,7 +996,7 @@ public class PitProcessorV2Tests
             });
 
         // Act - Send event changed message to reload configuration
-        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE, eventId.ToString(), 1, DateTime.Now);
+        var eventChangedMessage = new TimingMessage(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, eventId.ToString(), 1, DateTime.Now);
         var reloadResult = await _processor.Process(eventChangedMessage);
         Assert.IsNull(reloadResult); // Event changed messages return null
 

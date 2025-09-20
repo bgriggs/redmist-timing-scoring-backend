@@ -1,4 +1,5 @@
-﻿using RedMist.TimingCommon.Models;
+﻿using BigMission.Shared.Utilities;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 
@@ -16,38 +17,76 @@ public class UpdateConsolidator
     private SessionStatePatch? accumulatedSessionPatch;
     private readonly Dictionary<string, CarPositionPatch> accumulatedCarPatches = [];
     private readonly SessionContext sessionContext;
+    private readonly StatusAggregatorV2 statusAggregator;
+    private readonly SemaphoreSlim processLock = new(1, 1);
+    private readonly Debouncer debouncer = new(DebounceInterval);
 
 
-    public UpdateConsolidator(SessionContext sessionContext, ILoggerFactory loggerFactory)
+    public UpdateConsolidator(SessionContext sessionContext, ILoggerFactory loggerFactory, StatusAggregatorV2 statusAggregator)
     {
         this.sessionContext = sessionContext;
+        this.statusAggregator = statusAggregator;
         Logger = loggerFactory.CreateLogger(GetType().Name);
     }
 
 
-    public async Task<PatchUpdates> Process(PatchUpdates? update)
+    public async Task Process(PatchUpdates? update)
     {
-        if (update == null)
-            return new PatchUpdates([], []);
-
-        // Apply the new update immediately to accumulated patches
-        ApplyUpdateToAccumulatedPatches(update);
-
-        var now = DateTime.UtcNow;
-        var timeSinceLastProcess = now - lastProcessTime;
-
-        // If it's been less than 20ms since the last process, wait for the remainder
-        if (timeSinceLastProcess < DebounceInterval)
+        if (update == null || (update.SessionPatches.Count == 0 && update.CarPatches.Count == 0))
+            return;
+        //Logger.LogTrace("UpdateConsolidator: ses: {sc} / cars: {c}", update.SessionPatches.Count, update.CarPatches.Count);
+        await processLock.WaitAsync(sessionContext.CancellationToken);
+        try
         {
-            var remainingWait = DebounceInterval - timeSinceLastProcess;
-            await Task.Delay(remainingWait, sessionContext.CancellationToken);
+            // Apply the new update immediately to accumulated patches
+            ApplyUpdateToAccumulatedPatches(update);
+            
+            //var now = DateTime.UtcNow;
+            //var timeSinceLastProcess = now - lastProcessTime;
+
+            //// If it's been less than 20ms since the last process, wait for the remainder
+            //if (timeSinceLastProcess < DebounceInterval)
+            //{
+            //    var remainingWait = DebounceInterval - timeSinceLastProcess;
+            //    await Task.Delay(remainingWait, sessionContext.CancellationToken);
+            //}
+
+            //// Return the accumulated patches and reset for next cycle
+            //var result = GetAndResetAccumulatedPatches();
+            //lastProcessTime = DateTime.UtcNow;
+
+            //return result;
+        }
+        finally
+        {
+            processLock.Release();
         }
 
-        // Return the accumulated patches and reset for next cycle
-        var result = GetAndResetAccumulatedPatches();
-        lastProcessTime = DateTime.UtcNow;
-
-        return result;
+        await debouncer.ExecuteAsync(async () =>
+        {
+            PatchUpdates patchesToSend;
+            await processLock.WaitAsync(sessionContext.CancellationToken);
+            try
+            {
+                patchesToSend = GetAndResetAccumulatedPatches();
+                lastProcessTime = DateTime.UtcNow;
+            }
+            finally
+            {
+                processLock.Release();
+            }
+            if (patchesToSend.SessionPatches.Count > 0 || patchesToSend.CarPatches.Count > 0)
+            {
+                try
+                {
+                    await statusAggregator.Process(patchesToSend);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Error sending consolidated updates to clients");
+                }
+            }
+        });
     }
 
     private void ApplyUpdateToAccumulatedPatches(PatchUpdates update)
@@ -55,7 +94,6 @@ public class UpdateConsolidator
         // Apply session changes
         foreach (var sessionChange in update.SessionPatches)
         {
-            //var patch = sessionChange.GetChanges(sessionContext.SessionState);
             if (sessionChange != null)
             {
                 if (accumulatedSessionPatch == null)
@@ -72,20 +110,15 @@ public class UpdateConsolidator
         // Apply car changes
         foreach (var carChange in update.CarPatches)
         {
-            //var carState = sessionContext.GetCarByNumber(carChange.Number);
             if (carChange != null && carChange.Number != null)
             {
-            //    var patch = carChange.GetChanges(carState);
-            //    if (patch != null)
-            //    {
-                    if (!accumulatedCarPatches.TryGetValue(carChange.Number, out CarPositionPatch? value))
-                    {
-                        value = new CarPositionPatch { Number = carChange.Number };
-                        accumulatedCarPatches[carChange.Number] = value;
-                    }
+                if (!accumulatedCarPatches.TryGetValue(carChange.Number, out CarPositionPatch? value))
+                {
+                    value = new CarPositionPatch { Number = carChange.Number };
+                    accumulatedCarPatches[carChange.Number] = value;
+                }
 
-                    accumulatedCarPatches[carChange.Number] = TimingCommon.Models.Mappers.CarPositionMapper.Merge(value, carChange);
-            //    }
+                accumulatedCarPatches[carChange.Number] = TimingCommon.Models.Mappers.CarPositionMapper.Merge(value, carChange);
             }
         }
     }

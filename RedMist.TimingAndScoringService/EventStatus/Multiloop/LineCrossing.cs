@@ -19,7 +19,7 @@ public class LineCrossing : Message
     public uint ElapsedTimeMs { get; private set; }
     public TimeSpan ElapsedTime => TimeSpan.FromMilliseconds(ElapsedTimeMs);
     public string TrackStatus { get; private set; } = string.Empty;
-    public TimingCommon.Models.Flags Flag { get; private set; }
+    public Flags Flag { get; private set; }
     public string CrossingStatusStr { get; private set; } = string.Empty;
     public LineCrossingStatus CrossingStatus => CrossingStatusStr switch
     {

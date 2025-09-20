@@ -1,4 +1,5 @@
 ﻿using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
+using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
@@ -28,7 +29,7 @@ public class RMonitorDataProcessorV2
     private readonly StartingPositionProcessor startingPositionProcessor;
 
 
-    public RMonitorDataProcessorV2(ILoggerFactory loggerFactory, SessionContext sessionContext, 
+    public RMonitorDataProcessorV2(ILoggerFactory loggerFactory, SessionContext sessionContext,
         ResetProcessor resetProcessor, StartingPositionProcessor startingPositionProcessor)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -73,14 +74,18 @@ public class RMonitorDataProcessorV2
                 {
                     // Competitor information
                     var regNum = ProcessA(command);
-                    AddUpdateCompetitor(regNum);
+                    var p = AddUpdateCompetitor(regNum);
+                    if (p != null)
+                        carPatches.Add(p);
                     competitorChanged = true;
                 }
                 else if (command.StartsWith("$COMP"))
                 {
                     // Competitor information
                     var regNum = ProcessComp(command);
-                    AddUpdateCompetitor(regNum);
+                    var p = AddUpdateCompetitor(regNum);
+                    if (p != null)
+                        carPatches.Add(p);
                     competitorChanged = true;
                 }
                 else if (command.StartsWith("$B"))
@@ -165,35 +170,68 @@ public class RMonitorDataProcessorV2
         // Apply accumulated competitor changes at the end
         if (competitorChanged)
         {
-            var cps = GetCarPatches(sessionContext);
-            carPatches.AddRange(cps);
+            //var cps = GetCarPatches(sessionContext);
+            //carPatches.AddRange(cps);
         }
 
         return new PatchUpdates([.. sessionPatches], [.. carPatches]);
     }
 
-    private void AddUpdateCompetitor(string regNum)
+    private CarPositionPatch? AddUpdateCompetitor(string regNum)
     {
         if (competitors.TryGetValue(regNum, out var comp))
         {
+            var patch = new CarPositionPatch();
             classes.TryGetValue(comp.ClassNumber, out var className);
-            var car = new CarPosition
+            var car = sessionContext.GetCarByNumber(regNum);
+            car ??= new CarPosition { Number = comp.Number };
+            if (car.TransponderId != comp.Transponder)
             {
-                Number = comp.Number,
-                TransponderId = comp.Transponder,
-                DriverName = comp.FirstName,
-                Class = className,
-                EventId = sessionContext.SessionState.EventId.ToString(),
-                SessionId = sessionContext.SessionState.SessionId.ToString(),
-                TrackFlag = sessionContext.SessionState.CurrentFlag
-            };
+                car.TransponderId = comp.Transponder;
+                patch.TransponderId = comp.Transponder;
+            }
+            if (car.DriverName != comp.FirstName)
+            {
+                car.DriverName = comp.FirstName;
+                patch.DriverName = comp.FirstName;
+            }
+            if (car.Class != className)
+            {
+                car.Class = className;
+                patch.Class = className;
+            }
+            var eid = sessionContext.SessionState.EventId.ToString();
+            if (car.EventId != eid)
+            {
+                car.EventId = eid;
+                patch.EventId = eid;
+            }
+            var sid = sessionContext.SessionState.SessionId.ToString();
+            if (car.SessionId != sid)
+            {
+                car.SessionId = sid;
+                patch.SessionId = sid;
+            }
+            if (car.TrackFlag != sessionContext.SessionState.CurrentFlag)
+            {
+                car.TrackFlag = sessionContext.SessionState.CurrentFlag;
+                patch.TrackFlag = sessionContext.SessionState.CurrentFlag;
+            }
             sessionContext.UpdateCars([car]);
 
             // Update event entry
             var entry = comp.ToEventEntry(GetClassName);
             sessionContext.SessionState.EventEntries.RemoveAll(e => e.Number == entry.Number);
             sessionContext.SessionState.EventEntries.Add(entry);
+
+            if (TimingCommon.Models.Mappers.CarPositionMapper.IsValidPatch(patch))
+            {
+                patch.Number = car.Number; // Ensure number is set
+                return patch;
+            }
         }
+
+        return null;
     }
 
     private string? GetClassName(int classId)
@@ -205,26 +243,26 @@ public class RMonitorDataProcessorV2
         return null;
     }
 
-    /// <summary>
-    /// Builds patches for changes to car positions typically after a reset.
-    /// </summary>
-    private ImmutableList<CarPositionPatch> GetCarPatches(SessionContext sessionContext)
-    {
-        var patches = new List<CarPositionPatch>();
-        try
-        {
-            foreach (var car in sessionContext.SessionState.CarPositions)
-            {
-                var patch = TimingCommon.Models.Mappers.CarPositionMapper.CreatePatch(new CarPosition(), car);
-                patches.Add(patch);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error handling competitor changes");
-        }
-        return [.. patches];
-    }
+    ///// <summary>
+    ///// Builds patches for changes to car positions typically after a reset.
+    ///// </summary>
+    //private ImmutableList<CarPositionPatch> GetCarPatches(SessionContext sessionContext)
+    //{
+    //    var patches = new List<CarPositionPatch>();
+    //    try
+    //    {
+    //        foreach (var car in sessionContext.SessionState.CarPositions)
+    //        {
+    //            var patch = TimingCommon.Models.Mappers.CarPositionMapper.CreatePatch(new CarPosition(), car);
+    //            patches.Add(patch);
+    //        }
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        Logger.LogError(ex, "Error handling competitor changes");
+    //    }
+    //    return [.. patches];
+    //}
 
     #region Result Monitor
     #region Heartbeat message
@@ -374,7 +412,7 @@ public class RMonitorDataProcessorV2
     /// Determine if the race is in progress.
     /// </summary>
     private bool RaceHasPassedStart() => raceInformation.Values.Any(r => r.Laps > 0);
-    
+
     #endregion
 
     #region Practice/qualifying information

@@ -8,13 +8,13 @@ namespace RedMist.TimingAndScoringService.EventStatus.X2.StateChanges;
 public record PitStateUpdate(
     string CarNumber,
     Dictionary<string, HashSet<int>> CarLapsWithPitStops,
-    ImmutableDictionary<uint, Passing> InPit,
-    ImmutableDictionary<uint, Passing> PitEntrance,
-    ImmutableDictionary<uint, Passing> PitExit,
-    ImmutableDictionary<uint, Passing> PitSf,
-    ImmutableDictionary<uint, Passing> PitOther,
-    ImmutableDictionary<uint, Passing> Other,
-    ImmutableDictionary<uint, LoopMetadata> LoopMetadata) : ICarStateChange
+    Dictionary<uint, Passing> InPit,
+    Dictionary<uint, Passing> PitEntrance,
+    Dictionary<uint, Passing> PitExit,
+    Dictionary<uint, Passing> PitSf,
+    Dictionary<uint, Passing> PitOther,
+    Dictionary<uint, Passing> Other,
+    Dictionary<uint, LoopMetadata> LoopMetadata) : ICarStateChange
 {
     public string Number => CarNumber;
 
@@ -26,30 +26,25 @@ public record PitStateUpdate(
         // This reflects the actual IsInPit flag from the passing data
         bool newIsInPit = InPit.ContainsKey(state.TransponderId);
         if (state.IsInPit != newIsInPit)
-        {
             patch.IsInPit = newIsInPit;
-        }
 
         // Set loop-specific flags based on loop types
-        if (PitEntrance.TryGetValue(state.TransponderId, out _) && !state.IsEnteredPit)
-        {
-            patch.IsEnteredPit = true;
-        }
+        patch.IsEnteredPit = PitEntrance.TryGetValue(state.TransponderId, out _);
+        patch.IsExitedPit = PitExit.TryGetValue(state.TransponderId, out _);
+        patch.IsPitStartFinish = PitSf.TryGetValue(state.TransponderId, out _);
 
-        if (PitExit.TryGetValue(state.TransponderId, out _) && !state.IsExitedPit)
-        {
-            patch.IsExitedPit = true;
-        }
-
-        if (PitSf.TryGetValue(state.TransponderId, out _) && !state.IsPitStartFinish)
-        {
-            patch.IsPitStartFinish = true;
-        }
+        // Allow the enter or S/F loop to enable pit flag
+        if (!patch.IsInPit ?? false)
+            patch.IsInPit = (patch.IsEnteredPit ?? false) || (patch.IsPitStartFinish ?? false);
 
         if (Other.TryGetValue(state.TransponderId, out var otherPass) &&
             LoopMetadata.TryGetValue(otherPass.Id, out var lm) && state.LastLoopName != lm.Name)
         {
             patch.LastLoopName = lm.Name;
+        }
+        else
+        {
+            patch.LastLoopName = string.Empty;
         }
 
         // Keep track of laps where cars have pitted

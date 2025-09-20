@@ -8,6 +8,8 @@ using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
+using RedMist.TimingCommon.Models;
+using System.Collections.Immutable;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
@@ -41,7 +43,6 @@ public class SessionStateProcessingPipeline
     private readonly PipelineMetrics _sessionMonitorMetrics = new("session_monitor");
     private readonly PipelineMetrics _positionMetadataMetrics = new("position_metadata");
     private readonly PipelineMetrics _updateConsolidatorMetrics = new("update_consolidator");
-    private readonly PipelineMetrics _statusAggregatorMetrics = new("status_aggregator");
 
     // Overall pipeline metrics
     private readonly Counter _inputMessagesTotal = Metrics.CreateCounter(
@@ -137,6 +138,19 @@ public class SessionStateProcessingPipeline
                                 var cars = sessionContext.SessionState.CarPositions.Where(c => carNumbers.Contains(c.Number)).ToList();
                                 await lapProcessor.Process(cars);
                             }
+
+                            // Apply pit data in case of reset
+                            var distinctNumbers = allAppliedChanges.SelectMany(c => c.CarPatches).Select(c => c.Number).Distinct();
+                            var pitPatches = new List<CarPositionPatch>();
+                            foreach (var cn in distinctNumbers)
+                            {
+                                var pitPatch = pitProcessor.ProcessCar(cn ?? string.Empty);
+                                if (pitPatch != null)
+                                {
+                                    pitPatches.Add(pitPatch);
+                                }
+                            }
+                            allAppliedChanges.Add(new PatchUpdates([], [.. pitPatches]));
                         }
                     }
                     else if (message.Type == Backend.Shared.Consts.MULTILOOP_TYPE)
@@ -145,7 +159,7 @@ public class SessionStateProcessingPipeline
                         if (multiloopChanges != null)
                             allAppliedChanges.AddRange(multiloopChanges);
                     }
-                    else if (message.Type == Backend.Shared.Consts.X2PASS_TYPE || message.Type == Backend.Shared.Consts.EVENT_CONFIG_CHANGED_TYPE)
+                    else if (message.Type == Backend.Shared.Consts.X2PASS_TYPE || message.Type == Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED)
                     {
                         var pitChanges = await ProcessPit(message);
                         if (pitChanges != null)
@@ -167,7 +181,7 @@ public class SessionStateProcessingPipeline
                 // ** Phase 3: Client Notification (outside the lock) **
                 if (allAppliedChanges.Count > 0)
                 {
-                    await NotifyClients(allAppliedChanges);
+                    _ = Task.Run(async () => await NotifyClients(allAppliedChanges));
                 }
             });
         }
@@ -266,11 +280,7 @@ public class SessionStateProcessingPipeline
             {
                 foreach (var ap in appliedChanges)
                 {
-                    var patchSet = await updateConsolidator.Process(ap);
-                    if (patchSet != null && (patchSet.SessionPatches.Count > 0 || patchSet.CarPatches.Count > 0))
-                    {
-                        await _statusAggregatorMetrics.TrackAsync(() => statusAggregator.Process(patchSet));
-                    }
+                    await updateConsolidator.Process(ap);
                 }
             });
         }
@@ -292,12 +302,28 @@ public class SessionStateProcessingPipeline
             {
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(10));
+                    await Task.Delay(TimeSpan.FromSeconds(2));
                     PrintPipelineMetrics();
 
                     // Update pipeline health score
                     var healthScore = CalculatePipelineHealth();
                     _pipelineHealth.Set(healthScore);
+
+                    var pit = new List<string>();
+                    foreach (var c in sessionContext.SessionState.CarPositions.ToArray())
+                    {
+                        if (c.IsInPit)
+                            pit.Add(c.Number!);
+                    }
+                    Logger.LogInformation("Session State Cars currently in pit: " + string.Join(", ", pit));
+
+                    pit.Clear();
+                    foreach (var trans in pitProcessor.inPit)
+                    {
+                        var c = sessionContext.GetCarNumberForTransponder(trans.Key) ?? "??";
+                        pit.Add(c);
+                    }
+                    Logger.LogInformation("Passing Proc: Cars currently in pit: " + string.Join(", ", pit));
                 }
                 catch (Exception ex)
                 {
@@ -319,7 +345,6 @@ public class SessionStateProcessingPipeline
             var sessionMonitorMetrics = _sessionMonitorMetrics.GetCurrentMetrics();
             var positionMetadataMetrics = _positionMetadataMetrics.GetCurrentMetrics();
             var updateConsolidatorMetrics = _updateConsolidatorMetrics.GetCurrentMetrics();
-            var statusAggregatorMetrics = _statusAggregatorMetrics.GetCurrentMetrics();
 
             Logger.LogDebug(Environment.NewLine +
                            "Overall: {SeqMsgs} processed, {SeqActive} active, {SeqAvgTime:F2}ms avg | " + Environment.NewLine +
@@ -340,10 +365,8 @@ public class SessionStateProcessingPipeline
                 positionMetadataMetrics.MessagesProcessed, positionMetadataMetrics.ActiveMessages, positionMetadataMetrics.AvgProcessingTime * 1000);
 
             Logger.LogDebug(Environment.NewLine +
-                           "UpdateConsolidator: {UCMsgs} processed, {UCActive} active, {UCAvgTime:F2}ms avg | " + Environment.NewLine +
-                           "StatusAggregator: {SAMsgs} processed, {SAActive} active, {SAAvgTime:F2}ms avg",
-                updateConsolidatorMetrics.MessagesProcessed, updateConsolidatorMetrics.ActiveMessages, updateConsolidatorMetrics.AvgProcessingTime * 1000,
-                statusAggregatorMetrics.MessagesProcessed, statusAggregatorMetrics.ActiveMessages, statusAggregatorMetrics.AvgProcessingTime * 1000);
+                           "UpdateConsolidator: {UCMsgs} processed, {UCActive} active, {UCAvgTime:F2}ms avg | " + Environment.NewLine,
+                updateConsolidatorMetrics.MessagesProcessed, updateConsolidatorMetrics.ActiveMessages, updateConsolidatorMetrics.AvgProcessingTime * 1000);
         }
         catch (Exception ex)
         {
@@ -365,7 +388,6 @@ public class SessionStateProcessingPipeline
                 _sessionMonitorMetrics.GetCurrentMetrics(),
                 _positionMetadataMetrics.GetCurrentMetrics(),
                 _updateConsolidatorMetrics.GetCurrentMetrics(),
-                _statusAggregatorMetrics.GetCurrentMetrics()
             };
 
             double healthScore = 1.0;
