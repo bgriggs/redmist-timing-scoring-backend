@@ -6,7 +6,6 @@ using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.PenaltyEnricher;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
-using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus.PenaltyEnricher;
 

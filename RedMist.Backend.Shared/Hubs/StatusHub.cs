@@ -148,6 +148,40 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} unsubscribed from event {eventId}", connectionId, eventId);
     }
 
+    public async Task SubscribeToEventV2(int eventId)
+    {
+        var connectionId = Context.ConnectionId;
+        var subKey = string.Format(Consts.EVENT_SUB_V2, eventId);
+        await Groups.AddToGroupAsync(connectionId, subKey);
+        if (eventId > 0)
+        {
+            // Update connection tracking for this event
+            await AddOrUpdateConnectionTracking(connectionId, eventId, inCarDriverConnection: null);
+        }
+
+        Logger.LogInformation("Client {connectionId} subscribed v2 to event {eventId}", connectionId, eventId);
+    }
+
+    public async Task UnsubscribeFromEventV2(int eventId)
+    {
+        var connectionId = Context.ConnectionId;
+        var subKey = string.Format(Consts.EVENT_SUB_V2, eventId);
+        await Groups.RemoveFromGroupAsync(connectionId, subKey);
+
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId);
+            await cache.HashDeleteAsync(connKey, connectionId, CommandFlags.FireAndForget);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error removing connectionId {connectionId} from event {eventId}", connectionId, eventId);
+        }
+
+        Logger.LogInformation("Client {connectionId} unsubscribed from event {eventId}", connectionId, eventId);
+    }
+
     #endregion
 
     #region Control Logs

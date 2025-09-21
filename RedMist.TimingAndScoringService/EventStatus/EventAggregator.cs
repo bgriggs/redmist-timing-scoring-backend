@@ -17,6 +17,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks.Dataflow;
+using RedMist.TimingCommon.Extensions;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
@@ -29,7 +30,7 @@ public class EventAggregator : BackgroundService
     private readonly int eventId;
     private readonly string streamKey;
     private readonly string serviceName;
-    private readonly RMonitorDataProcessor dataProcessor;
+    //private readonly RMonitorDataProcessor dataProcessor;
     private readonly ILoggerFactory loggerFactory;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IMediator mediator;
@@ -47,7 +48,7 @@ public class EventAggregator : BackgroundService
     private readonly SemaphoreSlim payloadSerializationLock = new(1);
     private DateTime? lastFullStatusTimestamp;
     private string? lastFullStatusData;
-    private DateTime? lastPayloadChangedTimestamp;
+    //private DateTime? lastPayloadChangedTimestamp;
 
     private readonly SessionStateProcessingPipeline processingPipeline;
     private readonly SessionContext sessionContext;
@@ -92,8 +93,8 @@ public class EventAggregator : BackgroundService
         var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
         var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
         var driverModeDataProcessor = new DriverModeProcessor(eventId, hubContext, loggerFactory, hcache, tsContext, cacheMux);
-        dataProcessor = new RMonitorDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux, tsContext, driverModeDataProcessor);
-        dataProcessor.PayloadChanged += DataProcessor_PayloadChanged;
+        //dataProcessor = new RMonitorDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux, tsContext, driverModeDataProcessor);
+        //dataProcessor.PayloadChanged += DataProcessor_PayloadChanged;
     }
 
 
@@ -110,11 +111,11 @@ public class EventAggregator : BackgroundService
         await pitProcessorV2.Initialize(eventId);
 
 
-        //// Start a task to send a full update every so often
-        //_ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
+        // Legacy: Start a task to send a full update every so often
+        _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
 
-        //// Publish reset event to get full set of data from the relay
-        //await mediator.Publish(new RelayResetRequest { EventId = eventId, ForceTimingDataReset = true }, stoppingToken);
+        // Publish reset event to get full set of data from the relay
+        await mediator.Publish(new RelayResetRequest { EventId = eventId, ForceTimingDataReset = true }, stoppingToken);
 
         // Start a task to read timing source data from this service's stream.
         // The SignalR hub is responsible for sending timing data to the stream.
@@ -227,11 +228,6 @@ public class EventAggregator : BackgroundService
 
     #region Event Status Requests
 
-    private void DataProcessor_PayloadChanged(Payload obj)
-    {
-        lastPayloadChangedTimestamp = DateTime.UtcNow;
-    }
-
     private async Task ProcessFullStatusRequest(string cmdJson)
     {
         var cmd = JsonSerializer.Deserialize<SendStatusCommand>(cmdJson);
@@ -242,7 +238,8 @@ public class EventAggregator : BackgroundService
         }
 
         Logger.LogInformation("Sending full status update for event {e} to new connection {con}", cmd.EventId, cmd.ConnectionId);
-        var payload = await GetEventStatusWithRefreshAsync(dataProcessor);
+        
+        var payload = await GetEventStatusWithRefreshAsync();
         await SendEventStatusAsync(cmd.ConnectionId, payload);
     }
 
@@ -273,7 +270,7 @@ public class EventAggregator : BackgroundService
                     Logger.LogTrace("Sending full status to {c} connections with interval {i}", connectionEntries.Length, interval.TotalMilliseconds);
                     foreach (var connectionId in connectionIds)
                     {
-                        var payload = await GetEventStatusWithRefreshAsync(dataProcessor, stoppingToken);
+                        var payload = await GetEventStatusWithRefreshAsync(stoppingToken);
                         await SendEventStatusAsync(connectionId, payload, stoppingToken);
 
                         await Task.Delay(interval, stoppingToken);
@@ -296,7 +293,7 @@ public class EventAggregator : BackgroundService
             }
 
             // Save off the last payload to the cache for quick access by other services
-            //await UpdateCachedPayload(dataProcessor, stoppingToken);
+            await UpdateCachedPayload(stoppingToken);
         }
     }
 
@@ -310,19 +307,17 @@ public class EventAggregator : BackgroundService
     /// <summary>
     /// Get compressed event status data.
     /// </summary>
-    /// <param name="p"></param>
-    private async Task<string> GetEventStatusWithRefreshAsync(RMonitorDataProcessor p, CancellationToken stoppingToken = default)
+    private async Task<string> GetEventStatusWithRefreshAsync(CancellationToken stoppingToken = default)
     {
-        // See if the last payload is still the latest. When there is a newer change, update the payload.
-        if (lastFullStatusTimestamp.HasValue && (lastPayloadChangedTimestamp <= lastFullStatusTimestamp.Value) && lastFullStatusData != null)
-        {
-            return lastFullStatusData;
-        }
-
         await payloadSerializationLock.WaitAsync(stoppingToken);
         try
         {
-            var payload = await p.GetPayload(stoppingToken);
+            Payload payload;
+            using (await sessionContext.SessionStateLock.AcquireReadLockAsync(stoppingToken))
+            {
+                payload = sessionContext.SessionState.ToPayload();
+            }
+            //var payload = await p.GetPayload(stoppingToken);
             lastFullStatusTimestamp = DateTime.UtcNow;
 
             var json = JsonSerializer.Serialize(payload);
@@ -343,13 +338,17 @@ public class EventAggregator : BackgroundService
         }
     }
 
-
-    private async Task UpdateCachedPayload(RMonitorDataProcessor p, CancellationToken stoppingToken)
+    private async Task UpdateCachedPayload(CancellationToken stoppingToken)
     {
         try
         {
             var cache = cacheMux.GetDatabase();
-            var payload = await p.GetPayload(stoppingToken);
+            Payload payload;
+            using (await sessionContext.SessionStateLock.AcquireReadLockAsync(stoppingToken))
+            {
+                payload = sessionContext.SessionState.ToPayload();
+            }
+            //var payload = await p.GetPayload(stoppingToken);
             var json = JsonSerializer.Serialize(payload);
 
             Logger.LogTrace("Caching payload...");

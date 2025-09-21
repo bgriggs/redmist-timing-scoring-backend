@@ -2,6 +2,7 @@
 
 public class Consts
 {
+    public const string EVENT_SUB_V2 = "evt{0}-sub";
     public const string STATUS_CHANNEL_PREFIX = "event-status";
     public const string EVENT_STATUS_STREAM_KEY = "evt-st-{0}";
     public const string EVENT_PROCESSOR_LOGGING_STREAM_KEY = "evt-proc-log-{0}";
