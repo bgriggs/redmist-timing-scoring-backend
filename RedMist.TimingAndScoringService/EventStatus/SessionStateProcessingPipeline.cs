@@ -9,7 +9,6 @@ using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
-using System.Collections.Immutable;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 
@@ -308,22 +307,6 @@ public class SessionStateProcessingPipeline
                     // Update pipeline health score
                     var healthScore = CalculatePipelineHealth();
                     _pipelineHealth.Set(healthScore);
-
-                    var pit = new List<string>();
-                    foreach (var c in sessionContext.SessionState.CarPositions.ToArray())
-                    {
-                        if (c.IsInPit)
-                            pit.Add(c.Number!);
-                    }
-                    Logger.LogInformation("Session State Cars currently in pit: " + string.Join(", ", pit));
-
-                    pit.Clear();
-                    foreach (var trans in pitProcessor.inPit)
-                    {
-                        var c = sessionContext.GetCarNumberForTransponder(trans.Key) ?? "??";
-                        pit.Add(c);
-                    }
-                    Logger.LogInformation("Passing Proc: Cars currently in pit: " + string.Join(", ", pit));
                 }
                 catch (Exception ex)
                 {
@@ -360,12 +343,10 @@ public class SessionStateProcessingPipeline
 
             Logger.LogDebug(Environment.NewLine +
                            "SessionMonitor: {SMMsgs} processed, {SMActive} active, {SMAvgTime:F2}ms avg | " + Environment.NewLine +
-                           "PositionMetadata: {PMMsgs} processed, {PMActive} active, {PMAvgTime:F2}ms avg",
+                           "PositionMetadata: {PMMsgs} processed, {PMActive} active, {PMAvgTime:F2}ms avg" + Environment.NewLine +
+                           "UpdateConsolidator: {UCMsgs} processed, {UCActive} active, {UCAvgTime:F2}ms avg | ",
                 sessionMonitorMetrics.MessagesProcessed, sessionMonitorMetrics.ActiveMessages, sessionMonitorMetrics.AvgProcessingTime * 1000,
-                positionMetadataMetrics.MessagesProcessed, positionMetadataMetrics.ActiveMessages, positionMetadataMetrics.AvgProcessingTime * 1000);
-
-            Logger.LogDebug(Environment.NewLine +
-                           "UpdateConsolidator: {UCMsgs} processed, {UCActive} active, {UCAvgTime:F2}ms avg | " + Environment.NewLine,
+                positionMetadataMetrics.MessagesProcessed, positionMetadataMetrics.ActiveMessages, positionMetadataMetrics.AvgProcessingTime * 1000,
                 updateConsolidatorMetrics.MessagesProcessed, updateConsolidatorMetrics.ActiveMessages, updateConsolidatorMetrics.AvgProcessingTime * 1000);
         }
         catch (Exception ex)

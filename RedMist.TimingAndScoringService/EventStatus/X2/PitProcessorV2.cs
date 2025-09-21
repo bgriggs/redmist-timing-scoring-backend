@@ -23,7 +23,7 @@ public class PitProcessorV2
     private readonly SessionContext sessionContext;
     private TimingCommon.Models.Configuration.Event? eventConfiguration;
     private readonly Dictionary<string, HashSet<int>> carLapsWithPitStops = [];
-    public readonly Dictionary<uint, Passing> inPit = [];
+    private readonly Dictionary<uint, Passing> inPit = [];
     private readonly Dictionary<uint, Passing> pitEntrance = [];
     private readonly Dictionary<uint, Passing> pitExit = [];
     private readonly Dictionary<uint, Passing> pitSf = [];
@@ -127,19 +127,6 @@ public class PitProcessorV2
         foreach (var pass in passings)
         {
             RemoveTransponderFromAllPassings(pass.TransponderId);
-
-            var carNum = sessionContext.GetCarNumberForTransponder(pass.TransponderId);
-            if (carNum != null)
-            {
-                var car = sessionContext.GetCarByNumber(carNum);
-                if (car != null)
-                {
-                    if (pass.IsInPit)
-                        Logger.LogInformation("**** Pass InPit Number {n}", car.Number);
-                    else
-                        Logger.LogTrace("Passing for car {c}", car.Number);
-                }
-            }
 
             if (pass.IsInPit)
             {

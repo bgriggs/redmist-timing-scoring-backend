@@ -1,5 +1,4 @@
 using Prometheus;
-using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 
 namespace RedMist.TimingAndScoringService.EventStatus;
 

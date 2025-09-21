@@ -439,10 +439,10 @@ public class PitProcessorV2Tests
 
         // Should only update IsInPit based on IsInPit flag, not any loop-specific flags
         Assert.AreEqual(true, carPatch.IsInPit);
-        // No loop-specific flags should be set
-        Assert.IsNull(carPatch.IsEnteredPit);
-        Assert.IsNull(carPatch.IsExitedPit);
-        Assert.IsNull(carPatch.IsPitStartFinish);
+        // No loop-specific flags should be set (they will be false, not null)
+        Assert.AreEqual(false, carPatch.IsEnteredPit);
+        Assert.AreEqual(false, carPatch.IsExitedPit);
+        Assert.AreEqual(false, carPatch.IsPitStartFinish);
     }
 
     [TestMethod]
@@ -719,8 +719,8 @@ public class PitProcessorV2Tests
         // Should still process IsInPit
         Assert.AreEqual(true, carPatch.IsInPit);
 
-        // But no loop-specific processing should occur
-        Assert.IsNull(carPatch.IsEnteredPit);
+        // But no loop-specific processing should occur (they will be false, not null)
+        Assert.AreEqual(false, carPatch.IsEnteredPit);
     }
 
     #endregion
@@ -1009,7 +1009,7 @@ public class PitProcessorV2Tests
         var secondCarPatch = secondResult.CarPatches[0];
 
         // Now loop 1 should be treated as PitExit instead of PitIn
-        Assert.IsNull(secondCarPatch.IsEnteredPit); // Should NOT be entrance anymore
+        Assert.AreEqual(false, secondCarPatch.IsEnteredPit); // Should NOT be entrance anymore
         Assert.AreEqual(true, secondCarPatch.IsExitedPit); // Should be exit now
 
         // Verify reload was logged
