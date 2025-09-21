@@ -15,6 +15,7 @@ using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.LapData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
+using RedMist.TimingAndScoringService.EventStatus.PenaltyEnricher;
 using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
@@ -100,6 +101,8 @@ public class Program
         builder.Services.AddSingleton<UpdateConsolidator>();
         builder.Services.AddSingleton<StatusAggregatorV2>();
         builder.Services.AddSingleton<StartingPositionProcessor>();
+        builder.Services.AddSingleton<ControlLogEnricher>();
+        builder.Services.AddHostedService(provider => provider.GetRequiredService<ControlLogEnricher>());
         builder.Services.AddSingleton<SessionStateProcessingPipeline>();
         builder.Services.AddHostedService<EventAggregator>();
         builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<Program>());

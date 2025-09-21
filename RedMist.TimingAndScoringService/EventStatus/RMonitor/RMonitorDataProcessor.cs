@@ -6,7 +6,6 @@ using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
-using RedMist.TimingAndScoringService.EventStatus.Multiloop;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 using RedMist.TimingAndScoringService.EventStatus.X2;

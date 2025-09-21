@@ -9,6 +9,7 @@ using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.LapData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
+using RedMist.TimingAndScoringService.EventStatus.PenaltyEnricher;
 using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
@@ -40,6 +41,7 @@ public class SessionStateProcessingPipelineTests
     private FlagProcessorV2 _flagProcessor = null!;
     private SessionMonitorV2 _sessionMonitor = null!;
     private PositionDataEnricher _positionEnricher = null!;
+    private ControlLogEnricher _controlLogEnricher = null!;
     private ResetProcessor _resetProcessor = null!;
     private LapProcessor _lapProcessor = null!;
     private UpdateConsolidator _updateConsolidator = null!;
@@ -126,6 +128,7 @@ public class SessionStateProcessingPipelineTests
         _rMonitorProcessor = new RMonitorDataProcessorV2(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor);
         _multiloopProcessor = new MultiloopProcessor(_mockLoggerFactory.Object, _sessionContext);
         _pitProcessor = new PitProcessorV2(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
+        _controlLogEnricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);
         _flagProcessor = new FlagProcessorV2(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _sessionMonitor = new SessionMonitorV2(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _positionEnricher = new PositionDataEnricher(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
@@ -145,6 +148,7 @@ public class SessionStateProcessingPipelineTests
             _flagProcessor,
             _sessionMonitor,
             _positionEnricher,
+            _controlLogEnricher,
             _resetProcessor,
             _lapProcessor,
             _updateConsolidator,

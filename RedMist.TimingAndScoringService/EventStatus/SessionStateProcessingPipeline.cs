@@ -2,6 +2,7 @@
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.LapData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
+using RedMist.TimingAndScoringService.EventStatus.PenaltyEnricher;
 using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
@@ -28,6 +29,7 @@ public class SessionStateProcessingPipeline
     private readonly FlagProcessorV2 flagProcessor;
     private readonly SessionMonitorV2 sessionMonitor;
     private readonly PositionDataEnricher positionEnricher;
+    private readonly ControlLogEnricher controlLogEnricher;
     private readonly ResetProcessor resetProcessor;
     private readonly LapProcessor lapProcessor;
     private readonly UpdateConsolidator updateConsolidator;
@@ -65,6 +67,7 @@ public class SessionStateProcessingPipeline
         FlagProcessorV2 flagProcessorV2,
         SessionMonitorV2 sessionMonitorV2,
         PositionDataEnricher positionEnricher,
+        ControlLogEnricher controlLogEnricher,
         ResetProcessor resetProcessor,
         LapProcessor lapProcessor,
         UpdateConsolidator updateConsolidator,
@@ -80,6 +83,7 @@ public class SessionStateProcessingPipeline
         flagProcessor = flagProcessorV2;
         sessionMonitor = sessionMonitorV2;
         this.positionEnricher = positionEnricher;
+        this.controlLogEnricher = controlLogEnricher;
         this.resetProcessor = resetProcessor;
         this.lapProcessor = lapProcessor;
         this.updateConsolidator = updateConsolidator;
@@ -150,6 +154,11 @@ public class SessionStateProcessingPipeline
                                 }
                             }
                             allAppliedChanges.Add(new PatchUpdates([], [.. pitPatches]));
+
+                            // Apply penalties
+                            var penaltyPatches = controlLogEnricher.Process();
+                            if (penaltyPatches != null && penaltyPatches.Count > 0)
+                                allAppliedChanges.Add(new PatchUpdates([], [.. penaltyPatches]));
                         }
                     }
                     else if (message.Type == Backend.Shared.Consts.MULTILOOP_TYPE)
