@@ -98,8 +98,7 @@ public class TsContext : DbContext
         var loopsComparer = new ValueComparer<List<LoopMetadata>>(
             (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2), // Ensure both lists are non-null before calling SequenceEqual
             c => c != null ? c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())) : 0, // Handle null case for hash code
-            c => c != null ? c.ToList() : new List<LoopMetadata>() // Handle null case for snapshot
-        );
+            c => c != null ? c.ToList() : new List<LoopMetadata>()); // Handle null case for snapshot
 
         modelBuilder.Entity<TimingCommon.Models.Configuration.Event>()
             .Property(o => o.LoopsMetadata)
@@ -110,10 +109,16 @@ public class TsContext : DbContext
         var payloadConverter = new ValueConverter<Payload, string>(
             v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
             v => JsonSerializer.Deserialize<Payload>(v, JsonSerializerOptions.Default) ?? new Payload());
+        var sessionStateConverter = new ValueConverter<SessionState, string>(
+            v => JsonSerializer.Serialize(v, JsonSerializerOptions.Default),
+            v => JsonSerializer.Deserialize<SessionState>(v, JsonSerializerOptions.Default) ?? new SessionState());
 
         modelBuilder.Entity<SessionResult>()
             .Property(o => o.Payload)
             .HasConversion(payloadConverter!);
+        modelBuilder.Entity<SessionResult>()
+            .Property(o => o.SessionState)
+            .HasConversion(sessionStateConverter!);
 
         // Configure TimingCommon models
         modelBuilder.Entity<Session>()

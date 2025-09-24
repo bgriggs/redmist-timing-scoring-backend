@@ -85,7 +85,7 @@ public class RMonitorDataProcessor
     public async Task ProcessUpdate(string type, string data, int sessionId, CancellationToken stoppingToken = default)
     {
         var sw = Stopwatch.StartNew();
-        await sessionMonitor.ProcessSessionAsync(sessionId, stoppingToken);
+        await sessionMonitor.ProcessAsync(sessionId, stoppingToken);
 
         // Parse RMonitor data
         if (type == Backend.Shared.Consts.RMONITOR_TYPE)
@@ -809,7 +809,7 @@ public class RMonitorDataProcessor
             _lock.Release();
         }
 
-        sessionMonitor.SetCurrentPayload(payload);
+        //sessionMonitor.SetCurrentPayload(payload);
 
         // Perform consistency check
         var isConsistent = PerformConsistencyCheck(payload);

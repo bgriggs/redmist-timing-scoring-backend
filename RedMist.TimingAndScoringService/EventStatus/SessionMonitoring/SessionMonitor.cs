@@ -15,7 +15,7 @@ public class SessionMonitor
     private readonly Debouncer lastUpdatedDebouncer = new(TimeSpan.FromMilliseconds(1500));
     private readonly int eventId;
     private readonly IDbContextFactory<TsContext> tsContext;
-
+    private readonly SessionContext sessionContext;
     private readonly static Flags[] activeSessionFlags = [Flags.White, Flags.Green, Flags.Yellow, Flags.Purple35];
     private readonly static Flags[] finishedSessionFlags = [Flags.Checkered];
     private DateTime? finishingStartedTimestamp;
@@ -24,43 +24,45 @@ public class SessionMonitor
     private int lastCheckeredChangedCount;
     private DateTime? lastCheckeredChangedCountTimestamp;
 
-    private Payload? currentPayload;
-    private Payload? GetCurrentPayload()
-    {
-        lock (payloadLock)
-        {
-            return currentPayload;
-        }
-    }
+    //private Payload? currentPayload;
+    //private Payload? GetCurrentPayload()
+    //{
+    //    lock (payloadLock)
+    //    {
+    //        return currentPayload;
+    //    }
+    //}
 
-    public void SetCurrentPayload(Payload? value)
-    {
-        lock (payloadLock)
-        {
-            if (currentPayload != value)
-            {
-                if (currentPayload != null && value != null)
-                {
-                    CheckForFinished(currentPayload, value);
-                }
-                currentPayload = value;
-            }
-        }
-    }
-    private readonly Lock payloadLock = new();
+    //public void SetCurrentPayload(Payload? value)
+    //{
+    //    lock (payloadLock)
+    //    {
+    //        if (currentPayload != value)
+    //        {
+    //            if (currentPayload != null && value != null)
+    //            {
+    //                CheckForFinished(currentPayload, value);
+    //            }
+    //            currentPayload = value;
+    //        }
+    //    }
+    //}
+    //private readonly Lock payloadLock = new();
 
     public event Action? FinalizedSession;
 
 
-    public SessionMonitor(int eventId, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory)
+    public SessionMonitor(int eventId, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory,
+        SessionContext sessionContext)
     {
         this.eventId = eventId;
         this.tsContext = tsContext;
+        this.sessionContext = sessionContext;
         Logger = loggerFactory.CreateLogger(GetType().Name);
     }
 
 
-    public async Task ProcessSessionAsync(int sessionId, CancellationToken stoppingToken = default)
+    public async Task ProcessAsync(int sessionId, CancellationToken stoppingToken = default)
     {
         if (sessionId == 999999)
             return;
@@ -91,7 +93,6 @@ public class SessionMonitor
         checkeredCarPositionsLookup.Clear();
         lastCheckeredChangedCount = 0;
         lastCheckeredChangedCountTimestamp = null;
-        SetCurrentPayload(null);
     }
 
     protected virtual async Task SaveLastUpdatedTimestampAsync(int eventId, int sessionId, CancellationToken stoppingToken = default)
@@ -118,35 +119,28 @@ public class SessionMonitor
                 session.IsLive = false;
                 session.EndTime = DateTime.UtcNow;
 
-                var payload = GetCurrentPayload();
-                if (payload != null)
+                var sessionState = sessionContext.SessionState;
+                var existingResult = db.SessionResults.FirstOrDefault(r => r.EventId == eventId && r.SessionId == SessionId);
+                if (existingResult != null)
                 {
-                    var existingResult = db.SessionResults.FirstOrDefault(r => r.EventId == eventId && r.SessionId == SessionId);
-                    if (existingResult != null)
-                    {
-                        existingResult.Payload = payload;
-                    }
-                    else
-                    {
-                        var result = new SessionResult
-                        {
-                            EventId = eventId,
-                            SessionId = SessionId,
-                            Start = session.StartTime,
-                            Payload = payload
-                        };
-                        db.SessionResults.Add(result);
-                    }
+                    existingResult.SessionState = sessionState;
                 }
+                else
+                {
+                    var result = new SessionResult
+                    {
+                        EventId = eventId,
+                        SessionId = SessionId,
+                        Start = session.StartTime,
+                        SessionState = sessionState
+                    };
+                    db.SessionResults.Add(result);
+                }
+            }
 
-                db.SaveChanges();
-                ClearSession();
-                FireFinalizedSession();
-            }
-            else
-            {
-                Logger.LogWarning("Cannot finalize session {sessionId}. Not found in database.", SessionId);
-            }
+            db.SaveChanges();
+            ClearSession();
+            FireFinalizedSession();
         }
         catch (Exception ex)
         {
@@ -164,12 +158,12 @@ public class SessionMonitor
     /// <summary>
     /// Looks at the last and current status to for flag status changes and subsequent car finishing or event status stopping.
     /// </summary>
-    private void CheckForFinished(Payload last, Payload current)
+    public void CheckForFinished(SessionState last, SessionState current)
     {
         // See if the event is in the process of finishing, i.e. last lap during checkered flag
-        if (finishingStartedTimestamp is not null && current.EventStatus != null)
+        if (finishingStartedTimestamp is not null)
         {
-            var eventTime = PositionMetadataProcessor.ParseRMTime(current.EventStatus.LocalTimeOfDay);
+            var eventTime = PositionMetadataProcessor.ParseRMTime(current.LocalTimeOfDay);
             var changes = GetCarCheckeredLapChangedCount(current.CarPositions);
 
             // As cars continue to complete their final lap, update the checkered lap count/timestamp
@@ -195,9 +189,8 @@ public class SessionMonitor
             finishingEventLastTimestamp = eventTime;
         }
         // See if event status changed from active to finished
-        else if (last.EventStatus != null && current.EventStatus != null &&
-            activeSessionFlags.Contains(last.EventStatus.Flag) &&
-            finishedSessionFlags.Contains(current.EventStatus.Flag))
+        else if (activeSessionFlags.Contains(last.CurrentFlag) &&
+            finishedSessionFlags.Contains(current.CurrentFlag))
         {
             Logger.LogInformation("Session {sessionId} finishing started", SessionId);
             foreach (var carPosition in current.CarPositions)
@@ -208,7 +201,7 @@ public class SessionMonitor
                 }
             }
 
-            finishingStartedTimestamp = PositionMetadataProcessor.ParseRMTime(current.EventStatus.LocalTimeOfDay);
+            finishingStartedTimestamp = PositionMetadataProcessor.ParseRMTime(current.LocalTimeOfDay);
         }
     }
 

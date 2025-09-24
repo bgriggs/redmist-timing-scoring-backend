@@ -89,7 +89,7 @@ public class EventAggregator : BackgroundService
 
         cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
 
-        var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory);
+        var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory, sessionContext);
         var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
         var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
         var driverModeDataProcessor = new DriverModeProcessor(eventId, hubContext, loggerFactory, hcache, tsContext, cacheMux);

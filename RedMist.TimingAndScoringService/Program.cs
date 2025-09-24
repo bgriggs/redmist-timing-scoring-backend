@@ -94,7 +94,6 @@ public class Program
         builder.Services.AddSingleton<RMonitorDataProcessorV2>();
         builder.Services.AddSingleton<PitProcessorV2>();
         builder.Services.AddSingleton<FlagProcessorV2>();
-        builder.Services.AddSingleton<SessionMonitorV2>();
         builder.Services.AddSingleton<PositionDataEnricher>();
         builder.Services.AddSingleton<ResetProcessor>();
         builder.Services.AddSingleton<LapProcessor>();
@@ -103,6 +102,8 @@ public class Program
         builder.Services.AddSingleton<StartingPositionProcessor>();
         builder.Services.AddSingleton<ControlLogEnricher>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<ControlLogEnricher>());
+        builder.Services.AddSingleton<SessionMonitorV2>();
+        builder.Services.AddHostedService(provider => provider.GetRequiredService<SessionMonitorV2>());
         builder.Services.AddSingleton<SessionStateProcessingPipeline>();
         builder.Services.AddHostedService<EventAggregator>();
         builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<Program>());

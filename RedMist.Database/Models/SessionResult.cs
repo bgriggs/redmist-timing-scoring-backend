@@ -10,4 +10,5 @@ public class SessionResult
     public int SessionId { get; set; }
     public DateTime Start { get; set; }
     public Payload? Payload { get; set; }
+    public SessionState? SessionState { get; set; }
 }

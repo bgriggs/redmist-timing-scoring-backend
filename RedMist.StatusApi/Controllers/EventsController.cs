@@ -5,8 +5,11 @@ using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.Memory;
 using RedMist.Backend.Shared;
 using RedMist.Database;
+using RedMist.Database.Models;
+using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
+using RedMist.TimingCommon.Models.Mappers;
 using StackExchange.Redis;
 using System.Diagnostics;
 using System.Text.Json;
@@ -235,7 +238,33 @@ public class EventsController : ControllerBase
         Logger.LogTrace("GetSessionResults for event {eventId}, session {sessionId}", eventId, sessionId);
         using var context = await tsContext.CreateDbContextAsync();
         var result = await context.SessionResults.FirstOrDefaultAsync(r => r.EventId == eventId && r.SessionId == sessionId);
-        return result?.Payload;
+
+        // Use the session state to generate the payload if available
+        Payload? payload = null;
+        if (result != null&& result.SessionState != null && result.SessionState.SessionId > 0)
+        {
+            payload = result.SessionState.ToPayload();
+        }
+
+        return payload ?? result?.Payload;
+    }
+
+    [HttpGet]
+    [ProducesResponseType<SessionState>(StatusCodes.Status200OK)]
+    public async Task<SessionState?> LoadSessionResultsV2(int eventId, int sessionId)
+    {
+        Logger.LogTrace("GetSessionResults for event {eventId}, session {sessionId}", eventId, sessionId);
+        using var context = await tsContext.CreateDbContextAsync();
+        var result = await context.SessionResults.FirstOrDefaultAsync(r => r.EventId == eventId && r.SessionId == sessionId);
+
+        // Use the session state to generate the payload if available
+        SessionState? sessionState = null;
+        if (result != null && result.Payload != null && !string.IsNullOrEmpty(result.Payload.EventStatus?.EventId))
+        {
+            sessionState = result.Payload.ToSessionState();
+        }
+
+        return sessionState ?? result?.SessionState;
     }
 
     [HttpGet]
