@@ -7,6 +7,11 @@ using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 
+/// <summary>
+/// Tracks the current session for an event, updating its last updated timestamp and finalizing it when it ends.
+/// This could be triggered by either a session change message or by detecting the end of a session at the end of an event
+/// where no new session is started.
+/// </summary>
 public class SessionMonitor
 {
     public int SessionId { get; private set; }
@@ -23,32 +28,6 @@ public class SessionMonitor
     private readonly Dictionary<string, CarPosition> checkeredCarPositionsLookup = [];
     private int lastCheckeredChangedCount;
     private DateTime? lastCheckeredChangedCountTimestamp;
-
-    //private Payload? currentPayload;
-    //private Payload? GetCurrentPayload()
-    //{
-    //    lock (payloadLock)
-    //    {
-    //        return currentPayload;
-    //    }
-    //}
-
-    //public void SetCurrentPayload(Payload? value)
-    //{
-    //    lock (payloadLock)
-    //    {
-    //        if (currentPayload != value)
-    //        {
-    //            if (currentPayload != null && value != null)
-    //            {
-    //                CheckForFinished(currentPayload, value);
-    //            }
-    //            currentPayload = value;
-    //        }
-    //    }
-    //}
-    //private readonly Lock payloadLock = new();
-
     public event Action? FinalizedSession;
 
 
@@ -119,7 +98,12 @@ public class SessionMonitor
                 session.IsLive = false;
                 session.EndTime = DateTime.UtcNow;
 
-                var sessionState = sessionContext.SessionState;
+                var sessionState = new SessionState();
+                if (sessionContext.SessionState.SessionId == SessionId)
+                    sessionState = sessionContext.SessionState;
+                else if (sessionContext.PreviousSessionState.SessionId == SessionId)
+                    sessionState = sessionContext.PreviousSessionState;
+
                 var existingResult = db.SessionResults.FirstOrDefault(r => r.EventId == eventId && r.SessionId == SessionId);
                 if (existingResult != null)
                 {
@@ -151,8 +135,22 @@ public class SessionMonitor
     protected virtual async Task SetSessionAsLiveAsync(int eventId, int sessionId)
     {
         using var db = tsContext.CreateDbContext();
-        await db.Database.ExecuteSqlAsync($"UPDATE Sessions SET IsLive = 0 WHERE EventId = {eventId}");
-        await db.Database.ExecuteSqlAsync($"UPDATE Sessions SET IsLive = 1 WHERE EventId = {eventId} AND Id = {sessionId}");
+        
+        // Set all sessions as not live for this event
+        var sessionsToUpdate = await db.Sessions.Where(s => s.EventId == eventId).ToListAsync();
+        foreach (var session in sessionsToUpdate)
+        {
+            session.IsLive = false;
+        }
+        
+        // Set the specific session as live
+        var targetSession = sessionsToUpdate.FirstOrDefault(s => s.Id == sessionId);
+        if (targetSession != null)
+        {
+            targetSession.IsLive = true;
+        }
+        
+        await db.SaveChangesAsync();
     }
 
     /// <summary>

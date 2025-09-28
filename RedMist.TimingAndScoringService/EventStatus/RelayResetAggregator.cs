@@ -1,4 +1,4 @@
-﻿using MediatR;
+﻿using RedMist.Backend.Shared.Services;
 using Microsoft.AspNetCore.SignalR;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.TimingAndScoringService.Models;

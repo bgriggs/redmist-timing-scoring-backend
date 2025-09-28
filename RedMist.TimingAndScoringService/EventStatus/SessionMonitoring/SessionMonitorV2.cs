@@ -10,9 +10,10 @@ namespace RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 public class SessionMonitorV2 : BackgroundService
 {
     private ILogger Logger { get; }
-    private readonly SessionMonitor sm;
+    public SessionMonitor InnerSessionMonitor { get; }
     private readonly SessionContext sessionContext;
     private Session? lastSession;
+    private SessionState? last = null;
 
 
     public SessionMonitorV2(IConfiguration configuration, IDbContextFactory<TsContext> tsContext, 
@@ -20,8 +21,8 @@ public class SessionMonitorV2 : BackgroundService
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         var eventId = configuration.GetValue("event_id", 0);
-        sm = new SessionMonitor(eventId, tsContext, loggerFactory, sessionContext);
-        sm.FinalizedSession += Sm_FinalizedSession;
+        InnerSessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory, sessionContext);
+        InnerSessionMonitor.FinalizedSession += Sm_FinalizedSession;
         this.sessionContext = sessionContext;
     }
 
@@ -34,36 +35,41 @@ public class SessionMonitorV2 : BackgroundService
         lastSession = JsonSerializer.Deserialize<Session>(tm.Data);
         if (lastSession != null)
         {
-            await sm.ProcessAsync(lastSession.Id, sessionContext.CancellationToken);
+            await InnerSessionMonitor.ProcessAsync(lastSession.Id, sessionContext.CancellationToken);
         }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        SessionState? last = null;
+        
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-                using (await sessionContext.SessionStateLock.AcquireReadLockAsync(sessionContext.CancellationToken))
-                {
-                    if (last != null)
-                    {
-                        var pc = SessionStateMapper.ToPatch(sessionContext.SessionState);
-                        pc.CarPositions = null; // Don't need to keep car positions
-                        sm.CheckForFinished(last, SessionStateMapper.PatchToEntity(pc));
-                    }
-
-                    var pl = SessionStateMapper.ToPatch(sessionContext.SessionState);
-                    pl.CarPositions = null; // Don't need to keep car positions
-                    last = SessionStateMapper.PatchToEntity(pl);
-                }
+                await RunCheckForFinished(stoppingToken);
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error reading event status stream");
             }
+        }
+    }
+
+    public async Task RunCheckForFinished(CancellationToken stoppingToken)
+    {
+        using (await sessionContext.SessionStateLock.AcquireReadLockAsync(sessionContext.CancellationToken))
+        {
+            if (last != null)
+            {
+                var pc = SessionStateMapper.ToPatch(sessionContext.SessionState);
+                pc.CarPositions = null; // Don't need to keep car positions
+                InnerSessionMonitor.CheckForFinished(last, SessionStateMapper.PatchToEntity(pc));
+            }
+
+            var pl = SessionStateMapper.ToPatch(sessionContext.SessionState);
+            pl.CarPositions = null; // Don't need to keep car positions
+            last = SessionStateMapper.PatchToEntity(pl);
         }
     }
 

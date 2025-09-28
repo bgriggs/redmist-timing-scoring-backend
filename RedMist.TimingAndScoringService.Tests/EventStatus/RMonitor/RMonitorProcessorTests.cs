@@ -1,5 +1,5 @@
 ﻿using BigMission.TestHelpers.Testing;
-using MediatR;
+using RedMist.Backend.Shared.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;

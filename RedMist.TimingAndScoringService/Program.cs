@@ -9,6 +9,7 @@ using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Services;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
@@ -21,7 +22,6 @@ using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 using RedMist.TimingAndScoringService.EventStatus.X2;
-using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
 
 namespace RedMist.TimingAndScoringService;
@@ -106,7 +106,7 @@ public class Program
         builder.Services.AddHostedService(provider => provider.GetRequiredService<SessionMonitorV2>());
         builder.Services.AddSingleton<SessionStateProcessingPipeline>();
         builder.Services.AddHostedService<EventAggregator>();
-        builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<Program>());
+        builder.Services.AddMediatorFromAssemblyContaining<Program>();
 
         builder.Services.AddHealthChecks()
             .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])

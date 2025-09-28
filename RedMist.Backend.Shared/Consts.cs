@@ -47,7 +47,8 @@ public class Consts
     public const string MULTILOOP_TYPE = "multiloop";
     public const string X2PASS_TYPE = "x2pass";
     public const string FLAGS_TYPE = "flags";
-    public const string EVENT_SESSION_CHANGED_TYPE = "evtsessionchanged";
 
+    public const string EVENT_SESSION_CHANGED_TYPE = "evtsessionchanged";
+    public const string EVENT_SESSION_CHANGED = EVENT_SESSION_CHANGED_TYPE + "-{0}-{1}";
     #endregion
 }

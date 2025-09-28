@@ -1,9 +1,12 @@
+using Google.Apis.Sheets.v4.Data;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using RedMist.Backend.Shared.Hubs;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
@@ -18,6 +21,8 @@ using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
+using System.Text.Json;
+
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus.ProcessingPipeline;
 
@@ -27,6 +32,7 @@ public class SessionStateProcessingPipelineTests
     private SessionStateProcessingPipeline _pipeline = null!;
     private SessionContext _sessionContext = null!;
     private IConfiguration _configuration = null!;
+    private FakeTimeProvider _timeProvider = new();
 
     // Core dependencies - these remain mocked as they are infrastructure
     private Mock<ILoggerFactory> _mockLoggerFactory = null!;
@@ -105,7 +111,7 @@ public class SessionStateProcessingPipelineTests
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
 
-        _sessionContext = new SessionContext(_configuration);
+        _sessionContext = new SessionContext(_configuration, _timeProvider);
     }
 
     private void SetupDbContextFactory()
@@ -319,7 +325,105 @@ public class SessionStateProcessingPipelineTests
         Assert.AreEqual("15.925", car149!.OverallGap);
     }
 
-    
+    [TestMethod]
+    public async Task RMonitor_SessionChanges_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "TestSessionChanges.txt");
+        await entriesData.LoadAsync();
+        int finishedCount = 0;
+        _sessionMonitor.InnerSessionMonitor.FinalizedSession += () => finishedCount++;
+
+        // Act
+        int i = 0;
+        int lastSession = 0;
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            await _pipeline.Post(tm);
+
+            var lines = d.data.Split('\n');
+            foreach(var line in lines)
+            {
+                var lt = line.Trim();
+                if (lt.StartsWith("$F"))
+                {
+                    // Advance time to simulate passage between records
+                    _timeProvider.Advance(TimeSpan.FromSeconds(1));
+                }
+                else if (lt.StartsWith("$B"))
+                {
+                    // Extract session details from $B record
+                    var parts = lt.Split(',');
+                    var s = new Session
+                    {
+                        Id = int.Parse(parts[1]),
+                        EventId = 1,
+                        Name = parts[2],
+                        IsLive = true,
+                        StartTime = DateTime.UtcNow,
+                        LastUpdated = DateTime.UtcNow,
+                        LocalTimeZoneOffset = -4,
+                        IsPracticeQualifying = SessionHelper.IsPracticeOrQualifyingSession(parts[2])
+                    };
+
+                    if (s.Id != lastSession)
+                    {
+                        lastSession = s.Id;
+                        Console.WriteLine($"Session change to {s.Id} - {s.Name} at {d.ts}");
+
+                        var sJson = JsonSerializer.Serialize(s);
+
+                        // Simulate session change message to SessionMonitorV2
+                        var sessionChangeTm = new TimingMessage(Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE, sJson, s.Id, d.ts);
+                        await _pipeline.Post(sessionChangeTm);
+                    }
+                }
+            }
+
+            i++;
+            if (i % 10 == 0) // Run session monitor periodically similar to task wait 5 seconds
+            {
+                await _sessionMonitor.RunCheckForFinished(_sessionContext.CancellationToken);
+            }
+        }
+
+        // Assert
+        Assert.AreEqual(11, finishedCount); // There are 11 session changes in the test data
+    }
+
+
+    [TestMethod]
+    public async Task RMonitor_Reset_KeepLapTimes_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "TestResetRetainLapTime.txt");
+        await entriesData.LoadAsync();
+
+        // Act
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                // Advance time to simulate passage between records
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+            }
+
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            if (d.data.Contains("$I"))
+            {
+            }
+            await _pipeline.Post(tm);
+        }
+
+        // Assert
+        Assert.AreEqual("00:02:25.077", _sessionContext.SessionState.CarPositions.Single(c => c.Number == "70").LastLapTime);
+        Assert.AreEqual(null, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "2").LastLapTime);
+        Assert.AreEqual("00:02:27.407", _sessionContext.SessionState.CarPositions.Single(c => c.Number == "74").LastLapTime);
+        Assert.AreEqual("00:02:30.314", _sessionContext.SessionState.CarPositions.Single(c => c.Number == "99").LastLapTime);
+    }
 
     #region Database Initialization
 
@@ -336,23 +440,16 @@ public class SessionStateProcessingPipelineTests
     /// <summary>
     /// Simple implementation of IDbContextFactory for testing
     /// </summary>
-    private class TestDbContextFactory : IDbContextFactory<TsContext>
+    private class TestDbContextFactory(DbContextOptions<TsContext> options) : IDbContextFactory<TsContext>
     {
-        private readonly DbContextOptions<TsContext> _options;
-
-        public TestDbContextFactory(DbContextOptions<TsContext> options)
-        {
-            _options = options;
-        }
-
         public TsContext CreateDbContext()
         {
-            return new TsContext(_options);
+            return new TsContext(options);
         }
 
         public async ValueTask<TsContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
         {
-            return await Task.FromResult(new TsContext(_options));
+            return await Task.FromResult(new TsContext(options));
         }
     }
 

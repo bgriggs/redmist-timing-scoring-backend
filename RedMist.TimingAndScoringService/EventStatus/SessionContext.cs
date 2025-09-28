@@ -1,5 +1,5 @@
 ﻿using RedMist.Backend.Shared.Utilities;
-using RedMist.TimingAndScoringService.EventStatus.RMonitor;
+using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
 
@@ -14,6 +14,15 @@ public class SessionContext
     private readonly AsyncReaderWriterLock sessionStateLock = new();
     public AsyncReaderWriterLock SessionStateLock => sessionStateLock;
 
+    /// <summary>
+    /// Session state before the last reset. This can be used to save the session's results
+    /// when a new session starts since the reset command happens before the $B run command 
+    /// and will clear the current session state.
+    /// </summary>
+    public SessionState PreviousSessionState { get; private set; } = new SessionState();
+    private DateTime lastPreviousSessionStateUpdate = DateTime.MinValue;
+    private readonly TimeProvider _timeProvider;
+
     public int EventId { get; }
 
     public virtual CancellationToken CancellationToken { get; set; } = CancellationToken.None;
@@ -27,11 +36,15 @@ public class SessionContext
     private readonly Dictionary<string, int> startingPositions = [];
     private readonly Dictionary<string, int> inClassStartingPositions = [];
 
+    // Last lap time before reset for each car number
+    private readonly Dictionary<string, string> lastLapTimesBeforeReset = [];
 
-    public SessionContext(IConfiguration configuration)
+
+    public SessionContext(IConfiguration configuration, TimeProvider? timeProvider = null)
     {
         EventId = configuration.GetValue("event_id", 0);
         SessionState.EventId = EventId;
+        _timeProvider = timeProvider ?? TimeProvider.System; // Use system time by default
     }
 
 
@@ -101,6 +114,35 @@ public class SessionContext
 
     public virtual void ResetCommand()
     {
+        // Prevent multiple resets from overwriting the previous session state, which there are 
+        // typically 2-3 $I commands at the same time when a new session starts.
+        var currentTime = _timeProvider.GetUtcNow().DateTime;
+        if ((currentTime - lastPreviousSessionStateUpdate).TotalSeconds > 5)
+        {
+            // Save a copy of the current session state before clearing it if there is a session change
+            var p = TimingCommon.Models.Mappers.SessionStateMapper.ToPatch(SessionState);
+            var copy = TimingCommon.Models.Mappers.SessionStateMapper.PatchToEntity(p);
+            copy.CarPositions = [.. copy.CarPositions.DeepCopy()];
+            copy.EventEntries = [.. SessionState.EventEntries];
+            copy.Announcements = [.. SessionState.Announcements];
+            copy.Sections = [.. SessionState.Sections];
+            copy.ClassColors = SessionState.ClassColors.ToDictionary();
+            copy.FlagDurations = [.. SessionState.FlagDurations];
+            PreviousSessionState = copy;
+
+            // Update last lap times before reset
+            lastLapTimesBeforeReset.Clear();
+            foreach (var car in SessionState.CarPositions)
+            {
+                if (!string.IsNullOrEmpty(car.Number) && !string.IsNullOrEmpty(car.LastLapTime))
+                {
+                    lastLapTimesBeforeReset[car.Number] = car.LastLapTime;
+                }
+            }
+
+            lastPreviousSessionStateUpdate = currentTime;
+        }
+
         numberToCarPositionLookup.Clear();
         transponderToNumberLookup.Clear();
         SessionState.EventEntries.Clear();
@@ -114,6 +156,7 @@ public class SessionContext
             ResetCommand();
             startingPositions.Clear();
             inClassStartingPositions.Clear();
+            lastLapTimesBeforeReset.Clear();
             SessionState = new SessionState { EventId = EventId, SessionId = sessionId, SessionName = sessionName };
         }
     }
@@ -153,5 +196,16 @@ public class SessionContext
     {
         startingPositions.Clear();
         inClassStartingPositions.Clear();
+    }
+
+    public virtual void SetLastLapTimeBeforeReset()
+    {
+        foreach(var car in SessionState.CarPositions)
+        {
+            if (!string.IsNullOrEmpty(car.Number) && lastLapTimesBeforeReset.TryGetValue(car.Number, out var lastLapTime))
+            {
+                car.LastLapTime = lastLapTime;
+            }
+        }
     }
 }

@@ -1,4 +1,4 @@
-﻿using MediatR;
+﻿using RedMist.Backend.Shared.Services;
 
 namespace RedMist.TimingAndScoringService.Models;
 

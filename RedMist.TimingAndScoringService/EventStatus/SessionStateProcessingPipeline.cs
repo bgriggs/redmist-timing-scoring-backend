@@ -181,7 +181,6 @@ public class SessionStateProcessingPipeline
                     }
                     else if (message.Type == Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE)
                     {
-                        // SessionMonitor doesn't return state changes but processes directly
                         await _sessionMonitorMetrics.TrackAsync(() => sessionMonitor.Process(message));
                     }
                 }
@@ -310,7 +309,7 @@ public class SessionStateProcessingPipeline
             {
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(2));
+                    await Task.Delay(TimeSpan.FromSeconds(10));
                     PrintPipelineMetrics();
 
                     // Update pipeline health score

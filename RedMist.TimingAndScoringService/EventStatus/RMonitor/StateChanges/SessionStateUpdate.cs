@@ -1,4 +1,5 @@
-﻿using RedMist.TimingCommon.Models;
+﻿using RedMist.Backend.Shared.Utilities;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 
@@ -14,7 +15,8 @@ public record SessionStateUpdate(int SessionId, string SessionName) : ISessionSt
         return new SessionStatePatch
         {
             SessionId = SessionId,
-            SessionName = SessionName
+            SessionName = SessionName,
+            IsPracticeQualifying = SessionHelper.IsPracticeOrQualifyingSession(SessionName)
         };
     }
 }

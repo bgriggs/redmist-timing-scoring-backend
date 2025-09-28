@@ -1,4 +1,4 @@
-﻿using MediatR;
+﻿using RedMist.Backend.Shared.Services;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingCommon.Models;
 

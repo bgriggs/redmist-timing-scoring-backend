@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.SignalR;
+using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
 
 namespace RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
@@ -19,9 +20,17 @@ public class ResetProcessor
 
     public async Task Process()
     {
-        var eventId = sessionContext.EventId.ToString();
-        Logger.LogInformation("*** Processing RESET for event {EventId} ***", eventId);
-        sessionContext.ResetCommand();
-        await hubContext.Clients.Group(eventId).SendAsync("ReceiveReset", sessionContext.CancellationToken);
+        try
+        {
+            var eventId = sessionContext.EventId.ToString();
+            var subKey = string.Format(Consts.EVENT_SUB_V2, eventId);
+            Logger.LogInformation("*** Processing RESET for event {EventId} ***", eventId);
+            sessionContext.ResetCommand();
+            await hubContext.Clients.Group(subKey).SendAsync("ReceiveReset", sessionContext.CancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing reset");
+        }
     }
 }

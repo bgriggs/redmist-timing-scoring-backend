@@ -246,10 +246,11 @@ public class RelayHub : Hub
             if (ev != null)
             {
                 Logger.LogTrace("SendSessionChange: success, event {e} found for client {c}", eventId, clientId);
+                Session s;
                 var existingSession = await db.Sessions.FirstOrDefaultAsync(x => x.EventId == eventId && x.Id == sessionId);
                 if (existingSession == null)
                 {
-                    var s = new Session
+                    s = new Session
                     {
                         Id = sessionId,
                         EventId = eventId,
@@ -264,17 +265,18 @@ public class RelayHub : Hub
                     db.Sessions.Add(s);
                     await db.SaveChangesAsync();
                     Logger.LogInformation("New session {s} saved for event {e}", sessionId, eventId);
-
-                    // Send the session to the service responsible for the specific event
-                    var sJson = JsonSerializer.Serialize(s);
-                    var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
-                    var cache = cacheMux.GetDatabase();
-                    await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_SESSION_CHANGED_TYPE), sJson);
                 }
                 else
                 {
+                    s = existingSession;
                     Logger.LogInformation("Session {s} already exists for event {e}. No modifications.", sessionId, eventId);
                 }
+
+                // Send the session to the service responsible for the specific event
+                var sJson = JsonSerializer.Serialize(s);
+                var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
+                var cache = cacheMux.GetDatabase();
+                await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_SESSION_CHANGED, eventId, sessionId), sJson);
             }
             else
             {

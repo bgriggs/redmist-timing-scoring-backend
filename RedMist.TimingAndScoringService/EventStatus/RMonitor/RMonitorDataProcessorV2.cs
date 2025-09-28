@@ -55,6 +55,10 @@ public class RMonitorDataProcessorV2
         bool competitorChanged = false;
 
         var commands = message.Data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        bool isMidRaceReset = false;
+        if (commands.Length > 4)
+            isMidRaceReset = IsMidRaceReset(message.Data);
+
         foreach (var command in commands)
         {
             if (string.IsNullOrWhiteSpace(command))
@@ -174,6 +178,15 @@ public class RMonitorDataProcessorV2
             //carPatches.AddRange(cps);
         }
 
+        // If this is a mid-race reset, have all cars re-evaluated for previous lap time 
+        // since the reset does not resend them and it would otherwise take a lap for each car
+        // to have their last lap time updated
+        if (isMidRaceReset)
+        {
+            sessionContext.SetLastLapTimeBeforeReset();
+            isMidRaceReset = false;
+        }
+
         return new PatchUpdates([.. sessionPatches], [.. carPatches]);
     }
 
@@ -243,26 +256,13 @@ public class RMonitorDataProcessorV2
         return null;
     }
 
-    ///// <summary>
-    ///// Builds patches for changes to car positions typically after a reset.
-    ///// </summary>
-    //private ImmutableList<CarPositionPatch> GetCarPatches(SessionContext sessionContext)
-    //{
-    //    var patches = new List<CarPositionPatch>();
-    //    try
-    //    {
-    //        foreach (var car in sessionContext.SessionState.CarPositions)
-    //        {
-    //            var patch = TimingCommon.Models.Mappers.CarPositionMapper.CreatePatch(new CarPosition(), car);
-    //            patches.Add(patch);
-    //        }
-    //    }
-    //    catch (Exception ex)
-    //    {
-    //        Logger.LogError(ex, "Error handling competitor changes");
-    //    }
-    //    return [.. patches];
-    //}
+    private bool IsMidRaceReset(string data)
+    {
+        if (Heartbeat.FlagStatus == string.Empty)
+            return false;
+        // A multi-line command that includes at last the following should follow a reset
+        return data.Contains("$I") && data.Contains("$A") && data.Contains("$COMP") && data.Contains("$G") && data.Contains("$H");
+    }
 
     #region Result Monitor
     #region Heartbeat message
