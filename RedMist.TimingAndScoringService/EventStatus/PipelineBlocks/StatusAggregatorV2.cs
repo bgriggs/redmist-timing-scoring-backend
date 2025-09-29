@@ -2,8 +2,6 @@
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.TimingCommon.Extensions;
-using RedMist.TimingCommon.Models;
-using System.Collections.Generic;
 using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;

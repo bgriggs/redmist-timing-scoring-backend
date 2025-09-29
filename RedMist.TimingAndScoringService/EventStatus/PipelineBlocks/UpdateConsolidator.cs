@@ -34,28 +34,11 @@ public class UpdateConsolidator
     {
         if (update == null || (update.SessionPatches.Count == 0 && update.CarPatches.Count == 0))
             return;
-        //Logger.LogTrace("UpdateConsolidator: ses: {sc} / cars: {c}", update.SessionPatches.Count, update.CarPatches.Count);
         await processLock.WaitAsync(sessionContext.CancellationToken);
         try
         {
             // Apply the new update immediately to accumulated patches
             ApplyUpdateToAccumulatedPatches(update);
-            
-            //var now = DateTime.UtcNow;
-            //var timeSinceLastProcess = now - lastProcessTime;
-
-            //// If it's been less than 20ms since the last process, wait for the remainder
-            //if (timeSinceLastProcess < DebounceInterval)
-            //{
-            //    var remainingWait = DebounceInterval - timeSinceLastProcess;
-            //    await Task.Delay(remainingWait, sessionContext.CancellationToken);
-            //}
-
-            //// Return the accumulated patches and reset for next cycle
-            //var result = GetAndResetAccumulatedPatches();
-            //lastProcessTime = DateTime.UtcNow;
-
-            //return result;
         }
         finally
         {
