@@ -412,9 +412,6 @@ public class SessionStateProcessingPipelineTests
             }
 
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            if (d.data.Contains("$I"))
-            {
-            }
             await _pipeline.Post(tm);
         }
 
@@ -423,6 +420,35 @@ public class SessionStateProcessingPipelineTests
         Assert.AreEqual(null, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "2").LastLapTime);
         Assert.AreEqual("00:02:27.407", _sessionContext.SessionState.CarPositions.Single(c => c.Number == "74").LastLapTime);
         Assert.AreEqual("00:02:30.314", _sessionContext.SessionState.CarPositions.Single(c => c.Number == "99").LastLapTime);
+    }
+
+    [TestMethod]
+    public async Task RMonitor_Reset_LosesPosition_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "TestAbnormalReset.txt");
+        await entriesData.LoadAsync();
+
+        // Act
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                // Advance time to simulate passage between records
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+            }
+
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            await _pipeline.Post(tm);
+        }
+
+        // Assert
+        // Make sure there are still positions for all cars
+        Assert.AreEqual(2, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "70").OverallPosition);
+        Assert.AreEqual(1, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "2").OverallPosition);
+        Assert.AreEqual(8, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "74").OverallPosition);
+        Assert.AreEqual(4, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "99").OverallPosition);
     }
 
     #region Database Initialization

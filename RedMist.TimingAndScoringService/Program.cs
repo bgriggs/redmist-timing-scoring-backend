@@ -105,7 +105,8 @@ public class Program
         builder.Services.AddSingleton<SessionMonitorV2>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<SessionMonitorV2>());
         builder.Services.AddSingleton<SessionStateProcessingPipeline>();
-        builder.Services.AddHostedService<EventAggregator>();
+        builder.Services.AddHostedService<EventAggregatorService>();
+        builder.Services.AddHostedService<ConsistencyCheckService>();
         builder.Services.AddMediatorFromAssemblyContaining<Program>();
 
         builder.Services.AddHealthChecks()

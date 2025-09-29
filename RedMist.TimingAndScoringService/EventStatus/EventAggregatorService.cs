@@ -23,7 +23,7 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 /// <summary>
 /// Coordinates the receiving of incoming timing data and sending the associated updates to UIs.
 /// </summary>
-public class EventAggregator : BackgroundService
+public class EventAggregatorService : BackgroundService
 {
     private const string CONSUMER_GROUP = "processor";
     private readonly int eventId;
@@ -54,7 +54,7 @@ public class EventAggregator : BackgroundService
     private readonly PitProcessorV2 pitProcessorV2;
 
 
-    public EventAggregator(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
+    public EventAggregatorService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
         IMediator mediator, HybridCache hcache, IDbContextFactory<TsContext> tsContext, IHubContext<StatusHub> hubContext,
         SessionStateProcessingPipeline processingPipeline, SessionContext sessionContext, PitProcessorV2 pitProcessorV2)
     {

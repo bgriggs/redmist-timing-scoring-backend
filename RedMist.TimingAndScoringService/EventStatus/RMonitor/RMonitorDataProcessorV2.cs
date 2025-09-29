@@ -27,6 +27,7 @@ public class RMonitorDataProcessorV2
     private readonly SessionContext sessionContext;
     private readonly ResetProcessor resetProcessor;
     private readonly StartingPositionProcessor startingPositionProcessor;
+    private const string STANDALONE_RESET_CMD = "$I, \"00:00:00\", \"0/0/0000\"";
 
 
     public RMonitorDataProcessorV2(ILoggerFactory loggerFactory, SessionContext sessionContext,
@@ -55,9 +56,11 @@ public class RMonitorDataProcessorV2
         bool competitorChanged = false;
 
         var commands = message.Data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        bool isMidRaceReset = false;
+        bool isMidRaceReset = false, isMidRaceStandaloneReset = false;
         if (commands.Length > 4)
             isMidRaceReset = IsMidRaceReset(message.Data);
+        else if (commands.Length == 1)
+            isMidRaceStandaloneReset = IsStandaloneMidRaceReset(message.Data);
 
         foreach (var command in commands)
         {
@@ -138,6 +141,16 @@ public class RMonitorDataProcessorV2
                 }
                 else if (command.StartsWith("$I"))
                 {
+                    if (isMidRaceStandaloneReset)
+                    {
+                        // Ignore standalone reset commands that are not part of a reset sequence since 
+                        // they create inconsistencies in the session state.
+                        // If this causes issues, consider sending a relay reset command with a force reconnect
+                        // to the timing system to make it send a full reset sequence.
+                        Logger.LogInformation("Received standalone RESET command mid-race--IGNORING");
+                        continue;
+                    }
+
                     // Init record (reset) - apply immediately
                     ProcessI();
 
@@ -256,12 +269,28 @@ public class RMonitorDataProcessorV2
         return null;
     }
 
+    /// <summary>
+    /// Determine if this is part of a mid-race reset sequence.
+    /// </summary>
+    /// <returns>true is a reset sequence</returns>
     private bool IsMidRaceReset(string data)
     {
         if (Heartbeat.FlagStatus == string.Empty)
             return false;
         // A multi-line command that includes at last the following should follow a reset
         return data.Contains("$I") && data.Contains("$A") && data.Contains("$COMP") && data.Contains("$G") && data.Contains("$H");
+    }
+
+    /// <summary>
+    /// Determine if this is a standalone mid-race reset command.
+    /// </summary>
+    /// <returns>true is a standalone reset</returns>
+    private bool IsStandaloneMidRaceReset(string data)
+    {
+        if (Heartbeat.FlagStatus == string.Empty)
+            return false;
+        // A single line command that is just the reset command
+        return data.Trim() == STANDALONE_RESET_CMD;
     }
 
     #region Result Monitor

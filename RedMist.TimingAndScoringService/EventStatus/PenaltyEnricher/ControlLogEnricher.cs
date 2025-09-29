@@ -50,7 +50,7 @@ public class ControlLogEnricher : BackgroundService
                     }
                 }
                 penaltyLookup = penalties.ToImmutableDictionary();
-                Logger.LogTrace("Updated penalty lookup with {count} entries", penalties.Count);
+                //Logger.LogTrace("Updated penalty lookup with {count} entries", penalties.Count);
                 updateReset = true;
                 await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }
