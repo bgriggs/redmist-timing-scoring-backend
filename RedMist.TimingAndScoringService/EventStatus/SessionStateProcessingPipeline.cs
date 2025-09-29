@@ -16,7 +16,6 @@ namespace RedMist.TimingAndScoringService.EventStatus;
 /// <summary>
 /// Responsible for processing session state updates with sequential processing and immediate context.
 /// </summary>
-/// <see cref="DataflowPipeline.md"/>
 public class SessionStateProcessingPipeline
 {
     private ILogger Logger { get; }
@@ -118,7 +117,7 @@ public class SessionStateProcessingPipeline
                 // Acquire write lock once for the entire message processing
                 using (await sessionContext.SessionStateLock.AcquireWriteLockAsync(sessionContext.CancellationToken))
                 {
-                    // ** Phase 1: Primary Message Processing  **
+                    // ** Phase 1: Primary Message Processing **
                     if (message.Type == Backend.Shared.Consts.RMONITOR_TYPE)
                     {
                         var rmonitorChanges = await _rmonitorMetrics.TrackAsync(() =>
@@ -154,6 +153,12 @@ public class SessionStateProcessingPipeline
                                 }
                             }
                             allAppliedChanges.Add(new PatchUpdates([], [.. pitPatches]));
+
+                            // Apply multiloop data in case of reset
+                            if (sessionContext.IsMultiloopActive)
+                            {
+                                multiloopProcessor.ApplyCarValues(sessionContext.SessionState.CarPositions);
+                            }
 
                             // Apply penalties
                             var penaltyPatches = controlLogEnricher.Process();

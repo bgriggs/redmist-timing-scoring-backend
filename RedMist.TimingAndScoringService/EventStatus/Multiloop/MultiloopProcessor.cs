@@ -1,7 +1,7 @@
 ﻿using RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
-using System.Collections.Generic;
+using static StackExchange.Redis.Role;
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
@@ -13,6 +13,7 @@ public class MultiloopProcessor
 {
     private ILogger Logger { get; }
     private readonly SessionContext context;
+    private static readonly CompletedSectionMapper mapper = new();
 
     public Heartbeat Heartbeat { get; } = new Heartbeat();
     public Dictionary<string, Entry> Entries { get; } = [];
@@ -207,5 +208,39 @@ public class MultiloopProcessor
         }
 
         return (sessionChanges, carChanges);
+    }
+
+    public void ApplyCarValues(IEnumerable<CarPosition> cars)
+    {
+        foreach (var car in cars)
+        {
+            if (string.IsNullOrEmpty(car.Number))
+                continue;
+
+            if (CompletedSections.TryGetValue(car.Number, out var secs))
+            {
+                var timingCommonCompletedSections = secs.Values.Select(mapper.ToTimingCommonCompletedSection).ToList();
+                car.CompletedSections = timingCommonCompletedSections;
+            }
+            if (CompletedLaps.TryGetValue(car.Number, out var cl))
+            {
+                car.LastLapPitted = cl.LastLapPitted;
+                car.PitStopCount = cl.PitStopCount;
+                car.OverallStartingPosition = cl.StartPosition;
+                car.LapsLedOverall = cl.LapsLed;
+
+                var status = string.IsNullOrEmpty(cl.CurrentStatus)
+                    ? string.Empty
+                    : cl.CurrentStatus.Length > 12
+                        ? cl.CurrentStatus[..12]
+                        : cl.CurrentStatus;
+                car.CurrentStatus = status;
+            }
+            if (LineCrossings.TryGetValue(car.Number, out var lc))
+            {
+                car.IsPitStartFinish = lc.CrossingStatus == LineCrossingStatus.Pit;
+                car.IsInPit = car.IsPitStartFinish;
+            }
+        }
     }
 }

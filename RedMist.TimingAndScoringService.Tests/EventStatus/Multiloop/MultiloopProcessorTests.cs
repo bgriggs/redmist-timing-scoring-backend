@@ -476,6 +476,432 @@ public class MultiloopProcessorTests
         // The test would need to verify flag state changes based on actual implementation
     }
 
+    #region ApplyCarValues Tests
+
+    [TestMethod]
+    public void ApplyCarValues_EmptyCarList_HandlesGracefully()
+    {
+        // Arrange
+        var cars = new List<CarPosition>();
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        // Should complete without error
+        Assert.AreEqual(0, cars.Count);
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_CarWithNullNumber_SkipsProcessing()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = null },
+            new CarPosition { Number = "" },
+            new CarPosition { Number = "   " } // This should not be skipped as it's not null or empty
+        };
+
+        // Populate some test data that should not be applied
+        SetupTestCompletedLap("42", pitStopCount: 3, lastLapPitted: 15);
+        SetupTestLineCrossing("42", LineCrossingStatus.Pit);
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        // Cars with null/empty numbers should not have been processed
+        foreach (var car in cars.Take(2)) // First two cars
+        {
+            Assert.IsNull(car.PitStopCount);
+            Assert.IsNull(car.LastLapPitted);
+            Assert.IsFalse(car.IsPitStartFinish);
+            Assert.IsFalse(car.IsInPit);
+        }
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_WithCompletedSections_AppliesCorrectly()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "42" },
+            new CarPosition { Number = "99" }
+        };
+
+        // Setup test sections
+        SetupTestCompletedSections("42", new[] { "S1", "S2" });
+        SetupTestCompletedSections("99", new[] { "S3" });
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        var car42 = cars.First(c => c.Number == "42");
+        var car99 = cars.First(c => c.Number == "99");
+
+        Assert.IsNotNull(car42.CompletedSections);
+        Assert.AreEqual(2, car42.CompletedSections.Count);
+
+        Assert.IsNotNull(car99.CompletedSections);
+        Assert.AreEqual(1, car99.CompletedSections.Count);
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_WithCompletedLaps_AppliesAllProperties()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "42" }
+        };
+
+        SetupTestCompletedLap("42", pitStopCount: 3, lastLapPitted: 15, startPosition: 8, lapsLed: 5, currentStatus: "Running");
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        var car = cars.First();
+        Assert.AreEqual(15, car.LastLapPitted);
+        Assert.AreEqual(3, car.PitStopCount);
+        Assert.AreEqual(8, car.OverallStartingPosition);
+        Assert.AreEqual(5, car.LapsLedOverall);
+        Assert.AreEqual("Running", car.CurrentStatus);
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_WithLongCurrentStatus_TruncatesTo12Characters()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "42" }
+        };
+
+        SetupTestCompletedLap("42", currentStatus: "This is a very long status that exceeds 12 characters");
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        var car = cars.First();
+        Assert.AreEqual("This is a ve", car.CurrentStatus); // Should be truncated to 12 characters
+        Assert.AreEqual(12, car.CurrentStatus.Length);
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_WithEmptyCurrentStatus_SetsEmptyString()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "42" }
+        };
+
+        SetupTestCompletedLap("42", currentStatus: "");
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        var car = cars.First();
+        Assert.AreEqual("", car.CurrentStatus);
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_WithNullCurrentStatus_SetsEmptyString()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "42" }
+        };
+
+        SetupTestCompletedLap("42", currentStatus: null);
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        var car = cars.First();
+        Assert.AreEqual("", car.CurrentStatus);
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_WithLineCrossingTrackStatus_SetsCorrectPitStatus()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "42" }
+        };
+
+        SetupTestLineCrossing("42", LineCrossingStatus.Track);
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        var car = cars.First();
+        Assert.IsFalse(car.IsPitStartFinish);
+        Assert.IsFalse(car.IsInPit);
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_WithLineCrossingPitStatus_SetsCorrectPitStatus()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "42" }
+        };
+
+        SetupTestLineCrossing("42", LineCrossingStatus.Pit);
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        var car = cars.First();
+        Assert.IsTrue(car.IsPitStartFinish);
+        Assert.IsTrue(car.IsInPit);
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_WithAllDataTypes_AppliesAllCorrectly()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "42" }
+        };
+
+        SetupTestCompletedSections("42", new[] { "S1", "S2", "S3" });
+        SetupTestCompletedLap("42", pitStopCount: 2, lastLapPitted: 10, startPosition: 5, lapsLed: 3, currentStatus: "Leading");
+        SetupTestLineCrossing("42", LineCrossingStatus.Pit);
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        var car = cars.First();
+
+        // CompletedSections
+        Assert.IsNotNull(car.CompletedSections);
+        Assert.AreEqual(3, car.CompletedSections.Count);
+
+        // CompletedLap properties
+        Assert.AreEqual(10, car.LastLapPitted);
+        Assert.AreEqual(2, car.PitStopCount);
+        Assert.AreEqual(5, car.OverallStartingPosition);
+        Assert.AreEqual(3, car.LapsLedOverall);
+        Assert.AreEqual("Leading", car.CurrentStatus);
+
+        // LineCrossing properties
+        Assert.IsTrue(car.IsPitStartFinish);
+        Assert.IsTrue(car.IsInPit);
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_CarWithoutAnyData_DoesNotModifyProperties()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "99" } // Car number not in any test data
+        };
+
+        // Capture initial values for comparison
+        var initialLastLapPitted = cars[0].LastLapPitted;
+        var initialPitStopCount = cars[0].PitStopCount;
+        var initialOverallStartingPosition = cars[0].OverallStartingPosition;
+        var initialLapsLedOverall = cars[0].LapsLedOverall;
+        var initialCurrentStatus = cars[0].CurrentStatus;
+        var initialIsPitStartFinish = cars[0].IsPitStartFinish;
+        var initialIsInPit = cars[0].IsInPit;
+        var initialCompletedSections = cars[0].CompletedSections;
+
+        // Setup test data for different car
+        SetupTestCompletedLap("42", pitStopCount: 3, lastLapPitted: 15);
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert - Properties should remain unchanged since no data exists for car "99"
+        var car = cars.First();
+        Assert.AreEqual(initialLastLapPitted, car.LastLapPitted, "LastLapPitted should remain unchanged");
+        Assert.AreEqual(initialPitStopCount, car.PitStopCount, "PitStopCount should remain unchanged");
+        Assert.AreEqual(initialOverallStartingPosition, car.OverallStartingPosition, "OverallStartingPosition should remain unchanged");
+        Assert.AreEqual(initialLapsLedOverall, car.LapsLedOverall, "LapsLedOverall should remain unchanged");
+        Assert.AreEqual(initialCurrentStatus, car.CurrentStatus, "CurrentStatus should remain unchanged");
+        Assert.AreEqual(initialIsPitStartFinish, car.IsPitStartFinish, "IsPitStartFinish should remain unchanged");
+        Assert.AreEqual(initialIsInPit, car.IsInPit, "IsInPit should remain unchanged");
+        Assert.AreEqual(initialCompletedSections, car.CompletedSections, "CompletedSections should remain unchanged");
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_MultipleCars_AppliesDataCorrectly()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "1" },
+            new CarPosition { Number = "2" },
+            new CarPosition { Number = "3" }
+        };
+
+        SetupTestCompletedLap("1", pitStopCount: 1, lastLapPitted: 5, currentStatus: "Car1");
+        SetupTestCompletedLap("2", pitStopCount: 2, lastLapPitted: 10, currentStatus: "Car2");
+        SetupTestLineCrossing("1", LineCrossingStatus.Track);
+        SetupTestLineCrossing("2", LineCrossingStatus.Pit);
+        SetupTestCompletedSections("3", new[] { "S1" });
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        var car1 = cars.First(c => c.Number == "1");
+        var car2 = cars.First(c => c.Number == "2");
+        var car3 = cars.First(c => c.Number == "3");
+
+        // Car 1
+        Assert.AreEqual(5, car1.LastLapPitted);
+        Assert.AreEqual(1, car1.PitStopCount);
+        Assert.AreEqual("Car1", car1.CurrentStatus);
+        Assert.IsFalse(car1.IsPitStartFinish);
+
+        // Car 2
+        Assert.AreEqual(10, car2.LastLapPitted);
+        Assert.AreEqual(2, car2.PitStopCount);
+        Assert.AreEqual("Car2", car2.CurrentStatus);
+        Assert.IsTrue(car2.IsPitStartFinish);
+
+        // Car 3
+        Assert.IsNotNull(car3.CompletedSections);
+        Assert.AreEqual(1, car3.CompletedSections.Count);
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_MaxValues_HandlesCorrectly()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "42" }
+        };
+
+        SetupTestCompletedLap("42", 
+            pitStopCount: ushort.MaxValue, 
+            lastLapPitted: ushort.MaxValue, 
+            startPosition: ushort.MaxValue, 
+            lapsLed: ushort.MaxValue);
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        var car = cars.First();
+        Assert.AreEqual(ushort.MaxValue, car.LastLapPitted);
+        Assert.AreEqual(ushort.MaxValue, car.PitStopCount);
+        Assert.AreEqual(ushort.MaxValue, car.OverallStartingPosition);
+        Assert.AreEqual(ushort.MaxValue, car.LapsLedOverall);
+    }
+
+    [TestMethod]
+    public void ApplyCarValues_ZeroValues_HandlesCorrectly()
+    {
+        // Arrange
+        var cars = new List<CarPosition>
+        {
+            new CarPosition { Number = "42" }
+        };
+
+        SetupTestCompletedLap("42", 
+            pitStopCount: 0, 
+            lastLapPitted: 0, 
+            startPosition: 0, 
+            lapsLed: 0);
+
+        // Act
+        _processor.ApplyCarValues(cars);
+
+        // Assert
+        var car = cars.First();
+        Assert.AreEqual(0, car.LastLapPitted);
+        Assert.AreEqual(0, car.PitStopCount);
+        Assert.AreEqual(0, car.OverallStartingPosition);
+        Assert.AreEqual(0, car.LapsLedOverall);
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    private void SetupTestCompletedSections(string carNumber, string[] sectionIds)
+    {
+        var sections = new Dictionary<string, RedMist.TimingAndScoringService.EventStatus.Multiloop.CompletedSection>();
+        foreach (var sectionId in sectionIds)
+        {
+            sections[sectionId] = new RedMist.TimingAndScoringService.EventStatus.Multiloop.CompletedSection();
+        }
+        _processor.CompletedSections[carNumber] = sections;
+    }
+
+    private void SetupTestCompletedLap(string carNumber, ushort pitStopCount = 0, ushort lastLapPitted = 0, 
+        ushort startPosition = 0, ushort lapsLed = 0, string? currentStatus = null)
+    {
+        var completedLap = new CompletedLap();
+        
+        // Use reflection to set private properties for testing
+        SetPrivateProperty(completedLap, nameof(CompletedLap.Number), carNumber);
+        SetPrivateProperty(completedLap, nameof(CompletedLap.PitStopCount), pitStopCount);
+        SetPrivateProperty(completedLap, nameof(CompletedLap.LastLapPitted), lastLapPitted);
+        SetPrivateProperty(completedLap, nameof(CompletedLap.StartPosition), startPosition);
+        SetPrivateProperty(completedLap, nameof(CompletedLap.LapsLed), lapsLed);
+        SetPrivateProperty(completedLap, nameof(CompletedLap.CurrentStatus), currentStatus ?? string.Empty);
+
+        _processor.CompletedLaps[carNumber] = completedLap;
+    }
+
+    private void SetupTestLineCrossing(string carNumber, LineCrossingStatus crossingStatus)
+    {
+        var lineCrossing = new LineCrossing();
+        
+        // Use reflection to set private properties for testing
+        SetPrivateProperty(lineCrossing, nameof(LineCrossing.Number), carNumber);
+        SetPrivateProperty(lineCrossing, nameof(LineCrossing.CrossingStatusStr), 
+            crossingStatus == LineCrossingStatus.Pit ? "P" : "T");
+
+        _processor.LineCrossings[carNumber] = lineCrossing;
+    }
+
+    private static void SetPrivateProperty(object obj, string propertyName, object value)
+    {
+        var property = obj.GetType().GetProperty(propertyName, 
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        
+        if (property != null && property.CanWrite)
+        {
+            property.SetValue(obj, value);
+        }
+        else
+        {
+            // If property is not writable, try to find the backing field
+            var field = obj.GetType().GetFields(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .FirstOrDefault(f => f.Name.Contains(propertyName) || f.Name == $"<{propertyName}>k__BackingField");
+            
+            if (field != null)
+            {
+                field.SetValue(obj, value);
+            }
+        }
+    }
+
+    #endregion
+
     private void VerifyLogWarning(string expectedMessage)
     {
         _mockLogger.Verify(

@@ -11,7 +11,10 @@ public record PitSfCrossingStateUpdate(LineCrossing LineCrossing) : ICarStateCha
         var patch = new CarPositionPatch { Number = state.Number };
 
         if (state.IsPitStartFinish != (LineCrossing.CrossingStatus == LineCrossingStatus.Pit))
+        {
             patch.IsPitStartFinish = LineCrossing.CrossingStatus == LineCrossingStatus.Pit;
+            patch.IsInPit = patch.IsPitStartFinish;
+        }
 
         return patch;
     }

@@ -1,4 +1,5 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.Multiloop;
+﻿using Microsoft.AspNetCore.Rewrite;
+using RedMist.TimingAndScoringService.EventStatus.Multiloop;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 using RedMist.TimingCommon.Models;
 
@@ -303,11 +304,11 @@ public class PitSfCrossingStateUpdateTests
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
         Assert.AreEqual(true, result.IsPitStartFinish);
+        Assert.AreEqual(true, result.IsInPit);
         
         // Verify that other properties are not affected
         Assert.IsNull(result.LastLapCompleted);
         Assert.IsNull(result.Class);
-        Assert.IsNull(result.IsInPit);
         Assert.IsNull(result.LastLapTime);
     }
 
