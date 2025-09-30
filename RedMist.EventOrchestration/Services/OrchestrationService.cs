@@ -387,9 +387,9 @@ public class OrchestrationService : BackgroundService
         var labels = new Dictionary<string, string>
         {
             { "event_id", eventId.ToString() },
-            { "event_name", eventName },
+            //{ "event_name", eventName },
             { "organization_id", organizationId.ToString() },
-            { "organization_name", organizationName },
+            //{ "organization_name", organizationName },
             { "app", name } // Add app label for service selector
         };
 
