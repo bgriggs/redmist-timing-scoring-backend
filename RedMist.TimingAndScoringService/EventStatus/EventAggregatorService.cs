@@ -78,6 +78,10 @@ public class EventAggregatorService : BackgroundService
                     serviceName = $"{uri.Host}:{uri.Port}";
             }
         }
+        else
+        {
+            serviceName += "-service";
+        }
         if (string.IsNullOrEmpty(serviceName))
             throw new ArgumentException("Service name could not be determined. Set job_name in configuration.");
 

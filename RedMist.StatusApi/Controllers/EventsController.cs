@@ -268,7 +268,7 @@ public class EventsController : ControllerBase
     [HttpGet]
     [ProducesResponseType(typeof(SessionState), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetCurrentSessionState(int eventId, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> GetCurrentSessionState(int eventId)
     {
         //Logger.LogTrace("GetCurrentSessionState for event {eventId}", eventId);
 
@@ -284,7 +284,7 @@ public class EventsController : ControllerBase
         try
         {
             // Use GetStreamAsync for better performance with large responses
-            var stream = await httpClient.GetStreamAsync(url, cancellationToken);
+            var stream = await httpClient.GetStreamAsync(url);
 
             Logger.LogTrace("GetCurrentSessionState HTTP GET {url} completed in {elapsed} ms", url, sw.ElapsedMilliseconds);
 
