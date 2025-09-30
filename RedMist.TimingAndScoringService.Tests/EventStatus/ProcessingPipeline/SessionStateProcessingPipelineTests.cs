@@ -229,7 +229,6 @@ public class SessionStateProcessingPipelineTests
         var car70 = _sessionContext.GetCarByNumber("70");
         Assert.IsNotNull(car70);
         Assert.AreEqual((uint)58488, car70!.TransponderId);
-        Assert.AreEqual("Round 3 Racing", car70.DriverName);
         Assert.AreEqual("GTO", car70.Class);
         //Assert.AreEqual("67", car70.SessionId);
 

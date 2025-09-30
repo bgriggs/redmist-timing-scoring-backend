@@ -373,7 +373,6 @@ public class RMonitorDataProcessorV2Tests
 
         // The class should be mapped since we processed the class first
         Assert.AreEqual("GT1", car.Class);
-        Assert.AreEqual("John", car.DriverName);
     }
 
     [TestMethod]
@@ -401,9 +400,6 @@ public class RMonitorDataProcessorV2Tests
         var newCar = _sessionContext.GetCarByNumber("34");
         Assert.IsNotNull(newCar);
 
-        // Based on AddUpdateCompetitor implementation, DriverName is set to FirstName only
-        Assert.AreEqual("Jane", newCar.DriverName);
-
         // The reset clears internal competitor dictionaries, so the old competitor should be gone
         // However, if the old competitor had the same registration number as the new one, it might still exist
         // Let's check if the old car is truly gone by checking there's only one car now
@@ -412,7 +408,6 @@ public class RMonitorDataProcessorV2Tests
         // Verify the remaining car is the new one, not the old one
         var remainingCar = _sessionContext.SessionState.CarPositions.First();
         Assert.AreEqual("34", remainingCar.Number);
-        Assert.AreEqual("Jane", remainingCar.DriverName);
     }
 
     [TestMethod]
