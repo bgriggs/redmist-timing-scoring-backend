@@ -270,7 +270,7 @@ public class EventsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetCurrentSessionState(int eventId, CancellationToken cancellationToken = default)
     {
-        Logger.LogTrace("GetCurrentSessionState for event {eventId}", eventId);
+        //Logger.LogTrace("GetCurrentSessionState for event {eventId}", eventId);
 
         var url = await GetEventProcessorEndpointAsync(eventId);
         if (string.IsNullOrEmpty(url))
@@ -283,16 +283,11 @@ public class EventsController : ControllerBase
         
         try
         {
-            var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            Logger.LogDebug("GetCurrentSessionState HTTP GET {url} completed in {elapsed} ms with status {statusCode}",
-                url, sw.ElapsedMilliseconds, response.StatusCode);
+            // Use GetStreamAsync for better performance with large responses
+            var stream = await httpClient.GetStreamAsync(url, cancellationToken);
 
-            if (!response.IsSuccessStatusCode)
-                return StatusCode((int)response.StatusCode);
+            Logger.LogTrace("GetCurrentSessionState HTTP GET {url} completed in {elapsed} ms", url, sw.ElapsedMilliseconds);
 
-            var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-
-            // Directly return raw MessagePack bytes
             return File(stream, "application/x-msgpack");
         }
         catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)

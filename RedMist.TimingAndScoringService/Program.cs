@@ -14,6 +14,7 @@ using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
+using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.LapData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
 using RedMist.TimingAndScoringService.EventStatus.PenaltyEnricher;
@@ -41,14 +42,6 @@ public class Program
                 policy.AllowAnyOrigin();
                 policy.AllowAnyHeader();
             });
-        });
-
-        builder.Services.AddKeycloakWebApiAuthentication(builder.Configuration);
-        builder.Services.AddAuthorization().AddKeycloakAuthorization(options =>
-        {
-            options.EnableRolesMapping = RolesClaimTransformationSource.Realm;
-            // Note, this should correspond to role configured with KeycloakAuthenticationOptions
-            options.RoleClaimType = KeycloakConstants.RoleClaimType;
         });
         builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
@@ -85,10 +78,7 @@ public class Program
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
         builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 5; c.ConnectTimeout = 10; }));
-
         builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(100), LocalCacheExpiration = TimeSpan.FromDays(100) });
-        builder.Services.AddSingleton<LapLogger>();
-        builder.Services.AddSingleton<IDateTimeHelper, DateTimeHelper>();
         builder.Services.AddSingleton<SessionContext>();
         builder.Services.AddSingleton<MultiloopProcessor>();
         builder.Services.AddSingleton<RMonitorDataProcessorV2>();
@@ -101,6 +91,7 @@ public class Program
         builder.Services.AddSingleton<StatusAggregatorV2>();
         builder.Services.AddSingleton<StartingPositionProcessor>();
         builder.Services.AddSingleton<ControlLogEnricher>();
+        builder.Services.AddSingleton<DriverModeProcessor>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<ControlLogEnricher>());
         builder.Services.AddSingleton<SessionMonitorV2>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<SessionMonitorV2>());

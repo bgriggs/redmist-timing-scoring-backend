@@ -10,6 +10,9 @@
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<RepositoryUrl>https://github.com/bgriggs/redmist-timing-scoring-backend</RepositoryUrl>
 	</PropertyGroup>
+	<ItemGroup>
+	  <Compile Remove="EventStatus\RMonitor\RMonitorDataProcessor.cs" />
+	</ItemGroup>
 
 	<ItemGroup>
 	  <None Include="..\README.md">

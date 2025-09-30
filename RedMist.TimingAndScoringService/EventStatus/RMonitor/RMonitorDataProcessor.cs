@@ -703,7 +703,7 @@ public class RMonitorDataProcessor
             await InitializeStartingPositions();
         }
         carPositions = secondaryProcessor.UpdateCarPositions(carPositions);
-        _ = driverModeProcessor.UpdateCarPositions(carPositions, competitors.ToDictionary(), Heartbeat.FlagStatus.ToFlag());
+        //_ = driverModeProcessor.UpdateCarPositions(carPositions, competitors.ToDictionary(), Heartbeat.FlagStatus.ToFlag());
 
         // Apply penalties
         await UpdateCarsWithPenalties(carPositions, !includeChangedOnly);

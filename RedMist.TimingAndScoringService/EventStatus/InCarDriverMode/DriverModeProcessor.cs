@@ -4,7 +4,6 @@ using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
 using StackExchange.Redis;
@@ -14,136 +13,95 @@ using System.Text.Json;
 
 namespace RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 
-public class DriverModeProcessor
+public interface IDriverModeProcessor
 {
-    private const string MinTimeFormat = @"m\:ss\.fff";
-    private const string SecTimeFormat = @"s\.fff";
+    Task ProcessAsync(CancellationToken cancellationToken = default);
+}
 
-    private readonly int eventId;
-    private ILogger Logger { get; }
+public interface ICarPositionProvider
+{
+    IReadOnlyList<CarPosition> GetCarPositions();
+    CarPosition? GetCarByNumber(string carNumber);
+}
 
+public interface ICompetitorMetadataProvider
+{
+    Task<CompetitorMetadata?> GetCompetitorMetadataAsync(int eventId, string carNumber);
+}
+
+public interface IInCarUpdateSender
+{
+    Task SendUpdatesAsync(List<InCarPayload> changes, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Default implementation that uses SessionContext for car positions
+/// </summary>
+public class SessionContextCarPositionProvider(SessionContext sessionContext) : ICarPositionProvider
+{
+    public IReadOnlyList<CarPosition> GetCarPositions()
+    {
+        return sessionContext.SessionState.CarPositions.AsReadOnly();
+    }
+
+    public CarPosition? GetCarByNumber(string carNumber)
+    {
+        return sessionContext.GetCarByNumber(carNumber);
+    }
+}
+
+/// <summary>
+/// Default implementation that uses HybridCache and database
+/// </summary>
+public class CachedCompetitorMetadataProvider(HybridCache hcache, IDbContextFactory<TsContext> tsContext) : ICompetitorMetadataProvider
+{
+    public async Task<CompetitorMetadata?> GetCompetitorMetadataAsync(int eventId, string carNumber)
+    {
+        var key = string.Format(Consts.COMPETITOR_METADATA, carNumber, eventId);
+        return await hcache.GetOrCreateAsync(key,
+            async cancel => await LoadDbCompetitorMetadataAsync(eventId, carNumber));
+    }
+
+    private async Task<CompetitorMetadata?> LoadDbCompetitorMetadataAsync(int eventId, string carNumber)
+    {
+        using var db = await tsContext.CreateDbContextAsync();
+        return await db.CompetitorMetadata.FirstOrDefaultAsync(x => x.EventId == eventId && x.CarNumber == carNumber);
+    }
+}
+
+/// <summary>
+/// Default implementation that uses SignalR and Redis
+/// </summary>
+public class SignalRInCarUpdateSender : IInCarUpdateSender
+{
     private readonly IHubContext<StatusHub> hubContext;
-    private readonly HybridCache hcache;
-    private readonly IDbContextFactory<TsContext> tsContext;
     private readonly IConnectionMultiplexer cacheMux;
-    private readonly Dictionary<string, CarPosition> carPositionsLookup = [];
-    private readonly Dictionary<string, CarSet> carSetsLookup = [];
-    private TimingCommon.Models.Flags lastFlag = TimingCommon.Models.Flags.Unknown;
+    private readonly SessionContext sessionContext;
+    private readonly ILogger logger;
 
-
-    public DriverModeProcessor(int eventId, IHubContext<StatusHub> hubContext, ILoggerFactory loggerFactory, HybridCache hcache, 
-        IDbContextFactory<TsContext> tsContext, IConnectionMultiplexer cacheMux)
+    public SignalRInCarUpdateSender(
+        IHubContext<StatusHub> hubContext,
+        IConnectionMultiplexer cacheMux,
+        SessionContext sessionContext,
+        ILogger logger)
     {
-        Logger = loggerFactory.CreateLogger(GetType().Name);
-        this.eventId = eventId;
         this.hubContext = hubContext;
-        this.hcache = hcache;
-        this.tsContext = tsContext;
         this.cacheMux = cacheMux;
+        this.sessionContext = sessionContext;
+        this.logger = logger;
     }
 
-
-    public async Task UpdateCarPositions(List<CarPosition> positions, Dictionary<string, Competitor> competitors, TimingCommon.Models.Flags currentFlag)
+    public async Task SendUpdatesAsync(List<InCarPayload> changes, CancellationToken cancellationToken = default)
     {
-        foreach (var position in positions)
-        {
-            if (position.Number != null)
-            {
-                carPositionsLookup[position.Number] = position;
-            }
-        }
+        var cache = cacheMux.GetDatabase();
 
-        bool flagChanged = lastFlag != currentFlag;
-        lastFlag = currentFlag;
-
-        var changes = new List<InCarPayload>();
-        foreach (var number in carPositionsLookup.Keys)
-        {
-            if (!carSetsLookup.TryGetValue(number, out CarSet? value))
-            {
-                value = new CarSet();
-                carSetsLookup[number] = value;
-            }
-
-            var driver = carPositionsLookup[number];
-            value.UpdateDriver(driver);
-            value.CarAhead.Update(GetCarAhead(driver));
-            value.CarBehind.Update(GetCarBehind(driver));
-            value.CarAheadOutOfClass.Update(GetCarAheadOutOfClass(driver));
-
-            if (value.IsDirty || flagChanged)
-            {
-                var payload = value.GetPayloadPartial();
-                payload.Flag = currentFlag;
-                changes.Add(payload);
-            }
-        }
-
-        await SendUpdatesAsync(changes, competitors);
-    }
-
-    private CarPosition? GetCarAhead(CarPosition driver)
-    {
-        if (driver.ClassPosition > 1)
-        {
-            return carPositionsLookup.Values.FirstOrDefault(c => c.ClassPosition == driver.ClassPosition - 1 && c.Class == driver.Class);
-        }
-        return null;
-    }
-
-    private CarPosition? GetCarBehind(CarPosition driver)
-    {
-        return carPositionsLookup.Values.FirstOrDefault(c => c.ClassPosition == driver.ClassPosition + 1 && c.Class == driver.Class);
-    }
-
-    private CarPosition? GetCarAheadOutOfClass(CarPosition driver)
-    {
-        if (driver.OverallPosition > 1)
-        {
-            return carPositionsLookup.Values.FirstOrDefault(c => c.OverallPosition == driver.OverallPosition - 1 && c.Class != driver.Class);
-        }
-        return null;
-    }
-
-    private async Task SendUpdatesAsync(List<InCarPayload> changes, Dictionary<string, Competitor> competitors, CancellationToken cancellationToken = default)
-    {
         foreach (var change in changes)
         {
-            foreach (var car in change.Cars)
-            {
-                if (car?.Number == null)
-                {
-                    continue;
-                }
+            var subKey = string.Format(Consts.IN_CAR_EVENT_SUB_V2, sessionContext.EventId, change.CarNumber);
+            await hubContext.Clients.Group(subKey).SendAsync("ReceiveInCarUpdateV2", change, sessionContext.CancellationToken);
 
-                try
-                {
-                    var metadata = await GetCompetitorMetadata(eventId, car.Number);
-                    if (metadata != null)
-                    {
-                        car.CarType = (metadata.Make + " " + metadata.ModelEngine).Trim();
-                    }
-
-                    var carPos = carPositionsLookup.GetValueOrDefault(car.Number);
-                    if (carPos != null)
-                    {
-                        car.Class = carPos.Class ?? string.Empty;
-                        car.TransponderId = carPos.TransponderId;
-
-                        if (competitors.TryGetValue(car.Number, out Competitor? competitor))
-                        {
-                            var entry = competitor.ToEventEntry();
-                            car.Team = entry.Name;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError(ex, "Error processing car metadata for {CarNumber}", car.Number);
-                }
-            }
-
-            var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB, eventId, change.CarNumber);
+            // Legacy, send to in-car hub. To be removed in future.
+            var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB, sessionContext.EventId, change.CarNumber);
             try
             {
                 var json = JsonSerializer.Serialize(change);
@@ -156,27 +114,176 @@ public class DriverModeProcessor
                 var b64 = Convert.ToBase64String(output.ToArray());
                 await hubContext.Clients.Group(grpKey).SendAsync("ReceiveInCarUpdate", b64, cancellationToken);
 
-                var cache = cacheMux.GetDatabase();
-                var cacheKey = string.Format(Consts.IN_CAR_DATA, eventId, change.CarNumber);
+                var cacheKey = string.Format(Consts.IN_CAR_DATA, sessionContext.EventId, change.CarNumber);
                 await cache.StringSetAsync(cacheKey, json, TimeSpan.FromMinutes(5));
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Error sending in-car update to clients.");
+                logger.LogError(ex, "Error sending in-car update to clients.");
+            }
+        }
+    }
+}
+
+public class DriverModeProcessor : IDriverModeProcessor
+{
+    private const string MinTimeFormat = @"m\:ss\.fff";
+    private const string SecTimeFormat = @"s\.fff";
+
+    private readonly ILogger logger;
+    private readonly SessionContext sessionContext;
+    private readonly ICarPositionProvider carPositionProvider;
+    private readonly ICompetitorMetadataProvider competitorMetadataProvider;
+    private readonly IInCarUpdateSender updateSender;
+    
+    private readonly Dictionary<string, CarSet> carSetsLookup = [];
+    private Flags lastFlag = Flags.Unknown;
+
+    public DriverModeProcessor(
+        ILoggerFactory loggerFactory, 
+        SessionContext sessionContext,
+        ICarPositionProvider carPositionProvider,
+        ICompetitorMetadataProvider competitorMetadataProvider,
+        IInCarUpdateSender updateSender)
+    {
+        logger = loggerFactory.CreateLogger(GetType().Name);
+        this.sessionContext = sessionContext;
+        this.carPositionProvider = carPositionProvider;
+        this.competitorMetadataProvider = competitorMetadataProvider;
+        this.updateSender = updateSender;
+    }
+
+    // Convenience constructor for existing code that uses direct dependencies
+    public DriverModeProcessor(IHubContext<StatusHub> hubContext, ILoggerFactory loggerFactory, HybridCache hcache,
+        IDbContextFactory<TsContext> tsContext, IConnectionMultiplexer cacheMux, SessionContext sessionContext)
+        : this(loggerFactory, sessionContext,
+               new SessionContextCarPositionProvider(sessionContext),
+               new CachedCompetitorMetadataProvider(hcache, tsContext),
+               new SignalRInCarUpdateSender(hubContext, cacheMux, sessionContext, loggerFactory.CreateLogger<SignalRInCarUpdateSender>()))
+    {
+    }
+
+    public async Task ProcessAsync(CancellationToken cancellationToken = default)
+    {
+        bool flagChanged = lastFlag != sessionContext.SessionState.CurrentFlag;
+        lastFlag = sessionContext.SessionState.CurrentFlag;
+
+        var carPositions = carPositionProvider.GetCarPositions();
+        var changes = new List<InCarPayload>();
+        
+        foreach (var driver in carPositions)
+        {
+            if (driver.Number == null)
+                continue;
+
+            if (!carSetsLookup.TryGetValue(driver.Number, out CarSet? value))
+            {
+                value = new CarSet();
+                carSetsLookup[driver.Number] = value;
+            }
+
+            value.UpdateDriver(driver);
+            value.CarAhead.Update(GetCarAhead(driver, carPositions));
+            value.CarBehind.Update(GetCarBehind(driver, carPositions));
+            value.CarAheadOutOfClass.Update(GetCarAheadOutOfClass(driver, carPositions));
+
+            if (value.IsDirty || flagChanged)
+            {
+                var payload = value.GetPayloadPartial();
+                payload.Flag = sessionContext.SessionState.CurrentFlag;
+                
+                // Enrich car data with metadata
+                await EnrichCarDataAsync(payload, cancellationToken);
+                
+                changes.Add(payload);
+            }
+        }
+
+        _ = updateSender.SendUpdatesAsync(changes, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gets the car ahead in the same class. Made public for testing.
+    /// </summary>
+    public CarPosition? GetCarAhead(CarPosition driver, IReadOnlyList<CarPosition> carPositions)
+    {
+        if (driver.ClassPosition > 1)
+        {
+            return carPositions.FirstOrDefault(c => c.ClassPosition == driver.ClassPosition - 1 && c.Class == driver.Class);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the car behind in the same class. Made public for testing.
+    /// </summary>
+    public CarPosition? GetCarBehind(CarPosition driver, IReadOnlyList<CarPosition> carPositions)
+    {
+        return carPositions.FirstOrDefault(c => c.ClassPosition == driver.ClassPosition + 1 && c.Class == driver.Class);
+    }
+
+    /// <summary>
+    /// Gets the car ahead overall but in a different class. Made public for testing.
+    /// </summary>
+    public CarPosition? GetCarAheadOutOfClass(CarPosition driver, IReadOnlyList<CarPosition> carPositions)
+    {
+        if (driver.OverallPosition > 1)
+        {
+            return carPositions.FirstOrDefault(c => c.OverallPosition == driver.OverallPosition - 1 && c.Class != driver.Class);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Enriches car payload with metadata and position information. Made public for testing.
+    /// </summary>
+    public async Task EnrichCarDataAsync(InCarPayload payload, CancellationToken cancellationToken = default)
+    {
+        foreach (var car in payload.Cars)
+        {
+            if (car?.Number == null)
+                continue;
+
+            try
+            {
+                var metadata = await competitorMetadataProvider.GetCompetitorMetadataAsync(sessionContext.EventId, car.Number);
+                if (metadata != null)
+                {
+                    car.CarType = (metadata.Make + " " + metadata.ModelEngine).Trim();
+                }
+
+                var carPos = carPositionProvider.GetCarByNumber(car.Number);
+                if (carPos != null)
+                {
+                    car.Class = carPos.Class ?? string.Empty;
+                    car.TransponderId = carPos.TransponderId;
+                    car.Driver = carPos.DriverName ?? string.Empty;
+
+                    var entry = sessionContext.SessionState.EventEntries.FirstOrDefault(e => e.Number == car.Number);
+                    if (entry != null)
+                        car.Team = entry.Name ?? string.Empty;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error processing car metadata for {CarNumber}", car.Number);
             }
         }
     }
 
-    private async Task<CompetitorMetadata?> GetCompetitorMetadata(int eventId, string car)
+    /// <summary>
+    /// Gets the current car sets lookup for testing purposes
+    /// </summary>
+    public IReadOnlyDictionary<string, CarSet> GetCarSetsLookup()
     {
-        var key = string.Format(Consts.COMPETITOR_METADATA, car, eventId);
-        return await hcache.GetOrCreateAsync(key,
-            async cancel => await LoadDbCompetitorMetadata(eventId, car));
+        return carSetsLookup.AsReadOnly();
     }
 
-    private async Task<CompetitorMetadata?> LoadDbCompetitorMetadata(int eventId, string car)
+    /// <summary>
+    /// Gets the last flag for testing purposes
+    /// </summary>
+    public Flags GetLastFlag()
     {
-        using var db = await tsContext.CreateDbContextAsync();
-        return await db.CompetitorMetadata.FirstOrDefaultAsync(x => x.EventId == eventId && x.CarNumber == car);
+        return lastFlag;
     }
 }

@@ -92,11 +92,6 @@ public class PipelineMetrics
             // Count output if result is not null (for transform blocks)
             if (result != null)
             {
-                if (result is SessionStateUpdate ssu)
-                {
-                    if (ssu.SessionChanges.Count > 0 || ssu.CarChanges.Count > 0)
-                        _messagesOutput.WithLabels(_blockName).Inc();
-                }
                 if (result is PatchUpdates pu)
                 {
                     if (pu.SessionPatches.Count > 0 || pu.CarPatches.Count > 0)

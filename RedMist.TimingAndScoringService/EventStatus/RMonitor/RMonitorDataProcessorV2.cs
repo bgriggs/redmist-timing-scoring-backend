@@ -216,11 +216,6 @@ public class RMonitorDataProcessorV2
                 car.TransponderId = comp.Transponder;
                 patch.TransponderId = comp.Transponder;
             }
-            if (car.DriverName != comp.FirstName)
-            {
-                car.DriverName = comp.FirstName;
-                patch.DriverName = comp.FirstName;
-            }
             if (car.Class != className)
             {
                 car.Class = className;

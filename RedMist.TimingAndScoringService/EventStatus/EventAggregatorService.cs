@@ -5,9 +5,6 @@ using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Services;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus.FlagData;
-using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
-using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Extensions;
@@ -29,7 +26,6 @@ public class EventAggregatorService : BackgroundService
     private readonly int eventId;
     private readonly string streamKey;
     private readonly string serviceName;
-    //private readonly RMonitorDataProcessor dataProcessor;
     private readonly ILoggerFactory loggerFactory;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IMediator mediator;
@@ -47,7 +43,6 @@ public class EventAggregatorService : BackgroundService
     private readonly SemaphoreSlim payloadSerializationLock = new(1);
     private DateTime? lastFullStatusTimestamp;
     private string? lastFullStatusData;
-    //private DateTime? lastPayloadChangedTimestamp;
 
     private readonly SessionStateProcessingPipeline processingPipeline;
     private readonly SessionContext sessionContext;
@@ -87,13 +82,6 @@ public class EventAggregatorService : BackgroundService
             throw new ArgumentException("Service name could not be determined. Set job_name in configuration.");
 
         cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
-
-        var sessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory, sessionContext);
-        var pitProcessor = new PitProcessor(eventId, tsContext, loggerFactory);
-        var flagProcessor = new FlagProcessor(eventId, tsContext, loggerFactory);
-        var driverModeDataProcessor = new DriverModeProcessor(eventId, hubContext, loggerFactory, hcache, tsContext, cacheMux);
-        //dataProcessor = new RMonitorDataProcessor(eventId, mediator, loggerFactory, sessionMonitor, pitProcessor, flagProcessor, cacheMux, tsContext, driverModeDataProcessor);
-        //dataProcessor.PayloadChanged += DataProcessor_PayloadChanged;
     }
 
 
@@ -300,7 +288,6 @@ public class EventAggregatorService : BackgroundService
     {
         //Logger.LogTrace("Getting payload for event {e}...", p.EventId);
         await hubContext.Clients.Client(connectionIdDestination).SendAsync("ReceiveMessage", payload, stoppingToken);
-        //await mediator.Publish(new StatusNotification(p.EventId, p.SessionId, b64) { ConnectionDestination = connectionIdDestination, Payload = payload, PitProcessor = p.PitProcessor }, stoppingToken);
     }
 
     /// <summary>
@@ -347,7 +334,6 @@ public class EventAggregatorService : BackgroundService
             {
                 payload = sessionContext.SessionState.ToPayload();
             }
-            //var payload = await p.GetPayload(stoppingToken);
             var json = JsonSerializer.Serialize(payload);
 
             Logger.LogTrace("Caching payload...");

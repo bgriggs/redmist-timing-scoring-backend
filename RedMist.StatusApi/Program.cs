@@ -65,10 +65,11 @@ public class Program
             client.Timeout = TimeSpan.FromSeconds(30);
             client.DefaultRequestHeaders.Add("User-Agent", "RedMist-StatusApi/1.0");
             client.DefaultRequestHeaders.ConnectionClose = false;
+            client.DefaultRequestHeaders.Add("Keep-Alive", "timeout=300, max=100");
         })
         .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler()
         {
-            MaxConnectionsPerServer = 10,
+            MaxConnectionsPerServer = 20,
             PooledConnectionLifetime = TimeSpan.FromMinutes(30), 
             PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
             UseCookies = false,
@@ -80,7 +81,8 @@ public class Program
         .ConfigureHttpClient((serviceProvider, client) =>
         {
             
-        }); ;
+        });
+
         builder.Services.AddHostedService<MetricsPublisher>();
 
         var app = builder.Build();

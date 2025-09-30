@@ -1,6 +1,7 @@
 using Google.Apis.Sheets.v4.Data;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
@@ -10,6 +11,7 @@ using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
+using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.LapData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
 using RedMist.TimingAndScoringService.EventStatus.PenaltyEnricher;
@@ -39,6 +41,7 @@ public class SessionStateProcessingPipelineTests
     private Mock<ILogger> _mockLogger = null!;
     private IDbContextFactory<TsContext> _dbContextFactory = null!;
     private Mock<IHubContext<StatusHub>> _mockHubContext = null!;
+    private Mock<HybridCache> _mockHybridCache = null!;
 
     // Real processor instances for end-to-end testing
     private RMonitorDataProcessorV2 _rMonitorProcessor = null!;
@@ -49,6 +52,7 @@ public class SessionStateProcessingPipelineTests
     private PositionDataEnricher _positionEnricher = null!;
     private ControlLogEnricher _controlLogEnricher = null!;
     private ResetProcessor _resetProcessor = null!;
+    private DriverModeProcessor _driverModeProcessor = null!;
     private LapProcessor _lapProcessor = null!;
     private UpdateConsolidator _updateConsolidator = null!;
     private StatusAggregatorV2 _statusAggregator = null!;
@@ -76,6 +80,7 @@ public class SessionStateProcessingPipelineTests
         _mockLogger = new Mock<ILogger>();
         _mockHubContext = new Mock<IHubContext<StatusHub>>();
         _mockConnectionMultiplexer = new Mock<IConnectionMultiplexer>();
+        _mockHybridCache = new Mock<HybridCache>();
 
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
 
@@ -103,6 +108,11 @@ public class SessionStateProcessingPipelineTests
             .ReturnsAsync(RedisValue.Null);
         mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(RedisValue.Null);
+        mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
+            .Returns(Task.FromResult(true));
+
+        // Note: HybridCache mocking is complex due to optional parameters in expression trees
+        // For now, we'll rely on the DriverModeProcessor to handle null returns gracefully
     }
 
     private void SetupSessionContext()
@@ -137,6 +147,13 @@ public class SessionStateProcessingPipelineTests
         _controlLogEnricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);
         _flagProcessor = new FlagProcessorV2(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _sessionMonitor = new SessionMonitorV2(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
+        _driverModeProcessor = new DriverModeProcessor(
+            _mockHubContext.Object, 
+            _mockLoggerFactory.Object, 
+            _mockHybridCache.Object,
+            _dbContextFactory, 
+            _mockConnectionMultiplexer.Object, 
+            _sessionContext);
         _positionEnricher = new PositionDataEnricher(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor);
         _statusAggregator = new StatusAggregatorV2(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
@@ -156,6 +173,7 @@ public class SessionStateProcessingPipelineTests
             _positionEnricher,
             _controlLogEnricher,
             _resetProcessor,
+            _driverModeProcessor,
             _lapProcessor,
             _updateConsolidator,
             _statusAggregator

@@ -240,6 +240,24 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} unsubscribed from in-car driver event for car {car} event {eventId}", connectionId, car, eventId);
     }
 
+    public async Task SubscribeToInCarDriverEventV2(int eventId, string car)
+    {
+        var connectionId = Context.ConnectionId;
+        var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB_V2, eventId, car);
+        await Groups.AddToGroupAsync(connectionId, grpKey);
+        await AddOrUpdateConnectionTracking(connectionId, 0, inCarDriverConnection: new InCarDriverConnection(eventId, car));
+        Logger.LogInformation("Client {connectionId} subscribed to in-car V2 driver event for car {car} event {eventId}", connectionId, car, eventId);
+    }
+
+    public async Task UnsubscribeFromInCarDriverEventV2(int eventId, string car)
+    {
+        var connectionId = Context.ConnectionId;
+        var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB_V2, eventId, car);
+        await Groups.RemoveFromGroupAsync(connectionId, grpKey);
+        await AddOrUpdateConnectionTracking(connectionId, 0, inCarDriverConnection: null);
+        Logger.LogInformation("Client {connectionId} unsubscribed from in-car V2 driver event for car {car} event {eventId}", connectionId, car, eventId);
+    }
+
     #endregion
 
     #region Connection Status Management

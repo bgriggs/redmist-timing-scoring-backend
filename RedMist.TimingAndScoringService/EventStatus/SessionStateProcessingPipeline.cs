@@ -1,5 +1,6 @@
 ﻿using Prometheus;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
+using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.LapData;
 using RedMist.TimingAndScoringService.EventStatus.Multiloop;
 using RedMist.TimingAndScoringService.EventStatus.PenaltyEnricher;
@@ -30,6 +31,7 @@ public class SessionStateProcessingPipeline
     private readonly PositionDataEnricher positionEnricher;
     private readonly ControlLogEnricher controlLogEnricher;
     private readonly ResetProcessor resetProcessor;
+    private readonly DriverModeProcessor driverModeProcessor;
     private readonly LapProcessor lapProcessor;
     private readonly UpdateConsolidator updateConsolidator;
     private readonly StatusAggregatorV2 statusAggregator;
@@ -68,6 +70,7 @@ public class SessionStateProcessingPipeline
         PositionDataEnricher positionEnricher,
         ControlLogEnricher controlLogEnricher,
         ResetProcessor resetProcessor,
+        DriverModeProcessor driverModeProcessor,
         LapProcessor lapProcessor,
         UpdateConsolidator updateConsolidator,
         StatusAggregatorV2 statusAggregatorV2)
@@ -84,6 +87,7 @@ public class SessionStateProcessingPipeline
         this.positionEnricher = positionEnricher;
         this.controlLogEnricher = controlLogEnricher;
         this.resetProcessor = resetProcessor;
+        this.driverModeProcessor = driverModeProcessor;
         this.lapProcessor = lapProcessor;
         this.updateConsolidator = updateConsolidator;
         statusAggregator = statusAggregatorV2;
@@ -117,7 +121,7 @@ public class SessionStateProcessingPipeline
                 // Acquire write lock once for the entire message processing
                 using (await sessionContext.SessionStateLock.AcquireWriteLockAsync(sessionContext.CancellationToken))
                 {
-                    // ** Phase 1: Primary Message Processing **
+                    // ** Pass 1: Primary Message Processing **
                     if (message.Type == Backend.Shared.Consts.RMONITOR_TYPE)
                     {
                         var rmonitorChanges = await _rmonitorMetrics.TrackAsync(() =>
@@ -125,7 +129,7 @@ public class SessionStateProcessingPipeline
                         if (rmonitorChanges != null)
                             allAppliedChanges.AddRange(rmonitorChanges);
 
-                        // ** Phase 2: Position Enrichment **
+                        // ** Pass 2 **
                         if (allAppliedChanges.SelectMany(c => c.CarPatches).Any())
                         {
                             var enrichmentChanges = ProcessPositionEnrichment();
@@ -139,6 +143,9 @@ public class SessionStateProcessingPipeline
                                 var carNumbers = lapChanges.Select(c => c.Number).ToList();
                                 var cars = sessionContext.SessionState.CarPositions.Where(c => carNumbers.Contains(c.Number)).ToList();
                                 await lapProcessor.Process(cars);
+
+                                // Run check for changes to driver mode and send updates to cars
+                                await driverModeProcessor.ProcessAsync(sessionContext.CancellationToken);
                             }
 
                             // Apply pit data in case of reset

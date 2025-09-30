@@ -3,9 +3,12 @@ using RedMist.Backend.Shared.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
+using RedMist.TimingAndScoringService.EventStatus;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
@@ -29,7 +32,14 @@ public class RMonitorProcessorTests
         var db = new Mock<IDbContextFactory<TsContext>>();
         var hub = new Mock<IHubContext<StatusHub>>();
         var hcache = new Mock<HybridCache>();
-        var dmProc = new DriverModeProcessor(0, hub.Object, lf, hcache.Object, db.Object, cacheMux.Object);
+        
+        // Create a SessionContext for the DriverModeProcessor
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "0" } })
+            .Build();
+        var sessionContext = new SessionContext(configuration, new FakeTimeProvider());
+        
+        var dmProc = new DriverModeProcessor(hub.Object, lf, hcache.Object, db.Object, cacheMux.Object, sessionContext);
         return new RMonitorDataProcessor(0, mediatorMock.Object, lf, new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
     }
 
