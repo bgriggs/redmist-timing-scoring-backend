@@ -19,8 +19,6 @@ namespace RedMist.StatusApi.Controllers;
 [Authorize]
 public class EventsController : ControllerBase
 {
-    private const string namespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
-
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly HybridCache hcache;
     private readonly IConnectionMultiplexer cacheMux;
@@ -286,7 +284,7 @@ public class EventsController : ControllerBase
             // Use GetStreamAsync for better performance with large responses
             var stream = await httpClient.GetStreamAsync(url);
 
-            Logger.LogTrace("GetCurrentSessionState HTTP GET {url} completed in {elapsed} ms", url, sw.ElapsedMilliseconds);
+            //Logger.LogTrace("GetCurrentSessionState HTTP GET {url} completed in {elapsed} ms", url, sw.ElapsedMilliseconds);
 
             return File(stream, "application/x-msgpack");
         }

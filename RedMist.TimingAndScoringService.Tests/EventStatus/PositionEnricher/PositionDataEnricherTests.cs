@@ -34,7 +34,7 @@ public class PositionDataEnricherTests
             .Build();
 
         _sessionContext = new SessionContext(config);
-        _enricher = new PositionDataEnricher(_mockDbContextFactory.Object, _mockLoggerFactory.Object, _sessionContext);
+        _enricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
     }
 
     #region Constructor Tests
@@ -372,26 +372,26 @@ public class PositionDataEnricherTests
 
     #region Clear Tests
 
-    [TestMethod]
-    public void Clear_CallsClearOnProcessor()
-    {
-        // Arrange
-        var car = CreateTestCarPosition("1", "A", 1);
-        car.OverallPosition = 1;
-        car.OverallStartingPosition = 3;
-        _sessionContext.SessionState.CarPositions.Add(car);
+    //[TestMethod]
+    //public void Clear_CallsClearOnProcessor()
+    //{
+    //    // Arrange
+    //    var car = CreateTestCarPosition("1", "A", 1);
+    //    car.OverallPosition = 1;
+    //    car.OverallStartingPosition = 3;
+    //    _sessionContext.SessionState.CarPositions.Add(car);
 
-        // Process once to populate internal state
-        _enricher.Process();
+    //    // Process once to populate internal state
+    //    _enricher.Process();
 
-        // Act
-        _enricher.Clear();
+    //    // Act
+    //    _enricher.Clear();
 
-        // Assert
-        // After clear, processing the same car again should treat it as new
-        var result = _enricher.Process();
-        Assert.IsNotNull(result);
-    }
+    //    // Assert
+    //    // After clear, processing the same car again should treat it as new
+    //    var result = _enricher.Process();
+    //    Assert.IsNotNull(result);
+    //}
 
     #endregion
 

@@ -97,7 +97,7 @@ public class SessionStateProcessingPipeline
         {
             foreach (var carNumber in carNumbers)
             {
-                await lapProcessor.ProcessPendingLapForCar(carNumber);
+                await lapProcessor.ProcessPendingLapForCarAsync(carNumber);
             }
         };
 
@@ -142,7 +142,7 @@ public class SessionStateProcessingPipeline
                             {
                                 var carNumbers = lapChanges.Select(c => c.Number).ToList();
                                 var cars = sessionContext.SessionState.CarPositions.Where(c => carNumbers.Contains(c.Number)).ToList();
-                                await lapProcessor.Process(cars);
+                                await lapProcessor.ProcessAsync(cars);
 
                                 // Run check for changes to driver mode and send updates to cars
                                 await driverModeProcessor.ProcessAsync(sessionContext.CancellationToken);

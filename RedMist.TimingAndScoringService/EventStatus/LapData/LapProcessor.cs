@@ -28,6 +28,7 @@ public class LapProcessor : IDisposable
     private readonly TimeSpan pitMessageWaitTime = TimeSpan.FromMilliseconds(1000);
     private readonly CancellationTokenSource backgroundTaskCts = new();
 
+
     public LapProcessor(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, 
         SessionContext sessionContext, IConnectionMultiplexer cacheMux, PitProcessorV2 pitProcessor)
     {
@@ -38,10 +39,11 @@ public class LapProcessor : IDisposable
         this.pitProcessor = pitProcessor;
         
         // Start background task to process pending lap completions
-        _ = Task.Run(ProcessPendingLapCompletions, backgroundTaskCts.Token);
+        _ = Task.Run(ProcessPendingLapCompletionsAsync, backgroundTaskCts.Token);
     }
 
-    public async Task Process(List<CarPosition> carPositions)
+
+    public async Task ProcessAsync(List<CarPosition> carPositions)
     {
         var eventId = sessionContext.EventId;
         var sessionId = sessionContext.SessionState.SessionId;
@@ -88,7 +90,7 @@ public class LapProcessor : IDisposable
     /// <summary>
     /// Background task that processes pending lap completions after waiting for potential pit messages
     /// </summary>
-    private async Task ProcessPendingLapCompletions()
+    private async Task ProcessPendingLapCompletionsAsync()
     {
         while (!backgroundTaskCts.Token.IsCancellationRequested && !sessionContext.CancellationToken.IsCancellationRequested)
         {
@@ -112,7 +114,7 @@ public class LapProcessor : IDisposable
 
                 if (completionsToProcess.Count != 0)
                 {
-                    await LogCompletedLaps(completionsToProcess);
+                    await LogCompletedLapsAsync(completionsToProcess);
                 }
 
                 // Check every 100ms for expired completions
@@ -144,7 +146,7 @@ public class LapProcessor : IDisposable
     /// Method to force immediate processing of pending laps for a specific car
     /// This can be called when a pit message is received to immediately process any pending lap for that car
     /// </summary>
-    public async Task ProcessPendingLapForCar(string carNumber)
+    public async Task ProcessPendingLapForCarAsync(string carNumber)
     {
         CarPosition? positionToProcess = null;
         
@@ -160,14 +162,14 @@ public class LapProcessor : IDisposable
         if (positionToProcess != null)
         {
             Logger.LogTrace("Processing pending lap for car {n} immediately due to pit message", carNumber);
-            await LogCompletedLaps([(carNumber, positionToProcess)]);
+            await LogCompletedLapsAsync([(carNumber, positionToProcess)]);
         }
     }
 
     /// <summary>
     /// Logs the completed laps to Redis
     /// </summary>
-    private async Task LogCompletedLaps(List<(string carNumber, CarPosition position)> completions)
+    private async Task LogCompletedLapsAsync(List<(string carNumber, CarPosition position)> completions)
     {
         if (completions.Count == 0) return;
 

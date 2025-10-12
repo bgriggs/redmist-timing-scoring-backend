@@ -23,6 +23,7 @@ using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
+using System.Diagnostics;
 using System.Text.Json;
 
 
@@ -34,7 +35,7 @@ public class SessionStateProcessingPipelineTests
     private SessionStateProcessingPipeline _pipeline = null!;
     private SessionContext _sessionContext = null!;
     private IConfiguration _configuration = null!;
-    private FakeTimeProvider _timeProvider = new();
+    private readonly FakeTimeProvider _timeProvider = new();
 
     // Core dependencies - these remain mocked as they are infrastructure
     private Mock<ILoggerFactory> _mockLoggerFactory = null!;
@@ -148,13 +149,13 @@ public class SessionStateProcessingPipelineTests
         _flagProcessor = new FlagProcessorV2(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _sessionMonitor = new SessionMonitorV2(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _driverModeProcessor = new DriverModeProcessor(
-            _mockHubContext.Object, 
-            _mockLoggerFactory.Object, 
+            _mockHubContext.Object,
+            _mockLoggerFactory.Object,
             _mockHybridCache.Object,
-            _dbContextFactory, 
-            _mockConnectionMultiplexer.Object, 
+            _dbContextFactory,
+            _mockConnectionMultiplexer.Object,
             _sessionContext);
-        _positionEnricher = new PositionDataEnricher(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
+        _positionEnricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
         _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor);
         _statusAggregator = new StatusAggregatorV2(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
@@ -361,7 +362,7 @@ public class SessionStateProcessingPipelineTests
             await _pipeline.Post(tm);
 
             var lines = d.data.Split('\n');
-            foreach(var line in lines)
+            foreach (var line in lines)
             {
                 var lt = line.Trim();
                 if (lt.StartsWith("$F"))
@@ -467,6 +468,126 @@ public class SessionStateProcessingPipelineTests
         Assert.AreEqual(8, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "74").OverallPosition);
         Assert.AreEqual(4, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "99").OverallPosition);
     }
+
+    //[TestMethod]
+    //public async Task RMonitor_Leader_NoGapDiff_Test()
+    //{
+    //    // Arrange
+    //    var entriesData = new RMonitorTestDataHelper(FilePrefix + "TestGapDiff.txt");
+    //    await entriesData.LoadAsync();
+
+    //    // Act
+    //    DateTime? lastLeaderGapDiffFailTime = null;
+    //    // Track per-car failure times for overall gap/diff
+    //    var carOverallGapDiffFailTimes = new Dictionary<string, DateTime>();
+    //    // Track per-car failure times for in-class gap/diff
+    //    var carInClassGapDiffFailTimes = new Dictionary<string, DateTime>();
+
+    //    while (!entriesData.IsFinished)
+    //    {
+    //        var d = entriesData.GetNextRecord();
+    //        if (d.data.StartsWith("$F"))
+    //        {
+    //            // Advance time to simulate passage between records
+    //            _timeProvider.Advance(TimeSpan.FromSeconds(1));
+    //            if (d.data.Contains("07:22:42"))
+    //            {
+    //            }
+    //            if (_sessionContext.SessionState.CurrentFlag == Flags.Green || _sessionContext.SessionState.CurrentFlag == Flags.Yellow)
+    //            {
+    //                // Check leader for gap/diff absence
+    //                //var leader = _sessionContext.SessionState.CarPositions.FirstOrDefault(c => c.OverallPosition == 1);
+    //                //if (leader != null)
+    //                //{
+    //                //    if (leader.OverallGap != string.Empty || leader.OverallDifference != string.Empty
+    //                //        || leader.InClassGap != string.Empty || leader.InClassDifference != string.Empty)
+    //                //    {
+    //                //        if (lastLeaderGapDiffFailTime == null)
+    //                //            lastLeaderGapDiffFailTime = d.ts;
+    //                //        // Leave 2 second grace period for gaps/diffs to update since position changes are not atomic
+    //                //        if (lastLeaderGapDiffFailTime.HasValue && (d.ts - lastLeaderGapDiffFailTime.Value).TotalSeconds > 2)
+    //                //        {
+    //                //            Assert.Fail($"Leader {leader.Number} gap/diff not empty:T={_sessionContext.SessionState.RunningRaceTime} Gap={leader.OverallGap} Diff={leader.OverallDifference}");
+    //                //        }
+    //                //        Trace.WriteLine($"Leader {leader.Number} gap/diff not empty:T={_sessionContext.SessionState.RunningRaceTime} Gap={leader.OverallGap} Diff={leader.OverallDifference}");
+    //                //    }
+    //                //    else
+    //                //    {
+    //                //        lastLeaderGapDiffFailTime = null;
+    //                //    }
+
+    //                //    // Check other cars for gap/diff presence
+    //                //    foreach (var car in _sessionContext.SessionState.CarPositions)
+    //                //    {
+    //                //        // Check overall gap/diff for non-leaders
+    //                //        if (car.OverallPosition != 1 && car.Number != null)
+    //                //        {
+    //                //            if (string.IsNullOrEmpty(car.OverallGap) || string.IsNullOrEmpty(car.OverallDifference))
+    //                //            {
+    //                //                // Set fail time for this car if not already set
+    //                //                if (!carOverallGapDiffFailTimes.ContainsKey(car.Number))
+    //                //                    carOverallGapDiffFailTimes[car.Number] = d.ts;
+
+    //                //                // Check if this car has been failing for more than 2 seconds
+    //                //                if (carOverallGapDiffFailTimes.TryGetValue(car.Number, out var failTime) &&
+    //                //                    (d.ts - failTime).TotalSeconds > 2)
+    //                //                {
+    //                //                    Assert.Fail($"Car {car.Number} gap/diff empty for >2s: T={_sessionContext.SessionState.RunningRaceTime} Pos={car.OverallPosition} Gap={car.OverallGap} Diff={car.OverallDifference}");
+    //                //                }
+    //                //                Trace.WriteLine($"Car {car.Number} gap/diff empty:T={_sessionContext.SessionState.RunningRaceTime} Pos={car.OverallPosition} Gap={car.OverallGap} Diff={car.OverallDifference}");
+    //                //            }
+    //                //            else
+    //                //            {
+    //                //                // Clear fail time for this car since it now has gap/diff
+    //                //                carOverallGapDiffFailTimes.Remove(car.Number);
+    //                //            }
+    //                //        }
+
+    //                //        // Check in-class gap/diff for non-class-leaders
+    //                //        if (car.ClassPosition != 1 && car.Number != null)
+    //                //        {
+    //                //            if (string.IsNullOrEmpty(car.InClassGap) || string.IsNullOrEmpty(car.InClassDifference))
+    //                //            {
+    //                //                // Set fail time for this car if not already set
+    //                //                if (!carInClassGapDiffFailTimes.ContainsKey(car.Number))
+    //                //                    carInClassGapDiffFailTimes[car.Number] = d.ts;
+
+    //                //                // Check if this car has been failing for more than 2 seconds
+    //                //                if (carInClassGapDiffFailTimes.TryGetValue(car.Number, out var failTime) &&
+    //                //                    (d.ts - failTime).TotalSeconds > 2)
+    //                //                {
+    //                //                    Assert.Fail($"ClassCar {car.Number} gap/diff empty for >2s: T={_sessionContext.SessionState.RunningRaceTime} ClassPos={car.ClassPosition} Gap={car.InClassGap} Diff={car.InClassDifference}");
+    //                //                }
+    //                //                Trace.WriteLine($"ClassCar {car.Number} gap/diff empty:T={_sessionContext.SessionState.RunningRaceTime} ClassPos={car.ClassPosition} Gap={car.InClassGap} Diff={car.InClassDifference}");
+    //                //            }
+    //                //            else
+    //                //            {
+    //                //                // Clear fail time for this car since it now has gap/diff
+    //                //                carInClassGapDiffFailTimes.Remove(car.Number);
+    //                //            }
+    //                //        }
+    //                //    }
+    //                //}
+    //            }
+    //        }
+
+    //        var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+    //        if (d.data.Contains("$G,18,\"816\",246,\"07:21:05.918\""))
+    //        {
+    //        }
+    //        if (d.data.Contains("$G,16,\"816\",247,\"07:22:35.029\""))
+    //        {
+    //        }
+    //        await _pipeline.Post(tm);
+    //        if (_sessionContext.SessionState.CarPositions.SingleOrDefault(c => c.Number == "816")?.OverallGap == "29:04.197")
+    //        {
+    //        }
+    //    }
+
+    //    //// Assert
+    //    //Assert.AreEqual(string.Empty, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "101").OverallGap);
+    //    //Assert.AreEqual(string.Empty, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "101").OverallDifference);
+    //}
 
     #region Database Initialization
 

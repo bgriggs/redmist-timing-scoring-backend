@@ -200,7 +200,7 @@ public class SessionContext
 
     public virtual void SetLastLapTimeBeforeReset()
     {
-        foreach(var car in SessionState.CarPositions)
+        foreach (var car in SessionState.CarPositions)
         {
             if (!string.IsNullOrEmpty(car.Number) && lastLapTimesBeforeReset.TryGetValue(car.Number, out var lastLapTime))
             {

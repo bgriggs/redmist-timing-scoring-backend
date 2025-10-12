@@ -43,6 +43,7 @@ public class EventProcessLogger : BackgroundService
         var logsPending = Metrics.CreateCounter("event_proc_logs_pending", "Total logs in stream to be processed");
         var rateGauge = Metrics.CreateGauge("event_proc_logs_rate", "Log save rate");
 
+        Logger.LogInformation("Starting event processor loop for event {e} on stream {s}", eventId, streamKey);
         var lastMetricUpdate = DateTime.UtcNow;
         while (!stoppingToken.IsCancellationRequested)
         {

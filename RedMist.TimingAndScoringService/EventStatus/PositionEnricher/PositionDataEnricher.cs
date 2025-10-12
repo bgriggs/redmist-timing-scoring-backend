@@ -1,6 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
-using RedMist.Database;
-using RedMist.TimingCommon.Models;
+﻿using RedMist.TimingCommon.Models;
 using Riok.Mapperly.Abstractions;
 using System.Diagnostics;
 
@@ -13,7 +11,6 @@ namespace RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 public class PositionDataEnricher
 {
     private ILogger Logger { get; }
-    private readonly IDbContextFactory<TsContext> tsContext;
     private readonly SessionContext sessionContext;
     private readonly PositionMetadataProcessor positionMetadataProcessor = new();
     private readonly CarPositionMapper carPositionMapper = new();
@@ -21,9 +18,8 @@ public class PositionDataEnricher
     private readonly Dictionary<string, int> mlInClassStartingPositions = [];
 
 
-    public PositionDataEnricher(IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory, SessionContext sessionContext)
+    public PositionDataEnricher(ILoggerFactory loggerFactory, SessionContext sessionContext)
     {
-        this.tsContext = tsContext ?? throw new ArgumentNullException(nameof(tsContext));
         Logger = (loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger(GetType().Name);
         this.sessionContext = sessionContext ?? throw new ArgumentNullException(nameof(sessionContext));
     }
@@ -57,10 +53,17 @@ public class PositionDataEnricher
 
             // Find changes from the original session state CarPositions and the updated ones
             // and create CarPositionPatches to return in a SessionStateUpdate.
-            for (int i = 0; i < originalCarPositions.Count && i < copiedCarPositions.Count; i++)
+            var copiedCarLookup = copiedCarPositions
+                .Where(c => c.Number != null)
+                .ToDictionary(c => c.Number!, c => c);
+
+            for (int i = 0; i < originalCarPositions.Count; i++)
             {
                 var original = originalCarPositions[i];
-                var updated = copiedCarPositions[i];
+                
+                // Skip if car number is null or not found in copied positions
+                if (original.Number == null || !copiedCarLookup.TryGetValue(original.Number, out var updated))
+                    continue;
 
                 var patch = TimingCommon.Models.Mappers.CarPositionMapper.CreatePatch(original, updated);
 
@@ -86,7 +89,6 @@ public class PositionDataEnricher
     /// Starting position will either come from multiloop or be inferred from RMonitor data.
     /// Determine which is appropriate and apply to the copied car positions.
     /// </summary>
-    /// <param name="copiedCarPositions"></param>
     private void ApplyStartingPositions(List<CarPosition> copiedCarPositions)
     {
         // Use multiloop starting positions if active
@@ -131,11 +133,6 @@ public class PositionDataEnricher
         }
     }
 
-    public void Clear()
-    {
-        positionMetadataProcessor.Clear();
-    }
-
     private bool StartingPositionsChanged()
     {
         var currentStartingPositions = sessionContext.GetStartingPositions();
@@ -152,7 +149,7 @@ public class PositionDataEnricher
     private void UpdateMLInClassStartingPositionLookup()
     {
         mlInClassStartingPositions.Clear();
-       
+
         var classGroups = sessionContext.SessionState.CarPositions.GroupBy(x => x.Class);
         foreach (var classGroup in classGroups)
         {

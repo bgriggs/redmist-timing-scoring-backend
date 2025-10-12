@@ -11,26 +11,15 @@ public class PositionMetadataProcessor
     private const string MinTimeFormat = @"m\:ss\.fff";
     private const string SecTimeFormat = @"s\.fff";
     private static readonly PositionComparer positionComparer = new();
-    private readonly Dictionary<string, CarPosition> carPositionsLookup = [];
 
     public List<CarPosition> UpdateCarPositions(List<CarPosition> positions)
     {
         // todo: stale
-
-        foreach (var position in positions)
-        {
-            if (position.Number != null)
-            {
-                carPositionsLookup[position.Number] = position;
-            }
-        }
-
         // Overall Gap and Difference
-        var cps = carPositionsLookup.Values.ToList();
-        UpdateGapAndDiff(cps, (p, g) => p.OverallGap = g, (p, d) => p.OverallDifference = d);
+        UpdateGapAndDiff(positions, (p, g) => p.OverallGap = g, (p, d) => p.OverallDifference = d);
 
         // Class Gap and Difference
-        var classGroups = cps.GroupBy(p => p.Class);
+        var classGroups = positions.GroupBy(p => p.Class);
         foreach (var classGroup in classGroups)
         {
             UpdateGapAndDiff([.. classGroup], (p, g) => p.InClassGap = g, (p, d) => p.InClassDifference = d);
@@ -43,7 +32,7 @@ public class PositionMetadataProcessor
         }
 
         // Set best time
-        UpdateBestTime(cps, (p, b) => p.IsBestTime = b);
+        UpdateBestTime(positions, (p, b) => p.IsBestTime = b);
         foreach (var classGroup in classGroups)
         {
             UpdateBestTime([.. classGroup], (p, b) => p.IsBestTimeClass = b);
@@ -188,13 +177,13 @@ public class PositionMetadataProcessor
         }
 
         // Reset most gained flags
-        foreach (var car in carPositionsLookup.Values)
+        foreach (var car in carPositions)
         {
             car.IsOverallMostPositionsGained = false;
             car.IsClassMostPositionsGained = false;
         }
 
-        var carOverallMostGainedGroups = carPositionsLookup.Values
+        var carOverallMostGainedGroups = carPositions
             .Where(c => c.OverallPositionsGained > 0)
             .OrderByDescending(c => c.OverallPositionsGained)
             .GroupBy(c => c.OverallPositionsGained);
@@ -205,7 +194,7 @@ public class PositionMetadataProcessor
             carOverallMostGainedGroups.First().First().IsOverallMostPositionsGained = true;
         }
 
-        var classGroups = carPositionsLookup.Values.GroupBy(c => c.Class);
+        var classGroups = carPositions.GroupBy(c => c.Class);
         foreach (var cg in classGroups)
         {
             var carClassMostGainedGroups = cg
@@ -217,11 +206,6 @@ public class PositionMetadataProcessor
                 carClassMostGainedGroups.First().First().IsClassMostPositionsGained = true;
             }
         }
-    }
-
-    public void Clear()
-    {
-        carPositionsLookup.Clear();
     }
 
     public static DateTime ParseRMTime(string time)
