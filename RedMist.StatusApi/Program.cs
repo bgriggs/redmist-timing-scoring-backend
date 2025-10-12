@@ -13,6 +13,8 @@ using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.StatusApi.Services;
 using StackExchange.Redis;
+using System.Reflection;
+using Microsoft.OpenApi.Models;
 
 namespace RedMist.StatusApi;
 
@@ -43,8 +45,64 @@ public class Program
         });
 
         builder.Services.AddControllers();
-        // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-        builder.Services.AddOpenApi();
+        
+        // Configure Swagger/OpenAPI with XML comments
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(c =>
+        {
+            c.SwaggerDoc("v1", new OpenApiInfo 
+            { 
+                Title = "RedMist Status API", 
+                Version = "v1",
+                Description = "API for retrieving real-time event status, timing data, and race information",
+                Contact = new OpenApiContact
+                {
+                    Name = "Red Mist Timing & Scoring",
+                    Url = new Uri("https://github.com/bgriggs/redmist-timing-scoring-backend")
+                }
+            });
+            
+            c.SwaggerDoc("v2", new OpenApiInfo 
+            { 
+                Title = "RedMist Status API", 
+                Version = "v2",
+                Description = "Enhanced API with improved data models for event status and timing data"
+            });
+
+            // Include XML comments
+            var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+            if (File.Exists(xmlPath))
+            {
+                c.IncludeXmlComments(xmlPath);
+            }
+
+            // Add security definition for Bearer token
+            c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+            {
+                Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+                Name = "Authorization",
+                In = ParameterLocation.Header,
+                Type = SecuritySchemeType.ApiKey,
+                Scheme = "Bearer"
+            });
+
+            c.AddSecurityRequirement(new OpenApiSecurityRequirement
+            {
+                {
+                    new OpenApiSecurityScheme
+                    {
+                        Reference = new OpenApiReference
+                        {
+                            Type = ReferenceType.SecurityScheme,
+                            Id = "Bearer"
+                        }
+                    },
+                    Array.Empty<string>()
+                }
+            });
+        });
+
         builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromHours(4), LocalCacheExpiration = TimeSpan.FromMinutes(5) });
 
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
@@ -108,7 +166,13 @@ public class Program
         if (app.Environment.IsDevelopment())
         {
             Console.Title = "Status API";
-            app.MapOpenApi();
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "RedMist Status API V1");
+                c.SwaggerEndpoint("/swagger/v2/swagger.json", "RedMist Status API V2");
+                c.RoutePrefix = "swagger";
+            });
         }
 
         app.MapHealthChecks("/healthz/startup", new HealthCheckOptions

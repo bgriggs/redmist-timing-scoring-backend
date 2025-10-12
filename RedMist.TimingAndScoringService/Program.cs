@@ -24,6 +24,7 @@ using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using StackExchange.Redis;
+using System.Reflection;
 
 namespace RedMist.TimingAndScoringService;
 
@@ -47,7 +48,26 @@ public class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(c =>
         {
-            c.SwaggerDoc("v1", new OpenApiInfo { Title = "Timing and Scoring Services", Version = "v1" });
+            c.SwaggerDoc("v1", new OpenApiInfo 
+            { 
+                Title = "RedMist Timing and Scoring Service", 
+                Version = "v1",
+                Description = "Internal service for real-time event processing and timing calculations",
+                Contact = new OpenApiContact
+                {
+                    Name = "Red Mist Timing & Scoring",
+                    Url = new Uri("https://github.com/bgriggs/redmist-timing-scoring-backend")
+                }
+            });
+
+            // Include XML comments
+            var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+            if (File.Exists(xmlPath))
+            {
+                c.IncludeXmlComments(xmlPath);
+            }
+
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
             {
                 Name = "Authorization",
@@ -116,7 +136,11 @@ public class Program
             Console.Title = "Event Processor";
             app.UseDeveloperExceptionPage();
             app.UseSwagger();
-            app.UseSwaggerUI();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "RedMist Timing and Scoring Service V1");
+                c.RoutePrefix = "swagger";
+            });
         }
 
         app.MapHealthChecks("/healthz/startup", new HealthCheckOptions

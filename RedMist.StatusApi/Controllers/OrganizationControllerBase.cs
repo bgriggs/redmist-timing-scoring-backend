@@ -7,8 +7,12 @@ using RedMist.Database;
 namespace RedMist.StatusApi.Controllers;
 
 /// <summary>
-/// Base controller for Organization operations across API versions
+/// Base controller for Organization-related operations.
+/// Provides endpoints for retrieving organization information and branding assets.
 /// </summary>
+/// <remarks>
+/// This is an abstract base controller inherited by versioned controllers.
+/// </remarks>
 [ApiController]
 [Authorize]
 public abstract class OrganizationControllerBase : ControllerBase
@@ -17,7 +21,12 @@ public abstract class OrganizationControllerBase : ControllerBase
     protected readonly HybridCache hcache;
     protected ILogger Logger { get; }
 
-
+    /// <summary>
+    /// Initializes a new instance of the <see cref="OrganizationControllerBase"/> class.
+    /// </summary>
+    /// <param name="loggerFactory">Factory to create loggers.</param>
+    /// <param name="tsContext">Database context factory for timing and scoring data.</param>
+    /// <param name="hcache">Hybrid cache for distributed caching.</param>
     protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, HybridCache hcache)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -25,7 +34,18 @@ public abstract class OrganizationControllerBase : ControllerBase
         this.hcache = hcache;
     }
 
-
+    /// <summary>
+    /// Retrieves the organization logo/icon as an image file.
+    /// </summary>
+    /// <param name="organizationId">The unique identifier of the organization.</param>
+    /// <returns>The organization logo as an image file with appropriate MIME type.</returns>
+    /// <response code="200">Returns the organization logo image.</response>
+    /// <response code="404">Organization not found or has no logo.</response>
+    /// <remarks>
+    /// <para>This endpoint is publicly accessible (no authentication required).</para>
+    /// <para>Supported image formats: PNG, JPEG, GIF, BMP</para>
+    /// <para>Results are cached for 30 minutes to improve performance.</para>
+    /// </remarks>
     [AllowAnonymous]
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -47,6 +67,11 @@ public abstract class OrganizationControllerBase : ControllerBase
         return File(organization.Logo, mimeType);
     }
 
+    /// <summary>
+    /// Loads organization logo from the database.
+    /// </summary>
+    /// <param name="organizationId">The unique identifier of the organization.</param>
+    /// <returns>Logo image bytes, or empty array if not found.</returns>
     protected async Task<byte[]> LoadOrganizationIcon(int organizationId)
     {
         using var context = await tsContext.CreateDbContextAsync();
@@ -54,6 +79,11 @@ public abstract class OrganizationControllerBase : ControllerBase
         return organization?.Logo ?? [];
     }
 
+    /// <summary>
+    /// Determines the MIME type of an image based on its magic number (file signature).
+    /// </summary>
+    /// <param name="imageBytes">The image file bytes to analyze.</param>
+    /// <returns>The MIME type string (e.g., "image/png", "image/jpeg").</returns>
     protected static string GetImageMimeType(byte[] imageBytes)
     {
         // Quick magic number detection (PNG, JPEG, GIF, BMP)

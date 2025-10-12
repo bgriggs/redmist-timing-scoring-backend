@@ -10,10 +10,26 @@ using StackExchange.Redis;
 
 namespace RedMist.StatusApi.Controllers.V2;
 
+/// <summary>
+/// Version 2 Events API controller.
+/// Provides enhanced endpoints with improved data models for retrieving event information and timing data.
+/// </summary>
+/// <remarks>
+/// Route: v2/Events/[action]
+/// </remarks>
 [Route("v{version:apiVersion}/[controller]/[action]")]
 [ApiVersion("2.0")]
 public class EventsController : EventsControllerBase
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="EventsController"/> V2 class.
+    /// </summary>
+    /// <param name="loggerFactory">Factory to create loggers.</param>
+    /// <param name="tsContext">Database context factory for timing and scoring data.</param>
+    /// <param name="hcache">Hybrid cache for distributed caching.</param>
+    /// <param name="cacheMux">Redis connection multiplexer.</param>
+    /// <param name="memoryCache">In-memory cache for frequently accessed data.</param>
+    /// <param name="httpClientFactory">Factory to create HTTP clients for inter-service communication.</param>
     public EventsController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
         HybridCache hcache, IConnectionMultiplexer cacheMux, IMemoryCache memoryCache,
         IHttpClientFactory httpClientFactory)
@@ -22,8 +38,18 @@ public class EventsController : EventsControllerBase
     }
 
     /// <summary>
-    /// V2: Returns SessionState object (breaking change from V1)
+    /// Loads session results for a specific event and session.
+    /// V2 returns the SessionState object format (breaking change from V1).
     /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="sessionId">The unique identifier of the session.</param>
+    /// <returns>Session results as a SessionState object, or null if not found.</returns>
+    /// <response code="200">Returns the SessionState object with session results.</response>
+    /// <remarks>
+    /// <para>Version: 2.0</para>
+    /// <para>The SessionState object provides an improved data structure compared to V1's Payload format.</para>
+    /// <para>Breaking change from V1: Returns SessionState instead of Payload.</para>
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType<SessionState>(StatusCodes.Status200OK)]
     public async Task<SessionState?> LoadSessionResults(int eventId, int sessionId)

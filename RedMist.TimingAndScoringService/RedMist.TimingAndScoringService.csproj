@@ -9,6 +9,8 @@
 		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<RepositoryUrl>https://github.com/bgriggs/redmist-timing-scoring-backend</RepositoryUrl>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);1591</NoWarn>
 	</PropertyGroup>
 	<ItemGroup>
 	  <Compile Remove="EventStatus\RMonitor\RMonitorDataProcessor.cs" />

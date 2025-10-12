@@ -14,9 +14,13 @@ using System.Text.Json;
 namespace RedMist.StatusApi.Controllers;
 
 /// <summary>
-/// Base controller containing all shared logic across API versions.
-/// Not directly routable - inherited by versioned controllers.
+/// Base controller providing event status and timing data endpoints.
+/// Contains shared logic across all API versions for loading events, sessions, car positions, and related data.
 /// </summary>
+/// <remarks>
+/// This is an abstract base controller that is inherited by versioned controllers (V1, V2, etc.).
+/// It is not directly routable and requires authentication via Bearer token.
+/// </remarks>
 [ApiController]
 [Authorize]
 public abstract class EventsControllerBase : ControllerBase
@@ -28,7 +32,15 @@ public abstract class EventsControllerBase : ControllerBase
     protected readonly IHttpClientFactory httpClientFactory;
     protected ILogger Logger { get; }
 
-
+    /// <summary>
+    /// Initializes a new instance of the <see cref="EventsControllerBase"/> class.
+    /// </summary>
+    /// <param name="loggerFactory">Factory to create loggers.</param>
+    /// <param name="tsContext">Database context factory for timing and scoring data.</param>
+    /// <param name="hcache">Hybrid cache for distributed caching.</param>
+    /// <param name="cacheMux">Redis connection multiplexer.</param>
+    /// <param name="memoryCache">In-memory cache for frequently accessed data.</param>
+    /// <param name="httpClientFactory">Factory to create HTTP clients for inter-service communication.</param>
     protected EventsControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
         HybridCache hcache, IConnectionMultiplexer cacheMux, IMemoryCache memoryCache,
         IHttpClientFactory httpClientFactory)
@@ -41,7 +53,12 @@ public abstract class EventsControllerBase : ControllerBase
         this.httpClientFactory = httpClientFactory;
     }
 
-
+    /// <summary>
+    /// Retrieves all events starting from a specified date.
+    /// </summary>
+    /// <param name="startDateUtc">The start date (UTC) to filter events from.</param>
+    /// <returns>An array of events with their associated sessions and organization details.</returns>
+    /// <response code="200">Returns the array of events.</response>
     [HttpGet]
     [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
     public virtual async Task<Event[]> LoadEvents(DateTime startDateUtc)
@@ -82,6 +99,14 @@ public abstract class EventsControllerBase : ControllerBase
         return [.. eventDtos];
     }
 
+    /// <summary>
+    /// Retrieves all currently live events.
+    /// </summary>
+    /// <returns>A list of event summaries for active live events.</returns>
+    /// <response code="200">Returns the list of live events.</response>
+    /// <remarks>
+    /// This endpoint is publicly accessible (no authentication required).
+    /// </remarks>
     [AllowAnonymous]
     [HttpGet]
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
@@ -118,6 +143,15 @@ public abstract class EventsControllerBase : ControllerBase
         return summaries;
     }
 
+    /// <summary>
+    /// Retrieves all live events and the most recent 100 non-live events.
+    /// </summary>
+    /// <returns>A combined list of live and recent event summaries.</returns>
+    /// <response code="200">Returns the list of live and recent events.</response>
+    /// <remarks>
+    /// This endpoint is publicly accessible (no authentication required).
+    /// Useful for displaying both current and past events in user interfaces.
+    /// </remarks>
     [AllowAnonymous]
     [HttpGet]
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
@@ -148,6 +182,12 @@ public abstract class EventsControllerBase : ControllerBase
         return [.. liveEvents, .. recentEvents];
     }
 
+    /// <summary>
+    /// Loads detailed information for a specific event.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>The event details including sessions, organization info, and configuration, or null if not found.</returns>
+    /// <response code="200">Returns the event details.</response>
     [HttpGet]
     [ProducesResponseType<Event>(StatusCodes.Status200OK)]
     public virtual async Task<Event?> LoadEvent(int eventId)
@@ -183,6 +223,14 @@ public abstract class EventsControllerBase : ControllerBase
         };
     }
 
+    /// <summary>
+    /// Loads completed lap data for a specific car in a session.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="sessionId">The unique identifier of the session.</param>
+    /// <param name="carNumber">The car number to retrieve lap data for.</param>
+    /// <returns>A list of car positions representing each completed lap.</returns>
+    /// <response code="200">Returns the list of lap positions for the car.</response>
     [HttpGet]
     [ProducesResponseType<List<CarPosition>>(StatusCodes.Status200OK)]
     public virtual async Task<List<CarPosition>> LoadCarLaps(int eventId, int sessionId, string carNumber)
@@ -217,6 +265,12 @@ public abstract class EventsControllerBase : ControllerBase
 
     #region Sessions
 
+    /// <summary>
+    /// Loads all sessions for a specific event.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>A list of sessions associated with the event.</returns>
+    /// <response code="200">Returns the list of sessions.</response>
     [HttpGet]
     [ProducesResponseType<List<Session>>(StatusCodes.Status200OK)]
     public virtual async Task<List<Session>> LoadSessions(int eventId)
@@ -226,6 +280,20 @@ public abstract class EventsControllerBase : ControllerBase
         return await context.Sessions.Where(s => s.EventId == eventId).ToListAsync();
     }
 
+    /// <summary>
+    /// Gets the current real-time session state from the event processor service.
+    /// Returns MessagePack-serialized SessionState data.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>MessagePack binary stream of the current session state.</returns>
+    /// <response code="200">Returns MessagePack binary data (application/x-msgpack).</response>
+    /// <response code="404">Event processor endpoint not found.</response>
+    /// <response code="408">Request timeout.</response>
+    /// <response code="503">Service unavailable.</response>
+    /// <remarks>
+    /// This endpoint communicates with the dedicated event processor service to retrieve live session data.
+    /// The response is in MessagePack format for efficient serialization.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType(typeof(SessionState), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -257,6 +325,11 @@ public abstract class EventsControllerBase : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Retrieves the event processor service endpoint for a specific event from cache.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>The HTTP endpoint URL of the event processor, or null if not found.</returns>
     protected async Task<string?> GetEventProcessorEndpointAsync(int eventId)
     {
         var key = string.Format(Consts.EVENT_SERVICE_ENDPOINT, eventId);
@@ -293,6 +366,16 @@ public abstract class EventsControllerBase : ControllerBase
 
     #region Competitor Metadata
 
+    /// <summary>
+    /// Loads competitor metadata (driver/car information) for a specific car in an event.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="car">The car number/identifier.</param>
+    /// <returns>Competitor metadata including driver name, car details, transponder info, etc., or null if not found.</returns>
+    /// <response code="200">Returns the competitor metadata.</response>
+    /// <remarks>
+    /// Metadata is sourced from Orbits timing systems when available and configured by the organizer.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType<CompetitorMetadata>(StatusCodes.Status200OK)]
     public virtual async Task<CompetitorMetadata?> LoadCompetitorMetadata(int eventId, string car)
@@ -301,6 +384,12 @@ public abstract class EventsControllerBase : ControllerBase
         return await GetCompetitorMetadata(eventId, car);
     }
 
+    /// <summary>
+    /// Gets competitor metadata from cache or database.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="car">The car number/identifier.</param>
+    /// <returns>Competitor metadata or null if not found.</returns>
     protected async Task<CompetitorMetadata?> GetCompetitorMetadata(int eventId, string car)
     {
         var key = string.Format(Consts.COMPETITOR_METADATA, car, eventId);
@@ -308,6 +397,12 @@ public abstract class EventsControllerBase : ControllerBase
             async cancel => await LoadDbCompetitorMetadata(eventId, car));
     }
 
+    /// <summary>
+    /// Loads competitor metadata from the database.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="car">The car number/identifier.</param>
+    /// <returns>Competitor metadata from database or null if not found.</returns>
     protected async Task<CompetitorMetadata?> LoadDbCompetitorMetadata(int eventId, string car)
     {
         using var db = await tsContext.CreateDbContextAsync();
@@ -318,6 +413,16 @@ public abstract class EventsControllerBase : ControllerBase
 
     #region Control Logs
 
+    /// <summary>
+    /// Loads the complete control log for an event.
+    /// Control logs contain race control decisions, penalties, and incident reports.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>A list of control log entries, or an empty list if not available.</returns>
+    /// <response code="200">Returns the list of control log entries.</response>
+    /// <remarks>
+    /// Control logs are only available if configured by the event organizer.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType<List<ControlLogEntry>>(StatusCodes.Status200OK)]
     public virtual async Task<List<ControlLogEntry>> LoadControlLog(int eventId)
@@ -335,6 +440,16 @@ public abstract class EventsControllerBase : ControllerBase
         return ccl?.ControlLogEntries ?? [];
     }
 
+    /// <summary>
+    /// Loads control log entries specific to a particular car.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="car">The car number to filter control log entries for.</param>
+    /// <returns>Control log data for the specified car, or null if not available.</returns>
+    /// <response code="200">Returns the car-specific control logs.</response>
+    /// <remarks>
+    /// Useful for drivers/teams to see only penalties and incidents affecting their car.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType<CarControlLogs>(StatusCodes.Status200OK)]
     public virtual async Task<CarControlLogs?> LoadCarControlLogs(int eventId, string car)
@@ -355,6 +470,17 @@ public abstract class EventsControllerBase : ControllerBase
 
     #region In-Car Data
 
+    /// <summary>
+    /// Loads the in-car driver mode payload for a specific car.
+    /// Provides data optimized for in-car display to drivers during an event.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="car">The car number/identifier.</param>
+    /// <returns>In-car payload containing position, gaps, lap times, and flags, or null if not available.</returns>
+    /// <response code="200">Returns the in-car payload data.</response>
+    /// <remarks>
+    /// In-car data includes current position, gap to cars ahead/behind, best lap comparison, and flag status.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType<InCarPayload>(StatusCodes.Status200OK)]
     public virtual async Task<InCarPayload?> LoadInCarPayload(int eventId, string car)
@@ -375,6 +501,16 @@ public abstract class EventsControllerBase : ControllerBase
 
     #region Flags
 
+    /// <summary>
+    /// Loads flag history for a specific session.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="sessionId">The unique identifier of the session.</param>
+    /// <returns>A list of flag durations showing when each flag state was active.</returns>
+    /// <response code="200">Returns the list of flag durations.</response>
+    /// <remarks>
+    /// Flag types include Green, Yellow (caution), Red (stopped), White (final lap), Checkered (finished), and Black.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType<List<FlagDuration>>(StatusCodes.Status200OK)]
     public virtual async Task<List<FlagDuration>> LoadFlags(int eventId, int sessionId)

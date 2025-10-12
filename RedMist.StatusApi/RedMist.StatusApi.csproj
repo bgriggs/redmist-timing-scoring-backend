@@ -6,6 +6,8 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<UserSecretsId>e80f9c37-72e7-4ed1-abaf-51e756863769</UserSecretsId>
 		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);1591</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -22,6 +24,7 @@
 		<PackageReference Include="NLog.Extensions.Logging" Version="6.0.4" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="9.9.0" />
 		<PackageReference Include="KubernetesClient" Version="17.0.14" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.4" />
 	</ItemGroup>
 
 	<ItemGroup>

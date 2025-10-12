@@ -8,6 +8,8 @@
 		<Company>Big Mission Motorsports, LLC</Company>
 		<Product>Red Mist</Product>
 		<Copyright>2025</Copyright>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);1591</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>

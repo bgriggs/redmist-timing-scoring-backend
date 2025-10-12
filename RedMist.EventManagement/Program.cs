@@ -11,6 +11,7 @@ using RedMist.Backend.Shared;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using StackExchange.Redis;
+using System.Reflection;
 
 namespace RedMist.EventManagement;
 
@@ -42,7 +43,26 @@ public class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(c =>
         {
-            c.SwaggerDoc("v1", new OpenApiInfo { Title = "Event Management Services", Version = "v1" });
+            c.SwaggerDoc("v1", new OpenApiInfo 
+            { 
+                Title = "RedMist Event Management API", 
+                Version = "v1",
+                Description = "API for managing racing events, configurations, and organization settings",
+                Contact = new OpenApiContact
+                {
+                    Name = "Red Mist Timing & Scoring",
+                    Url = new Uri("https://github.com/bgriggs/redmist-timing-scoring-backend")
+                }
+            });
+
+            // Include XML comments
+            var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+            if (File.Exists(xmlPath))
+            {
+                c.IncludeXmlComments(xmlPath);
+            }
+
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
             {
                 Name = "Authorization",
@@ -50,7 +70,7 @@ public class Program
                 Scheme = "Bearer",
                 BearerFormat = "JWT",
                 In = ParameterLocation.Header,
-                Description = "JWT Authorization header using the Bearer scheme."
+                Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\""
 
             });
             c.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -103,10 +123,13 @@ public class Program
         if (app.Environment.IsDevelopment())
         {
             Console.Title = "Event Management";
-            //app.MapOpenApi();
             app.UseDeveloperExceptionPage();
             app.UseSwagger();
-            app.UseSwaggerUI();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "RedMist Event Management API V1");
+                c.RoutePrefix = "swagger";
+            });
         }
 
         app.MapHealthChecks("/healthz/startup", new HealthCheckOptions

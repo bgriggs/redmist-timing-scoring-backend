@@ -26,4 +26,10 @@ redmist-relay-api:
 redis:
   fullnameOverride: "redis"
   master:
-    resourcesPreset: xlarge  # More resources for prod
+    resources:
+      requests:
+        cpu: "2"
+        memory: "1Gi"
+      limits:
+        cpu: "4"
+        memory: "6Gi"

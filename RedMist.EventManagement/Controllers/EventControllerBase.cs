@@ -10,8 +10,13 @@ using System.Security.Claims;
 namespace RedMist.EventManagement.Controllers;
 
 /// <summary>
-/// Base controller for Event management across API versions
+/// Base controller for Event management operations.
+/// Provides endpoints for creating, updating, and managing racing events.
 /// </summary>
+/// <remarks>
+/// This is an abstract base controller inherited by versioned controllers.
+/// Requires authentication and validates that users can only manage events for their organization.
+/// </remarks>
 [ApiController]
 [Authorize]
 public abstract class EventControllerBase : ControllerBase
@@ -20,7 +25,12 @@ public abstract class EventControllerBase : ControllerBase
     protected readonly IConnectionMultiplexer cacheMux;
     protected ILogger Logger { get; }
 
-
+    /// <summary>
+    /// Initializes a new instance of the <see cref="EventControllerBase"/> class.
+    /// </summary>
+    /// <param name="loggerFactory">Factory to create loggers.</param>
+    /// <param name="tsContext">Database context factory for timing and scoring data.</param>
+    /// <param name="cacheMux">Redis connection multiplexer for cache and pub/sub operations.</param>
     protected EventControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IConnectionMultiplexer cacheMux)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -28,7 +38,15 @@ public abstract class EventControllerBase : ControllerBase
         this.cacheMux = cacheMux;
     }
 
-
+    /// <summary>
+    /// Loads summary information for all events belonging to the authenticated user's organization.
+    /// </summary>
+    /// <returns>A list of event summaries ordered by start date (newest first).</returns>
+    /// <response code="200">Returns the list of event summaries.</response>
+    /// <remarks>
+    /// Events are filtered by the authenticated user's client_id to ensure users only see their organization's events.
+    /// Deleted events are excluded from results.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType<List<EventSummary>>(StatusCodes.Status200OK)]
     public virtual async Task<List<EventSummary>> LoadEventSummaries()
@@ -46,6 +64,15 @@ public abstract class EventControllerBase : ControllerBase
         return dbEvents;
     }
 
+    /// <summary>
+    /// Loads detailed information for a specific event.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>The event details, or null if not found or user is not authorized.</returns>
+    /// <response code="200">Returns the event details.</response>
+    /// <remarks>
+    /// Users can only load events that belong to their organization.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType<Event>(StatusCodes.Status200OK)]
     public virtual async Task<Event?> LoadEvent(int eventId)
@@ -60,6 +87,17 @@ public abstract class EventControllerBase : ControllerBase
             .FirstOrDefaultAsync();
     }
 
+    /// <summary>
+    /// Creates a new event for the authenticated user's organization.
+    /// </summary>
+    /// <param name="newEvent">The event details to create.</param>
+    /// <returns>The ID of the newly created event.</returns>
+    /// <response code="200">Returns the new event ID.</response>
+    /// <exception cref="Exception">Thrown when the user's organization is not found.</exception>
+    /// <remarks>
+    /// The event is automatically associated with the authenticated user's organization.
+    /// After creation, a configuration change notification is published to update dependent services.
+    /// </remarks>
     [HttpPost]
     [ProducesResponseType<int>(StatusCodes.Status200OK)]
     public virtual async Task<int> SaveNewEvent(Event newEvent)
@@ -78,6 +116,17 @@ public abstract class EventControllerBase : ControllerBase
         return newEvent.Id;
     }
 
+    /// <summary>
+    /// Updates an existing event's configuration.
+    /// </summary>
+    /// <param name="event">The event with updated details.</param>
+    /// <returns>No content on success.</returns>
+    /// <response code="200">Event updated successfully.</response>
+    /// <exception cref="Exception">Thrown when the user's organization is not found.</exception>
+    /// <remarks>
+    /// Users can only update events belonging to their organization.
+    /// After update, a configuration change notification is published to update dependent services.
+    /// </remarks>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public virtual async Task UpdateEvent(Event @event)
@@ -108,6 +157,18 @@ public abstract class EventControllerBase : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Sets an event as the active event for the organization.
+    /// Deactivates all other events for the same organization.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event to activate.</param>
+    /// <returns>No content on success.</returns>
+    /// <response code="200">Event status updated successfully.</response>
+    /// <exception cref="Exception">Thrown when the user's organization is not found.</exception>
+    /// <remarks>
+    /// Only one event can be active per organization at a time.
+    /// After activation, a configuration change notification is published.
+    /// </remarks>
     [HttpPut]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public virtual async Task UpdateEventStatusActive(int eventId)
@@ -127,6 +188,18 @@ public abstract class EventControllerBase : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Soft-deletes an event (marks as deleted without removing from database).
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event to delete.</param>
+    /// <returns>No content on success.</returns>
+    /// <response code="200">Event deleted successfully.</response>
+    /// <exception cref="Exception">Thrown when the user's organization is not found.</exception>
+    /// <remarks>
+    /// <para>The event is marked as deleted but retained in the database for historical purposes.</para>
+    /// <para>If the deleted event was active, the most recent event is automatically set as active.</para>
+    /// <para>A configuration change notification is published after deletion.</para>
+    /// </remarks>
     [HttpPut]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public virtual async Task DeleteEvent(int eventId)
@@ -157,6 +230,16 @@ public abstract class EventControllerBase : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Publishes an event configuration change notification via Redis pub/sub.
+    /// Notifies dependent services (e.g., timing processors) to reload event configuration.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event that changed.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <exception cref="RedisConnectionException">Thrown when Redis connection fails after retries.</exception>
+    /// <remarks>
+    /// Implements exponential backoff retry logic (up to 3 attempts) for Redis connection issues.
+    /// </remarks>
     protected async Task PublishEventConfigurationChangedAsync(int eventId)
     {
         const int maxRetries = 3;

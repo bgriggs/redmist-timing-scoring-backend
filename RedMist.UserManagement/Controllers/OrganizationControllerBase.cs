@@ -11,8 +11,13 @@ using RedMist.UserManagement.Models;
 namespace RedMist.UserManagement.Controllers;
 
 /// <summary>
-/// Base controller for Organization management across API versions
+/// Base controller for user and organization management operations.
+/// Provides endpoints for managing user-organization relationships, organization creation, and Keycloak integration.
 /// </summary>
+/// <remarks>
+/// This is an abstract base controller inherited by versioned controllers.
+/// Handles organization provisioning including Keycloak relay client creation.
+/// </remarks>
 [ApiController]
 [Authorize]
 public abstract class OrganizationControllerBase : ControllerBase
@@ -25,7 +30,13 @@ public abstract class OrganizationControllerBase : ControllerBase
     protected readonly string realm;
     protected ILogger Logger { get; }
 
-
+    /// <summary>
+    /// Initializes a new instance of the <see cref="OrganizationControllerBase"/> class.
+    /// </summary>
+    /// <param name="loggerFactory">Factory to create loggers.</param>
+    /// <param name="tsContext">Database context factory for timing and scoring data.</param>
+    /// <param name="configuration">Application configuration containing Keycloak settings.</param>
+    /// <exception cref="InvalidOperationException">Thrown when required Keycloak configuration is missing.</exception>
     protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IConfiguration configuration)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -38,7 +49,15 @@ public abstract class OrganizationControllerBase : ControllerBase
         realm = configuration["Keycloak:Realm"] ?? throw new InvalidOperationException("Keycloak Realm is not configured.");
     }
 
-
+    /// <summary>
+    /// Loads the organization associated with the authenticated user.
+    /// </summary>
+    /// <returns>Organization details including ID, name, website, and logo.</returns>
+    /// <response code="200">Returns the organization details.</response>
+    /// <response code="404">User organization mapping or organization not found.</response>
+    /// <remarks>
+    /// The user's identity (username) is extracted from authentication claims to find their organization.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType<OrganizationDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -78,6 +97,15 @@ public abstract class OrganizationControllerBase : ControllerBase
         };
     }
 
+    /// <summary>
+    /// Loads all organization roles for the authenticated user.
+    /// </summary>
+    /// <returns>A list of organization IDs and roles that the user belongs to.</returns>
+    /// <response code="200">Returns the list of user organization roles.</response>
+    /// <response code="404">User identity not found in claims.</response>
+    /// <remarks>
+    /// Users may belong to multiple organizations with different roles.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType<List<UserOrganizationDto>>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -107,6 +135,16 @@ public abstract class OrganizationControllerBase : ControllerBase
         return userOrganizations;
     }
 
+    /// <summary>
+    /// Checks if a relay client name already exists in Keycloak.
+    /// </summary>
+    /// <param name="name">The relay client name to check.</param>
+    /// <returns>True if the client name exists, false otherwise.</returns>
+    /// <response code="200">Returns boolean indicating existence.</response>
+    /// <remarks>
+    /// Used to validate organization short names before creating a new organization.
+    /// Relay client IDs follow the format: relay-{name}
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public virtual async Task<ActionResult<bool>> RelayClientNameExists(string name)
@@ -117,6 +155,23 @@ public abstract class OrganizationControllerBase : ControllerBase
         return client != null;
     }
 
+    /// <summary>
+    /// Creates a new organization for the authenticated user and provisions necessary infrastructure.
+    /// </summary>
+    /// <param name="newOrganization">The organization details to create.</param>
+    /// <returns>The ID of the newly created organization.</returns>
+    /// <response code="200">Returns the new organization ID.</response>
+    /// <response code="404">User identity not found in claims.</response>
+    /// <remarks>
+    /// <para>This endpoint performs the following operations:</para>
+    /// <list type="number">
+    /// <item>Creates the organization in the database</item>
+    /// <item>Associates the authenticated user with the organization</item>
+    /// <item>Provisions a Keycloak relay client for data ingestion</item>
+    /// <item>Assigns appropriate service account roles</item>
+    /// </list>
+    /// <para>If no logo is provided, a default image will be used.</para>
+    /// </remarks>
     [HttpPost]
     [ProducesResponseType<int>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -174,6 +229,19 @@ public abstract class OrganizationControllerBase : ControllerBase
         return Ok(organization.Id);
     }
 
+    /// <summary>
+    /// Creates a Keycloak service account client for relay data ingestion.
+    /// </summary>
+    /// <param name="name">The short name for the organization (used in client ID).</param>
+    /// <returns>The Keycloak client ID, or null if creation failed.</returns>
+    /// <remarks>
+    /// <para>The relay client is configured with:</para>
+    /// <list type="bullet">
+    /// <item>Service account authentication (client credentials flow)</item>
+    /// <item>Relay service role assignment</item>
+    /// <item>OpenID Connect protocol</item>
+    /// </list>
+    /// </remarks>
     protected async Task<string?> CreateRelayClient(string name)
     {
         using HttpClient httpClient = await GetHttpClient();
@@ -237,6 +305,18 @@ public abstract class OrganizationControllerBase : ControllerBase
         return client?.Id;
     }
 
+    /// <summary>
+    /// Updates organization details.
+    /// </summary>
+    /// <param name="organizationDto">The organization with updated details.</param>
+    /// <returns>No content on success.</returns>
+    /// <response code="200">Organization updated successfully.</response>
+    /// <response code="404">Organization not found.</response>
+    /// <response code="401">User is not authorized to update this organization.</response>
+    /// <remarks>
+    /// Users can only update organizations they belong to.
+    /// Updatable fields: Name, Website, Logo.
+    /// </remarks>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -266,6 +346,19 @@ public abstract class OrganizationControllerBase : ControllerBase
         return Ok();
     }
 
+    /// <summary>
+    /// Loads the relay connection information for an organization.
+    /// Provides the client ID and secret needed for relay software to connect.
+    /// </summary>
+    /// <param name="organizationId">The unique identifier of the organization.</param>
+    /// <returns>Relay connection details including client ID and secret.</returns>
+    /// <response code="200">Returns relay connection information.</response>
+    /// <response code="404">Organization or relay client not found.</response>
+    /// <response code="401">User is not authorized to access this organization.</response>
+    /// <remarks>
+    /// This endpoint provides sensitive credentials and should only be accessible to authorized organization members.
+    /// The relay client is used by track-side software to send timing data to the cloud.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType<RelayConnectionInfoDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -299,10 +392,10 @@ public abstract class OrganizationControllerBase : ControllerBase
     }
 
     /// <summary>
-    /// Determines if the user is authorized for the specified organization.
+    /// Validates that the authenticated user is authorized to access the specified organization.
     /// </summary>
-    /// <param name="organizationId"></param>
-    /// <returns>true if authorized</returns>
+    /// <param name="organizationId">The unique identifier of the organization.</param>
+    /// <returns>True if the user is authorized, false otherwise.</returns>
     protected async Task<bool> ValidateUserOrganization(int organizationId)
     {
         var clientId = User.Identity?.Name;
@@ -319,6 +412,10 @@ public abstract class OrganizationControllerBase : ControllerBase
         return userOrganization != null;
     }
 
+    /// <summary>
+    /// Creates an HTTP client with Keycloak service account authentication.
+    /// </summary>
+    /// <returns>An authenticated HTTP client.</returns>
     protected async Task<HttpClient> GetHttpClient()
     {
         var token = await KeycloakServiceToken.RequestClientToken(keycloakUrl, realm, clientId, clientSecret);
@@ -328,10 +425,10 @@ public abstract class OrganizationControllerBase : ControllerBase
     }
 
     /// <summary>
-    /// Get a Keycloak client by name.
+    /// Retrieves a Keycloak client by its client ID.
     /// </summary>
-    /// <param name="clientName"></param>
-    /// <returns></returns>
+    /// <param name="clientName">The client ID to search for.</param>
+    /// <returns>The Keycloak client representation, or null if not found.</returns>
     protected async Task<ClientRepresentation?> LoadKeycloakClient(string clientName)
     {
         using HttpClient httpClient = await GetHttpClient();
@@ -350,10 +447,10 @@ public abstract class OrganizationControllerBase : ControllerBase
     }
 
     /// <summary>
-    /// Get a Keycloak role by name.
+    /// Retrieves a Keycloak realm role by name.
     /// </summary>
-    /// <param name="name"></param>
-    /// <returns></returns>
+    /// <param name="name">The role name to search for.</param>
+    /// <returns>The Keycloak role representation, or null if not found.</returns>
     protected async Task<RoleRepresentation?> LoadKeycloakRole(string name)
     {
         using HttpClient httpClient = await GetHttpClient();
@@ -363,10 +460,10 @@ public abstract class OrganizationControllerBase : ControllerBase
     }
 
     /// <summary>
-    /// Get the secret for a Keycloak service client.
+    /// Retrieves the client secret for a Keycloak service account client.
     /// </summary>
-    /// <param name="name">text name of the client</param>
-    /// <returns>secret or null</returns>
+    /// <param name="name">The client ID of the service account.</param>
+    /// <returns>The client secret, or null if not found.</returns>
     protected async Task<string?> LoadKeycloakServiceSecret(string name)
     {
         var client = await LoadKeycloakClient(name);

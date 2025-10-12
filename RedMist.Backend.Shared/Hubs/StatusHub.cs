@@ -8,6 +8,15 @@ using System.Text.Json;
 
 namespace RedMist.Backend.Shared.Hubs;
 
+/// <summary>
+/// SignalR hub that provides real-time event status updates to connected clients.
+/// Manages subscriptions for live timing data, control logs, and in-car driver information.
+/// </summary>
+/// <remarks>
+/// <para>Hub Route: /status/event-status</para>
+/// <para>Authentication: Required (Bearer token)</para>
+/// <para>This hub supports multiple subscription types including event updates, control logs, and in-car driver mode.</para>
+/// </remarks>
 [Authorize]
 public class StatusHub : Hub
 {
@@ -21,14 +30,22 @@ public class StatusHub : Hub
 
     private ILogger Logger { get; }
 
-
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StatusHub"/> class.
+    /// </summary>
+    /// <param name="loggerFactory">Factory to create loggers for this hub.</param>
+    /// <param name="cacheMux">Redis connection multiplexer for caching and pub/sub.</param>
     public StatusHub(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
     }
 
-
+    /// <summary>
+    /// Called when a new client connects to the hub.
+    /// Initializes connection tracking and updates metrics.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
     public async override Task OnConnectedAsync()
     {
         await base.OnConnectedAsync();
@@ -51,6 +68,12 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {id} connected: {ConnectionId}", clientId, Context.ConnectionId);
     }
 
+    /// <summary>
+    /// Called when a client disconnects from the hub.
+    /// Cleans up connection tracking and subscriptions, and updates metrics.
+    /// </summary>
+    /// <param name="exception">Optional exception that caused the disconnection.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     public async override Task OnDisconnectedAsync(Exception? exception)
     {
         await base.OnDisconnectedAsync(exception);
@@ -105,9 +128,30 @@ public class StatusHub : Hub
     #region Event Subscriptions
 
     /// <summary>
-    /// UI is registering to receive updates for a specific event.
+    /// Subscribes the client to receive real-time updates for a specific event.
+    /// Triggers an immediate full status update to be sent to the client.
     /// </summary>
-    /// <param name="eventId"></param>
+    /// <param name="eventId">The unique identifier of the event to subscribe to.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// <para>Version: V1 (Legacy)</para>
+    /// <para>Upon subscription, the client will receive:</para>
+    /// <list type="bullet">
+    /// <item>An immediate full status update with all current event data</item>
+    /// <item>Incremental updates as the event progresses</item>
+    /// <item>Updates every ~5 seconds with compressed full payload</item>
+    /// </list>
+    /// </remarks>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('SubscribeToEvent', 123);
+    /// </code>
+    /// Python:
+    /// <code>
+    /// await hub.server.invoke('SubscribeToEvent', 123)
+    /// </code>
+    /// </example>
     public async Task SubscribeToEvent(int eventId)
     {
         var connectionId = Context.ConnectionId;
@@ -129,6 +173,20 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} subscribed to event {eventId}", connectionId, eventId);
     }
 
+    /// <summary>
+    /// Unsubscribes the client from receiving updates for a specific event.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event to unsubscribe from.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Version: V1 (Legacy)
+    /// </remarks>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('UnsubscribeFromEvent', 123);
+    /// </code>
+    /// </example>
     public async Task UnsubscribeFromEvent(int eventId)
     {
         var connectionId = Context.ConnectionId;
@@ -148,6 +206,21 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} unsubscribed from event {eventId}", connectionId, eventId);
     }
 
+    /// <summary>
+    /// Subscribes the client to receive real-time updates for a specific event using V2 protocol.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event to subscribe to.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// <para>Version: V2</para>
+    /// <para>This version uses an improved subscription model with enhanced data structures.</para>
+    /// </remarks>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('SubscribeToEventV2', 123);
+    /// </code>
+    /// </example>
     public async Task SubscribeToEventV2(int eventId)
     {
         var connectionId = Context.ConnectionId;
@@ -162,6 +235,20 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} subscribed v2 to event {eventId}", connectionId, eventId);
     }
 
+    /// <summary>
+    /// Unsubscribes the client from receiving V2 updates for a specific event.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event to unsubscribe from.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Version: V2
+    /// </remarks>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('UnsubscribeFromEventV2', 123);
+    /// </code>
+    /// </example>
     public async Task UnsubscribeFromEventV2(int eventId)
     {
         var connectionId = Context.ConnectionId;
@@ -186,6 +273,21 @@ public class StatusHub : Hub
 
     #region Control Logs
 
+    /// <summary>
+    /// Subscribes the client to receive control log updates for a specific event.
+    /// Control logs include race control decisions, penalties, and incident reports.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Control logs are only available if configured by the event organizer.
+    /// </remarks>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('SubscribeToControlLogs', 123);
+    /// </code>
+    /// </example>
     public async Task SubscribeToControlLogs(int eventId)
     {
         var connectionId = Context.ConnectionId;
@@ -194,6 +296,17 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} subscribed to control log for event {eventId}", connectionId, eventId);
     }
 
+    /// <summary>
+    /// Unsubscribes the client from receiving control log updates for a specific event.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('UnsubscribeFromControlLogs', 123);
+    /// </code>
+    /// </example>
     public async Task UnsubscribeFromControlLogs(int eventId)
     {
         var connectionId = Context.ConnectionId;
@@ -202,6 +315,22 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} unsubscribed from control log for event {eventId}", connectionId, eventId);
     }
 
+    /// <summary>
+    /// Subscribes the client to receive control log updates for a specific car in an event.
+    /// Provides filtered control log entries relevant only to the specified car.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="carNum">The car number to subscribe to.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Useful for drivers or teams who only want to see control log entries affecting their car.
+    /// </remarks>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('SubscribeToCarControlLogs', 123, '42');
+    /// </code>
+    /// </example>
     public async Task SubscribeToCarControlLogs(int eventId, string carNum)
     {
         var connectionId = Context.ConnectionId;
@@ -210,6 +339,18 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} subscribed to control log for car {carNum} event {eventId}", connectionId, carNum, eventId);
     }
 
+    /// <summary>
+    /// Unsubscribes the client from receiving control log updates for a specific car.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="carNum">The car number to unsubscribe from.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('UnsubscribeFromCarControlLogs', 123, '42');
+    /// </code>
+    /// </example>
     public async Task UnsubscribeFromCarControlLogs(int eventId, string carNum)
     {
         var connectionId = Context.ConnectionId;
@@ -222,6 +363,29 @@ public class StatusHub : Hub
 
     #region In-Car Driver Mode
 
+    /// <summary>
+    /// Subscribes the client to in-car driver mode for a specific car in an event.
+    /// Provides real-time data optimized for in-car display to drivers.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="car">The car number/identifier for the in-car view.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// <para>Version: V1 (Legacy)</para>
+    /// <para>In-car mode provides driver-specific information including:</para>
+    /// <list type="bullet">
+    /// <item>Current position and lap time</item>
+    /// <item>Gap to cars ahead/behind</item>
+    /// <item>Best lap comparison</item>
+    /// <item>Flag status</item>
+    /// </list>
+    /// </remarks>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('SubscribeToInCarDriverEvent', 123, '42');
+    /// </code>
+    /// </example>
     public async Task SubscribeToInCarDriverEvent(int eventId, string car)
     {
         var connectionId = Context.ConnectionId;
@@ -231,6 +395,21 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} subscribed to in-car driver event for car {car} event {eventId}", connectionId, car, eventId);
     }
 
+    /// <summary>
+    /// Unsubscribes the client from in-car driver mode for a specific car.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="car">The car number/identifier to unsubscribe from.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Version: V1 (Legacy)
+    /// </remarks>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('UnsubscribeFromInCarDriverEvent', 123, '42');
+    /// </code>
+    /// </example>
     public async Task UnsubscribeFromInCarDriverEvent(int eventId, string car)
     {
         var connectionId = Context.ConnectionId;
@@ -240,6 +419,22 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} unsubscribed from in-car driver event for car {car} event {eventId}", connectionId, car, eventId);
     }
 
+    /// <summary>
+    /// Subscribes the client to in-car driver mode V2 for a specific car in an event.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="car">The car number/identifier for the in-car view.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// <para>Version: V2</para>
+    /// <para>V2 includes enhanced data structures and improved update frequency.</para>
+    /// </remarks>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('SubscribeToInCarDriverEventV2', 123, '42');
+    /// </code>
+    /// </example>
     public async Task SubscribeToInCarDriverEventV2(int eventId, string car)
     {
         var connectionId = Context.ConnectionId;
@@ -249,6 +444,21 @@ public class StatusHub : Hub
         Logger.LogInformation("Client {connectionId} subscribed to in-car V2 driver event for car {car} event {eventId}", connectionId, car, eventId);
     }
 
+    /// <summary>
+    /// Unsubscribes the client from in-car driver mode V2 for a specific car.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="car">The car number/identifier to unsubscribe from.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Version: V2
+    /// </remarks>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('UnsubscribeFromInCarDriverEventV2', 123, '42');
+    /// </code>
+    /// </example>
     public async Task UnsubscribeFromInCarDriverEventV2(int eventId, string car)
     {
         var connectionId = Context.ConnectionId;
