@@ -10,22 +10,23 @@ using RedMist.UserManagement.Models;
 
 namespace RedMist.UserManagement.Controllers;
 
+/// <summary>
+/// Base controller for Organization management across API versions
+/// </summary>
 [ApiController]
-[Route("[controller]/[action]")]
 [Authorize]
-public class OrganizationController : ControllerBase
+public abstract class OrganizationControllerBase : ControllerBase
 {
-    private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly IConfiguration configuration;
-    private readonly string keycloakUrl;
-    private readonly string clientId;
-    private readonly string clientSecret;
-    private readonly string realm;
+    protected readonly IDbContextFactory<TsContext> tsContext;
+    protected readonly IConfiguration configuration;
+    protected readonly string keycloakUrl;
+    protected readonly string clientId;
+    protected readonly string clientSecret;
+    protected readonly string realm;
+    protected ILogger Logger { get; }
 
-    private ILogger Logger { get; }
 
-
-    public OrganizationController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IConfiguration configuration)
+    protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IConfiguration configuration)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
@@ -41,7 +42,7 @@ public class OrganizationController : ControllerBase
     [HttpGet]
     [ProducesResponseType<OrganizationDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<OrganizationDto>> LoadUserOrganization()
+    public virtual async Task<ActionResult<OrganizationDto>> LoadUserOrganization()
     {
         Logger.LogMethodEntry();
         var clientId = User.Identity?.Name;
@@ -80,7 +81,7 @@ public class OrganizationController : ControllerBase
     [HttpGet]
     [ProducesResponseType<List<UserOrganizationDto>>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<List<UserOrganizationDto>>> LoadUserOrganizationRoles()
+    public virtual async Task<ActionResult<List<UserOrganizationDto>>> LoadUserOrganizationRoles()
     {
         Logger.LogMethodEntry();
         var clientId = User.Identity?.Name;
@@ -108,7 +109,7 @@ public class OrganizationController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult<bool>> RelayClientNameExists(string name)
+    public virtual async Task<ActionResult<bool>> RelayClientNameExists(string name)
     {
         Logger.LogMethodInfo("RelayClientNameExists {name}", name);
         var clientId = string.Format(Consts.RELAY_CLIENT_ID, name);
@@ -119,7 +120,7 @@ public class OrganizationController : ControllerBase
     [HttpPost]
     [ProducesResponseType<int>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<int>> SaveNewOrganization(OrganizationDto newOrganization)
+    public virtual async Task<ActionResult<int>> SaveNewOrganization(OrganizationDto newOrganization)
     {
         Logger.LogMethodInfo("SaveNewOrganization {organization}", newOrganization.Name);
 
@@ -173,7 +174,7 @@ public class OrganizationController : ControllerBase
         return Ok(organization.Id);
     }
 
-    private async Task<string?> CreateRelayClient(string name)
+    protected async Task<string?> CreateRelayClient(string name)
     {
         using HttpClient httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
@@ -195,7 +196,7 @@ public class OrganizationController : ControllerBase
             StandardFlowEnabled = true,
             ImplicitFlowEnabled = false,
             DirectAccessGrantsEnabled = false,
-            ServiceAccountsEnabled = true, // Enable service accounts for this client
+            ServiceAccountsEnabled = true,
             AuthorizationServicesEnabled = false,
             FrontchannelLogout = true,
             FullScopeAllowed = true,
@@ -240,7 +241,7 @@ public class OrganizationController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult> UpdateOrganization(OrganizationDto organizationDto)
+    public virtual async Task<ActionResult> UpdateOrganization(OrganizationDto organizationDto)
     {
         Logger.LogMethodInfo($"UpdateOrganization {organizationDto.Name}");
 
@@ -269,7 +270,7 @@ public class OrganizationController : ControllerBase
     [ProducesResponseType<RelayConnectionInfoDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<RelayConnectionInfoDto>> LoadRelayConnection(int organizationId)
+    public virtual async Task<ActionResult<RelayConnectionInfoDto>> LoadRelayConnection(int organizationId)
     {
         Logger.LogMethodInfo($"LoadRelayConnection for organization {organizationId}");
         // Ensure user is authorized for this organization
@@ -302,7 +303,7 @@ public class OrganizationController : ControllerBase
     /// </summary>
     /// <param name="organizationId"></param>
     /// <returns>true if authorized</returns>
-    private async Task<bool> ValidateUserOrganization(int organizationId)
+    protected async Task<bool> ValidateUserOrganization(int organizationId)
     {
         var clientId = User.Identity?.Name;
         if (string.IsNullOrEmpty(clientId))
@@ -318,7 +319,7 @@ public class OrganizationController : ControllerBase
         return userOrganization != null;
     }
 
-    private async Task<HttpClient> GetHttpClient()
+    protected async Task<HttpClient> GetHttpClient()
     {
         var token = await KeycloakServiceToken.RequestClientToken(keycloakUrl, realm, clientId, clientSecret);
         var httpClient = new HttpClient();
@@ -331,7 +332,7 @@ public class OrganizationController : ControllerBase
     /// </summary>
     /// <param name="clientName"></param>
     /// <returns></returns>
-    private async Task<ClientRepresentation?> LoadKeycloakClient(string clientName)
+    protected async Task<ClientRepresentation?> LoadKeycloakClient(string clientName)
     {
         using HttpClient httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
@@ -353,7 +354,7 @@ public class OrganizationController : ControllerBase
     /// </summary>
     /// <param name="name"></param>
     /// <returns></returns>
-    private async Task<RoleRepresentation?> LoadKeycloakRole(string name)
+    protected async Task<RoleRepresentation?> LoadKeycloakRole(string name)
     {
         using HttpClient httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
@@ -366,7 +367,7 @@ public class OrganizationController : ControllerBase
     /// </summary>
     /// <param name="name">text name of the client</param>
     /// <returns>secret or null</returns>
-    private async Task<string?> LoadKeycloakServiceSecret(string name)
+    protected async Task<string?> LoadKeycloakServiceSecret(string name)
     {
         var client = await LoadKeycloakClient(name);
         if (client != null)

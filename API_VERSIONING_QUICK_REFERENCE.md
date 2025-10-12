@@ -40,6 +40,18 @@ Controllers/
 | `/Organization/LoadOrganization` | V1 (legacy) |
 | `/v1/Organization/LoadOrganization` | V1 |
 
+### UserManagement - OrganizationController
+| Route | Version |
+|-------|---------|
+| `/Organization/LoadUserOrganization` | V1 (legacy) |
+| `/v1/Organization/LoadUserOrganization` | V1 |
+| `/Organization/SaveNewOrganization` | V1 (legacy) |
+| `/v1/Organization/SaveNewOrganization` | V1 |
+| `/Organization/UpdateOrganization` | V1 (legacy) |
+| `/v1/Organization/UpdateOrganization` | V1 |
+| `/Organization/LoadRelayConnection` | V1 (legacy) |
+| `/v1/Organization/LoadRelayConnection` | V1 |
+
 ## Code Examples
 
 ### Base Controller (Shared Logic)
@@ -104,6 +116,7 @@ All responses include:
 ```http
 GET /Events/LoadSessionResults?eventId=1&sessionId=2
 GET /Organization/GetOrganizationIcon?organizationId=1
+GET /Organization/LoadUserOrganization
 ```
 Automatically routed to V1
 
@@ -112,6 +125,7 @@ Automatically routed to V1
 GET /v1/Events/LoadSessionResults?eventId=1&sessionId=2
 GET /v2/Events/LoadSessionResults?eventId=1&sessionId=2
 GET /v1/Organization/GetOrganizationIcon?organizationId=1
+GET /v1/Organization/LoadUserOrganization
 ```
 Explicit version selection
 
@@ -133,6 +147,11 @@ Explicit version selection
 - ? `Controllers/V1/OrganizationController.cs` (new)
 - ? `Program.cs` (updated)
 - ? `API_VERSIONING.md` (documentation)
+
+### UserManagement
+- ? `Controllers/OrganizationControllerBase.cs` (new)
+- ? `Controllers/V1/OrganizationController.cs` (new)
+- ? `Program.cs` (updated)
 
 ## Build Status
 ? All projects build successfully  
