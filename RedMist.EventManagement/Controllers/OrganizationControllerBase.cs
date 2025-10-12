@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RedMist.ControlLogs;
@@ -9,18 +9,19 @@ using System.Security.Claims;
 
 namespace RedMist.EventManagement.Controllers;
 
+/// <summary>
+/// Base controller for Organization management across API versions
+/// </summary>
 [ApiController]
-[Route("[controller]/[action]")]
 [Authorize]
-public class OrganizationController : Controller
+public abstract class OrganizationControllerBase : Controller
 {
-    private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly IControlLogFactory controlLogFactory;
+    protected readonly IDbContextFactory<TsContext> tsContext;
+    protected readonly IControlLogFactory controlLogFactory;
+    protected ILogger Logger { get; }
 
-    private ILogger Logger { get; }
 
-
-    public OrganizationController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory)
+    protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
@@ -29,7 +30,7 @@ public class OrganizationController : Controller
 
 
     [HttpGet]
-    public async Task<Organization?> LoadOrganization()
+    public virtual async Task<Organization?> LoadOrganization()
     {
         Logger.LogTrace("LoadOrganization");
         var clientId = User.FindFirstValue("client_id");
@@ -40,7 +41,7 @@ public class OrganizationController : Controller
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task UpdateOrganization(Organization organization)
+    public virtual async Task UpdateOrganization(Organization organization)
     {
         Logger.LogTrace("UpdateOrganization");
         var clientId = User.FindFirstValue("client_id");
@@ -48,9 +49,7 @@ public class OrganizationController : Controller
         var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
         if (org != null)
         {
-            //org.Name = organization.Name;
             org.Website = organization.Website;
-            //org.Logo = organization.Logo;
             org.ControlLogType = organization.ControlLogType;
             org.ControlLogParams = organization.ControlLogParams;
             org.Orbits = organization.Orbits;
@@ -60,7 +59,7 @@ public class OrganizationController : Controller
     }
 
     [HttpPost]
-    public async Task<ControlLogStatistics> GetControlLogStatistics(Organization organization)
+    public virtual async Task<ControlLogStatistics> GetControlLogStatistics(Organization organization)
     {
         Logger.LogTrace("GetControlLogStatistics");
         var cls = new ControlLogStatistics();

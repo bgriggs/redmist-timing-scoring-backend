@@ -5,7 +5,6 @@ using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.Memory;
 using RedMist.Backend.Shared;
 using RedMist.Database;
-using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
 using StackExchange.Redis;
@@ -14,20 +13,23 @@ using System.Text.Json;
 
 namespace RedMist.StatusApi.Controllers;
 
+/// <summary>
+/// Base controller containing all shared logic across API versions.
+/// Not directly routable - inherited by versioned controllers.
+/// </summary>
 [ApiController]
-[Route("[controller]/[action]")]
 [Authorize]
-public class EventsController : ControllerBase
+public abstract class EventsControllerBase : ControllerBase
 {
-    private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly HybridCache hcache;
-    private readonly IConnectionMultiplexer cacheMux;
-    private readonly IMemoryCache memoryCache;
-    private readonly IHttpClientFactory httpClientFactory;
-    private ILogger Logger { get; }
+    protected readonly IDbContextFactory<TsContext> tsContext;
+    protected readonly HybridCache hcache;
+    protected readonly IConnectionMultiplexer cacheMux;
+    protected readonly IMemoryCache memoryCache;
+    protected readonly IHttpClientFactory httpClientFactory;
+    protected ILogger Logger { get; }
 
 
-    public EventsController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
+    protected EventsControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
         HybridCache hcache, IConnectionMultiplexer cacheMux, IMemoryCache memoryCache,
         IHttpClientFactory httpClientFactory)
     {
@@ -42,7 +44,7 @@ public class EventsController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
-    public async Task<Event[]> LoadEvents(DateTime startDateUtc)
+    public virtual async Task<Event[]> LoadEvents(DateTime startDateUtc)
     {
         Logger.LogTrace("LoadEvents");
 
@@ -83,14 +85,13 @@ public class EventsController : ControllerBase
     [AllowAnonymous]
     [HttpGet]
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
-    public async Task<List<EventListSummary>> LoadLiveEvents()
+    public virtual async Task<List<EventListSummary>> LoadLiveEvents()
     {
         Logger.LogTrace("LoadLiveEvents");
         using var db = await tsContext.CreateDbContextAsync();
         var summaries = await (
         from e in db.Events
         join o in db.Organizations on e.OrganizationId equals o.Id
-        //join s in db.Sessions on e.Id equals s.EventId
         where e.IsActive && !e.IsDeleted && e.IsLive
         group new { e, o } by new
         {
@@ -109,7 +110,7 @@ public class EventsController : ControllerBase
             OrganizationName = g.Key.OrganizationName,
             EventName = g.Key.EventName,
             EventDate = g.Key.EventDate.ToString("yyyy-MM-dd"),
-            IsLive = true, // At least one session in the group is live
+            IsLive = true,
             TrackName = g.Key.TrackName,
             Schedule = g.Key.Schedule
         }).ToListAsync();
@@ -120,7 +121,7 @@ public class EventsController : ControllerBase
     [AllowAnonymous]
     [HttpGet]
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
-    public async Task<List<EventListSummary>> LoadLiveAndRecentEvents()
+    public virtual async Task<List<EventListSummary>> LoadLiveAndRecentEvents()
     {
         Logger.LogTrace("LoadLiveAndRecentEvents");
 
@@ -129,7 +130,6 @@ public class EventsController : ControllerBase
             from e in db1.Events
             join o in db1.Organizations on e.OrganizationId equals o.Id
             where !e.IsDeleted && !e.IsLive
-            //where !db1.Sessions.Any(s => s.EventId == e.Id && s.IsLive)
             orderby e.StartDate descending
             select new EventListSummary
             {
@@ -145,13 +145,12 @@ public class EventsController : ControllerBase
             .ToListAsync();
         var liveEvents = await LoadLiveEvents();
 
-        // Merge recent and live events
         return [.. liveEvents, .. recentEvents];
     }
 
     [HttpGet]
     [ProducesResponseType<Event>(StatusCodes.Status200OK)]
-    public async Task<Event?> LoadEvent(int eventId)
+    public virtual async Task<Event?> LoadEvent(int eventId)
     {
         Logger.LogTrace("LoadEvent");
 
@@ -186,14 +185,14 @@ public class EventsController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<List<CarPosition>>(StatusCodes.Status200OK)]
-    public async Task<List<CarPosition>> LoadCarLaps(int eventId, int sessionId, string carNumber)
+    public virtual async Task<List<CarPosition>> LoadCarLaps(int eventId, int sessionId, string carNumber)
     {
         Logger.LogTrace("GetCarPositions for event {eventId}", eventId);
         using var context = tsContext.CreateDbContext();
         var laps = await context.CarLapLogs
             .Where(c => c.EventId == eventId && c.SessionId == sessionId && c.CarNumber == carNumber && c.LapNumber > 0 && c.Timestamp == context.CarLapLogs
                 .Where(r => r.Id == c.Id)
-                .Max(r => r.Timestamp)) // When there are multiple of the same lap for the same car, such as from a simulated replay, load the newest one
+                .Max(r => r.Timestamp))
             .ToListAsync();
 
         var carPositions = new List<CarPosition>();
@@ -220,7 +219,7 @@ public class EventsController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<List<Session>>(StatusCodes.Status200OK)]
-    public async Task<List<Session>> LoadSessions(int eventId)
+    public virtual async Task<List<Session>> LoadSessions(int eventId)
     {
         Logger.LogTrace("GetSessions for event {eventId}", eventId);
         using var context = await tsContext.CreateDbContextAsync();
@@ -228,48 +227,10 @@ public class EventsController : ControllerBase
     }
 
     [HttpGet]
-    [ProducesResponseType<Payload>(StatusCodes.Status200OK)]
-    public async Task<Payload?> LoadSessionResults(int eventId, int sessionId)
-    {
-        Logger.LogTrace("GetSessionResults for event {eventId}, session {sessionId}", eventId, sessionId);
-        using var context = await tsContext.CreateDbContextAsync();
-        var result = await context.SessionResults.FirstOrDefaultAsync(r => r.EventId == eventId && r.SessionId == sessionId);
-
-        // Use the session state to generate the payload if available
-        Payload? payload = null;
-        if (result != null&& result.SessionState != null && result.SessionState.SessionId > 0)
-        {
-            payload = result.SessionState.ToPayload();
-        }
-
-        return payload ?? result?.Payload;
-    }
-
-    [HttpGet]
-    [ProducesResponseType<SessionState>(StatusCodes.Status200OK)]
-    public async Task<SessionState?> LoadSessionResultsV2(int eventId, int sessionId)
-    {
-        Logger.LogTrace("GetSessionResults for event {eventId}, session {sessionId}", eventId, sessionId);
-        using var context = await tsContext.CreateDbContextAsync();
-        var result = await context.SessionResults.FirstOrDefaultAsync(r => r.EventId == eventId && r.SessionId == sessionId);
-
-        // Use the session state to generate the payload if available
-        SessionState? sessionState = null;
-        if (result != null && result.Payload != null && !string.IsNullOrEmpty(result.Payload.EventStatus?.EventId))
-        {
-            sessionState = result.Payload.ToSessionState();
-        }
-
-        return sessionState ?? result?.SessionState;
-    }
-
-    [HttpGet]
     [ProducesResponseType(typeof(SessionState), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetCurrentSessionState(int eventId)
+    public virtual async Task<IActionResult> GetCurrentSessionState(int eventId)
     {
-        //Logger.LogTrace("GetCurrentSessionState for event {eventId}", eventId);
-
         var url = await GetEventProcessorEndpointAsync(eventId);
         if (string.IsNullOrEmpty(url))
             return NotFound("Event processor endpoint not found");
@@ -281,11 +242,7 @@ public class EventsController : ControllerBase
         
         try
         {
-            // Use GetStreamAsync for better performance with large responses
             var stream = await httpClient.GetStreamAsync(url);
-
-            //Logger.LogTrace("GetCurrentSessionState HTTP GET {url} completed in {elapsed} ms", url, sw.ElapsedMilliseconds);
-
             return File(stream, "application/x-msgpack");
         }
         catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
@@ -300,11 +257,9 @@ public class EventsController : ControllerBase
         }
     }
 
-
-    private async Task<string?> GetEventProcessorEndpointAsync(int eventId)
+    protected async Task<string?> GetEventProcessorEndpointAsync(int eventId)
     {
         var key = string.Format(Consts.EVENT_SERVICE_ENDPOINT, eventId);
-        // First check in-memory cache
         if (memoryCache.TryGetValue(key, out string? cachedValue))
         {
             return cachedValue;
@@ -312,7 +267,6 @@ public class EventsController : ControllerBase
 
         try
         {
-            // Check Redis if not in memory
             var cache = cacheMux.GetDatabase();
             var redisValue = await cache.StringGetAsync(key);
 
@@ -341,20 +295,20 @@ public class EventsController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<CompetitorMetadata>(StatusCodes.Status200OK)]
-    public async Task<CompetitorMetadata?> LoadCompetitorMetadata(int eventId, string car)
+    public virtual async Task<CompetitorMetadata?> LoadCompetitorMetadata(int eventId, string car)
     {
         Logger.LogTrace("LoadCompetitorMetadata for event {eventId}, car {car}", eventId, car);
         return await GetCompetitorMetadata(eventId, car);
     }
 
-    private async Task<CompetitorMetadata?> GetCompetitorMetadata(int eventId, string car)
+    protected async Task<CompetitorMetadata?> GetCompetitorMetadata(int eventId, string car)
     {
         var key = string.Format(Consts.COMPETITOR_METADATA, car, eventId);
         return await hcache.GetOrCreateAsync(key,
             async cancel => await LoadDbCompetitorMetadata(eventId, car));
     }
 
-    private async Task<CompetitorMetadata?> LoadDbCompetitorMetadata(int eventId, string car)
+    protected async Task<CompetitorMetadata?> LoadDbCompetitorMetadata(int eventId, string car)
     {
         using var db = await tsContext.CreateDbContextAsync();
         return await db.CompetitorMetadata.FirstOrDefaultAsync(x => x.EventId == eventId && x.CarNumber == car);
@@ -366,7 +320,7 @@ public class EventsController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<List<ControlLogEntry>>(StatusCodes.Status200OK)]
-    public async Task<List<ControlLogEntry>> LoadControlLog(int eventId)
+    public virtual async Task<List<ControlLogEntry>> LoadControlLog(int eventId)
     {
         Logger.LogTrace("LoadControlLog for event {eventId}", eventId);
         var logCacheKey = string.Format(Consts.CONTROL_LOG, eventId);
@@ -383,7 +337,7 @@ public class EventsController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<CarControlLogs>(StatusCodes.Status200OK)]
-    public async Task<CarControlLogs?> LoadCarControlLogs(int eventId, string car)
+    public virtual async Task<CarControlLogs?> LoadCarControlLogs(int eventId, string car)
     {
         Logger.LogTrace("LoadCarControlLog for event {eventId} car {c}", eventId, car);
         var carLogEntryKey = string.Format(Consts.CONTROL_LOG_CAR, eventId, car);
@@ -403,7 +357,7 @@ public class EventsController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<InCarPayload>(StatusCodes.Status200OK)]
-    public async Task<InCarPayload?> LoadInCarPayload(int eventId, string car)
+    public virtual async Task<InCarPayload?> LoadInCarPayload(int eventId, string car)
     {
         Logger.LogTrace("LoadInCarPayload for event {eventId}, car {car}", eventId, car);
         var cache = cacheMux.GetDatabase();
@@ -423,7 +377,7 @@ public class EventsController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<List<FlagDuration>>(StatusCodes.Status200OK)]
-    public async Task<List<FlagDuration>> LoadFlags(int eventId, int sessionId)
+    public virtual async Task<List<FlagDuration>> LoadFlags(int eventId, int sessionId)
     {
         Logger.LogTrace("LoadFlags for event {eventId}, session {sessionId}", eventId, sessionId);
         using var context = await tsContext.CreateDbContextAsync();
@@ -442,5 +396,4 @@ public class EventsController : ControllerBase
     }
 
     #endregion
-
 }

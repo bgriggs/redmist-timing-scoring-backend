@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared;
@@ -9,18 +9,19 @@ using System.Security.Claims;
 
 namespace RedMist.EventManagement.Controllers;
 
+/// <summary>
+/// Base controller for Event management across API versions
+/// </summary>
 [ApiController]
-[Route("[controller]/[action]")]
 [Authorize]
-public class EventController : ControllerBase
+public abstract class EventControllerBase : ControllerBase
 {
-    private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly IConnectionMultiplexer cacheMux;
+    protected readonly IDbContextFactory<TsContext> tsContext;
+    protected readonly IConnectionMultiplexer cacheMux;
+    protected ILogger Logger { get; }
 
-    private ILogger Logger { get; }
 
-
-    public EventController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IConnectionMultiplexer cacheMux)
+    protected EventControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IConnectionMultiplexer cacheMux)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
@@ -30,7 +31,7 @@ public class EventController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<List<EventSummary>>(StatusCodes.Status200OK)]
-    public async Task<List<EventSummary>> LoadEventSummaries()
+    public virtual async Task<List<EventSummary>> LoadEventSummaries()
     {
         Logger.LogTrace("LoadEventSummaries");
         var clientId = User.FindFirstValue("client_id");
@@ -47,7 +48,7 @@ public class EventController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType<Event>(StatusCodes.Status200OK)]
-    public async Task<Event?> LoadEvent(int eventId)
+    public virtual async Task<Event?> LoadEvent(int eventId)
     {
         Logger.LogTrace("LoadEvent {event}", eventId);
         var clientId = User.FindFirstValue("client_id");
@@ -61,7 +62,7 @@ public class EventController : ControllerBase
 
     [HttpPost]
     [ProducesResponseType<int>(StatusCodes.Status200OK)]
-    public async Task<int> SaveNewEvent(Event newEvent)
+    public virtual async Task<int> SaveNewEvent(Event newEvent)
     {
         Logger.LogTrace("SaveNewEvent {event}", newEvent.Name);
         var clientId = User.FindFirstValue("client_id");
@@ -79,7 +80,7 @@ public class EventController : ControllerBase
 
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task UpdateEvent(Event @event)
+    public virtual async Task UpdateEvent(Event @event)
     {
         Logger.LogTrace("UpdateEvent {event}", @event.Name);
         var clientId = User.FindFirstValue("client_id");
@@ -109,7 +110,7 @@ public class EventController : ControllerBase
 
     [HttpPut]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task UpdateEventStatusActive(int eventId)
+    public virtual async Task UpdateEventStatusActive(int eventId)
     {
         Logger.LogTrace("UpdateEventStatusActive {event}", eventId);
         var clientId = User.FindFirstValue("client_id");
@@ -128,7 +129,7 @@ public class EventController : ControllerBase
 
     [HttpPut]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task DeleteEvent(int eventId)
+    public virtual async Task DeleteEvent(int eventId)
     {
         Logger.LogTrace("DeleteEvent {event}", eventId);
         var clientId = User.FindFirstValue("client_id");
@@ -156,7 +157,7 @@ public class EventController : ControllerBase
         }
     }
 
-    private async Task PublishEventConfigurationChangedAsync(int eventId)
+    protected async Task PublishEventConfigurationChangedAsync(int eventId)
     {
         const int maxRetries = 3;
         var retryCount = 0;

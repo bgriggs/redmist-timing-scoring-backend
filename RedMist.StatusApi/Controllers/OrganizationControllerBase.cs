@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
@@ -6,18 +6,19 @@ using RedMist.Database;
 
 namespace RedMist.StatusApi.Controllers;
 
+/// <summary>
+/// Base controller for Organization operations across API versions
+/// </summary>
 [ApiController]
-[Route("[controller]/[action]")]
 [Authorize]
-public class OrganizationController : ControllerBase
+public abstract class OrganizationControllerBase : ControllerBase
 {
-    private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly HybridCache hcache;
+    protected readonly IDbContextFactory<TsContext> tsContext;
+    protected readonly HybridCache hcache;
+    protected ILogger Logger { get; }
 
-    private ILogger Logger { get; }
 
-
-    public OrganizationController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, HybridCache hcache)
+    protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, HybridCache hcache)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
@@ -29,7 +30,7 @@ public class OrganizationController : ControllerBase
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetOrganizationIcon(int organizationId)
+    public virtual async Task<IActionResult> GetOrganizationIcon(int organizationId)
     {
         Logger.LogTrace("GetOrganizationIcon for organization {organizationId}", organizationId);
 
@@ -46,14 +47,14 @@ public class OrganizationController : ControllerBase
         return File(organization.Logo, mimeType);
     }
 
-    private async Task<byte[]> LoadOrganizationIcon(int organizationId)
+    protected async Task<byte[]> LoadOrganizationIcon(int organizationId)
     {
         using var context = await tsContext.CreateDbContextAsync();
         var organization = await context.OrganizationExtView.FirstOrDefaultAsync(o => o.Id == organizationId);
         return organization?.Logo ?? [];
     }
 
-    private static string GetImageMimeType(byte[] imageBytes)
+    protected static string GetImageMimeType(byte[] imageBytes)
     {
         // Quick magic number detection (PNG, JPEG, GIF, BMP)
         if (imageBytes.Length >= 4)
