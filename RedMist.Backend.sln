@@ -1,6 +1,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.13.35723.152
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11109.219 d18.0-oob
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.TimingAndScoringService", "RedMist.TimingAndScoringService\RedMist.TimingAndScoringService.csproj", "{D58D11F3-B446-4BF9-8CC0-250A981A0BB7}"
 EndProject
@@ -16,9 +16,19 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.UserManagement", "R
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{696EBD40-9305-47DD-9392-3AE967E93E09}"
 	ProjectSection(SolutionItems) = preProject
+		build-docs.ps1 = build-docs.ps1
 		.github\workflows\build.yml = .github\workflows\build.yml
+		docfx.json = docfx.json
+		DOCFX_COMPLETE_SUMMARY.md = DOCFX_COMPLETE_SUMMARY.md
+		DOCFX_QUICK_START.md = DOCFX_QUICK_START.md
+		DOCFX_SETUP_GUIDE.md = DOCFX_SETUP_GUIDE.md
+		.github\workflows\docs.yml = .github\workflows\docs.yml
+		DOCUMENTATION_COMPLETE.md = DOCUMENTATION_COMPLETE.md
+		DOCUMENTATION_SETUP_SUMMARY.md = DOCUMENTATION_SETUP_SUMMARY.md
 		.github\workflows\publish.yml = .github\workflows\publish.yml
 		README.md = README.md
+		serve-docs.ps1 = serve-docs.ps1
+		toc.yml = toc.yml
 		version = version
 	EndProjectSection
 EndProject
@@ -37,6 +47,15 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.SentinelVideo", "RedMist.SentinelVideo\RedMist.SentinelVideo.csproj", "{203684BC-CFEB-4F6C-8DCA-E45A0654C568}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.DatabaseMigrationRunner", "RedMist.DatabaseMigrationRunner\RedMist.DatabaseMigrationRunner.csproj", "{C5962389-7120-4061-B4B2-9E13B1C332E8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "articles", "articles", "{2C0D996B-F470-44D2-B045-3580249455B1}"
+	ProjectSection(SolutionItems) = preProject
+		articles\architecture.md = articles\architecture.md
+		articles\authentication.md = articles\authentication.md
+		articles\getting-started.md = articles\getting-started.md
+		articles\signalr-hubs.md = articles\signalr-hubs.md
+		articles\toc.yml = articles\toc.yml
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -103,6 +122,9 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2C0D996B-F470-44D2-B045-3580249455B1} = {696EBD40-9305-47DD-9392-3AE967E93E09}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {BCE8ECC7-D522-49B0-B6FD-E0C57E6E5E3C}

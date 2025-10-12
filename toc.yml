@@ -1,0 +1,8 @@
+- name: API Reference
+  href: api/
+  homepage: api/index.md
+- name: Articles
+  href: articles/
+  homepage: articles/getting-started.md
+- name: GitHub
+  href: https://github.com/bgriggs/redmist-timing-scoring-backend

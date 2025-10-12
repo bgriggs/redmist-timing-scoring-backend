@@ -1,0 +1,92 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "files": [
+            "RedMist.StatusApi/**/*.csproj",
+            "RedMist.EventManagement/**/*.csproj",
+            "RedMist.UserManagement/**/*.csproj",
+            "RedMist.TimingAndScoringService/**/*.csproj",
+            "RedMist.Backend.Shared/**/*.csproj",
+            "RedMist.Database/**/*.csproj",
+            "RedMist.ControlLogs/**/*.csproj"
+          ],
+          "exclude": [
+            "**/bin/**",
+            "**/obj/**",
+            "**/wwwroot/**",
+            "**/*.Tests/**"
+          ]
+        }
+      ],
+      "dest": "api",
+      "disableGitFeatures": false,
+      "disableDefaultFilter": false,
+      "properties": {
+        "TargetFramework": "net9.0"
+      }
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": [
+          "api/**.yml",
+          "api/index.md"
+        ]
+      },
+      {
+        "files": [
+          "articles/**.md",
+          "articles/**/toc.yml",
+          "toc.yml",
+          "*.md"
+        ]
+      }
+    ],
+    "resource": [
+      {
+        "files": [
+          "images/**"
+        ]
+      }
+    ],
+    "overwrite": [
+      {
+        "files": [
+          "apidoc/**.md"
+        ],
+        "exclude": [
+          "obj/**",
+          "_site/**"
+        ]
+      }
+    ],
+    "dest": "_site",
+    "globalMetadataFiles": [],
+    "fileMetadataFiles": [],
+    "template": [
+      "default"
+    ],
+    "postProcessors": [],
+    "markdownEngineName": "markdig",
+    "noLangKeyword": false,
+    "keepFileLink": false,
+    "cleanupCacheHistory": false,
+    "disableGitFeatures": false,
+    "globalMetadata": {
+      "_appTitle": "RedMist Timing & Scoring",
+      "_appName": "RedMist",
+      "_appFooter": "© 2025 Big Mission Motorsports, LLC. Red Mist Timing & Scoring",
+      "_enableSearch": true,
+      "_enableNewTab": true,
+      "_disableContribution": false,
+      "_gitContribute": {
+        "repo": "https://github.com/bgriggs/redmist-timing-scoring-backend",
+        "branch": "main"
+      },
+      "_gitUrlPattern": "github"
+    }
+  }
+}
