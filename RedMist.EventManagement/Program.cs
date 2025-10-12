@@ -119,18 +119,21 @@ public class Program
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();
 
-        // Configure the HTTP request pipeline.
+        // Configure the HTTP request pipeline
         if (app.Environment.IsDevelopment())
         {
             Console.Title = "Event Management";
             app.UseDeveloperExceptionPage();
-            app.UseSwagger();
-            app.UseSwaggerUI(c =>
-            {
-                c.SwaggerEndpoint("/swagger/v1/swagger.json", "RedMist Event Management API V1");
-                c.RoutePrefix = "swagger";
-            });
         }
+
+        // Enable Swagger in all environments
+        app.UseSwagger();
+        app.UseSwaggerUI(c =>
+        {
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "RedMist Event Management API V1");
+            c.RoutePrefix = "swagger";
+            c.DocumentTitle = "RedMist Event Management API Documentation";
+        });
 
         app.MapHealthChecks("/healthz/startup", new HealthCheckOptions
         {

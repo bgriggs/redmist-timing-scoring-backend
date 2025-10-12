@@ -162,18 +162,21 @@ public class Program
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();
 
-        // Configure the HTTP request pipeline.
+        // Configure the HTTP request pipeline
         if (app.Environment.IsDevelopment())
         {
             Console.Title = "Status API";
-            app.UseSwagger();
-            app.UseSwaggerUI(c =>
-            {
-                c.SwaggerEndpoint("/swagger/v1/swagger.json", "RedMist Status API V1");
-                c.SwaggerEndpoint("/swagger/v2/swagger.json", "RedMist Status API V2");
-                c.RoutePrefix = "swagger";
-            });
         }
+
+        // Enable Swagger in all environments
+        app.UseSwagger();
+        app.UseSwaggerUI(c =>
+        {
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "RedMist Status API V1");
+            c.SwaggerEndpoint("/swagger/v2/swagger.json", "RedMist Status API V2");
+            c.RoutePrefix = "swagger";
+            c.DocumentTitle = "RedMist Status API Documentation";
+        });
 
         app.MapHealthChecks("/healthz/startup", new HealthCheckOptions
         {

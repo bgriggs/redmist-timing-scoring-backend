@@ -189,14 +189,13 @@ public abstract class EventControllerBase : ControllerBase
     }
 
     /// <summary>
-    /// Soft-deletes an event (marks as deleted without removing from database).
+    /// Deletes an event.
     /// </summary>
     /// <param name="eventId">The unique identifier of the event to delete.</param>
     /// <returns>No content on success.</returns>
     /// <response code="200">Event deleted successfully.</response>
     /// <exception cref="Exception">Thrown when the user's organization is not found.</exception>
     /// <remarks>
-    /// <para>The event is marked as deleted but retained in the database for historical purposes.</para>
     /// <para>If the deleted event was active, the most recent event is automatically set as active.</para>
     /// <para>A configuration change notification is published after deletion.</para>
     /// </remarks>
