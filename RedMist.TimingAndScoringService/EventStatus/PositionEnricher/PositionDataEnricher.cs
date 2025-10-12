@@ -53,9 +53,22 @@ public class PositionDataEnricher
 
             // Find changes from the original session state CarPositions and the updated ones
             // and create CarPositionPatches to return in a SessionStateUpdate.
-            var copiedCarLookup = copiedCarPositions
-                .Where(c => c.Number != null)
-                .ToDictionary(c => c.Number!, c => c);
+            var copiedCarLookup = new Dictionary<string, CarPosition>();
+            foreach (var c in copiedCarPositions)
+            {
+                if (c.Number == null)
+                    continue;
+                
+                if (copiedCarLookup.ContainsKey(c.Number))
+                {
+                    Logger.LogWarning("Duplicate car number found: {CarNumber}", c.Number);
+                    Trace.WriteLine($"Duplicate car number found: {c.Number}");
+                }
+                else
+                {
+                    copiedCarLookup[c.Number] = c;
+                }
+            }
 
             for (int i = 0; i < originalCarPositions.Count; i++)
             {
