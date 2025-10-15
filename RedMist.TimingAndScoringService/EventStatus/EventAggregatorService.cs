@@ -337,6 +337,11 @@ public class EventAggregatorService : BackgroundService
             using (await sessionContext.SessionStateLock.AcquireReadLockAsync(stoppingToken))
             {
                 payload = sessionContext.SessionState.ToPayload();
+                // Support legacy serialization
+                foreach (var cp in payload.CarPositions)
+                {
+                    cp.LastLapPitted ??= 0;
+                }
             }
             var json = JsonSerializer.Serialize(payload);
 
