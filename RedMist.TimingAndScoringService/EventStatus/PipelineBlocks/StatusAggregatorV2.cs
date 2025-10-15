@@ -41,11 +41,6 @@ public class StatusAggregatorV2
             // Legacy support
             var payload = sessionContext.SessionState.ToPayload();
             payload.EventEntries.Clear(); // Event entries are sent separately as patches
-            // Support legacy serialization
-            foreach (var cp in payload.CarPositions)
-            {
-                cp.LastLapPitted ??= 0;
-            }
             if (updates.CarPatches.Count > 0)
             {
                 var ct = hubContext.Clients.Group(subKey).SendAsync("ReceiveCarPatches", updates.CarPatches, sessionContext.CancellationToken);
