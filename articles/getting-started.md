@@ -16,9 +16,6 @@ This guide will help you get started with the RedMist Timing & Scoring APIs.
 3. Go to "Relay Connection" section
 4. Note your `client_id` and `client_secret`
 
-### For Service Account
-Contact your organization administrator for service account credentials.
-
 ## Step 2: Get an Access Token
 
 Use the OAuth2 client credentials flow to obtain a token:
@@ -85,15 +82,19 @@ const connection = new signalR.HubConnectionBuilder()
     .build();
 
 // Handle incoming messages
-connection.on("ReceiveMessage", (status) => {
-    console.log("Status update:", status);
+connection.on("ReceiveSessionPatch", (session) => {
+    console.log("Session update");
+});
+
+connection.on("ReceiveCarPatches", (car) => {
+    console.log("Car update");
 });
 
 // Connect
 await connection.start();
 
 // Subscribe to an event
-await connection.invoke("SubscribeToEvent", 123);
+await connection.invoke("SubscribeToEventV2", 123);
 ```
 
 ### Python
@@ -128,13 +129,14 @@ hub = HubConnectionBuilder()\
 def on_message(message):
     print(f"Status update: {message}")
 
-hub.on("ReceiveMessage", on_message)
+hub.on("ReceiveSessionPatch", on_session_message)
+hub.on("ReceiveCarPatches", on_car_message)
 
 # Start connection
 hub.start()
 
 # Subscribe to event
-hub.send("SubscribeToEvent", [123])
+hub.send("SubscribeToEventV2", [123])
 ```
 
 ## Step 5: Explore the API
@@ -142,9 +144,8 @@ hub.send("SubscribeToEvent", [123])
 ### Interactive Documentation
 
 Visit the Swagger UI for interactive API exploration:
-- **Status API**: https://api.redmist.racing/swagger
-- **Event Management**: https://[your-domain]/swagger
-- **User Management**: https://[your-domain]/swagger
+- **Status API**: https://api.redmist.racing/status/swagger
+- **Event Management**: https://api.redmist.racing/event-management/swagger
 
 ### Key Endpoints
 
@@ -155,8 +156,7 @@ Visit the Swagger UI for interactive API exploration:
 - `GET /Events/LoadCarLaps?eventId={id}&sessionId={sid}&carNumber={num}` - Get lap data
 
 **SignalR Hub:**
-- `SubscribeToEvent(eventId)` - Subscribe to real-time updates
-- `SubscribeToEventV2(eventId)` - Subscribe with V2 protocol
+- `SubscribeToEventV2(eventId)` - Subscribe to receive event updates
 - `SubscribeToControlLogs(eventId)` - Get control log updates
 - `SubscribeToInCarDriverEvent(eventId, car)` - In-car driver mode
 

@@ -1,6 +1,6 @@
 # Authentication Guide
 
-RedMist uses OAuth 2.0 with Keycloak for authentication and authorization.
+RedMist uses OAuth 2.0 for authentication and authorization.
 
 ## Authentication Flow
 

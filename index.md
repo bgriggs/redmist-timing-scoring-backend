@@ -16,43 +16,33 @@ Welcome to the Red Mist Timing & Scoring documentation - a cloud-based, real-tim
 - [SignalR Hubs](articles/signalr-hubs.md) - Real-time communication
 - [Architecture](articles/architecture.md) - System design
 
-### For Integrators
-- [Getting Started](articles/getting-started.md) - Quick start guide
-- [Authentication Guide](articles/authentication.md) - OAuth2/Keycloak integration
-- [SignalR Guide](articles/signalr-hubs.md) - Real-time data streaming
-
-### For Administrators
-- [Architecture](articles/architecture.md) - System architecture
-
 ## Quick Links
 
 - [GitHub Repository](https://github.com/bgriggs/redmist-timing-scoring-backend)
-- [Live API Documentation](https://api.redmist.racing/swagger)
 - [Report Issues](https://github.com/bgriggs/redmist-timing-scoring-backend/issues)
 
-## ?? Services Overview
+## Services Overview
 
 ### Status API
 Real-time event status, timing data, and race information.
-- [Swagger UI](https://api.redmist.racing/swagger)
+- [Swagger UI](https://api.redmist.racing/status/swagger)
 
 ### Event Management API
 Event configuration and organization management.
-
-### User Management API
-User and organization administration.
+- [Swagger UI](https://api.redmist.racing/event-management/swagger)
 
 ### Timing & Scoring Service
 Internal real-time event processing.
 
-## ?? What's New
+## What's New
 
-See the documentation for the latest changes and version information.
+As of 10/14/2025, the API Version 2 is avilable with enhanced features and improvements, such as Multiloop data. Check the [API Reference](api/index.md) for details.
+It is expected that all clients will migrate to API v2 by 01/01/2026, after which v1 will be deprecated.
 
-## ?? Contributing
+## Contributing
 
 Contributions are welcome! Please see the repository for details.
 
-## ?? License
+## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.

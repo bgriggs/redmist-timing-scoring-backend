@@ -64,55 +64,58 @@ public class Program
             options.SubstituteApiVersionInUrl = true;
         });
         
-        // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-        builder.Services.AddEndpointsApiExplorer();
-        builder.Services.AddSwaggerGen(c =>
+        // Configure Swagger only in Development
+        if (builder.Environment.IsDevelopment())
         {
-            c.SwaggerDoc("v1", new OpenApiInfo 
-            { 
-                Title = "RedMist User Management API", 
-                Version = "v1",
-                Description = "API for managing users, organizations, and relay client provisioning",
-                Contact = new OpenApiContact
-                {
-                    Name = "Red Mist Timing & Scoring",
-                    Url = new Uri("https://github.com/bgriggs/redmist-timing-scoring-backend")
-                }
-            });
-
-            // Include XML comments
-            var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
-            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-            if (File.Exists(xmlPath))
+            builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddSwaggerGen(c =>
             {
-                c.IncludeXmlComments(xmlPath);
-            }
-
-            c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
-            {
-                Name = "Authorization",
-                Type = SecuritySchemeType.ApiKey,
-                Scheme = "Bearer",
-                BearerFormat = "JWT",
-                In = ParameterLocation.Header,
-                Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\""
-            });
-
-            c.AddSecurityRequirement(new OpenApiSecurityRequirement
-            {
-                {
-                    new OpenApiSecurityScheme
+                c.SwaggerDoc("v1", new OpenApiInfo 
+                { 
+                    Title = "RedMist User Management API", 
+                    Version = "v1",
+                    Description = "API for managing users, organizations, and relay client provisioning",
+                    Contact = new OpenApiContact
                     {
-                        Reference = new OpenApiReference
-                        {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = "Bearer"
-                        }
-                    }, 
-                    Array.Empty<string>()
+                        Name = "Red Mist Timing & Scoring",
+                        Url = new Uri("https://github.com/bgriggs/redmist-timing-scoring-backend")
+                    }
+                });
+
+                // Include XML comments
+                var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+                var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+                if (File.Exists(xmlPath))
+                {
+                    c.IncludeXmlComments(xmlPath);
                 }
+
+                c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
+                {
+                    Name = "Authorization",
+                    Type = SecuritySchemeType.ApiKey,
+                    Scheme = "Bearer",
+                    BearerFormat = "JWT",
+                    In = ParameterLocation.Header,
+                    Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\""
+                });
+
+                c.AddSecurityRequirement(new OpenApiSecurityRequirement
+                {
+                    {
+                        new OpenApiSecurityScheme
+                        {
+                            Reference = new OpenApiReference
+                            {
+                                Type = ReferenceType.SecurityScheme,
+                                Id = "Bearer"
+                            }
+                        }, 
+                        Array.Empty<string>()
+                    }
+                });
             });
-        });
+        }
 
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
@@ -139,34 +142,37 @@ public class Program
         // Apply rate limiting middleware (must be after UsePathBase, before endpoints)
         app.UseRateLimiter();
 
-        // Enable Swagger in all environments
-        app.UseSwagger(c =>
+        // Enable Swagger only in Development
+        if (app.Environment.IsDevelopment())
         {
-            c.PreSerializeFilters.Add((swagger, httpReq) =>
+            app.UseSwagger(c =>
             {
-                // Ensure swagger knows about the path base for proper URL generation
-                if (!string.IsNullOrEmpty(pathBase))
+                c.PreSerializeFilters.Add((swagger, httpReq) =>
                 {
-                    swagger.Servers = new List<Microsoft.OpenApi.Models.OpenApiServer>
+                    // Ensure swagger knows about the path base for proper URL generation
+                    if (!string.IsNullOrEmpty(pathBase))
                     {
-                        new() { Url = $"{httpReq.Scheme}://{httpReq.Host.Value}{pathBase}" }
-                    };
-                }
+                        swagger.Servers = new List<Microsoft.OpenApi.Models.OpenApiServer>
+                        {
+                            new() { Url = $"{httpReq.Scheme}://{httpReq.Host.Value}{pathBase}" }
+                        };
+                    }
+                });
             });
-        });
-        app.UseSwaggerUI(c =>
-        {
-            c.SwaggerEndpoint("v1/swagger.json", "RedMist User Management API V1");
-            c.RoutePrefix = "swagger";
-            c.DocumentTitle = "RedMist User Management API Documentation";
-        });
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("v1/swagger.json", "RedMist User Management API V1");
+                c.RoutePrefix = "swagger";
+                c.DocumentTitle = "RedMist User Management API Documentation";
+            });
 
-        // Apply rate limiting to Swagger JSON endpoints
-        app.MapGet("/swagger/{documentName}/swagger.json", async (string documentName, HttpContext httpContext) =>
-        {
-            // Forward to the Swagger middleware
-            await httpContext.Response.CompleteAsync();
-        }).RequireRateLimiting("swagger");
+            // Apply rate limiting to Swagger JSON endpoints (Development only)
+            app.MapGet("/swagger/{documentName}/swagger.json", async (string documentName, HttpContext httpContext) =>
+            {
+                // Forward to the Swagger middleware
+                await httpContext.Response.CompleteAsync();
+            }).RequireRateLimiting("swagger");
+        }
 
         app.MapHealthChecks("/healthz/startup", new HealthCheckOptions
         {

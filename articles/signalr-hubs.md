@@ -2,6 +2,43 @@
 
 RedMist uses SignalR for real-time, bidirectional communication between servers and clients.
 
+SignalR is an open-source library that simplifies adding real-time web functionality to applications. It enables server-side code to push content to connected clients instantly as events happen, rather than having clients poll the server for updates.
+
+### Key Benefits
+
+**Real-Time Updates**
+- Instant data delivery with sub-second latency
+- Live timing data, positions, and lap times update in real-time
+- No polling overhead or delays
+
+**Automatic Transport Selection**
+- WebSockets (preferred for best performance)
+- Server-Sent Events (SSE)
+- Long Polling (fallback for older browsers)
+- Automatically negotiates the best available transport
+
+**Built-In Reconnection**
+- Automatic reconnection with exponential backoff
+- Seamless recovery from network interruptions
+- State preservation across reconnections
+
+**Scalability**
+- Redis backplane for multi-server deployments
+- Horizontal scaling support
+- Connection state management
+
+**Cross-Platform Support**
+- JavaScript/TypeScript clients
+- .NET clients (C#, F#)
+- Python clients
+- Java clients
+- Native mobile apps (iOS, Android)
+
+**Bi-Directional Communication**
+- Server-to-client push notifications
+- Client-to-server method invocation
+- Strongly-typed hubs for type safety
+
 ## Hub Overview
 
 ### StatusHub
@@ -127,18 +164,6 @@ await connection.StartAsync();
 
 ### Event Subscriptions
 
-#### SubscribeToEvent (V1)
-Subscribe to real-time updates for a specific event.
-
-```javascript
-await connection.invoke("SubscribeToEvent", eventId);
-```
-
-**Features:**
-- Full status updates every ~5 seconds
-- Incremental updates as they occur
-- Gzip compression for full updates
-
 #### SubscribeToEventV2 (V2) 
 Enhanced subscription with improved data structures.
 
@@ -155,7 +180,6 @@ await connection.invoke("SubscribeToEventV2", eventId);
 Stop receiving updates for an event.
 
 ```javascript
-await connection.invoke("UnsubscribeFromEvent", eventId);
 await connection.invoke("UnsubscribeFromEventV2", eventId);
 ```
 
@@ -244,108 +268,6 @@ function handleStatus(status) {
 }
 ```
 
-### Message Compression
-
-Full status updates are gzip-compressed and base64-encoded for efficiency.
-
-**Decompression Examples:**
-
-**JavaScript:**
-```javascript
-import pako from 'pako';
-
-function decompressMessage(message) {
-    if (!message.startsWith('H4sI')) {
-        return JSON.parse(message);
-    }
-    
-    const compressed = atob(message);
-    const decompressed = pako.inflate(compressed, { to: 'string' });
-    return JSON.parse(decompressed);
-}
-```
-
-**Python:**
-```python
-import gzip
-import base64
-import json
-
-def decompress_message(message):
-    if not message.startswith('H4sI'):
-        return json.loads(message)
-    
-    compressed = base64.b64decode(message)
-    decompressed = gzip.decompress(compressed)
-    return json.loads(decompressed)
-```
-
-**C#:**
-```csharp
-using System.IO.Compression;
-using System.Text.Json;
-
-public static T DecompressMessage<T>(string message)
-{
-    if (!message.StartsWith("H4sI"))
-    {
-        return JsonSerializer.Deserialize<T>(message);
-    }
-    
-    var compressed = Convert.FromBase64String(message);
-    using var inputStream = new MemoryStream(compressed);
-    using var gzipStream = new GZipStream(inputStream, CompressionMode.Decompress);
-    using var outputStream = new MemoryStream();
-    gzipStream.CopyTo(outputStream);
-    
-    var decompressed = Encoding.UTF8.GetString(outputStream.ToArray());
-    return JsonSerializer.Deserialize<T>(decompressed);
-}
-```
-
-## Message Types
-
-### Full Status Update (V1)
-```json
-{
-  "e": 123,
-  "n": "Event Name",
-  "es": {
-    "st": "Green",
-    "rt": "12:34:56",
-    "togo": 5
-  },
-  "ee": [...],
-  "cps": [
-    {
-      "n": "42",
-      "ovp": 3,
-      "clp": 1,
-      "bt": "1:23.456",
-      "lt": "1:23.789",
-      "og": "+1.234",
-      "cg": "+0.456"
-    }
-  ],
-  "fd": [...]
-}
-```
-
-### Incremental Update
-```json
-{
-  "e": 123,
-  "t": "patch",
-  "patches": [
-    {
-      "op": "replace",
-      "path": "/cps/0/lt",
-      "value": "1:23.500"
-    }
-  ]
-}
-```
-
 ## Complete Example
 
 ### Real-Time Dashboard
@@ -388,6 +310,11 @@ class RedMistDashboard {
     async subscribe() {
         await this.connection.invoke("SubscribeToEventV2", this.eventId);
         console.log(`Subscribed to event ${this.eventId}`);
+    }
+
+    async unsubscribe() {
+        await this.connection.invoke("UnsubscribeFromEventV2", this.eventId);
+        console.log(`Unsubscribed from event ${this.eventId}`);
     }
 
     decompressMessage(message) {
@@ -451,11 +378,21 @@ class RedMistDashboard {
         // Your token retrieval logic
         return localStorage.getItem('access_token');
     }
+
+    async disconnect() {
+        await this.unsubscribe();
+        await this.connection.stop();
+    }
 }
 
 // Usage
 const dashboard = new RedMistDashboard(123);
 dashboard.connect();
+
+// Clean up on page unload
+window.addEventListener('beforeunload', async () => {
+    await dashboard.disconnect();
+});
 ```
 
 ## Best Practices
@@ -463,9 +400,9 @@ dashboard.connect();
 ### 1. Always Handle Reconnection
 ```javascript
 connection.onreconnected(async () => {
-    // Re-subscribe to all events
+    // Re-subscribe to all events using V2
     for (const eventId of subscribedEvents) {
-        await connection.invoke("SubscribeToEvent", eventId);
+        await connection.invoke("SubscribeToEventV2", eventId);
     }
 });
 ```
@@ -498,7 +435,7 @@ connection.onclose(async () => {
 ### 4. Unsubscribe When Done
 ```javascript
 window.addEventListener('beforeunload', async () => {
-    await connection.invoke("UnsubscribeFromEvent", eventId);
+    await connection.invoke("UnsubscribeFromEventV2", eventId);
     await connection.stop();
 });
 ```
