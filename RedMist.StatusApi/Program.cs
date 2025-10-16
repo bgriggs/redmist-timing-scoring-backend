@@ -168,12 +168,33 @@ public class Program
             Console.Title = "Status API";
         }
 
+        // Support for running behind a path-based proxy (e.g., /status)
+        // This allows Swagger to work correctly when accessed via /status/swagger
+        var pathBase = app.Configuration["PathBase"];
+        if (!string.IsNullOrEmpty(pathBase))
+        {
+            app.UsePathBase(pathBase);
+        }
+
         // Enable Swagger in all environments
-        app.UseSwagger();
+        app.UseSwagger(c =>
+        {
+            c.PreSerializeFilters.Add((swagger, httpReq) =>
+            {
+                // Ensure swagger knows about the path base for proper URL generation
+                if (!string.IsNullOrEmpty(pathBase))
+                {
+                    swagger.Servers = new List<Microsoft.OpenApi.Models.OpenApiServer>
+                    {
+                        new() { Url = $"{httpReq.Scheme}://{httpReq.Host.Value}{pathBase}" }
+                    };
+                }
+            });
+        });
         app.UseSwaggerUI(c =>
         {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "RedMist Status API V1");
-            c.SwaggerEndpoint("/swagger/v2/swagger.json", "RedMist Status API V2");
+            c.SwaggerEndpoint("v1/swagger.json", "RedMist Status API V1");
+            c.SwaggerEndpoint("v2/swagger.json", "RedMist Status API V2");
             c.RoutePrefix = "swagger";
             c.DocumentTitle = "RedMist Status API Documentation";
         });

@@ -1,15 +1,15 @@
 # RedMist Timing & Scoring Documentation
 
-Welcome to the comprehensive documentation for RedMist Timing & Scoring system - a cloud-based, real-time race timing and scoring platform.
+Welcome to the Red Mist Timing & Scoring documentation - a cloud-based, real-time race timing and scoring platform.
 
-## ?? Quick Start
+## Quick Start
 
-- **[API Reference](api/index.md)** - Complete API documentation
 - **[Getting Started](articles/getting-started.md)** - Quick start guide
-- **[Architecture](articles/architecture.md)** - System architecture overview
+- **[API Reference](api/index.md)** - Complete API documentation
 - **[Authentication](articles/authentication.md)** - Authentication and authorization guide
+- **[Architecture](articles/architecture.md)** - System architecture overview
 
-## ?? Documentation Sections
+## Documentation Sections
 
 ### For Developers
 - [API Documentation](api/index.md) - Full API reference
@@ -24,7 +24,7 @@ Welcome to the comprehensive documentation for RedMist Timing & Scoring system -
 ### For Administrators
 - [Architecture](articles/architecture.md) - System architecture
 
-## ?? Quick Links
+## Quick Links
 
 - [GitHub Repository](https://github.com/bgriggs/redmist-timing-scoring-backend)
 - [Live API Documentation](https://api.redmist.racing/swagger)
