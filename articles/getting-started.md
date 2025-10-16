@@ -150,15 +150,113 @@ Visit the Swagger UI for interactive API exploration:
 ### Key Endpoints
 
 **Status API:**
-- `GET /Events/LoadLiveEvents` - List all live events
-- `GET /Events/LoadEvent?eventId={id}` - Get event details
-- `GET /Events/LoadSessions?eventId={id}` - Get sessions
-- `GET /Events/LoadCarLaps?eventId={id}&sessionId={sid}&carNumber={num}` - Get lap data
+- `GET /v2/Events/LoadLiveEvents` - List all live events
+- `GET /v2/Events/LoadEvent?eventId={id}` - Get event details
+- `GET /v2/Events/LoadSessions?eventId={id}` - Get sessions
+- `GET /v2/Events/LoadCarLaps?eventId={id}&sessionId={sid}&carNumber={num}` - Get lap data
 
 **SignalR Hub:**
 - `SubscribeToEventV2(eventId)` - Subscribe to receive event updates
 - `SubscribeToControlLogs(eventId)` - Get control log updates
 - `SubscribeToInCarDriverEvent(eventId, car)` - In-car driver mode
+
+**Full Status**
+
+To retrieve the complete real-time session state for an event, use the `GetCurrentSessionState` endpoint:
+
+```bash
+curl "https://api.redmist.racing/v2/Events/GetCurrentSessionState?eventId=123" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Accept: application/x-msgpack"
+```
+
+**Important:** This endpoint returns data in **MessagePack** format (binary serialization) for maximum performance and efficiency. You must use a MessagePack deserializer to parse the response.
+
+### MessagePack Integration
+
+#### JavaScript/TypeScript
+
+```javascript
+import * as msgpack from '@msgpack/msgpack';
+
+const response = await fetch(
+    'https://api.redmist.racing/v2/Events/GetCurrentSessionState?eventId=123',
+    {
+        headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/x-msgpack'
+        }
+    }
+);
+
+const buffer = await response.arrayBuffer();
+const sessionState = msgpack.decode(new Uint8Array(buffer));
+console.log(sessionState);
+```
+
+**Install MessagePack:**
+```bash
+npm install @msgpack/msgpack
+```
+
+#### Python
+
+```python
+import msgpack
+import requests
+
+response = requests.get(
+    'https://api.redmist.racing/v2/Events/GetCurrentSessionState',
+    params={'eventId': 123},
+    headers={
+        'Authorization': f'Bearer {access_token}',
+        'Accept': 'application/x-msgpack'
+    }
+)
+
+session_state = msgpack.unpackb(response.content, raw=False)
+print(session_state)
+```
+
+**Install MessagePack:**
+```bash
+pip install msgpack
+```
+
+#### C# / .NET
+
+```csharp
+using MessagePack;
+using System.Net.Http;
+
+var httpClient = new HttpClient();
+httpClient.DefaultRequestHeaders.Authorization = 
+    new AuthenticationHeaderValue("Bearer", accessToken);
+
+var response = await httpClient.GetAsync(
+    "https://api.redmist.racing/v2/Events/GetCurrentSessionState?eventId=123");
+
+var bytes = await response.Content.ReadAsByteArrayAsync();
+var sessionState = MessagePackSerializer.Deserialize<SessionState>(bytes);
+```
+
+**Install MessagePack:**
+```bash
+dotnet add package MessagePack
+```
+
+### What You Get
+
+The `SessionState` object contains the complete real-time status including:
+- Current session information (name, type, state, time remaining)
+- All car positions with live timing data
+- Running order and class positions
+- Lap times and sector times
+- Gap to leader and car ahead/behind
+- Pit stop status
+- Flag conditions
+
+This endpoint is ideal when you need a complete snapshot of the current race state rather than incremental updates via SignalR.
 
 ## Next Steps
 

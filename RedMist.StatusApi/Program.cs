@@ -85,6 +85,22 @@ public class Program
                 c.IncludeXmlComments(xmlPath);
             }
 
+            var modelXmlFiles = new[]
+            {
+                "RedMist.Backend.Shared.xml",
+                "RedMist.Database.xml",
+                "RedMist.TimingCommon.xml"
+            };
+
+            foreach (var modelXmlFile in modelXmlFiles)
+            {
+                var modelXmlPath = Path.Combine(AppContext.BaseDirectory, modelXmlFile);
+                if (File.Exists(modelXmlPath))
+                {
+                    c.IncludeXmlComments(modelXmlPath);
+                }
+            }
+
             // Add security definition for Bearer token
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
@@ -195,7 +211,7 @@ public class Program
                 // Ensure swagger knows about the path base for proper URL generation
                 if (!string.IsNullOrEmpty(pathBase))
                 {
-                    swagger.Servers = new List<Microsoft.OpenApi.Models.OpenApiServer>
+                    swagger.Servers = new List<OpenApiServer>
                     {
                         new() { Url = $"{httpReq.Scheme}://{httpReq.Host.Value}{pathBase}" }
                     };
@@ -204,8 +220,8 @@ public class Program
         });
         app.UseSwaggerUI(c =>
         {
-            c.SwaggerEndpoint("v1/swagger.json", "RedMist Status API V1");
             c.SwaggerEndpoint("v2/swagger.json", "RedMist Status API V2");
+            c.SwaggerEndpoint("v1/swagger.json", "RedMist Status API V1");
             c.RoutePrefix = "swagger";
             c.DocumentTitle = "RedMist Status API Documentation";
         });

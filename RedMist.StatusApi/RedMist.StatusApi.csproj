@@ -32,4 +32,11 @@
 	  <ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
 	</ItemGroup>
 
+	<!-- Copy XML documentation files from NuGet packages to output directory -->
+	<Target Name="CopyTimingCommonXmlDoc" AfterTargets="Build">
+		<ItemGroup>
+			<TimingCommonXml Include="$(NuGetPackageRoot)redmist.timingcommon\1.1.5\lib\net9.0\RedMist.TimingCommon.xml" />
+		</ItemGroup>
+		<Copy SourceFiles="@(TimingCommonXml)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('$(NuGetPackageRoot)redmist.timingcommon\1.1.5\lib\net9.0\RedMist.TimingCommon.xml')" />
+	</Target>
 </Project>
