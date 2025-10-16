@@ -81,7 +81,7 @@ jobs:
           file: ${{ matrix.service.dockerfile }}
           push: true
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          //cache-to: type=gha,mode=max
           tags: |
             ${{ matrix.service.image }}:latest
             ${{ matrix.service.image }}:${{ needs.extract-version.outputs.version }}
