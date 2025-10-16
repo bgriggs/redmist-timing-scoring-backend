@@ -41,12 +41,12 @@ public class Program
             options.RoleClaimType = KeycloakConstants.RoleClaimType;
         });
 
-        // Configure Rate Limiting - global limiter only (no Swagger, uses OpenAPI)
-        builder.Services.AddRedMistRateLimiting(options =>
-        {
-            options.EnableSwaggerPolicy = false; // RelayApi uses OpenAPI, not Swagger
-            options.GlobalPermitLimit = 20; // Stricter for relay endpoints
-        });
+        //// Configure Rate Limiting - global limiter only (no Swagger, uses OpenAPI)
+        //builder.Services.AddRedMistRateLimiting(options =>
+        //{
+        //    options.EnableSwaggerPolicy = false; // RelayApi uses OpenAPI, not Swagger
+        //    options.GlobalPermitLimit = 20; // Stricter for relay endpoints
+        //});
 
         builder.Services.AddControllers();
         // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -83,8 +83,8 @@ public class Program
             app.UsePathBase(pathBase);
         }
 
-        // Apply rate limiting middleware (must be after UsePathBase, before endpoints)
-        app.UseRateLimiter();
+        //// Apply rate limiting middleware (must be after UsePathBase, before endpoints)
+        //app.UseRateLimiter();
 
         // Enable OpenAPI in all environments
         app.MapOpenApi();

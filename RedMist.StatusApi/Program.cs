@@ -45,12 +45,12 @@ public class Program
             options.RoleClaimType = KeycloakConstants.RoleClaimType;
         });
 
-        // Configure Rate Limiting with default settings for Swagger
-        builder.Services.AddRedMistRateLimiting(options =>
-        {
-            options.SwaggerPermitLimit = 5;
-            options.GlobalPermitLimit = 30;
-        });
+        //// Configure Rate Limiting with default settings for Swagger
+        //builder.Services.AddRedMistRateLimiting(options =>
+        //{
+        //    options.SwaggerPermitLimit = 5;
+        //    options.GlobalPermitLimit = 30;
+        //});
 
         builder.Services.AddControllers();
         
@@ -200,8 +200,8 @@ public class Program
             app.UsePathBase(pathBase);
         }
 
-        // Apply rate limiting middleware (must be after UsePathBase, before endpoints)
-        app.UseRateLimiter();
+        //// Apply rate limiting middleware (must be after UsePathBase, before endpoints)
+        //app.UseRateLimiter();
 
         // Enable Swagger in all environments
         app.UseSwagger(c =>
