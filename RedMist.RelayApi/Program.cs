@@ -66,8 +66,17 @@ public class Program
         if (app.Environment.IsDevelopment())
         {
             Console.Title = "Relay API";
-            app.MapOpenApi();
         }
+
+        // Support for running behind a path-based proxy (e.g., /relay)
+        var pathBase = app.Configuration["PathBase"];
+        if (!string.IsNullOrEmpty(pathBase))
+        {
+            app.UsePathBase(pathBase);
+        }
+
+        // Enable OpenAPI in all environments
+        app.MapOpenApi();
 
         app.MapHealthChecks("/healthz/startup", new HealthCheckOptions
         {

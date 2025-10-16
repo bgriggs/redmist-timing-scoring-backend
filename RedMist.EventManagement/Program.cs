@@ -126,11 +126,31 @@ public class Program
             app.UseDeveloperExceptionPage();
         }
 
+        // Support for running behind a path-based proxy (e.g., /event-management)
+        var pathBase = app.Configuration["PathBase"];
+        if (!string.IsNullOrEmpty(pathBase))
+        {
+            app.UsePathBase(pathBase);
+        }
+
         // Enable Swagger in all environments
-        app.UseSwagger();
+        app.UseSwagger(c =>
+        {
+            c.PreSerializeFilters.Add((swagger, httpReq) =>
+            {
+                // Ensure swagger knows about the path base for proper URL generation
+                if (!string.IsNullOrEmpty(pathBase))
+                {
+                    swagger.Servers = new List<Microsoft.OpenApi.Models.OpenApiServer>
+                    {
+                        new() { Url = $"{httpReq.Scheme}://{httpReq.Host.Value}{pathBase}" }
+                    };
+                }
+            });
+        });
         app.UseSwaggerUI(c =>
         {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "RedMist Event Management API V1");
+            c.SwaggerEndpoint("v1/swagger.json", "RedMist Event Management API V1");
             c.RoutePrefix = "swagger";
             c.DocumentTitle = "RedMist Event Management API Documentation";
         });

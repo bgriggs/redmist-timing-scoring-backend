@@ -31,3 +31,4 @@ serviceAccount:
   create: false
 
 env:
+  PathBase: "/event-management"
