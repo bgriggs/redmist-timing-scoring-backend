@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Extensions;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
@@ -38,6 +39,13 @@ public class Program
             options.EnableRolesMapping = RolesClaimTransformationSource.Realm;
             // Note, this should correspond to role configured with KeycloakAuthenticationOptions
             options.RoleClaimType = KeycloakConstants.RoleClaimType;
+        });
+
+        // Configure Rate Limiting - global limiter only (no Swagger, uses OpenAPI)
+        builder.Services.AddRedMistRateLimiting(options =>
+        {
+            options.EnableSwaggerPolicy = false; // RelayApi uses OpenAPI, not Swagger
+            options.GlobalPermitLimit = 20; // Stricter for relay endpoints
         });
 
         builder.Services.AddControllers();
@@ -74,6 +82,9 @@ public class Program
         {
             app.UsePathBase(pathBase);
         }
+
+        // Apply rate limiting middleware (must be after UsePathBase, before endpoints)
+        app.UseRateLimiter();
 
         // Enable OpenAPI in all environments
         app.MapOpenApi();

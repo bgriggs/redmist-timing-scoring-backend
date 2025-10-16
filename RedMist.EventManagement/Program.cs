@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Extensions;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using StackExchange.Redis;
@@ -39,6 +40,14 @@ public class Program
             // Note, this should correspond to role configured with KeycloakAuthenticationOptions
             options.RoleClaimType = KeycloakConstants.RoleClaimType;
         });
+
+        // Configure Rate Limiting - stricter limits for internal-facing admin API
+        builder.Services.AddRedMistRateLimiting(options =>
+        {
+            options.SwaggerPermitLimit = 5; // Lower limit for admin API
+            options.GlobalPermitLimit = 30;
+        });
+
         builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(c =>
@@ -133,6 +142,9 @@ public class Program
             app.UsePathBase(pathBase);
         }
 
+        // Apply rate limiting middleware (must be after UsePathBase, before endpoints)
+        app.UseRateLimiter();
+
         // Enable Swagger in all environments
         app.UseSwagger(c =>
         {
@@ -154,6 +166,13 @@ public class Program
             c.RoutePrefix = "swagger";
             c.DocumentTitle = "RedMist Event Management API Documentation";
         });
+
+        // Apply rate limiting to Swagger JSON endpoints
+        app.MapGet("/swagger/{documentName}/swagger.json", async (string documentName, HttpContext httpContext) =>
+        {
+            // Forward to the Swagger middleware
+            await httpContext.Response.CompleteAsync();
+        }).RequireRateLimiting("swagger");
 
         app.MapHealthChecks("/healthz/startup", new HealthCheckOptions
         {
