@@ -469,6 +469,31 @@ public class SessionStateProcessingPipelineTests
         Assert.AreEqual(4, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "99").OverallPosition);
     }
 
+    [TestMethod]
+    public async Task RMonitor_MidRaceClassChange_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "TestMidRaceClassChange.txt");
+        await entriesData.LoadAsync();
+
+        // Act
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                // Advance time to simulate passage between records
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+            }
+
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            await _pipeline.Post(tm);
+        }
+
+        // Assert
+        Assert.AreEqual("GP2", _sessionContext.SessionState.CarPositions.Single(c => c.Number == "55").Class);
+    }
+
     //[TestMethod]
     //public async Task RMonitor_Leader_NoGapDiff_Test()
     //{

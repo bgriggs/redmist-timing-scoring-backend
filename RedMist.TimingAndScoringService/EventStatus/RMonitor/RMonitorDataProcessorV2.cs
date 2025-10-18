@@ -1,9 +1,7 @@
 ﻿using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
-using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
-using System.Collections.Immutable;
 
 namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
@@ -53,7 +51,6 @@ public class RMonitorDataProcessorV2
 
         var sessionPatches = new List<SessionStatePatch>();
         var carPatches = new List<CarPositionPatch>();
-        bool competitorChanged = false;
 
         var commands = message.Data.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         bool isMidRaceReset = false, isMidRaceStandaloneReset = false;
@@ -61,6 +58,8 @@ public class RMonitorDataProcessorV2
             isMidRaceReset = IsMidRaceReset(message.Data);
         else if (commands.Length == 1)
             isMidRaceStandaloneReset = IsStandaloneMidRaceReset(message.Data);
+
+        bool classChanged = false;
 
         foreach (var command in commands)
         {
@@ -84,7 +83,6 @@ public class RMonitorDataProcessorV2
                     var p = AddUpdateCompetitor(regNum);
                     if (p != null)
                         carPatches.Add(p);
-                    competitorChanged = true;
                 }
                 else if (command.StartsWith("$COMP"))
                 {
@@ -93,7 +91,6 @@ public class RMonitorDataProcessorV2
                     var p = AddUpdateCompetitor(regNum);
                     if (p != null)
                         carPatches.Add(p);
-                    competitorChanged = true;
                 }
                 else if (command.StartsWith("$B"))
                 {
@@ -108,9 +105,9 @@ public class RMonitorDataProcessorV2
                 }
                 else if (command.StartsWith("$C"))
                 {
-                    // Class information - accumulate these
+                    // Class information
                     ProcessC(command);
-                    competitorChanged = true;
+                    classChanged = true;
                 }
                 else if (command.StartsWith("$E"))
                 {
@@ -184,11 +181,15 @@ public class RMonitorDataProcessorV2
             }
         }
 
-        // Apply accumulated competitor changes at the end
-        if (competitorChanged)
+        if (classChanged)
         {
-            //var cps = GetCarPatches(sessionContext);
-            //carPatches.AddRange(cps);
+            // If classes changed, have all cars re-evaluated for class name
+            foreach (var comp in competitors)
+            {
+                var p = AddUpdateCompetitor(comp.Key);
+                if (p != null)
+                    carPatches.Add(p);
+            }
         }
 
         // If this is a mid-race reset, have all cars re-evaluated for previous lap time 
@@ -197,7 +198,6 @@ public class RMonitorDataProcessorV2
         if (isMidRaceReset)
         {
             sessionContext.SetLastLapTimeBeforeReset();
-            isMidRaceReset = false;
         }
 
         return new PatchUpdates([.. sessionPatches], [.. carPatches]);

@@ -20,6 +20,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <None Remove="EventStatus\ProcessingPipeline\TestMidRaceClassChange.txt~RFdf3aee4.TMP" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.8" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
 		<PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="17.14.2" />
@@ -62,6 +66,9 @@
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestInitialPositions.txt">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="EventStatus\ProcessingPipeline\TestMidRaceClassChange.txt">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestResetRetainLapTime.txt">
