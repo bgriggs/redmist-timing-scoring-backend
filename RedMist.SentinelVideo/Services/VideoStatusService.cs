@@ -1,9 +1,8 @@
 ﻿using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
 using Prometheus;
+using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
-using RedMist.Database;
 using RedMist.SentinelVideo.Clients;
 using RedMist.SentinelVideo.Models;
 using RedMist.TimingCommon.Models;
@@ -17,9 +16,7 @@ public class VideoStatusService : BackgroundService
 {
     private ILogger Logger { get; }
     private readonly int eventId;
-    private readonly ILoggerFactory loggerFactory;
     private readonly IConnectionMultiplexer cacheMux;
-    private readonly IDbContextFactory<TsContext> tsContext;
     private readonly IHubContext<StatusHub> hubContext;
     private readonly SentinelClient sentinelClient;
     private readonly TimeSpan updateInterval = TimeSpan.FromSeconds(30);
@@ -28,12 +25,10 @@ public class VideoStatusService : BackgroundService
 
 
     public VideoStatusService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IDbContextFactory<TsContext> tsContext, IHubContext<StatusHub> hubContext, SentinelClient sentinelClient)
+        IHubContext<StatusHub> hubContext, SentinelClient sentinelClient)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
-        this.loggerFactory = loggerFactory;
         this.cacheMux = cacheMux;
-        this.tsContext = tsContext;
         this.hubContext = hubContext;
         this.sentinelClient = sentinelClient;
         eventId = configuration.GetValue("event_id", 0);
@@ -59,7 +54,7 @@ public class VideoStatusService : BackgroundService
             {
                 var cache = cacheMux.GetDatabase();
                 var key = string.Format(Backend.Shared.Consts.EVENT_PAYLOAD, eventId);
-                await EnsureCacheSubscriptions(stoppingToken);
+                await EnsureCacheSubscriptionsAsync(stoppingToken);
 
                 Logger.LogInformation("Loading last Payload...");
                 var json = await cache.StringGetAsync(key);
@@ -129,7 +124,7 @@ public class VideoStatusService : BackgroundService
                         }
 
                         lastVideoMetadata = videoMetadata;
-                        await SendVideoMetadata(videoMetadata, stoppingToken);
+                        await SendVideoMetadataAsync(videoMetadata, stoppingToken);
                     }
                     else
                     {
@@ -151,7 +146,7 @@ public class VideoStatusService : BackgroundService
         }
     }
 
-    private async Task EnsureCacheSubscriptions(CancellationToken stoppingToken = default)
+    private async Task EnsureCacheSubscriptionsAsync(CancellationToken stoppingToken = default)
     {
         await subscriptionCheckLock.WaitAsync(stoppingToken);
         try
@@ -161,7 +156,7 @@ public class VideoStatusService : BackgroundService
 
             // Subscribe for status requests such as when a new UI connects
             await sub.SubscribeAsync(new RedisChannel(Backend.Shared.Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal),
-                async (channel, value) => await ProcessUiStatusRequest(value.ToString()), CommandFlags.FireAndForget);
+                async (channel, value) => await ProcessUiStatusRequestAsync(value.ToString()), CommandFlags.FireAndForget);
         }
         catch (Exception ex)
         {
@@ -173,13 +168,17 @@ public class VideoStatusService : BackgroundService
         }
     }
 
-    private async Task SendVideoMetadata(List<VideoMetadata> metadata, CancellationToken stoppingToken = default)
+    private async Task SendVideoMetadataAsync(List<VideoMetadata> metadata, CancellationToken stoppingToken = default)
     {
         Logger.LogInformation("Sending video metadata for {Count} entries", metadata.Count);
+        var subKey = string.Format(Consts.EVENT_SUB_V2, eventId);
+        await hubContext.Clients.Group(subKey).SendAsync("ReceiveInCarVideoMetadata", metadata, stoppingToken);
+
+        // Legacy
         await hubContext.Clients.Group(eventId.ToString()).SendAsync("ReceiveInCarVideoMetadata", metadata, stoppingToken);
     }
 
-    private async Task ProcessUiStatusRequest(string cmdJson)
+    private async Task ProcessUiStatusRequestAsync(string cmdJson)
     {
         var cmd = JsonSerializer.Deserialize<SendStatusCommand>(cmdJson);
         if (cmd == null)
@@ -191,7 +190,7 @@ public class VideoStatusService : BackgroundService
         Logger.LogInformation("Sending UI status update for event {e} to new connection {con}", cmd.EventId, cmd.ConnectionId);
         if (lastVideoMetadata != null)
         {
-            await SendVideoMetadata(lastVideoMetadata, CancellationToken.None);
+            await SendVideoMetadataAsync(lastVideoMetadata, CancellationToken.None);
         }
     }
 }
