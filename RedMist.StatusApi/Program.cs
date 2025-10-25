@@ -6,21 +6,27 @@ using Keycloak.AuthServices.Common;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
-using RedMist.Backend.Shared.Extensions;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.StatusApi.Services;
 using StackExchange.Redis;
 using System.Reflection;
-using Microsoft.OpenApi.Models;
 
 namespace RedMist.StatusApi;
 
 public class Program
 {
+    private static readonly string[] setupAction =
+    [
+        "RedMist.Backend.Shared.xml",
+        "RedMist.Database.xml",
+        "RedMist.TimingCommon.xml"
+    ];
+
     public static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
@@ -85,12 +91,7 @@ public class Program
                 c.IncludeXmlComments(xmlPath);
             }
 
-            var modelXmlFiles = new[]
-            {
-                "RedMist.Backend.Shared.xml",
-                "RedMist.Database.xml",
-                "RedMist.TimingCommon.xml"
-            };
+            var modelXmlFiles = setupAction;
 
             foreach (var modelXmlFile in modelXmlFiles)
             {
@@ -211,10 +212,10 @@ public class Program
                 // Ensure swagger knows about the path base for proper URL generation
                 if (!string.IsNullOrEmpty(pathBase))
                 {
-                    swagger.Servers = new List<OpenApiServer>
-                    {
+                    swagger.Servers =
+                    [
                         new() { Url = $"{httpReq.Scheme}://{httpReq.Host.Value}{pathBase}" }
-                    };
+                    ];
                 }
             });
         });

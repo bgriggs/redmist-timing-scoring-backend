@@ -23,7 +23,7 @@ public class Program
         // Add services to the container.
         builder.Services.AddAuthorization();
 
-        string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
+        string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException(nameof(sqlConn));
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";

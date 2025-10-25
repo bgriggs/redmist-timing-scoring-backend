@@ -153,10 +153,10 @@ public class Program
                 // Ensure swagger knows about the path base for proper URL generation
                 if (!string.IsNullOrEmpty(pathBase))
                 {
-                    swagger.Servers = new List<Microsoft.OpenApi.Models.OpenApiServer>
-                    {
+                    swagger.Servers =
+                    [
                         new() { Url = $"{httpReq.Scheme}://{httpReq.Host.Value}{pathBase}" }
-                    };
+                    ];
                 }
             });
         });

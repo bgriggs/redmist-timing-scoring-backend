@@ -54,7 +54,7 @@ public class Program
 
         builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(100), LocalCacheExpiration = TimeSpan.FromDays(100) });
 
-        string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
+        string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("ConnectionStrings:Default");
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";

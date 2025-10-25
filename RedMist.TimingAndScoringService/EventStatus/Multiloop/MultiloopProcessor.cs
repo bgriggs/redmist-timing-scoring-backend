@@ -1,14 +1,13 @@
 ﻿using RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
-using static StackExchange.Redis.Role;
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
 /// <summary>
 /// Responsible to decode and maintain the state of a Multiloop timing system.
+/// See: https://www.scribd.com/document/212233593/Multiloop-Timing-Protocol
 /// </summary>
-/// <see cref="https://www.scribd.com/document/212233593/Multiloop-Timing-Protocol"/>
 public class MultiloopProcessor
 {
     private ILogger Logger { get; }

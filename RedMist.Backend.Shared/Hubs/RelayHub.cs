@@ -132,7 +132,9 @@ public class RelayHub : Hub
     /// <param name="eventId">user selected event on the relay</param>
     /// <param name="sessionId">timing system session</param>
     /// <param name="command">RMonitor command string</param>
-    /// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
+    /// <remarks>
+    /// See RMonitor Timing Protocol: https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf
+    /// </remarks>
     public async Task SendRMonitor(int eventId, int sessionId, string command)
     {
         string commandStr = command.Replace("\r", "").Replace("\n", "");
@@ -160,7 +162,9 @@ public class RelayHub : Hub
     /// <param name="eventId">user selected event on the relay</param>
     /// <param name="sessionId">timing system run</param>
     /// <param name="command">Multiloop command string</param>
-    /// <see cref="https://www.scribd.com/document/212233593/Multiloop-Timing-Protocol"/>
+    /// <remarks>
+    /// See Multiloop Timing Protocol: https://www.scribd.com/document/212233593/Multiloop-Timing-Protocol
+    /// </remarks>
     public async Task SendMultiloop(int eventId, int sessionId, string command)
     {
         string commandStr = command.Replace("\r", "").Replace("\n", "");
@@ -223,6 +227,7 @@ public class RelayHub : Hub
     /// <summary>
     /// Receive and register a new session/run from the timing system.
     /// </summary>
+    /// <param name="eventId">Identifies the specific event for which the session is being registered.</param>
     /// <param name="sessionId">ID received from the timing system</param>
     /// <param name="sessionName">Name of the event from the timing system</param>
     /// <param name="timeZoneOffset">Local time zone offset in hours</param>

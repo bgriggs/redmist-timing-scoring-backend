@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RedMist.Database.Models;
+using RedMist.TimingCommon;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using RedMist.TimingCommon.Models.X2;
@@ -27,6 +28,7 @@ public class TsContext : DbContext
     public DbSet<UserOrganizationMapping> UserOrganizationMappings { get; set; } = null!;
     public DbSet<DefaultOrgImage> DefaultOrgImages { get; set; } = null!;
     public DbSet<RelayLog> RelayLogs { get; set; } = null!;
+    public DbSet<UIVersionInfo> UIVersions { get; set; } = null!;
 
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }
@@ -133,5 +135,9 @@ public class TsContext : DbContext
             
         modelBuilder.Entity<Passing>()
             .HasKey(p => new { p.OrganizationId, p.EventId, p.Id });
+
+        modelBuilder.Entity<UIVersionInfo>()
+            .HasNoKey()
+            .ToTable("UIVersions");
     }
 }

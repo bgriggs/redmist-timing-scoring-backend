@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.Memory;
 using RedMist.Database;
+using RedMist.TimingCommon;
 using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
@@ -66,5 +67,40 @@ public class EventsController : EventsControllerBase
         }
 
         return sessionState ?? result?.SessionState;
+    }
+
+    /// <summary>
+    /// Retrieves the current UI version information.
+    /// </summary>
+    /// <returns>The current UI version information.</returns>
+    /// <response code="200">Returns the UI version information.</response>
+    /// <remarks>
+    /// <para>Version: 2.0</para>
+    /// <para>This endpoint returns version information for the frontend UI applications.</para>
+    /// <para>The data is cached with a 15-minute expiration to reduce database load.</para>
+    /// </remarks>
+    [HttpGet]
+    [ProducesResponseType<UIVersionInfo>(StatusCodes.Status200OK)]
+    public async Task<UIVersionInfo> GetUIVersionInfoAsync()
+    {
+        Logger.LogTrace("GetUIVersionInfo");
+        
+        var cacheKey = "ui-version-info";
+        var options = new HybridCacheEntryOptions 
+        { 
+            Expiration = TimeSpan.FromMinutes(15),
+            LocalCacheExpiration = TimeSpan.FromMinutes(15)
+        };
+        
+        return await hcache.GetOrCreateAsync(cacheKey,
+          async cancel =>
+            {
+                using var context = await tsContext.CreateDbContextAsync(cancel);
+                var versionInfo = await context.UIVersions.FirstOrDefaultAsync(cancel);
+      
+                // Return default version if none exists in database
+                return versionInfo ?? new UIVersionInfo();
+            },
+            options, cancellationToken: default);
     }
 }

@@ -189,5 +189,5 @@ public class RedMistRateLimitOptions
     /// Additional paths to exempt from rate limiting (e.g., "/metrics", "/favicon.ico").
     /// Health checks (/healthz) are always exempted.
     /// </summary>
-    public List<string> ExemptPaths { get; set; } = new();
+    public List<string> ExemptPaths { get; set; } = [];
 }

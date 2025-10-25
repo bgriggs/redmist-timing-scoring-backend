@@ -52,7 +52,6 @@ public static class MediatorExtensions
     /// Adds the custom mediator and scans for notification handlers in the specified types.
     /// </summary>
     /// <param name="services">The service collection</param>
-    /// <param name="markerTypes">Types from assemblies to scan</param>
     /// <returns>The service collection</returns>
     public static IServiceCollection AddMediatorFromAssemblyContaining<T>(this IServiceCollection services)
     {

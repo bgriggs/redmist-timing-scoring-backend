@@ -7,8 +7,8 @@ namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 
 /// <summary>
 /// Result Monitor data format processor such as from an Orbits timing system.
+/// For protocol details, see: https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf
 /// </summary>
-/// <see cref="https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf"/>
 public class RMonitorDataProcessorV2
 {
     private ILogger Logger { get; }

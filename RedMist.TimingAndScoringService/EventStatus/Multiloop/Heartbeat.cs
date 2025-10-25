@@ -1,12 +1,11 @@
-﻿using RedMist.TimingCommon.Models;
-using System.Globalization;
+﻿using System.Globalization;
 
 namespace RedMist.TimingAndScoringService.EventStatus.Multiloop;
 
 /// <summary>
-/// 
+/// See the Multiloop Timing Protocol documentation:
+/// https://www.scribd.com/document/212233593/Multiloop-Timing-Protocol
 /// </summary>
-/// <see cref="https://www.scribd.com/document/212233593/Multiloop-Timing-Protocol"/>
 [Reactive]
 public partial class Heartbeat : Message
 {
