@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: keycloak
+spec:
+  replicas: {{ .Values.keycloak.replicas }}
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      initContainers:
+      - name: keycloak-init
+        image: {{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}
+        command:
+          - /bin/bash
+          - -c
+          - |
+            /opt/keycloak/bin/kc.sh build --db=postgres
+        env:
+        - name: KC_DB
+          value: postgres
+      containers:
+      - name: keycloak
+        image: {{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}
+        args:
+          - start
+        env:
+        - name: KC_FEATURES
+          value: "hostname:v1"
+        - name: KC_HOSTNAME_STRICT
+          value: "false"
+        - name: KC_HOSTNAME_STRICT_HTTPS
+          value: "false"
+        - name: KC_PROXY_HEADERS
+          value: "xforwarded"
+        - name: KC_HTTP_ENABLED
+          value: "true"
+        - name: KC_HOSTNAME_URL
+          value: "https://{{ .Values.keycloak.hostname }}"
+        - name: KC_HOSTNAME_ADMIN_URL
+          value: "https://{{ .Values.keycloak.hostname }}"
+        - name: KC_HOSTNAME_STRICT_BACKCHANNEL
+          value: "false"
+        - name: KC_HEALTH_ENABLED
+          value: "true"
+        - name: KC_METRICS_ENABLED
+          value: "true"
+        - name: KC_DB
+          value: postgres
+        - name: KC_DB_URL
+          value: "jdbc:postgresql://{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}?sslmode={{ .Values.database.sslMode }}"
+        - name: KC_DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-db-secret
+              key: username
+        - name: KC_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-db-secret
+              key: password
+        - name: KEYCLOAK_ADMIN
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-admin-secret
+              key: username
+        - name: KEYCLOAK_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-admin-secret
+              key: password
+        ports:
+        - name: http
+          containerPort: 8080
+        - name: https
+          containerPort: 8443
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 9000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 9000
+          initialDelaySeconds: 90
+          periodSeconds: 30
+          timeoutSeconds: 5
+        resources:
+          requests:
+            memory: {{ .Values.keycloak.resources.requests.memory }}
+            cpu: {{ .Values.keycloak.resources.requests.cpu }}
+          limits:
+            memory: {{ .Values.keycloak.resources.limits.memory }}
+            cpu: {{ .Values.keycloak.resources.limits.cpu }}

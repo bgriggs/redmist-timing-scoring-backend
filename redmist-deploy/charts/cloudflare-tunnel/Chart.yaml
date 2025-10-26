@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cloudflare-tunnel
+description: Cloudflare Tunnel for RedMist Kubernetes cluster
+type: application
+version: 1.0.0
+appVersion: "2025.10.0"

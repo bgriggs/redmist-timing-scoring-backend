@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: cloudflared
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+      - name: cloudflared
+        image: cloudflare/cloudflared:2025.10.0
+        args:
+          - tunnel
+          - --config
+          - /etc/cloudflared/config.yaml
+          - --metrics
+          - 0.0.0.0:2000
+          - run
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: 2000
+          failureThreshold: 1
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        ports:
+          - containerPort: 2000
+            name: metrics
+            protocol: TCP
+        volumeMounts:
+          - name: config
+            mountPath: /etc/cloudflared
+            readOnly: true
+          - name: credentials
+            mountPath: /etc/cloudflared/credentials
+            readOnly: true
+        resources:
+          requests:
+            memory: {{ .Values.resources.requests.memory }}
+            cpu: {{ .Values.resources.requests.cpu }}
+          limits:
+            memory: {{ .Values.resources.limits.memory }}
+            cpu: {{ .Values.resources.limits.cpu }}
+      volumes:
+        - name: credentials
+          secret:
+            secretName: cloudflared-credentials
+        - name: config
+          configMap:
+            name: cloudflared-config
+            items:
+              - key: config.yaml
+                path: config.yaml

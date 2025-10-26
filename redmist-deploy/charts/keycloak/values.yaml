@@ -1,0 +1,33 @@
+namespace: keycloak
+
+keycloak:
+  replicas: 1  # Start with 1 for migration, scale to 2 after
+  image:
+    repository: quay.io/keycloak/keycloak
+    tag: "25.0.0"
+  
+  hostname: auth.redmist.racing
+  
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+database:
+  host: ""  # Will be set via helm install
+  port: 25060
+  name: keycloak
+  username: doadmin
+  sslMode: require
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+    nginx.ingress.kubernetes.io/proxy-buffering: "on"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"

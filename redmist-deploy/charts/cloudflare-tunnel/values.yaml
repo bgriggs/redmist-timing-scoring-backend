@@ -1,0 +1,25 @@
+namespace: cloudflare-tunnel
+
+cloudflare:
+  tunnelName: digital-ocean
+  tunnelId: faa184f4-bc06-4a50-928c-3df6d301dd24
+  accountId: ""  # Will be set via helm install
+
+ingress:
+  # Keycloak Production
+  - hostname: auth.redmist.racing
+    service: http://ingress-nginx-controller.ingress-nginx.svc.cluster.local:80
+  
+  # Future environments
+  # - hostname: auth-test.redmist.racing
+  # - hostname: auth-dev.redmist.racing
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+    cpu: "200m"
+
+replicas: 2
