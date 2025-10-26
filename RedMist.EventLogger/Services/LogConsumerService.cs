@@ -50,51 +50,59 @@ public class LogConsumerService : BackgroundService
             {
                 var cache = cacheMux.GetDatabase();
                 var result = await cache.StreamReadGroupAsync(streamKey, CONSUMER_GROUP, "logger", ">", 1);
-                foreach (var entry in result)
+                if (result.Length == 0)
                 {
-                    foreach (var field in entry.Values)
+                    // No messages available, wait before next poll
+                    await Task.Delay(TimeSpan.FromMilliseconds(200), stoppingToken);
+                }
+                else
+                {
+                    foreach (var entry in result)
                     {
-                        var tags = field.Name.ToString().Split('-');
-                        if (tags.Length < 3)
+                        foreach (var field in entry.Values)
                         {
-                            Logger.LogWarning("Invalid event status update: {f}", field.Name);
-                            continue;
-                        }
+                            var tags = field.Name.ToString().Split('-');
+                            if (tags.Length < 3)
+                            {
+                                Logger.LogWarning("Invalid event status update: {f}", field.Name);
+                                continue;
+                            }
 
-                        var type = tags[0];
-                        var eventId = int.Parse(tags[1]);
-                        var sessionId = int.Parse(tags[2]);
-                        var data = field.Value.ToString();
+                            var type = tags[0];
+                            var eventId = int.Parse(tags[1]);
+                            var sessionId = int.Parse(tags[2]);
+                            var data = field.Value.ToString();
 
-                        await LogStatusData(type, eventId, sessionId, data, stoppingToken);
+                            await LogStatusData(type, eventId, sessionId, data, stoppingToken);
 
-                        // Parse RMonitor data
-                        if (type == Consts.RMONITOR_TYPE)
-                        {
-                        }
-                        // Passings
-                        else if (type == Consts.X2PASS_TYPE)
-                        {
-                            await SavePassings(data, stoppingToken);
-                        }
-                        // Loops
-                        else if (type == "x2loop")
-                        {
-                            await SaveLoops(data, stoppingToken);
-                        }
-                        // Flags
-                        else if (type == Consts.FLAGS_TYPE)
-                        {
-                        }
-                        // Competitor Metadata
-                        else if (type == "competitors")
-                        {
-                        }
+                            // Parse RMonitor data
+                            if (type == Consts.RMONITOR_TYPE)
+                            {
+                            }
+                            // Passings
+                            else if (type == Consts.X2PASS_TYPE)
+                            {
+                                await SavePassings(data, stoppingToken);
+                            }
+                            // Loops
+                            else if (type == "x2loop")
+                            {
+                                await SaveLoops(data, stoppingToken);
+                            }
+                            // Flags
+                            else if (type == Consts.FLAGS_TYPE)
+                            {
+                            }
+                            // Competitor Metadata
+                            else if (type == "competitors")
+                            {
+                            }
 
-                        counter.Inc();
-                        RecordLogSave();
+                            counter.Inc();
+                            RecordLogSave();
+                        }
+                        await cache.StreamAcknowledgeAsync(streamKey, CONSUMER_GROUP, entry.Id);
                     }
-                    await cache.StreamAcknowledgeAsync(streamKey, CONSUMER_GROUP, entry.Id);
                 }
 
                 // Update metrics

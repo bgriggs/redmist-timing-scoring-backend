@@ -1,10 +1,7 @@
 ﻿using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Services;
-using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Extensions;
@@ -26,11 +23,8 @@ public class EventAggregatorService : BackgroundService
     private readonly int eventId;
     private readonly string streamKey;
     private readonly string serviceName;
-    private readonly ILoggerFactory loggerFactory;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IMediator mediator;
-    private readonly HybridCache hcache;
-    private readonly IDbContextFactory<TsContext> tsContext;
     private readonly IHubContext<StatusHub> hubContext;
     private static readonly TimeSpan fullSendInterval = TimeSpan.FromMilliseconds(5000);
 
@@ -41,7 +35,6 @@ public class EventAggregatorService : BackgroundService
     private readonly SemaphoreSlim streamCheckLock = new(1);
     private readonly SemaphoreSlim subscriptionCheckLock = new(1);
     private readonly SemaphoreSlim payloadSerializationLock = new(1);
-    private DateTime? lastFullStatusTimestamp;
     private string? lastFullStatusData;
 
     private readonly SessionStateProcessingPipeline processingPipeline;
@@ -49,16 +42,13 @@ public class EventAggregatorService : BackgroundService
     private readonly PitProcessorV2 pitProcessorV2;
 
 
-    public EventAggregatorService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IMediator mediator, HybridCache hcache, IDbContextFactory<TsContext> tsContext, IHubContext<StatusHub> hubContext,
+    public EventAggregatorService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, 
+        IConfiguration configuration, IMediator mediator, IHubContext<StatusHub> hubContext, 
         SessionStateProcessingPipeline processingPipeline, SessionContext sessionContext, PitProcessorV2 pitProcessorV2)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
-        this.loggerFactory = loggerFactory;
         this.cacheMux = cacheMux;
         this.mediator = mediator;
-        this.hcache = hcache;
-        this.tsContext = tsContext;
         this.hubContext = hubContext;
         this.processingPipeline = processingPipeline;
         this.sessionContext = sessionContext;
@@ -101,7 +91,6 @@ public class EventAggregatorService : BackgroundService
         // Initialize PitProcessorV2 with the current event
         await pitProcessorV2.Initialize(eventId);
 
-
         // Legacy: Start a task to send a full update every so often
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
 
@@ -115,32 +104,40 @@ public class EventAggregatorService : BackgroundService
             try
             {
                 var cache = cacheMux.GetDatabase();
-                var result = await cache.StreamReadGroupAsync(streamKey, CONSUMER_GROUP, "proc", ">", 1);
-                foreach (var entry in result)
+                var result = await cache.StreamReadGroupAsync(streamKey, CONSUMER_GROUP, "proc", ">", count: 1);
+                if (result.Length == 0)
                 {
-                    foreach (var field in entry.Values)
+                    // No messages available, wait before next poll
+                    await Task.Delay(TimeSpan.FromMilliseconds(50), stoppingToken);
+                }
+                else
+                {
+                    foreach (var entry in result)
                     {
-                        // Check the message tag to determine the type of update (e.g. result monitor)
-                        var tags = field.Name.ToString().Split('-');
-                        if (tags.Length < 3)
+                        foreach (var field in entry.Values)
                         {
-                            Logger.LogWarning("Invalid event status update: {f}", field.Name);
-                            continue;
+                            // Check the message tag to determine the type of update (e.g. result monitor)
+                            var tags = field.Name.ToString().Split('-');
+                            if (tags.Length < 3)
+                            {
+                                Logger.LogWarning("Invalid event status update: {f}", field.Name);
+                                continue;
+                            }
+
+                            var type = tags[0];
+                            var eventId = int.Parse(tags[1]);
+                            var sessionId = int.Parse(tags[2]);
+                            var data = field.Value.ToString();
+
+                            // Create timing message and send to processing pipeline
+                            var timingMessage = new TimingMessage(type, data, sessionId, DateTime.UtcNow);
+
+                            // Post message to the new processing pipeline
+                            await processingPipeline.Post(timingMessage);
                         }
 
-                        var type = tags[0];
-                        var eventId = int.Parse(tags[1]);
-                        var sessionId = int.Parse(tags[2]);
-                        var data = field.Value.ToString();
-
-                        // Create timing message and send to processing pipeline
-                        var timingMessage = new TimingMessage(type, data, sessionId, DateTime.UtcNow);
-
-                        // Post message to the new processing pipeline
-                        await processingPipeline.Post(timingMessage);
+                        await cache.StreamAcknowledgeAsync(streamKey, CONSUMER_GROUP, entry.Id);
                     }
-
-                    await cache.StreamAcknowledgeAsync(streamKey, CONSUMER_GROUP, entry.Id);
                 }
             }
             catch (Exception ex)
@@ -307,7 +304,6 @@ public class EventAggregatorService : BackgroundService
             {
                 payload = sessionContext.SessionState.ToPayload();
             }
-            lastFullStatusTimestamp = DateTime.UtcNow;
 
             var json = JsonSerializer.Serialize(payload);
             var bytes = Encoding.UTF8.GetBytes(json);

@@ -51,25 +51,33 @@ public class EventProcessLogger : BackgroundService
             {
                 var cache = cacheMux.GetDatabase();
                 var result = await cache.StreamReadGroupAsync(streamKey, CONSUMER_GROUP, "logger", ">", 1);
-                foreach (var entry in result)
+                if (result.Length == 0)
                 {
-                    foreach (var field in entry.Values)
+                    // No messages available, wait before next poll
+                    await Task.Delay(TimeSpan.FromMilliseconds(200), stoppingToken);
+                }
+                else
+                {
+                    foreach (var entry in result)
                     {
-                        var tag = field.Name.ToString();
-
-                        if (tag == "laps")
+                        foreach (var field in entry.Values)
                         {
-                            var lapData = JsonSerializer.Deserialize<List<CarLapData>>(field.Value.ToString());
-                            if (lapData != null)
-                            {
-                                await SaveLogsAsync(lapData, stoppingToken);
-                            }
-                        }
+                            var tag = field.Name.ToString();
 
-                        counter.Inc();
-                        RecordLogSave();
+                            if (tag == "laps")
+                            {
+                                var lapData = JsonSerializer.Deserialize<List<CarLapData>>(field.Value.ToString());
+                                if (lapData != null)
+                                {
+                                    await SaveLogsAsync(lapData, stoppingToken);
+                                }
+                            }
+
+                            counter.Inc();
+                            RecordLogSave();
+                        }
+                        await cache.StreamAcknowledgeAsync(streamKey, CONSUMER_GROUP, entry.Id);
                     }
-                    await cache.StreamAcknowledgeAsync(streamKey, CONSUMER_GROUP, entry.Id);
                 }
 
                 // Update metrics
