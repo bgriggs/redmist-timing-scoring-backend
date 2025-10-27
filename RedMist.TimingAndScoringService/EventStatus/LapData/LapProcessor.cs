@@ -4,6 +4,7 @@ using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.TimingAndScoringService.EventStatus.X2;
+using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
 using System.Text.Json;
@@ -20,24 +21,26 @@ public class LapProcessor : IDisposable
     private readonly SessionContext sessionContext;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly PitProcessorV2 pitProcessor;
+    private readonly TimeProvider _timeProvider;
     private readonly Dictionary<string, CarPosition> lastCarPositionLookup = [];
     private readonly Dictionary<(int evt, int sess), Dictionary<string, int>> eventCarLastLapLookup = [];
-    
+
     // Add a buffer to collect lap completions and wait for potential pit messages
-    private readonly Dictionary<string, (CarPosition position, DateTime timestamp)> pendingLapCompletions = [];
+    private readonly Dictionary<string, Queue<(CarPosition position, DateTimeOffset timestamp)>> pendingLapCompletions = [];
     private readonly TimeSpan pitMessageWaitTime = TimeSpan.FromMilliseconds(1000);
     private readonly CancellationTokenSource backgroundTaskCts = new();
 
 
-    public LapProcessor(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, 
-        SessionContext sessionContext, IConnectionMultiplexer cacheMux, PitProcessorV2 pitProcessor)
+    public LapProcessor(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
+        SessionContext sessionContext, IConnectionMultiplexer cacheMux, PitProcessorV2 pitProcessor, TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.sessionContext = sessionContext;
         this.cacheMux = cacheMux;
         this.pitProcessor = pitProcessor;
-        
+        _timeProvider = timeProvider ?? TimeProvider.System;
+
         // Start background task to process pending lap completions
         _ = Task.Run(ProcessPendingLapCompletionsAsync, backgroundTaskCts.Token);
     }
@@ -53,7 +56,7 @@ public class LapProcessor : IDisposable
         {
             carLastLapLookup = [];
             eventCarLastLapLookup[(eventId, sessionId)] = carLastLapLookup;
-            await InitializeEventLastLaps(eventId, sessionId, carLastLapLookup, sessionContext.CancellationToken);
+            await InitializeEventLastLapsAsync(eventId, sessionId, carLastLapLookup, sessionContext.CancellationToken);
         }
 
         foreach (var position in carPositions)
@@ -75,14 +78,40 @@ public class LapProcessor : IDisposable
 
                 Logger.LogTrace("Car {n} completed new lap {l} in event {e}. Buffering for pit message check...", position.Number, position.LastLapCompleted, eventId);
 
-                // Instead of immediately logging, add to pending completions
+                // Protect both queue operations AND lap tracking updates with the same lock
+                // to prevent race conditions
                 lock (pendingLapCompletions)
                 {
-                    pendingLapCompletions[position.Number] = (position, DateTime.UtcNow);
-                }
+                    // Re-check inside lock to prevent duplicate enqueues from concurrent threads
+                    if (!carLastLapLookup.TryGetValue(position.Number, out int lockedLastLap))
+                    {
+                        lockedLastLap = 0;
+                    }
 
-                // Update the last lap tracking immediately
-                carLastLapLookup[position.Number] = position.LastLapCompleted;
+                    // Only enqueue if lap is still newer after acquiring lock
+                    bool shouldEnqueue = position.LastLapCompleted > lockedLastLap ||
+                             (position.LastLapCompleted == 0 && lockedLastLap > 0);
+
+                    if (shouldEnqueue)
+                    {
+                        if (!pendingLapCompletions.TryGetValue(position.Number, out var queue))
+                        {
+                            queue = new Queue<(CarPosition position, DateTimeOffset timestamp)>();
+                            pendingLapCompletions[position.Number] = queue;
+                        }
+                        
+                        var copy = position.DeepCopy();
+                        queue.Enqueue((copy, _timeProvider.GetUtcNow()));
+
+                        // Update the last lap tracking immediately while still holding the lock
+                        // Only update if this lap is greater than the current last lap
+                        // Don't let lap 0 (starting grid) reset the counter backwards
+                        if (position.LastLapCompleted > lockedLastLap)
+                        {
+                            carLastLapLookup[position.Number] = position.LastLapCompleted;
+                        }
+                    }
+                }
             }
         }
     }
@@ -97,18 +126,26 @@ public class LapProcessor : IDisposable
             try
             {
                 var completionsToProcess = new List<(string carNumber, CarPosition position)>();
-                
+
                 lock (pendingLapCompletions)
                 {
-                    var cutoffTime = DateTime.UtcNow - pitMessageWaitTime;
-                    var expiredCompletions = pendingLapCompletions
-                        .Where(kvp => kvp.Value.timestamp <= cutoffTime)
-                        .ToList();
+                    var cutoffTime = _timeProvider.GetUtcNow() - pitMessageWaitTime;
 
-                    foreach (var (carNumber, (position, _)) in expiredCompletions)
+                    // Process each car's queue
+                    foreach (var (carNumber, queue) in pendingLapCompletions.ToList())
                     {
-                        completionsToProcess.Add((carNumber, position));
-                        pendingLapCompletions.Remove(carNumber);
+                        // Dequeue all expired laps
+                        while (queue.Count > 0 && queue.Peek().timestamp <= cutoffTime)
+                        {
+                            var (position, _) = queue.Dequeue();
+                            completionsToProcess.Add((carNumber, position));
+                        }
+
+                        // Remove empty queues to keep dictionary clean
+                        if (queue.Count == 0)
+                        {
+                            pendingLapCompletions.Remove(carNumber);
+                        }
                     }
                 }
 
@@ -132,7 +169,7 @@ public class LapProcessor : IDisposable
                 try
                 {
                     await Task.Delay(1000, CancellationTokenSource.CreateLinkedTokenSource(
-                        backgroundTaskCts.Token, sessionContext.CancellationToken).Token); // Throttle on error
+                 backgroundTaskCts.Token, sessionContext.CancellationToken).Token); // Throttle on error
                 }
                 catch (OperationCanceledException)
                 {
@@ -148,21 +185,26 @@ public class LapProcessor : IDisposable
     /// </summary>
     public async Task ProcessPendingLapForCarAsync(string carNumber)
     {
-        CarPosition? positionToProcess = null;
-        
+        var positionsToProcess = new List<CarPosition>();
+
         lock (pendingLapCompletions)
         {
-            if (pendingLapCompletions.TryGetValue(carNumber, out var pendingCompletion))
+            if (pendingLapCompletions.TryGetValue(carNumber, out var queue))
             {
-                positionToProcess = pendingCompletion.position;
+                // Process all pending laps for this car
+                while (queue.Count > 0)
+                {
+                    var (position, _) = queue.Dequeue();
+                    positionsToProcess.Add(position);
+                }
                 pendingLapCompletions.Remove(carNumber);
             }
         }
 
-        if (positionToProcess != null)
+        if (positionsToProcess.Count > 0)
         {
-            Logger.LogTrace("Processing pending lap for car {n} immediately due to pit message", carNumber);
-            await LogCompletedLapsAsync([(carNumber, positionToProcess)]);
+            Logger.LogTrace("Processing {count} pending lap(s) for car {n} immediately due to pit message", positionsToProcess.Count, carNumber);
+            await LogCompletedLapsAsync([.. positionsToProcess.Select(p => (carNumber, p))]);
         }
     }
 
@@ -180,7 +222,7 @@ public class LapProcessor : IDisposable
         foreach (var (carNumber, position) in completions)
         {
             Logger.LogTrace("Car {n} completed lap {l} in event {e}. Logging...", carNumber, position.LastLapCompleted, eventId);
-
+            
             // Update pit stops - this will set LapIncludedPit if the lap included a pit stop
             pitProcessor?.UpdateCarPositionForLogging(position);
 
@@ -188,7 +230,7 @@ public class LapProcessor : IDisposable
             {
                 EventId = eventId,
                 SessionId = sessionId,
-                Timestamp = DateTime.UtcNow,
+                Timestamp = _timeProvider.GetUtcNow().UtcDateTime,
                 CarNumber = carNumber,
                 LapNumber = position.LastLapCompleted,
                 Flag = (int)position.TrackFlag,
@@ -211,13 +253,14 @@ public class LapProcessor : IDisposable
     {
         backgroundTaskCts.Cancel();
         backgroundTaskCts.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
     /// Load the last laps for all cars for the event from the database.
     /// This allows the service to recover when it is restarted and the in-memory cache is lost.
     /// </summary>
-    private async Task InitializeEventLastLaps(int eventId, int sessionId, Dictionary<string, int> carLastLapLookup, CancellationToken cancellationToken)
+    private async Task InitializeEventLastLapsAsync(int eventId, int sessionId, Dictionary<string, int> carLastLapLookup, CancellationToken cancellationToken)
     {
         Logger.LogDebug("Loading last laps for event {evt}...", eventId);
         using var context = tsContext.CreateDbContext();
@@ -232,8 +275,6 @@ public class LapProcessor : IDisposable
     /// Determine if the lap is newer or has changed from the last entry in the database for the car.
     /// Typically, the last lap will not have changed in this case.
     /// </summary>
-    /// <param name="carPosition"></param>
-    /// <returns></returns>
     private bool IsLapNewerThanLastEntryWithReplace(CarPosition carPosition)
     {
         if (string.IsNullOrEmpty(carPosition.Number))

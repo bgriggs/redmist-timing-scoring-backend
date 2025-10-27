@@ -59,6 +59,7 @@ public class SessionStateProcessingPipelineTests
     private StatusAggregatorV2 _statusAggregator = null!;
     private StartingPositionProcessor _startingPositionProcessor = null!;
     private Mock<IConnectionMultiplexer> _mockConnectionMultiplexer = null!;
+    private RedisLapCapture _redisLapCapture = null!;
 
     const string FilePrefix = "EventStatus/ProcessingPipeline/";
 
@@ -67,6 +68,7 @@ public class SessionStateProcessingPipelineTests
     [TestInitialize]
     public void Setup()
     {
+        _redisLapCapture = new RedisLapCapture();
         SetupBasicMocks();
         SetupSessionContext();
         SetupDbContextFactory();
@@ -101,14 +103,43 @@ public class SessionStateProcessingPipelineTests
         mockGroupManager.Setup(x => x.AddToGroupAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        // Setup mock Redis connection
+        // Setup mock Redis connection with lap capture
         var mockDatabase = new Mock<IDatabase>();
         _mockConnectionMultiplexer.Setup(x => x.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
             .Returns(mockDatabase.Object);
+
+        // Capture StreamAddAsync calls with name/value pairs
         mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<NameValueEntry[]>(), It.IsAny<RedisValue>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
+       .ReturnsAsync(RedisValue.Null);
+
+        // Capture StreamAddAsync calls with field/value (for lap logging) - 3 parameter simplified version
+        // This matches: StreamAddAsync(RedisKey key, RedisValue field, RedisValue value, RedisValue? messageId = null, long? maxLength = null, bool useApproximateMaxLength = false, long? limit = null, StreamTrimMode trimMode = default, CommandFlags flags = default)
+        mockDatabase.Setup(x => x.StreamAddAsync(
+            It.IsAny<RedisKey>(),
+            It.IsAny<RedisValue>(),
+            It.IsAny<RedisValue>(),
+            null,  // messageId default
+            null,  // maxLength default
+            false, // useApproximateMaxLength default
+            null,  // limit default
+            default(StreamTrimMode),  // trimMode default
+            CommandFlags.None)) // flags default
+            .Callback<RedisKey, RedisValue, RedisValue, RedisValue?, long?, bool, long?, StreamTrimMode, CommandFlags>(
+                (key, field, value, messageId, maxLength, useApproximateMaxLength, limit, trimMode, flags) =>
+            {
+                _redisLapCapture.CaptureStreamAdd(field, value);
+            })
             .ReturnsAsync(RedisValue.Null);
-        mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
+
+        // Capture StreamAddAsync calls with field/value (for lap logging) - 7 parameter version (if needed)
+        mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
+            .Callback<RedisKey, RedisValue, RedisValue, RedisValue?, int?, bool, CommandFlags>(
+            (key, field, value, messageId, maxLength, useApproximateMaxLength, flags) =>
+            {
+                _redisLapCapture.CaptureStreamAdd(field, value);
+            })
             .ReturnsAsync(RedisValue.Null);
+
         mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
             .Returns(Task.FromResult(true));
 
@@ -156,7 +187,7 @@ public class SessionStateProcessingPipelineTests
             _mockConnectionMultiplexer.Object,
             _sessionContext);
         _positionEnricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
-        _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor);
+        _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor, _timeProvider);
         _statusAggregator = new StatusAggregatorV2(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
     }
@@ -492,6 +523,41 @@ public class SessionStateProcessingPipelineTests
 
         // Assert
         Assert.AreEqual("GP2", _sessionContext.SessionState.CarPositions.Single(c => c.Number == "55").Class);
+    }
+
+    [TestMethod]
+    public async Task RMonitor_MissingLap1And2_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "TestMissingLaps.txt");
+        await entriesData.LoadAsync();
+
+        // Act
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                // Advance time to simulate passage between records
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+            }
+
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            await _pipeline.Post(tm);
+        }
+
+        // Allow time for pending laps to be processed (LapProcessor has 1 second wait time)
+        await Task.Delay(TimeSpan.FromSeconds(3), TestContext.CancellationTokenSource.Token);
+
+        // Assert
+        // Looking at the test data, we should check that all cars that completed laps have them logged
+
+        // Check that car 484 has laps logged (appears to complete laps in the data)
+        var car484Laps = _redisLapCapture.GetLapsForCar("484");
+        Assert.IsGreaterThan(0, car484Laps.Count, "Car 484 should have at least one lap logged");
+
+        // Check that lap 8 was captured
+        Assert.IsTrue(_redisLapCapture.HasLap("484", 8), "Car 484 should have lap 8 logged");
     }
 
     //[TestMethod]

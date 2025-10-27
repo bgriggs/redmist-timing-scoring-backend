@@ -71,6 +71,9 @@
 		<None Update="EventStatus\ProcessingPipeline\TestMidRaceClassChange.txt">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+		<None Update="EventStatus\ProcessingPipeline\TestMissingLaps.txt">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestResetRetainLapTime.txt">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
