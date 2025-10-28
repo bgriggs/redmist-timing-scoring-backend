@@ -104,7 +104,7 @@ public class EventAggregatorService : BackgroundService
             try
             {
                 var cache = cacheMux.GetDatabase();
-                var result = await cache.StreamReadGroupAsync(streamKey, CONSUMER_GROUP, "proc", ">", count: 1);
+                var result = await cache.StreamReadGroupAsync(streamKey, CONSUMER_GROUP, "proc", ">", count: 5);
                 if (result.Length == 0)
                 {
                     // No messages available, wait before next poll

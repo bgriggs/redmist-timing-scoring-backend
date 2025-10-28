@@ -25,6 +25,7 @@ public abstract class OrganizationControllerBase : Controller
     protected readonly IControlLogFactory controlLogFactory;
     protected ILogger Logger { get; }
 
+    
     /// <summary>
     /// Initializes a new instance of the <see cref="OrganizationControllerBase"/> class.
     /// </summary>
@@ -37,6 +38,7 @@ public abstract class OrganizationControllerBase : Controller
         this.tsContext = tsContext;
         this.controlLogFactory = controlLogFactory;
     }
+
 
     /// <summary>
     /// Loads the organization details for the authenticated user.
@@ -82,6 +84,11 @@ public abstract class OrganizationControllerBase : Controller
             org.ControlLogParams = organization.ControlLogParams;
             org.Orbits = organization.Orbits;
             org.X2 = organization.X2;
+            org.RMonitorIp = organization.RMonitorIp;
+            org.RMonitorPort = organization.RMonitorPort;
+            org.MultiloopIp = organization.MultiloopIp;
+            org.MultiloopPort = organization.MultiloopPort;
+            org.OrbitsLogsPath = organization.OrbitsLogsPath;
             await db.SaveChangesAsync();
         }
     }
