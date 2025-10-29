@@ -62,7 +62,6 @@ helm upgrade --install $config.releaseName . `
   --set redmist-event-management.image.tag=$Version `
   --set redmist-event-orchestration.image.tag=$Version `
   --set redmist-user-management.image.tag=$Version `
-  --set migration.image.tag=$Version `
   --namespace $config.namespace `
   --wait
 
