@@ -34,7 +34,7 @@ public class SessionMonitorTests
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
         var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object);
-        var rmonitorProcessor = new RMonitorDataProcessorV2(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
+        var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
 
         // Create the debug session monitor with the SAME session context
         var sessionMonitor = new DebugSessionMonitor(1, dbMock.Object, sessionContext);
@@ -98,7 +98,7 @@ public class SessionMonitorTests
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
         var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object);
-        var rmonitorProcessor = new RMonitorDataProcessorV2(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
+        var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
 
         // Create the debug session monitor with the SAME session context
         var sessionMonitor = new DebugSessionMonitor(1, dbMock.Object, sessionContext);
@@ -167,7 +167,7 @@ public class SessionMonitorTests
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
         var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object);
-        var rmonitorProcessor = new RMonitorDataProcessorV2(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
+        var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
 
         // Create the debug session monitor with the SAME session context
         var sessionMonitor = new DebugSessionMonitor(1, dbMock.Object, sessionContext);

@@ -14,7 +14,7 @@ namespace RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
 [TestClass]
 public class RMonitorDataProcessorV2Tests
 {
-    private RMonitorDataProcessorV2 _processor = null!;
+    private RMonitorDataProcessor _processor = null!;
     private SessionContext _sessionContext = null!;
     private Mock<ILoggerFactory> _mockLoggerFactory = null!;
     private Mock<ILogger> _mockLogger = null!;
@@ -40,7 +40,7 @@ public class RMonitorDataProcessorV2Tests
 
         _resetProcessor = new ResetProcessor(_sessionContext, _mockHubContext.Object, _mockLoggerFactory.Object);
         _startingPositionProcessor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object);
-        _processor = new RMonitorDataProcessorV2(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor);
+        _processor = new RMonitorDataProcessor(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor);
     }
 
     [TestMethod]

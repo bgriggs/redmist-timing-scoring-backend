@@ -45,7 +45,7 @@ public class SessionStateProcessingPipelineTests
     private Mock<HybridCache> _mockHybridCache = null!;
 
     // Real processor instances for end-to-end testing
-    private RMonitorDataProcessorV2 _rMonitorProcessor = null!;
+    private RMonitorDataProcessor _rMonitorProcessor = null!;
     private MultiloopProcessor _multiloopProcessor = null!;
     private PitProcessorV2 _pitProcessor = null!;
     private FlagProcessorV2 _flagProcessor = null!;
@@ -56,7 +56,7 @@ public class SessionStateProcessingPipelineTests
     private DriverModeProcessor _driverModeProcessor = null!;
     private LapProcessor _lapProcessor = null!;
     private UpdateConsolidator _updateConsolidator = null!;
-    private StatusAggregatorV2 _statusAggregator = null!;
+    private StatusAggregator _statusAggregator = null!;
     private StartingPositionProcessor _startingPositionProcessor = null!;
     private Mock<IConnectionMultiplexer> _mockConnectionMultiplexer = null!;
     private RedisLapCapture _redisLapCapture = null!;
@@ -173,7 +173,7 @@ public class SessionStateProcessingPipelineTests
         // Create real processor instances for end-to-end testing
         _resetProcessor = new ResetProcessor(_sessionContext, _mockHubContext.Object, _mockLoggerFactory.Object);
         _startingPositionProcessor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object);
-        _rMonitorProcessor = new RMonitorDataProcessorV2(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor);
+        _rMonitorProcessor = new RMonitorDataProcessor(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor);
         _multiloopProcessor = new MultiloopProcessor(_mockLoggerFactory.Object, _sessionContext);
         _pitProcessor = new PitProcessorV2(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _controlLogEnricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);
@@ -188,7 +188,7 @@ public class SessionStateProcessingPipelineTests
             _sessionContext);
         _positionEnricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
         _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor, _timeProvider);
-        _statusAggregator = new StatusAggregatorV2(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
+        _statusAggregator = new StatusAggregator(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
     }
 

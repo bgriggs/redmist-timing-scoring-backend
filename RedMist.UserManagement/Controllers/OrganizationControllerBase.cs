@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.Database.Extensions;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using RedMist.UserManagement.Models;
@@ -78,9 +79,9 @@ public abstract class OrganizationControllerBase : ControllerBase
             return NotFound("User organization mapping not found.");
         }
 
-        var org = await context.OrganizationExtView
-            .Where(o => o.Id == userOrganization.OrganizationId)
-            .Select(o => new { o.Id, o.Name, o.Website, o.Logo })
+        var org = await context.OrganizationExtView()
+    .Where(o => o.Id == userOrganization.OrganizationId)
+      .Select(o => new { o.Id, o.Name, o.Website, o.Logo })
             .FirstOrDefaultAsync();
 
         if (org == null)
@@ -122,15 +123,15 @@ public abstract class OrganizationControllerBase : ControllerBase
 
         var userOrganizations = await context.UserOrganizationMappings
             .Where(u => u.Username.ToUpper() == clientId.ToUpper())
-            .Join(context.OrganizationExtView,
-                uom => uom.OrganizationId,
-                org => org.Id,
-                (uom, org) => new UserOrganizationDto
-                {
-                    OrganizationId = org.Id,
-                    Role = uom.Role
-                })
-            .ToListAsync();
+       .Join(context.OrganizationExtView(),
+    uom => uom.OrganizationId,
+    org => org.Id,
+           (uom, org) => new UserOrganizationDto
+  {
+     OrganizationId = org.Id,
+        Role = uom.Role
+        })
+         .ToListAsync();
 
         return userOrganizations;
     }

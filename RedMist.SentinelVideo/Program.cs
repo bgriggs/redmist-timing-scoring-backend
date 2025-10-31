@@ -24,7 +24,8 @@ public class Program
         builder.Services.AddAuthorization();
 
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException(nameof(sqlConn));
-        builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
+        //builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
+        builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
         builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 10; c.ConnectTimeout = 10; }));

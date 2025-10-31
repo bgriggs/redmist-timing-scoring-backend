@@ -94,21 +94,22 @@ public class Program
         });
 
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
-        builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
+        //builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
+        builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
         builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 5; c.ConnectTimeout = 10; }));
         builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(100), LocalCacheExpiration = TimeSpan.FromDays(100) });
         builder.Services.AddSingleton<SessionContext>();
         builder.Services.AddSingleton<MultiloopProcessor>();
-        builder.Services.AddSingleton<RMonitorDataProcessorV2>();
+        builder.Services.AddSingleton<RMonitorDataProcessor>();
         builder.Services.AddSingleton<PitProcessorV2>();
         builder.Services.AddSingleton<FlagProcessorV2>();
         builder.Services.AddSingleton<PositionDataEnricher>();
         builder.Services.AddSingleton<ResetProcessor>();
         builder.Services.AddSingleton<LapProcessor>();
         builder.Services.AddSingleton<UpdateConsolidator>();
-        builder.Services.AddSingleton<StatusAggregatorV2>();
+        builder.Services.AddSingleton<StatusAggregator>();
         builder.Services.AddSingleton<StartingPositionProcessor>();
         builder.Services.AddSingleton<ControlLogEnricher>();
         builder.Services.AddSingleton<DriverModeProcessor>();

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RedMist.ControlLogs;
 using RedMist.Database;
+using RedMist.Database.Extensions;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using System.Security.Claims;
@@ -54,7 +55,7 @@ public abstract class OrganizationControllerBase : Controller
         Logger.LogTrace("LoadOrganization");
         var clientId = User.FindFirstValue("client_id");
         using var db = await tsContext.CreateDbContextAsync();
-        return await db.OrganizationExtView.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        return await db.OrganizationExtView().FirstOrDefaultAsync(x => x.ClientId == clientId);
     }
 
     /// <summary>

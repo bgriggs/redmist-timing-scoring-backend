@@ -118,7 +118,9 @@ public class Program
         }
 
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
-        builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
+        //builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
+        builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
+
         builder.Services.AddHealthChecks()
             .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);

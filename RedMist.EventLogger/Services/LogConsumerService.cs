@@ -191,6 +191,8 @@ public class LogConsumerService : BackgroundService
             {
                 try
                 {
+                    passing.TimestampUtc = DateTime.SpecifyKind(passing.TimestampUtc, DateTimeKind.Utc);
+                    passing.TimestampLocal = DateTime.SpecifyKind(passing.TimestampLocal, DateTimeKind.Utc);
                     await db.AddAsync(passing, stoppingToken);
                     await db.SaveChangesAsync(stoppingToken);
                 }

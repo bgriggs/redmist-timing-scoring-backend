@@ -225,20 +225,21 @@ public class OrchestrationService : BackgroundService
     {
         using var context = await tsContext.CreateDbContextAsync();
         var currentEventIds = currentEvents.Select(e => e.EventId).ToList();
-        var idList = string.Join(",", currentEventIds);
-        if (string.IsNullOrWhiteSpace(idList))
+
+        if (currentEventIds.Count == 0)
         {
             // If no events are active, set all to not live
-            await context.Database.ExecuteSqlRawAsync("UPDATE Events SET IsLive = 0");
+            await context.Database.ExecuteSqlRawAsync("UPDATE \"Events\" SET \"IsLive\" = false");
         }
         else
         {
-            var sql = $@"UPDATE Events SET IsLive = CASE 
-                       WHEN Id IN ({idList}) THEN 1
-                       ELSE 0
-                     END";
-
-            await context.Database.ExecuteSqlRawAsync(sql);
+            // Use ANY operator with array parameter for PostgreSQL
+            await context.Database.ExecuteSqlRawAsync(
+                @"UPDATE ""Events"" SET ""IsLive"" = CASE 
+                WHEN ""Id"" = ANY(@p0) THEN true
+                ELSE false
+                END",
+                currentEventIds.ToArray());
         }
     }
 

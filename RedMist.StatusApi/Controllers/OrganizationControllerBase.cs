@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Database;
+using RedMist.Database.Extensions;
 
 namespace RedMist.StatusApi.Controllers;
 
@@ -75,7 +76,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     protected async Task<byte[]> LoadOrganizationIcon(int organizationId)
     {
         using var context = await tsContext.CreateDbContextAsync();
-        var organization = await context.OrganizationExtView.FirstOrDefaultAsync(o => o.Id == organizationId);
+        var organization = await context.OrganizationExtView().FirstOrDefaultAsync(o => o.Id == organizationId);
         return organization?.Logo ?? [];
     }
 
