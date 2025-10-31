@@ -17,12 +17,12 @@ public class UpdateConsolidator
     private SessionStatePatch? accumulatedSessionPatch;
     private readonly Dictionary<string, CarPositionPatch> accumulatedCarPatches = [];
     private readonly SessionContext sessionContext;
-    private readonly StatusAggregatorV2 statusAggregator;
+    private readonly StatusAggregator statusAggregator;
     private readonly SemaphoreSlim processLock = new(1, 1);
     private readonly Debouncer debouncer = new(DebounceInterval);
 
 
-    public UpdateConsolidator(SessionContext sessionContext, ILoggerFactory loggerFactory, StatusAggregatorV2 statusAggregator)
+    public UpdateConsolidator(SessionContext sessionContext, ILoggerFactory loggerFactory, StatusAggregator statusAggregator)
     {
         this.sessionContext = sessionContext;
         this.statusAggregator = statusAggregator;

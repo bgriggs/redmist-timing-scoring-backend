@@ -9,19 +9,16 @@ namespace RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 /// <summary>
 /// Responsible for taking session and car position patches and sending them to clients.
 /// </summary>
-public class StatusAggregatorV2
+public class StatusAggregator
 {
     private readonly IHubContext<StatusHub> hubContext;
     private readonly SessionContext sessionContext;
 
-    private ILogger Logger { get; }
 
-
-    public StatusAggregatorV2(IHubContext<StatusHub> hubContext, ILoggerFactory loggerFactory, SessionContext sessionContext)
+    public StatusAggregator(IHubContext<StatusHub> hubContext, ILoggerFactory loggerFactory, SessionContext sessionContext)
     {
         this.hubContext = hubContext;
         this.sessionContext = sessionContext;
-        Logger = loggerFactory.CreateLogger(GetType().Name);
     }
 
 

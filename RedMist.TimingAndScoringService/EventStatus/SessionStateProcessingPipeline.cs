@@ -23,7 +23,7 @@ public class SessionStateProcessingPipeline
     private readonly SessionContext sessionContext;
 
     // Processor instances
-    private readonly RMonitorDataProcessorV2 rMonitorProcessor;
+    private readonly RMonitorDataProcessor rMonitorProcessor;
     private readonly MultiloopProcessor multiloopProcessor;
     private readonly PitProcessorV2 pitProcessor;
     private readonly FlagProcessorV2 flagProcessor;
@@ -34,7 +34,7 @@ public class SessionStateProcessingPipeline
     private readonly DriverModeProcessor driverModeProcessor;
     private readonly LapProcessor lapProcessor;
     private readonly UpdateConsolidator updateConsolidator;
-    private readonly StatusAggregatorV2 statusAggregator;
+    private readonly StatusAggregator statusAggregator;
 
     // Metrics for pipeline performance
     private readonly PipelineMetrics _overallProcessorMetrics = new("sequential_processor");
@@ -62,7 +62,7 @@ public class SessionStateProcessingPipeline
         ["processor_name", "error_type"]);
 
     public SessionStateProcessingPipeline(SessionContext context, ILoggerFactory loggerFactory,
-        RMonitorDataProcessorV2 rMonitorDataProcessorV2,
+        RMonitorDataProcessor rMonitorDataProcessorV2,
         MultiloopProcessor multiloopProcessor,
         PitProcessorV2 pitProcessorV2,
         FlagProcessorV2 flagProcessorV2,
@@ -73,7 +73,7 @@ public class SessionStateProcessingPipeline
         DriverModeProcessor driverModeProcessor,
         LapProcessor lapProcessor,
         UpdateConsolidator updateConsolidator,
-        StatusAggregatorV2 statusAggregatorV2)
+        StatusAggregator statusAggregatorV2)
     {
         sessionContext = context;
         Logger = loggerFactory.CreateLogger(GetType().Name);

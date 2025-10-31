@@ -66,7 +66,9 @@ public class FlagProcessor
                                                    x.EndTime.HasValue);
             if (sourceFlag != null)
             {
-                dbf.EndTime = sourceFlag.EndTime;
+                dbf.EndTime = sourceFlag.EndTime.HasValue
+                    ? DateTime.SpecifyKind(sourceFlag.EndTime.Value, DateTimeKind.Utc)
+                    : null;
                 flagsUpdated++;
                 Logger.LogDebug("Setting end time for flag {flag} from {start} to {end}", 
                     dbf.Flag, dbf.StartTime, dbf.EndTime);
@@ -122,8 +124,10 @@ public class FlagProcessor
                     EventId = eventId,
                     SessionId = sessionId,
                     Flag = f.Flag,
-                    StartTime = f.StartTime,
-                    EndTime = f.EndTime
+                    StartTime = DateTime.SpecifyKind(f.StartTime, DateTimeKind.Utc),
+                    EndTime = f.EndTime.HasValue
+                        ? DateTime.SpecifyKind(f.EndTime.Value, DateTimeKind.Utc)
+                        : null
                 };
                 await context.FlagLog.AddAsync(dbFlag, cancellationToken);
                 newFlagsAdded++;

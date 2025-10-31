@@ -9,7 +9,7 @@ namespace RedMist.TimingAndScoringService.EventStatus.RMonitor;
 /// Result Monitor data format processor such as from an Orbits timing system.
 /// For protocol details, see: https://github.com/bradfier/rmonitor/blob/master/docs/RMonitor%20Timing%20Protocol.pdf
 /// </summary>
-public class RMonitorDataProcessorV2
+public class RMonitorDataProcessor
 {
     private ILogger Logger { get; }
     public Heartbeat Heartbeat { get; } = new();
@@ -28,7 +28,7 @@ public class RMonitorDataProcessorV2
     private const string STANDALONE_RESET_CMD = "$I, \"00:00:00\", \"0/0/0000\"";
 
 
-    public RMonitorDataProcessorV2(ILoggerFactory loggerFactory, SessionContext sessionContext,
+    public RMonitorDataProcessor(ILoggerFactory loggerFactory, SessionContext sessionContext,
         ResetProcessor resetProcessor, StartingPositionProcessor startingPositionProcessor)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
