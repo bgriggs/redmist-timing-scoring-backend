@@ -132,7 +132,7 @@ public class GoogleSheetsControlLog : IControlLog
                             if (valueSet)
                             {
                                 requiredColumns.Remove(mapping);
-                                var color = cell.EffectiveFormat.BackgroundColor;
+                                var color = cell.EffectiveFormat?.BackgroundColor;
                                 if (color != null && color.Red == 1 && color.Green == 1 && color.Blue == null)
                                 {
                                     mapping.SetCellHighlighted(entry);
