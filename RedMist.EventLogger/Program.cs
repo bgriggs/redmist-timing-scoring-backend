@@ -18,14 +18,11 @@ public class Program
         builder.Logging.ClearProviders();
         builder.Logging.AddNLog("NLog");
 
-        // Add services to the container.
-
         builder.Services.AddControllers();
         // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
         builder.Services.AddOpenApi();
 
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
-        //builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
@@ -33,7 +30,7 @@ public class Program
 
         builder.Services.AddHealthChecks()
             .AddRedis(redisConn, tags: ["cache", "redis"])
-            .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])
+            .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024 * 2, name: "Process Allocated Memory", tags: ["memory"]);
 
         builder.Services.AddHostedService<LogConsumerService>();

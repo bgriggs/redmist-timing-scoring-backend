@@ -139,7 +139,7 @@ public class Program
 
         builder.Services.AddHealthChecks()
             .AddRedis(redisConn, tags: ["cache", "redis"])
-            .AddSqlServer(sqlConn, tags: ["db", "sql", "sqlserver"])
+            .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);
 
         builder.Services.AddRedMistSignalR(redisConn);
