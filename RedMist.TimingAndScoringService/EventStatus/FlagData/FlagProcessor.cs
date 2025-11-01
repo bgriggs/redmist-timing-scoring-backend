@@ -66,9 +66,7 @@ public class FlagProcessor
                                                    x.EndTime.HasValue);
             if (sourceFlag != null)
             {
-                dbf.EndTime = sourceFlag.EndTime.HasValue
-                    ? DateTime.SpecifyKind(sourceFlag.EndTime.Value, DateTimeKind.Utc)
-                    : null;
+                dbf.EndTime = sourceFlag.EndTime;
                 flagsUpdated++;
                 Logger.LogDebug("Setting end time for flag {flag} from {start} to {end}", dbf.Flag, dbf.StartTime, dbf.EndTime);
             }
@@ -91,7 +89,7 @@ public class FlagProcessor
 
                 if (previousIncompleteFlag != null)
                 {
-                    previousIncompleteFlag.EndTime = DateTime.SpecifyKind(newFlag.StartTime, DateTimeKind.Utc);
+                    previousIncompleteFlag.EndTime = newFlag.StartTime;
                     flagsUpdated++;
                     Logger.LogDebug("Auto-completing previous flag {flag} started at {start} with end time {end} due to new flag {newFlag} starting",
                         previousIncompleteFlag.Flag, previousIncompleteFlag.StartTime, previousIncompleteFlag.EndTime, newFlag.Flag);
@@ -123,10 +121,8 @@ public class FlagProcessor
                     EventId = eventId,
                     SessionId = sessionId,
                     Flag = f.Flag,
-                    StartTime = DateTime.SpecifyKind(f.StartTime, DateTimeKind.Utc),
-                    EndTime = f.EndTime.HasValue
-                        ? DateTime.SpecifyKind(f.EndTime.Value, DateTimeKind.Utc)
-                        : null
+                    StartTime = f.StartTime,
+                    EndTime = f.EndTime
                 };
                 await context.FlagLog.AddAsync(dbFlag, cancellationToken);
                 newFlagsAdded++;

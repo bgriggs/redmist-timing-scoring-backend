@@ -480,7 +480,7 @@ public class RelayHub : Hub
         var logEntry = new RelayLog
         {
             OrganizationId = orgId,
-            Timestamp = DateTime.SpecifyKind(timestamp, DateTimeKind.Utc),
+            Timestamp = timestamp,
             Level = level?.Length > 20 ? level[..20] : level ?? "Unknown",
             State = state?.Length > 300 ? state[..300] : state ?? "",
             Exception = exception?.Length > 1024 ? exception[..1024] : exception ?? "",

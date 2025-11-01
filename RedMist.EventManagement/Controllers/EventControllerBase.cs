@@ -107,8 +107,6 @@ public abstract class EventControllerBase : ControllerBase
         using var context = await tsContext.CreateDbContextAsync();
         var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId) ?? throw new Exception("Organization not found");
         newEvent.OrganizationId = org.Id;
-        newEvent.StartDate = DateTime.SpecifyKind(newEvent.StartDate, DateTimeKind.Utc);
-        newEvent.EndDate = DateTime.SpecifyKind(newEvent.EndDate, DateTimeKind.Utc);
         context.Events.Add(newEvent);
         await context.SaveChangesAsync();
         
@@ -141,8 +139,8 @@ public abstract class EventControllerBase : ControllerBase
         if (dbEvent != null)
         {
             dbEvent.Name = @event.Name;
-            dbEvent.StartDate = DateTime.SpecifyKind(@event.StartDate, DateTimeKind.Utc);
-            dbEvent.EndDate = DateTime.SpecifyKind(@event.EndDate, DateTimeKind.Utc);
+            dbEvent.StartDate = @event.StartDate;
+            dbEvent.EndDate = @event.EndDate;
             dbEvent.IsActive = @event.IsActive;
             dbEvent.EventUrl = @event.EventUrl;
             dbEvent.Schedule = @event.Schedule;

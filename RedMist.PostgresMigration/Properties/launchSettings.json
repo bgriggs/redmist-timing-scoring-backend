@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "RedMist.PostgresMigration": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

@@ -130,8 +130,8 @@ public class Program
 
         builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromHours(4), LocalCacheExpiration = TimeSpan.FromMinutes(5) });
 
+        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
-        //builder.Services.AddDbContextFactory<TsContext>(op => op.UseSqlServer(sqlConn));
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";

@@ -19,9 +19,9 @@ public class Program
         builder.Logging.AddNLog("NLog");
 
         builder.Services.AddControllers();
-        // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
         builder.Services.AddOpenApi();
 
+        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
 

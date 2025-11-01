@@ -33,48 +33,47 @@ public class DataMigrationService
         _batchSize = batchSize;
     }
 
-    /// <summary>
-    /// Converts all DateTime properties in an entity to UTC.
-    /// PostgreSQL requires DateTimes to have Kind=Utc when using timestamp with time zone.
-    /// </summary>
-    private void ConvertDateTimesToUtc<T>(T entity) where T : class
-    {
-        if (entity == null) return;
+    ///// <summary>
+    ///// Converts all DateTime properties in an entity to UTC.
+    ///// PostgreSQL requires DateTimes to have Kind=Utc when using timestamp with time zone.
+    ///// </summary>
+    //private void ConvertDateTimesToUtc<T>(T entity) where T : class
+    //{
+    //    if (entity == null) return;
 
-        var properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.PropertyType == typeof(DateTime) || p.PropertyType == typeof(DateTime?));
+    //    var properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
+    //        .Where(p => p.PropertyType == typeof(DateTime) || p.PropertyType == typeof(DateTime?));
 
-        foreach (var prop in properties)
-        {
-            var value = prop.GetValue(entity);
+    //    foreach (var prop in properties)
+    //    {
+    //        var value = prop.GetValue(entity);
 
-            // Handle non-nullable DateTime
-            if (value is DateTime dt)
-            {
-                if (dt.Kind == DateTimeKind.Unspecified)
-                {
-                    // Treat unspecified as UTC
-                    prop.SetValue(entity, DateTime.SpecifyKind(dt, DateTimeKind.Utc));
-                }
-                else if (dt.Kind == DateTimeKind.Local)
-                {
-                    // Convert local to UTC
-                    prop.SetValue(entity, dt.ToUniversalTime());
-                }
-            }
-        }
-    }
+    //        // Handle non-nullable DateTime
+    //        if (value is DateTime dt)
+    //        {
+    //            if (dt.Kind == DateTimeKind.Unspecified)
+    //            {
+    //                prop.SetValue(entity, dt);
+    //            }
+    //            else if (dt.Kind == DateTimeKind.Local)
+    //            {
+    //                // Convert local to UTC
+    //                prop.SetValue(entity, dt.ToUniversalTime());
+    //            }
+    //        }
+    //    }
+    //}
 
-    /// <summary>
-    /// Converts DateTime values in a collection of entities to UTC.
-    /// </summary>
-    private void ConvertDateTimesToUtc<T>(IEnumerable<T> entities) where T : class
-    {
-        foreach (var entity in entities)
-        {
-            ConvertDateTimesToUtc(entity);
-        }
-    }
+    ///// <summary>
+    ///// Converts DateTime values in a collection of entities to UTC.
+    ///// </summary>
+    //private void ConvertDateTimesToUtc<T>(IEnumerable<T> entities) where T : class
+    //{
+    //    foreach (var entity in entities)
+    //    {
+    //        ConvertDateTimesToUtc(entity);
+    //    }
+    //}
 
     public async Task MigrateAllDataAsync(CancellationToken cancellationToken = default)
     {
@@ -90,7 +89,7 @@ public class DataMigrationService
             await MigrateDefaultOrgImagesAsync(cancellationToken);
             await MigrateGoogleSheetsConfigsAsync(cancellationToken);
             await MigrateUserOrganizationMappingsAsync(cancellationToken);
-            await MigrateRelayLogsAsync(cancellationToken);
+            //await MigrateRelayLogsAsync(cancellationToken);
             //await MigrateUIVersionsAsync(cancellationToken);
             await MigrateEventsAsync(cancellationToken);
             await MigrateSessionsAsync(cancellationToken);
@@ -149,12 +148,28 @@ public class DataMigrationService
         await MigrateEntityAsync<Organization>("Organizations",
             async (sqlContext, pgContext) =>
             {
-                // Query from the table, not the view
                 var orgs = await sqlContext.Organizations.AsNoTracking().ToListAsync(cancellationToken);
                 if (orgs.Any())
                 {
+                    // Temporarily allow identity insert for PostgreSQL
+                    await pgContext.Database.ExecuteSqlRawAsync(
+                        "ALTER TABLE \"Organizations\" ALTER COLUMN \"Id\" DROP IDENTITY IF EXISTS;",
+                        cancellationToken);
+                
                     await pgContext.Organizations.AddRangeAsync(orgs, cancellationToken);
                     await pgContext.SaveChangesAsync(cancellationToken);
+                
+                    // Get the max ID to reset the sequence
+                    var maxId = orgs.Max(o => o.Id);
+                
+                    // Re-add identity and set the sequence to continue from max ID
+                    await pgContext.Database.ExecuteSqlRawAsync(
+                        $"ALTER TABLE \"Organizations\" ALTER COLUMN \"Id\" ADD GENERATED ALWAYS AS IDENTITY;",
+                        cancellationToken);
+                
+                    await pgContext.Database.ExecuteSqlRawAsync(
+                        $"SELECT setval(pg_get_serial_sequence('\"Organizations\"', 'Id'), {maxId}, true);",
+                        cancellationToken);
                 }
                 return orgs.Count;
             }, cancellationToken);
@@ -205,23 +220,23 @@ public class DataMigrationService
            }, cancellationToken);
     }
 
-    private async Task MigrateRelayLogsAsync(CancellationToken cancellationToken)
-    {
-        await MigrateLargeEntityAsync<RelayLog>("RelayLogs",
-           async (sqlContext, skip, take, ct) =>
-  {
-      var logs = await sqlContext.RelayLogs
-           .AsNoTracking()
-       .OrderBy(r => r.Id)
-          .Skip(skip)
-            .Take(take)
-             .ToListAsync(ct);
-      ConvertDateTimesToUtc(logs);
-      return logs;
-  },
-            async (sqlContext, ct) => await sqlContext.RelayLogs.CountAsync(ct),
- cancellationToken);
-    }
+    //   private async Task MigrateRelayLogsAsync(CancellationToken cancellationToken)
+    //   {
+    //       await MigrateLargeEntityAsync<RelayLog>("RelayLogs",
+    //          async (sqlContext, skip, take, ct) =>
+    // {
+    //     var logs = await sqlContext.RelayLogs
+    //          .AsNoTracking()
+    //      .OrderBy(r => r.Id)
+    //         .Skip(skip)
+    //           .Take(take)
+    //            .ToListAsync(ct);
+    //     ConvertDateTimesToUtc(logs);
+    //     return logs;
+    // },
+    //           async (sqlContext, ct) => await sqlContext.RelayLogs.CountAsync(ct),
+    //cancellationToken);
+    //   }
 
     private async Task MigrateUIVersionsAsync(CancellationToken cancellationToken)
     {
@@ -263,11 +278,27 @@ public class DataMigrationService
            async (sqlContext, pgContext) =>
           {
               var events = await sqlContext.Events.AsNoTracking().ToListAsync(cancellationToken);
-              ConvertDateTimesToUtc(events);
               if (events.Any())
               {
+                  // Temporarily allow identity insert for PostgreSQL
+                  await pgContext.Database.ExecuteSqlRawAsync(
+                      "ALTER TABLE \"Events\" ALTER COLUMN \"Id\" DROP IDENTITY IF EXISTS;",
+                      cancellationToken);
+              
                   await pgContext.Events.AddRangeAsync(events, cancellationToken);
                   await pgContext.SaveChangesAsync(cancellationToken);
+              
+                  // Get the max ID to reset the sequence
+                  var maxId = events.Max(e => e.Id);
+              
+                  // Re-add identity and set the sequence to continue from max ID
+                  await pgContext.Database.ExecuteSqlRawAsync(
+                      $"ALTER TABLE \"Events\" ALTER COLUMN \"Id\" ADD GENERATED ALWAYS AS IDENTITY;",
+                      cancellationToken);
+              
+                  await pgContext.Database.ExecuteSqlRawAsync(
+                      $"SELECT setval(pg_get_serial_sequence('\"Events\"', 'Id'), {maxId}, true);",
+                      cancellationToken);
               }
               return events.Count;
           }, cancellationToken);
@@ -279,7 +310,7 @@ public class DataMigrationService
        async (sqlContext, pgContext) =>
              {
                  var sessions = await sqlContext.Sessions.AsNoTracking().ToListAsync(cancellationToken);
-                 ConvertDateTimesToUtc(sessions);
+                 //ConvertDateTimesToUtc(sessions);
                  if (sessions.Any())
                  {
                      await pgContext.Sessions.AddRangeAsync(sessions, cancellationToken);
@@ -295,7 +326,7 @@ public class DataMigrationService
      async (sqlContext, pgContext) =>
  {
      var metadata = await sqlContext.CompetitorMetadata.AsNoTracking().ToListAsync(cancellationToken);
-     ConvertDateTimesToUtc(metadata);
+     //ConvertDateTimesToUtc(metadata);
      if (metadata.Any())
      {
          await pgContext.CompetitorMetadata.AddRangeAsync(metadata, cancellationToken);
@@ -316,7 +347,7 @@ public class DataMigrationService
    .Skip(skip)
       .Take(take)
      .ToListAsync(ct);
-             ConvertDateTimesToUtc(logs);
+             //ConvertDateTimesToUtc(logs);
              return logs;
          },
   async (sqlContext, ct) => await sqlContext.EventStatusLogs.CountAsync(ct),
@@ -334,7 +365,7 @@ public class DataMigrationService
          .Skip(skip)
           .Take(take)
            .ToListAsync(ct);
-              ConvertDateTimesToUtc(logs);
+              //ConvertDateTimesToUtc(logs);
               return logs;
           },
                 async (sqlContext, ct) => await sqlContext.CarLapLogs.CountAsync(ct),
@@ -348,7 +379,7 @@ public class DataMigrationService
             async (sqlContext, pgContext) =>
           {
               var laps = await sqlContext.CarLastLaps.AsNoTracking().ToListAsync(cancellationToken);
-              ConvertDateTimesToUtc(laps);
+              //ConvertDateTimesToUtc(laps);
               if (laps.Any())
               {
                   await pgContext.CarLastLaps.AddRangeAsync(laps, cancellationToken);
@@ -366,7 +397,7 @@ public class DataMigrationService
        async (sqlContext, pgContext) =>
             {
                 var flags = await sqlContext.FlagLog.AsNoTracking().ToListAsync(cancellationToken);
-                ConvertDateTimesToUtc(flags);
+                //ConvertDateTimesToUtc(flags);
                 if (flags.Any())
                 {
                     await pgContext.FlagLog.AddRangeAsync(flags, cancellationToken);
@@ -442,7 +473,7 @@ public class DataMigrationService
                       }
                   }
 
-                  ConvertDateTimesToUtc(result);
+                  //ConvertDateTimesToUtc(result);
                   validResults.Add(result);
               }
               catch (Exception ex)
@@ -500,7 +531,7 @@ public class DataMigrationService
       .Skip(skip)
   .Take(take)
       .ToListAsync(ct);
-             ConvertDateTimesToUtc(passings);
+             //ConvertDateTimesToUtc(passings);
              return passings;
          },
             async (sqlContext, ct) => await sqlContext.X2Passings.CountAsync(ct),

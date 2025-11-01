@@ -23,6 +23,7 @@ public class Program
         // Add services to the container.
         builder.Services.AddAuthorization();
 
+        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException(nameof(sqlConn));
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
 
