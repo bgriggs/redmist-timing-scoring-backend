@@ -79,9 +79,9 @@ public abstract class OrganizationControllerBase : ControllerBase
             return NotFound("User organization mapping not found.");
         }
 
-        var org = await context.OrganizationExtView()
-    .Where(o => o.Id == userOrganization.OrganizationId)
-      .Select(o => new { o.Id, o.Name, o.Website, o.Logo })
+        var org = await context.Organizations
+            .Where(o => o.Id == userOrganization.OrganizationId)
+            .Select(o => new { o.Id, o.Name, o.Website, o.Logo })
             .FirstOrDefaultAsync();
 
         if (org == null)
@@ -89,12 +89,18 @@ public abstract class OrganizationControllerBase : ControllerBase
             return NotFound($"Organization with ID {userOrganization.OrganizationId} not found.");
         }
 
+        byte[] defaultLogo = [];
+        if (org.Logo == null)
+        {
+            defaultLogo = context.DefaultOrgImages.FirstOrDefault()?.ImageData ?? [];
+        }
+
         return new OrganizationDto
         {
             Id = org.Id,
             Name = org.Name,
             Website = org.Website,
-            Logo = org.Logo,
+            Logo = org.Logo ?? defaultLogo
         };
     }
 
@@ -123,15 +129,13 @@ public abstract class OrganizationControllerBase : ControllerBase
 
         var userOrganizations = await context.UserOrganizationMappings
             .Where(u => u.Username.ToUpper() == clientId.ToUpper())
-       .Join(context.OrganizationExtView(),
-    uom => uom.OrganizationId,
-    org => org.Id,
-           (uom, org) => new UserOrganizationDto
-  {
-     OrganizationId = org.Id,
-        Role = uom.Role
-        })
-         .ToListAsync();
+            .Join(context.Organizations, uom => uom.OrganizationId, org => org.Id,
+                (uom, org) => new UserOrganizationDto
+                {
+                    OrganizationId = org.Id,
+                    Role = uom.Role
+                })
+              .ToListAsync();
 
         return userOrganizations;
     }

@@ -70,6 +70,13 @@ public abstract class EventsControllerBase : ControllerBase
             .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
             .Where(x => x.e.StartDate >= startDateUtc && !x.e.IsDeleted).ToArrayAsync();
 
+        var noLogo = dbEvents.Any(x => x.o.Logo == null);
+        byte[] defaultLogo = [];
+        if (noLogo)
+        {
+            defaultLogo = context.DefaultOrgImages.FirstOrDefault()?.ImageData ?? [];
+        }
+
         // Map to Event model
         List<Event> eventDtos = [];
         foreach (var dbEvent in dbEvents)
@@ -84,7 +91,7 @@ public abstract class EventsControllerBase : ControllerBase
                 Sessions = sessions,
                 OrganizationName = dbEvent.o.Name,
                 OrganizationWebsite = dbEvent.o.Website,
-                OrganizationLogo = dbEvent.o.Logo,
+                OrganizationLogo = dbEvent.o.Logo ?? defaultLogo,
                 TrackName = dbEvent.e.TrackName,
                 CourseConfiguration = dbEvent.e.CourseConfiguration,
                 Distance = dbEvent.e.Distance,
@@ -202,6 +209,12 @@ public abstract class EventsControllerBase : ControllerBase
         if (dbEvent == null)
             return null;
 
+        byte[] defaultLogo = [];
+        if (dbEvent.o.Logo == null)
+        {
+            defaultLogo = context.DefaultOrgImages.FirstOrDefault()?.ImageData ?? [];
+        }
+
         var sessions = await context.Sessions.Where(x => x.EventId == dbEvent.e.Id).ToArrayAsync();
         return new Event
         {
@@ -212,7 +225,7 @@ public abstract class EventsControllerBase : ControllerBase
             Sessions = sessions,
             OrganizationName = dbEvent.o.Name,
             OrganizationWebsite = dbEvent.o.Website,
-            OrganizationLogo = dbEvent.o.Logo,
+            OrganizationLogo = dbEvent.o.Logo ?? defaultLogo,
             TrackName = dbEvent.e.TrackName,
             CourseConfiguration = dbEvent.e.CourseConfiguration,
             Distance = dbEvent.e.Distance,
@@ -305,9 +318,9 @@ public abstract class EventsControllerBase : ControllerBase
 
         url = url.TrimEnd('/') + "/status/GetStatus";
         var sw = Stopwatch.StartNew();
-        
+
         using var httpClient = httpClientFactory.CreateClient("EventProcessor");
-        
+
         try
         {
             var stream = await httpClient.GetStreamAsync(url);

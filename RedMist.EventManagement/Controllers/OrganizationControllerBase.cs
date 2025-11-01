@@ -55,7 +55,12 @@ public abstract class OrganizationControllerBase : Controller
         Logger.LogTrace("LoadOrganization");
         var clientId = User.FindFirstValue("client_id");
         using var db = await tsContext.CreateDbContextAsync();
-        return await db.OrganizationExtView().FirstOrDefaultAsync(x => x.ClientId == clientId);
+        var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        if (org != null && org.Logo == null)
+        {
+            org.Logo = db.DefaultOrgImages.FirstOrDefault()?.ImageData;
+        }
+        return org;
     }
 
     /// <summary>

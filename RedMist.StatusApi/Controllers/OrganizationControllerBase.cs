@@ -60,12 +60,12 @@ public abstract class OrganizationControllerBase : ControllerBase
             async entry => await LoadOrganizationIcon(organizationId),
             new HybridCacheEntryOptions { Expiration = TimeSpan.FromMinutes(30) });
 
-        using var context = await tsContext.CreateDbContextAsync();
-        var organization = await context.Organizations.FirstOrDefaultAsync(o => o.Id == organizationId);
-        if (organization == null || organization.Logo == null)
+        //using var context = await tsContext.CreateDbContextAsync();
+        //var organization = await context.OrganizationExtViews.FirstOrDefaultAsync(o => o.Id == organizationId);
+        if (data == null)
             return NotFound();
-        var mimeType = GetImageMimeType(organization.Logo);
-        return File(organization.Logo, mimeType);
+        var mimeType = GetImageMimeType(data);
+        return File(data, mimeType);
     }
 
     /// <summary>
@@ -76,7 +76,11 @@ public abstract class OrganizationControllerBase : ControllerBase
     protected async Task<byte[]> LoadOrganizationIcon(int organizationId)
     {
         using var context = await tsContext.CreateDbContextAsync();
-        var organization = await context.OrganizationExtView().FirstOrDefaultAsync(o => o.Id == organizationId);
+        var organization = await context.Organizations.FirstOrDefaultAsync(o => o.Id == organizationId);
+        if (organization?.Logo == null)
+        {
+            return context.DefaultOrgImages.FirstOrDefault()?.ImageData ?? [];
+        }
         return organization?.Logo ?? [];
     }
 
