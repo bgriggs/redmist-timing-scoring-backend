@@ -9,18 +9,13 @@ namespace RedMist.TimingAndScoringService.EventStatus.FlagData;
 
 public class FlagProcessorV2
 {
-    private ILogger Logger { get; }
-    private readonly IDbContextFactory<TsContext> tsContext;
     private readonly SessionContext sessionContext;
     private readonly FlagProcessor flagProcessor;
 
     
     public FlagProcessorV2(IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory, SessionContext sessionContext)
     {
-        this.tsContext = tsContext ?? throw new ArgumentNullException(nameof(tsContext));
-        Logger = (loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger(GetType().Name);
         this.sessionContext = sessionContext ?? throw new ArgumentNullException(nameof(sessionContext));
-
         flagProcessor = new FlagProcessor(sessionContext.SessionState.EventId, tsContext, loggerFactory);
     }
 

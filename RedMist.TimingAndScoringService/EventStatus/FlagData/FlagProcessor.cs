@@ -61,8 +61,8 @@ public class FlagProcessor
         var flagsUpdated = 0;
         foreach (var dbf in dbFlags.Where(f => f.EndTime == null).ToList())
         {
-            var sourceFlag = fs.FirstOrDefault(x => x.Flag == dbf.Flag && 
-                                                   x.StartTime == dbf.StartTime && 
+            var sourceFlag = fs.FirstOrDefault(x => x.Flag == dbf.Flag &&
+                                                   x.StartTime == dbf.StartTime &&
                                                    x.EndTime.HasValue);
             if (sourceFlag != null)
             {
@@ -70,8 +70,7 @@ public class FlagProcessor
                     ? DateTime.SpecifyKind(sourceFlag.EndTime.Value, DateTimeKind.Utc)
                     : null;
                 flagsUpdated++;
-                Logger.LogDebug("Setting end time for flag {flag} from {start} to {end}", 
-                    dbf.Flag, dbf.StartTime, dbf.EndTime);
+                Logger.LogDebug("Setting end time for flag {flag} from {start} to {end}", dbf.Flag, dbf.StartTime, dbf.EndTime);
             }
         }
 
@@ -81,7 +80,7 @@ public class FlagProcessor
         {
             // Check if this is truly a new flag (not already in database)
             var isNewFlag = !dbFlags.Any(existing => existing.Flag == newFlag.Flag && existing.StartTime == newFlag.StartTime);
-            
+
             if (isNewFlag)
             {
                 // Find any existing flag with EndTime = NULL that started before this new flag
@@ -92,9 +91,9 @@ public class FlagProcessor
 
                 if (previousIncompleteFlag != null)
                 {
-                    previousIncompleteFlag.EndTime = newFlag.StartTime;
+                    previousIncompleteFlag.EndTime = DateTime.SpecifyKind(newFlag.StartTime, DateTimeKind.Utc);
                     flagsUpdated++;
-                    Logger.LogDebug("Auto-completing previous flag {flag} started at {start} with end time {end} due to new flag {newFlag} starting", 
+                    Logger.LogDebug("Auto-completing previous flag {flag} started at {start} with end time {end} due to new flag {newFlag} starting",
                         previousIncompleteFlag.Flag, previousIncompleteFlag.StartTime, previousIncompleteFlag.EndTime, newFlag.Flag);
                 }
             }
@@ -104,7 +103,7 @@ public class FlagProcessor
         if (flagsUpdated > 0)
         {
             var saved = await context.SaveChangesAsync(cancellationToken);
-            Logger.LogDebug("Saved {cnt} flag end timestamps for event {eventId} session {sessionId}", 
+            Logger.LogDebug("Saved {cnt} flag end timestamps for event {eventId} session {sessionId}",
                 saved, eventId, sessionId);
         }
 
@@ -131,12 +130,12 @@ public class FlagProcessor
                 };
                 await context.FlagLog.AddAsync(dbFlag, cancellationToken);
                 newFlagsAdded++;
-                Logger.LogDebug("Adding new flag {flag} for event {eventId} session {sessionId} from {start} to {end}", 
+                Logger.LogDebug("Adding new flag {flag} for event {eventId} session {sessionId} from {start} to {end}",
                     f.Flag, eventId, sessionId, f.StartTime, f.EndTime);
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Error preparing flag {flag} for event {eventId} session {sessionId}", 
+                Logger.LogError(ex, "Error preparing flag {flag} for event {eventId} session {sessionId}",
                     f.Flag, eventId, sessionId);
             }
         }
@@ -147,17 +146,17 @@ public class FlagProcessor
             try
             {
                 await context.SaveChangesAsync(cancellationToken);
-                Logger.LogDebug("Saved {cnt} new flags for event {eventId} session {sessionId}", 
+                Logger.LogDebug("Saved {cnt} new flags for event {eventId} session {sessionId}",
                     newFlagsAdded, eventId, sessionId);
             }
             catch (DbUpdateException ex)
             {
-                Logger.LogWarning(ex, "Database update exception when saving {cnt} new flags for event {eventId} session {sessionId}. This may be due to concurrent updates.", 
+                Logger.LogWarning(ex, "Database update exception when saving {cnt} new flags for event {eventId} session {sessionId}. This may be due to concurrent updates.",
                     newFlagsAdded, eventId, sessionId);
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Unexpected error saving {cnt} new flags for event {eventId} session {sessionId}", 
+                Logger.LogError(ex, "Unexpected error saving {cnt} new flags for event {eventId} session {sessionId}",
                     newFlagsAdded, eventId, sessionId);
             }
         }
@@ -173,7 +172,7 @@ public class FlagProcessor
         {
             flags.Clear();
             flags.AddRange(ToFlagsDuration(reloadedFlags));
-            Logger.LogDebug("Loaded {cnt} flags into memory for event {eventId} session {sessionId}", 
+            Logger.LogDebug("Loaded {cnt} flags into memory for event {eventId} session {sessionId}",
                 flags.Count, eventId, sessionId);
         }
         finally

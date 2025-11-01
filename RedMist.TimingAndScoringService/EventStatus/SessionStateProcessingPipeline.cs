@@ -30,11 +30,9 @@ public class SessionStateProcessingPipeline
     private readonly SessionMonitorV2 sessionMonitor;
     private readonly PositionDataEnricher positionEnricher;
     private readonly ControlLogEnricher controlLogEnricher;
-    private readonly ResetProcessor resetProcessor;
     private readonly DriverModeProcessor driverModeProcessor;
     private readonly LapProcessor lapProcessor;
     private readonly UpdateConsolidator updateConsolidator;
-    private readonly StatusAggregator statusAggregator;
 
     // Metrics for pipeline performance
     private readonly PipelineMetrics _overallProcessorMetrics = new("sequential_processor");
@@ -47,11 +45,6 @@ public class SessionStateProcessingPipeline
     private readonly PipelineMetrics _updateConsolidatorMetrics = new("update_consolidator");
 
     // Overall pipeline metrics
-    private readonly Counter _inputMessagesTotal = Metrics.CreateCounter(
-        "pipeline_input_messages_total",
-        "Total number of messages received by the pipeline",
-        ["message_type"]);
-
     private readonly Gauge _pipelineHealth = Metrics.CreateGauge(
         "pipeline_health_score",
         "Overall health score of the pipeline (0-1)");
@@ -86,11 +79,9 @@ public class SessionStateProcessingPipeline
         sessionMonitor = sessionMonitorV2;
         this.positionEnricher = positionEnricher;
         this.controlLogEnricher = controlLogEnricher;
-        this.resetProcessor = resetProcessor;
         this.driverModeProcessor = driverModeProcessor;
         this.lapProcessor = lapProcessor;
         this.updateConsolidator = updateConsolidator;
-        statusAggregator = statusAggregatorV2;
 
         // Wire up the notification from pit processor to lap processor
         pitProcessorV2.NotifyLapProcessorOfPitMessages = async (carNumbers) =>
