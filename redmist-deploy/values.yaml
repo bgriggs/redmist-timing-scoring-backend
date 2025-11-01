@@ -3,7 +3,6 @@ global:
     "ASPNETCORE_ENVIRONMENT": "Production"
     "ASPNETCORE_FORWARDEDHEADERS_ENABLED": "true"
     "ASPNETCORE_URLS": "http://+:8080"
-    # Redis master service
     "REDIS_SVC": "redis-master:6379"
     "Keycloak__Realm": "redmist"
     "Keycloak__AuthServerUrl": "https://auth.redmist.racing"
