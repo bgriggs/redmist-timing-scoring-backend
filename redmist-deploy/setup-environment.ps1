@@ -16,7 +16,7 @@ Write-Host "TLS will be handled by Cloudflare (no certificate provisioning neede
 $namespace = switch ($Environment) {
     "dev" { "timing-dev" }
     "test" { "timing-test" }
-    "prod" { "timing" }
+    "prod" { "timing-prod" }
 }
 
 # Check if kubectl is available

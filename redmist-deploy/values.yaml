@@ -3,7 +3,8 @@ global:
     "ASPNETCORE_ENVIRONMENT": "Production"
     "ASPNETCORE_FORWARDEDHEADERS_ENABLED": "true"
     "ASPNETCORE_URLS": "http://+:8080"
-    "REDIS_SVC": "redis-node-0.redis-headless.timing.svc.cluster.local:6379,redis-node-1.redis-headless.timing.svc.cluster.local:6379"
+    # Redis master service
+    "REDIS_SVC": "redis-master:6379"
     "Keycloak__Realm": "redmist"
     "Keycloak__AuthServerUrl": "https://auth.redmist.racing"
     "SentinelApiUrl": "https://svs-api.sentinel.racing/api/"
@@ -17,27 +18,43 @@ global:
     - env: "Keycloak__ClientSecret"
       name: "rmkeys"
       key: "usermansecret"
+
+# Redis Operator configuration
+redis-operator:
+  enabled: true
+
+# Redis instance configuration (using Redis Operator)
 redis:
-  fullnameOverride: "redis"
-  architecture: replication
-  master:
-    persistence:
-      enabled: false
-    resourcesPreset: large
-  auth:
-    existingSecret: rmkeys
-    existingSecretPasswordKey: redis
-  replica:
-    replicaCount: 2
-    persistence:
-      enabled: false
+  name: "redis"
+  # Number of Redis replicas (master + replica)
+  replicas: 2
+  
+  # Sentinel configuration for high availability
   sentinel:
-    enabled: true
-    quorum: 2
-    persistence:
-      enabled: false
-  commonConfiguration: |-
-   # Enable AOF https://redis.io/topics/persistence#append-only-file
-   appendonly no
-   # Disable RDB persistence, AOF persistence already enabled.
-   save ""
+    replicas: 3
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+  
+  # Redis resources
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+  
+  # Authentication - uses existing secret
+  auth:
+    secretName: "rmkeys"
+    secretKey: "redis"
+  
+  # Custom Redis configuration
+  customConfig:
+    - "maxmemory-policy allkeys-lru"
+    - "appendonly no"

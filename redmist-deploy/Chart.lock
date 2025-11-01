@@ -1,24 +1,6 @@
 dependencies:
-- name: redis
-  repository: oci://registry-1.docker.io/bitnamicharts
-  version: 20.9.0
-- name: redmist-event-management
-  repository: file://./charts/redmist-event-management
-  version: 0.1.0
-- name: redmist-event-orchestration
-  repository: file://./charts/redmist-event-orchestration
-  version: 0.1.0
-- name: redmist-relay-api
-  repository: file://./charts/redmist-relay-api
-  version: 0.1.0
-- name: redmist-status-api
-  repository: file://./charts/redmist-status-api
-  version: 0.1.0
-- name: redmist-ui-browser
-  repository: file://./charts/redmist-ui-browser
-  version: 0.1.0
-- name: redmist-user-management
-  repository: file://./charts/redmist-user-management
-  version: 0.1.0
-digest: sha256:35271a26756824e143e8b4776aa061a84f4f6fa65cb3423e4369fa23789aa869
-generated: "2025-08-28T21:04:53.944662-06:00"
+- name: redis-operator
+  repository: https://spotahome.github.io/redis-operator
+  version: 3.2.9
+digest: sha256:737d0c65fa7552dcd7acb2935edfd6ff4de2d3f742d487377252c59ad51d9733
+generated: "2025-10-31T16:27:07.1548552-06:00"

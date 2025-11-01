@@ -11,7 +11,7 @@ param(
 $namespace = switch ($Environment) {
     "dev" { "timing-dev" }
     "test" { "timing-test" }
-    "prod" { "timing" }
+    "prod" { "timing-prod" }
 }
 
 $secretName = switch ($Environment) {

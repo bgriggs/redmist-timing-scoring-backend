@@ -1,0 +1,52 @@
+{{- if index .Values "redis-operator" "enabled" }}
+apiVersion: databases.spotahome.com/v1
+kind: RedisFailover
+metadata:
+  name: {{ .Values.redis.name | default "redis" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  # Sentinel configuration for high availability
+  sentinel:
+    replicas: {{ .Values.redis.sentinel.replicas | default 3 }}
+    resources:
+      requests:
+        cpu: {{ .Values.redis.sentinel.resources.requests.cpu | default "100m" }}
+        memory: {{ .Values.redis.sentinel.resources.requests.memory | default "128Mi" }}
+      limits:
+        cpu: {{ .Values.redis.sentinel.resources.limits.cpu | default "200m" }}
+        memory: {{ .Values.redis.sentinel.resources.limits.memory | default "256Mi" }}
+    {{- if .Values.redis.sentinel.customConfig }}
+    customConfig:
+{{ .Values.redis.sentinel.customConfig | nindent 6 }}
+    {{- end }}
+  
+  # Redis server configuration
+  redis:
+    replicas: {{ .Values.redis.replicas | default 2 }}
+    resources:
+      requests:
+        cpu: {{ .Values.redis.resources.requests.cpu | default "100m" | quote }}
+        memory: {{ .Values.redis.resources.requests.memory | default "256Mi" | quote }}
+      limits:
+        cpu: {{ .Values.redis.resources.limits.cpu | default "1000m" | quote }}
+        memory: {{ .Values.redis.resources.limits.memory | default "1Gi" | quote }}
+    
+    # Disable persistence for performance
+    storage:
+      emptyDir: {}
+    
+    {{- if .Values.redis.customConfig }}
+    customConfig:
+{{ toYaml .Values.redis.customConfig | nindent 6 }}
+    {{- end }}
+  
+  # Authentication
+  {{- if .Values.redis.auth }}
+  auth:
+    secretPath: redis-auth
+  {{- end }}
+{{- end }}

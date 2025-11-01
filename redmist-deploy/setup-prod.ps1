@@ -28,7 +28,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-$namespace = "timing"
+$namespace = "timing-prod"
 
 # Prompt for secrets if not provided
 if ([string]::IsNullOrEmpty($RedisPassword)) {

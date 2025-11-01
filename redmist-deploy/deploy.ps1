@@ -27,7 +27,7 @@ $config = switch ($Environment) {
     }
     "prod" { 
         @{
-            namespace = "timing"
+            namespace = "timing-prod"
             releaseName = "redmist-prod"
             valuesFile = "values-prod.yaml"
             color = "Red"

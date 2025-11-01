@@ -21,7 +21,7 @@ $config = switch ($Environment) {
     }
     "prod" { 
         @{
-            namespace = "timing"
+            namespace = "timing-prod"
             color = "Red"
         }
     }
