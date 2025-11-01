@@ -15,6 +15,14 @@ ingress:
 autoscaling:
   enabled: false
 
+resources:
+  requests:
+    cpu: "50m"
+    memory: "150Mi"
+  limits:
+    cpu: "120m"
+    memory: "300Mi"
+
 serviceAccount:
   # Specifies whether a service account should be created
   create: true

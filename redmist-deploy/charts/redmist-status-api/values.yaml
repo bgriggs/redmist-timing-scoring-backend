@@ -28,6 +28,14 @@ ingress:
 autoscaling:
   enabled: false
 
+resources:
+  requests:
+    cpu: "25m"
+    memory: "200Mi"
+  limits:
+    cpu: "150m"
+    memory: "400Mi"
+
 serviceAccount:
   create: false
 

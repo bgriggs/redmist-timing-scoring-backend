@@ -33,10 +33,18 @@ public class OrchestrationService : BackgroundService
 
         // Get the current assembly version for container tags
         var version = GetAssemblyVersion();
-        eventProcessorContainerDetails = new("bigmission/redmist-timing-svc", version, "{0}-evt-{1}-event-processor", true);
-        controlLogContainerDetails = new("bigmission/redmist-control-log-svc", version, "{0}-evt-{1}-control-log");
-        loggerContainerDetails = new("bigmission/redmist-event-logger-svc", version, "{0}-evt-{1}-logger");
-        sentinelVideoContainerDetails = new("bigmission/redmist-sentinel-video-svc", version, "{0}-evt-{1}-sentinel-video");
+        eventProcessorContainerDetails = new(
+            "bigmission/redmist-timing-svc", version, "{0}-evt-{1}-event-processor", true, 
+            "85m", "200Mi", "350m", "400Mi");
+        controlLogContainerDetails = new(
+            "bigmission/redmist-control-log-svc", version, "{0}-evt-{1}-control-log", false,
+            "60m", "115Mi", "150m", "200Mi");
+        loggerContainerDetails = new(
+            "bigmission/redmist-event-logger-svc", version, "{0}-evt-{1}-logger", false, 
+            "25m", "90Mi", "80m", "120Mi");
+        sentinelVideoContainerDetails = new(
+            "bigmission/redmist-sentinel-video-svc", version, "{0}-evt-{1}-sentinel-video", false, 
+            "10m", "85Mi", "50m", "120Mi");
 
         Logger.LogInformation("OrchestrationService initialized with version {version}", version);
     }
@@ -337,7 +345,7 @@ public class OrchestrationService : BackgroundService
             if (!jobs.Items.Any(job => job.Metadata.Name.Equals(clJobName, StringComparison.OrdinalIgnoreCase)))
             {
                 Logger.LogInformation("Control log job {clJobName} does not exist for event {eventId}. Creating new job.", clJobName, evt.EventId);
-                await CreateJob(client, clJobName, ns, controlLogContainerDetails.ImageName, evt.EventId, eventDefinition.Name, org.Id, org.Name, controlLogContainerDetails.IsService, stoppingToken);
+                await CreateJob(client, clJobName, ns, controlLogContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
             }
         }
 
@@ -346,7 +354,7 @@ public class OrchestrationService : BackgroundService
         if (!jobs.Items.Any(job => job.Metadata.Name.Equals(loggerJobName, StringComparison.OrdinalIgnoreCase)))
         {
             Logger.LogInformation("Logger job {loggerJobName} does not exist for event {eventId}. Creating new job.", loggerJobName, evt.EventId);
-            await CreateJob(client, loggerJobName, ns, loggerContainerDetails.ImageName, evt.EventId, eventDefinition.Name, org.Id, org.Name, loggerContainerDetails.IsService, stoppingToken);
+            await CreateJob(client, loggerJobName, ns, loggerContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
         }
         else
         {
@@ -358,7 +366,7 @@ public class OrchestrationService : BackgroundService
         if (!jobs.Items.Any(job => job.Metadata.Name.Equals(epJobName, StringComparison.OrdinalIgnoreCase)))
         {
             Logger.LogInformation("Event processor job {epJobName} does not exist for event {eventId}. Creating new job.", epJobName, evt.EventId);
-            await CreateJob(client, epJobName, ns, eventProcessorContainerDetails.ImageName, evt.EventId, eventDefinition.Name, org.Id, org.Name, eventProcessorContainerDetails.IsService, stoppingToken);
+            await CreateJob(client, epJobName, ns, eventProcessorContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
         }
         else
         {
@@ -370,7 +378,7 @@ public class OrchestrationService : BackgroundService
         if (!jobs.Items.Any(job => job.Metadata.Name.Equals(svJobName, StringComparison.OrdinalIgnoreCase)))
         {
             Logger.LogInformation("Sentinel video job {svJobName} does not exist for event {eventId}. Creating new job.", svJobName, evt.EventId);
-            await CreateJob(client, svJobName, ns, sentinelVideoContainerDetails.ImageName, evt.EventId, eventDefinition.Name, org.Id, org.Name, sentinelVideoContainerDetails.IsService, stoppingToken);
+            await CreateJob(client, svJobName, ns, sentinelVideoContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
         }
         else
         {
@@ -378,7 +386,7 @@ public class OrchestrationService : BackgroundService
         }
     }
 
-    private async Task CreateJob(Kubernetes client, string name, string ns, string container, int eventId, string eventName, int organizationId, string organizationName, bool isService, CancellationToken stoppingToken)
+    private async Task CreateJob(Kubernetes client, string name, string ns, ContainerDetails containerDetails, int eventId, string eventName, int organizationId, string organizationName, CancellationToken stoppingToken)
     {
         eventName = eventName.Replace(" ", "-").ToLowerInvariant();
         organizationName = organizationName.Replace(" ", "-").ToLowerInvariant();
@@ -388,9 +396,7 @@ public class OrchestrationService : BackgroundService
         var labels = new Dictionary<string, string>
         {
             { "event_id", eventId.ToString() },
-            //{ "event_name", eventName },
             { "organization_id", organizationId.ToString() },
-            //{ "organization_name", organizationName },
             { "app", name } // Add app label for service selector
         };
 
@@ -398,7 +404,20 @@ public class OrchestrationService : BackgroundService
         {
             Containers = [new() {
                 Name = name,
-                Image = container,
+                Image = containerDetails.ImageName,
+                Resources = new V1ResourceRequirements
+                {
+                    Requests = new Dictionary<string, ResourceQuantity>
+                    {
+                        { "cpu", new ResourceQuantity(containerDetails.CpuRequest) },
+                        { "memory", new ResourceQuantity(containerDetails.MemoryRequest) }
+                    },
+                    Limits = new Dictionary<string, ResourceQuantity>
+                    {
+                        { "cpu", new ResourceQuantity(containerDetails.CpuLimit) },
+                        { "memory", new ResourceQuantity(containerDetails.MemoryLimit) }
+                    }
+                },
                 Env = [
                     new V1EnvVar { Name = "event_id", Value = eventId.ToString() },
                     new V1EnvVar { Name = "org_id", Value = organizationId.ToString() },
@@ -421,7 +440,7 @@ public class OrchestrationService : BackgroundService
         };
 
         // Add ports if this is a service
-        if (isService)
+        if (containerDetails.IsService)
         {
             podSpec.Containers[0].Ports = [
                 new V1ContainerPort { ContainerPort = 8080, Name = "http" },
@@ -445,7 +464,7 @@ public class OrchestrationService : BackgroundService
         await client.CreateNamespacedJobAsync(jobSpec, ns, cancellationToken: stoppingToken);
 
         // Create a Service if this container should be exposed as a service
-        if (isService)
+        if (containerDetails.IsService)
         {
             var serviceSpec = new V1Service
             {
