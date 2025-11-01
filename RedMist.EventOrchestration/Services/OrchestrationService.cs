@@ -41,10 +41,10 @@ public class OrchestrationService : BackgroundService
             "60m", "115Mi", "150m", "200Mi");
         loggerContainerDetails = new(
             "bigmission/redmist-event-logger-svc", version, "{0}-evt-{1}-logger", false, 
-            "25m", "90Mi", "80m", "120Mi");
+            "35m", "90Mi", "110m", "120Mi");
         sentinelVideoContainerDetails = new(
             "bigmission/redmist-sentinel-video-svc", version, "{0}-evt-{1}-sentinel-video", false, 
-            "10m", "85Mi", "50m", "120Mi");
+            "10m", "85Mi", "70m", "120Mi");
 
         Logger.LogInformation("OrchestrationService initialized with version {version}", version);
     }
