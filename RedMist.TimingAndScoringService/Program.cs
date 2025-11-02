@@ -124,7 +124,7 @@ public class Program
         builder.Services.AddHealthChecks()
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
             .AddRedis(redisConn, tags: ["cache", "redis"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 7200, name: "Process Allocated Memory", tags: ["memory"]);
+            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 400, name: "Process Allocated Memory", tags: ["memory"]);
 
         builder.Services.AddRedMistSignalR(redisConn);
 

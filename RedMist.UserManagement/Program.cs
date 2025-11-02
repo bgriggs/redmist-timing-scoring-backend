@@ -123,7 +123,7 @@ public class Program
 
         builder.Services.AddHealthChecks()
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);
+            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 200, name: "Process Allocated Memory", tags: ["memory"]);
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();

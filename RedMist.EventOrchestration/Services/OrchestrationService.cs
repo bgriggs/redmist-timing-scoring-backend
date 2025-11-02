@@ -38,10 +38,10 @@ public class OrchestrationService : BackgroundService
             "85m", "200Mi", "350m", "400Mi");
         controlLogContainerDetails = new(
             "bigmission/redmist-control-log-svc", version, "{0}-evt-{1}-control-log", false,
-            "60m", "115Mi", "150m", "200Mi");
+            "60m", "165Mi", "150m", "220Mi");
         loggerContainerDetails = new(
             "bigmission/redmist-event-logger-svc", version, "{0}-evt-{1}-logger", false, 
-            "35m", "90Mi", "110m", "120Mi");
+            "35m", "90Mi", "150m", "120Mi");
         sentinelVideoContainerDetails = new(
             "bigmission/redmist-sentinel-video-svc", version, "{0}-evt-{1}-sentinel-video", false, 
             "10m", "85Mi", "70m", "120Mi");
