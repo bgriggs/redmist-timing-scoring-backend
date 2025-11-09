@@ -34,7 +34,7 @@ resources:
     memory: "85Mi"
   limits:
     cpu: "80m"
-    memory: "150Mi"
+    memory: "2250Mi"
 
 serviceAccount:
   create: false
