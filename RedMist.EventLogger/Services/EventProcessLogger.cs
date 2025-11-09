@@ -54,7 +54,7 @@ public class EventProcessLogger : BackgroundService
                 if (result.Length == 0)
                 {
                     // No messages available, wait before next poll
-                    await Task.Delay(TimeSpan.FromMilliseconds(200), stoppingToken);
+                    await Task.Delay(TimeSpan.FromMilliseconds(100), stoppingToken);
                 }
                 else
                 {
@@ -131,33 +131,41 @@ public class EventProcessLogger : BackgroundService
     private async Task SaveLogsAsync(List<CarLapData> lapLogs, CancellationToken stoppingToken)
     {
         using var context = tsContext.CreateDbContext();
-        foreach (var log in lapLogs)
+        try
         {
-            try
+            foreach (var log in lapLogs)
             {
-                context.CarLapLogs.Add(log.Log);
+                try
+                {
+                    context.CarLapLogs.Add(log.Log);
 
-                // Save the last lap reference
-                var lastLapRef = await context.CarLastLaps.FirstOrDefaultAsync(x => x.EventId == eventId && x.SessionId == log.SessionId && x.CarNumber == log.Log.CarNumber, cancellationToken: stoppingToken);
-                if (lastLapRef == null)
-                {
-                    lastLapRef = new CarLastLap { EventId = eventId, SessionId = log.SessionId, CarNumber = log.Log.CarNumber, LastLapNumber = log.LastLapNum, LastLapTimestamp = DateTime.UtcNow };
-                    context.CarLastLaps.Add(lastLapRef);
+                    // Save the last lap reference
+                    var lastLapRef = await context.CarLastLaps.FirstOrDefaultAsync(x => x.EventId == eventId && x.SessionId == log.SessionId && x.CarNumber == log.Log.CarNumber, cancellationToken: stoppingToken);
+                    if (lastLapRef == null)
+                    {
+                        lastLapRef = new CarLastLap { EventId = eventId, SessionId = log.SessionId, CarNumber = log.Log.CarNumber, LastLapNumber = log.LastLapNum, LastLapTimestamp = DateTime.UtcNow };
+                        context.CarLastLaps.Add(lastLapRef);
+                    }
+                    else
+                    {
+                        lastLapRef.LastLapNumber = log.LastLapNum;
+                        lastLapRef.LastLapTimestamp = DateTime.UtcNow;
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    lastLapRef.LastLapNumber = log.LastLapNum;
-                    lastLapRef.LastLapTimestamp = DateTime.UtcNow;
+                    Logger.LogError(ex, "Error logging new lap for car {c} in event {e}", log.LastLapNum, eventId);
                 }
             }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error logging new lap for car {c} in event {e}", log.LastLapNum, eventId);
-            }
+
+            // Save the changes
+            await context.SaveChangesAsync(stoppingToken);
         }
-
-        // Save the changes
-        await context.SaveChangesAsync(stoppingToken);
+        catch (DbUpdateException ex)
+        {
+            var log = lapLogs.FirstOrDefault();
+            Logger.LogWarning(ex, "Error saving lap for event:{e},session:{s},car:{c},lap:{l}", eventId, log?.SessionId, log?.Log.CarNumber, log?.LastLapNum);
+        }
     }
 
     #region Metrics
