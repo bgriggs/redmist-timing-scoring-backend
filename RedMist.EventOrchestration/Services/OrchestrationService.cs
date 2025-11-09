@@ -35,16 +35,16 @@ public class OrchestrationService : BackgroundService
         var version = GetAssemblyVersion();
         eventProcessorContainerDetails = new(
             "bigmission/redmist-timing-svc", version, "{0}-evt-{1}-event-processor", true, 
-            "85m", "200Mi", "350m", "400Mi");
+            "85m", "200Mi", "350m", "500Mi");
         controlLogContainerDetails = new(
             "bigmission/redmist-control-log-svc", version, "{0}-evt-{1}-control-log", false,
-            "60m", "165Mi", "150m", "220Mi");
+            "60m", "165Mi", "150m", "250Mi");
         loggerContainerDetails = new(
             "bigmission/redmist-event-logger-svc", version, "{0}-evt-{1}-logger", false, 
-            "35m", "90Mi", "150m", "120Mi");
+            "35m", "90Mi", "150m", "500Mi");
         sentinelVideoContainerDetails = new(
             "bigmission/redmist-sentinel-video-svc", version, "{0}-evt-{1}-sentinel-video", false, 
-            "10m", "85Mi", "70m", "120Mi");
+            "10m", "85Mi", "70m", "150Mi");
 
         Logger.LogInformation("OrchestrationService initialized with version {version}", version);
     }
