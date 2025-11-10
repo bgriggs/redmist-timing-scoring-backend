@@ -28,9 +28,6 @@ public class EventAggregatorService : BackgroundService
     private readonly IHubContext<StatusHub> hubContext;
     private static readonly TimeSpan fullSendInterval = TimeSpan.FromMilliseconds(5000);
 
-    public Action<EventStatusUpdateEventArgs<List<TimingCommon.Models.EventStatus>>>? EventStatusUpdated;
-    public Action<EventStatusUpdateEventArgs<List<EventEntry>>>? EventEntriesUpdated;
-    public Action<EventStatusUpdateEventArgs<List<CarPosition>>>? CarPositionsUpdated;
     private ILogger Logger { get; }
     private readonly SemaphoreSlim streamCheckLock = new(1);
     private readonly SemaphoreSlim subscriptionCheckLock = new(1);
@@ -108,7 +105,7 @@ public class EventAggregatorService : BackgroundService
                 if (result.Length == 0)
                 {
                     // No messages available, wait before next poll
-                    await Task.Delay(TimeSpan.FromMilliseconds(50), stoppingToken);
+                    await Task.Delay(TimeSpan.FromMilliseconds(30), stoppingToken);
                 }
                 else
                 {
@@ -125,7 +122,7 @@ public class EventAggregatorService : BackgroundService
                             }
 
                             var type = tags[0];
-                            var eventId = int.Parse(tags[1]);
+                            //var eventId = int.Parse(tags[1]);
                             var sessionId = int.Parse(tags[2]);
                             var data = field.Value.ToString();
 
@@ -133,7 +130,7 @@ public class EventAggregatorService : BackgroundService
                             var timingMessage = new TimingMessage(type, data, sessionId, DateTime.UtcNow);
 
                             // Post message to the new processing pipeline
-                            await processingPipeline.Post(timingMessage);
+                            await processingPipeline.PostAsync(timingMessage);
                         }
 
                         await cache.StreamAcknowledgeAsync(streamKey, CONSUMER_GROUP, entry.Id);

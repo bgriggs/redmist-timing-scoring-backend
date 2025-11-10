@@ -1,4 +1,5 @@
 ﻿using Prometheus;
+using RedMist.TimingAndScoringService.EventStatus.DriverInformation;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.LapData;
@@ -8,6 +9,7 @@ using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
+using RedMist.TimingAndScoringService.EventStatus.Video;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
@@ -32,6 +34,8 @@ public class SessionStateProcessingPipeline
     private readonly ControlLogEnricher controlLogEnricher;
     private readonly DriverModeProcessor driverModeProcessor;
     private readonly LapProcessor lapProcessor;
+    private readonly DriverEnricher driverEnricher;
+    private readonly VideoEnricher videoEnricher;
     private readonly UpdateConsolidator updateConsolidator;
 
     // Metrics for pipeline performance
@@ -54,6 +58,10 @@ public class SessionStateProcessingPipeline
         "Total number of errors in the pipeline",
         ["processor_name", "error_type"]);
 
+    private const int EXTERNAL_DATA_FULL_UPDATE_MESSAGE_INTERVAL = 60;
+    private long rmonitorMessageCounter = 0;
+
+
     public SessionStateProcessingPipeline(SessionContext context, ILoggerFactory loggerFactory,
         RMonitorDataProcessor rMonitorDataProcessorV2,
         MultiloopProcessor multiloopProcessor,
@@ -65,8 +73,9 @@ public class SessionStateProcessingPipeline
         ResetProcessor resetProcessor,
         DriverModeProcessor driverModeProcessor,
         LapProcessor lapProcessor,
-        UpdateConsolidator updateConsolidator,
-        StatusAggregator statusAggregatorV2)
+        DriverEnricher driverEnricher,
+        VideoEnricher videoEnricher,
+        UpdateConsolidator updateConsolidator)
     {
         sessionContext = context;
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -81,6 +90,8 @@ public class SessionStateProcessingPipeline
         this.controlLogEnricher = controlLogEnricher;
         this.driverModeProcessor = driverModeProcessor;
         this.lapProcessor = lapProcessor;
+        this.driverEnricher = driverEnricher;
+        this.videoEnricher = videoEnricher;
         this.updateConsolidator = updateConsolidator;
 
         // Wire up the notification from pit processor to lap processor
@@ -101,7 +112,7 @@ public class SessionStateProcessingPipeline
     /// </summary>
     /// <param name="message">The timing message to process</param>
     /// <returns>True if the message was accepted for processing, false otherwise</returns>
-    public async Task Post(TimingMessage message)
+    public async Task PostAsync(TimingMessage message)
     {
         try
         {
@@ -152,6 +163,30 @@ public class SessionStateProcessingPipeline
                             }
                             allAppliedChanges.Add(new PatchUpdates([], [.. pitPatches]));
 
+                            // Apply driver data in case of reset
+                            var driverPatches = new List<CarPositionPatch>();
+                            foreach (var cn in distinctNumbers)
+                            {
+                                var driverPatch = await driverEnricher.ProcessCarAsync(cn ?? string.Empty);
+                                if (driverPatch != null)
+                                {
+                                    driverPatches.Add(driverPatch);
+                                }
+                            }
+                            allAppliedChanges.Add(new PatchUpdates([], [.. driverPatches]));
+
+                            // Apply video data in case of reset
+                            var videoPatches = new List<CarPositionPatch>();
+                            foreach (var cn in distinctNumbers)
+                            {
+                                var videoPatch = await videoEnricher.ProcessCarAsync(cn ?? string.Empty);
+                                if (videoPatch != null)
+                                {
+                                    videoPatches.Add(videoPatch);
+                                }
+                            }
+                            allAppliedChanges.Add(new PatchUpdates([], [.. videoPatches]));
+
                             // Apply multiloop data in case of reset
                             if (sessionContext.IsMultiloopActive)
                             {
@@ -163,6 +198,16 @@ public class SessionStateProcessingPipeline
                             if (penaltyPatches != null && penaltyPatches.Count > 0)
                                 allAppliedChanges.Add(new PatchUpdates([], [.. penaltyPatches]));
                         }
+
+                        // Perform a full external data update at defined intervals. 60 is at most once per
+                        // minute assuming 1 RMonitor message per second for timer updates.
+                        if (rmonitorMessageCounter % EXTERNAL_DATA_FULL_UPDATE_MESSAGE_INTERVAL == 0)
+                        {
+                            await driverEnricher.ProcessApplyFullAsync();
+                            await videoEnricher.ProcessApplyFullAsync();
+                        }
+
+                        rmonitorMessageCounter++;
                     }
                     else if (message.Type == Backend.Shared.Consts.MULTILOOP_TYPE)
                     {
@@ -185,6 +230,24 @@ public class SessionStateProcessingPipeline
                     else if (message.Type == Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE)
                     {
                         await _sessionMonitorMetrics.TrackAsync(() => sessionMonitor.Process(message));
+                    }
+                    else if (message.Type == Backend.Shared.Consts.DRIVER_EVENT_TYPE)
+                    {
+                        var patches = driverEnricher.Process(message);
+                        if (patches != null)
+                            allAppliedChanges.AddRange(patches);
+                    }
+                    else if (message.Type == Backend.Shared.Consts.DRIVER_TRANS_TYPE)
+                    {
+                        var patches = driverEnricher.Process(message);
+                        if (patches != null)
+                            allAppliedChanges.AddRange(patches);
+                    }
+                    else if (message.Type == Backend.Shared.Consts.VIDEO_TYPE)
+                    {
+                        var patches = videoEnricher.Process(message);
+                        if (patches != null)
+                            allAppliedChanges.AddRange(patches);
                     }
                 }
 

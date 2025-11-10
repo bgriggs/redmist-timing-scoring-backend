@@ -33,6 +33,15 @@ public class Consts
     public const string EVENT_CONFIGURATION_CHANGED = "evtconfchanged";
     public const string EVENT_SERVICE_ENDPOINT = "evt-{0}-processor-endpoint";
 
+    #region External Metadata
+    public const string EVENT_DRIVER_CHANGE_STREAM_FIELD = "dr-{0}-999999";
+    public const string EVENT_DRIVER_KEY = "drevt{0}-car{1}";
+    public const string DRIVER_CHANGE_TRANSPONDER_FIELD = "drtrans-999999-999999";
+    public const string DRIVER_TRANSPONDER_KEY = "drtrans{0}";
+    public const string EVENT_VIDEO_CHANGE_STREAM_FIELD = "video-{0}-999999";
+    public const string EVENT_VIDEO_KEY = "videoevt{0}-car{1}-trans{2}";
+    #endregion
+
     #region Metrics
     public const string CLIENT_CONNECTIONS_KEY = "total_client_connections";
     public const string EVENT_CONNECTIONS_KEY = "total_event_connections";
@@ -48,6 +57,9 @@ public class Consts
     public const string MULTILOOP_TYPE = "multiloop";
     public const string X2PASS_TYPE = "x2pass";
     public const string FLAGS_TYPE = "flags";
+    public const string DRIVER_EVENT_TYPE = "drevt";
+    public const string DRIVER_TRANS_TYPE = "drtrans";
+    public const string VIDEO_TYPE = "video";
 
     public const string EVENT_SESSION_CHANGED_TYPE = "evtsessionchanged";
     public const string EVENT_SESSION_CHANGED = EVENT_SESSION_CHANGED_TYPE + "-{0}-{1}";

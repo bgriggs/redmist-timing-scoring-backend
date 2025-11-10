@@ -247,16 +247,6 @@ public class LapProcessor : IDisposable
     }
 
     /// <summary>
-    /// Cleanup resources when the processor is disposed
-    /// </summary>
-    public void Dispose()
-    {
-        backgroundTaskCts.Cancel();
-        backgroundTaskCts.Dispose();
-        GC.SuppressFinalize(this);
-    }
-
-    /// <summary>
     /// Load the last laps for all cars for the event from the database.
     /// This allows the service to recover when it is restarted and the in-memory cache is lost.
     /// </summary>
@@ -302,5 +292,15 @@ public class LapProcessor : IDisposable
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Cleanup resources when the processor is disposed
+    /// </summary>
+    public void Dispose()
+    {
+        backgroundTaskCts.Cancel();
+        backgroundTaskCts.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

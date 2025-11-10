@@ -32,6 +32,13 @@ public abstract class EventsControllerBase : ControllerBase
     protected readonly IHttpClientFactory httpClientFactory;
     protected ILogger Logger { get; }
 
+    private static readonly HybridCacheEntryOptions liveEventsCacheOptions = new()
+    {
+        Expiration = TimeSpan.FromMinutes(1),
+        LocalCacheExpiration = TimeSpan.FromMinutes(1)
+    };
+
+
     /// <summary>
     /// Initializes a new instance of the <see cref="EventsControllerBase"/> class.
     /// </summary>
@@ -52,6 +59,7 @@ public abstract class EventsControllerBase : ControllerBase
         this.memoryCache = memoryCache;
         this.httpClientFactory = httpClientFactory;
     }
+
 
     /// <summary>
     /// Retrieves all events starting from a specified date.
@@ -120,32 +128,45 @@ public abstract class EventsControllerBase : ControllerBase
     public virtual async Task<List<EventListSummary>> LoadLiveEvents()
     {
         Logger.LogTrace("LoadLiveEvents");
+
+        var cacheKey = "live-events";
+        return await hcache.GetOrCreateAsync(cacheKey,
+            async cancel => await LoadLiveEventsFromDbAsync(),
+            liveEventsCacheOptions);
+    }
+
+    /// <summary>
+    /// Loads live events from the database.
+    /// </summary>
+    /// <returns>A list of live event summaries.</returns>
+    private async Task<List<EventListSummary>> LoadLiveEventsFromDbAsync()
+    {
         using var db = await tsContext.CreateDbContextAsync();
         var summaries = await (
-        from e in db.Events
-        join o in db.Organizations on e.OrganizationId equals o.Id
-        where e.IsActive && !e.IsDeleted && e.IsLive
-        group new { e, o } by new
-        {
-            e.Id,
-            e.OrganizationId,
-            OrganizationName = o.Name,
-            EventName = e.Name,
-            EventDate = e.StartDate,
-            TrackName = e.TrackName,
-            Schedule = e.Schedule
-        } into g
-        select new EventListSummary
-        {
-            Id = g.Key.Id,
-            OrganizationId = g.Key.OrganizationId,
-            OrganizationName = g.Key.OrganizationName,
-            EventName = g.Key.EventName,
-            EventDate = g.Key.EventDate.ToString("yyyy-MM-dd"),
-            IsLive = true,
-            TrackName = g.Key.TrackName,
-            Schedule = g.Key.Schedule
-        }).ToListAsync();
+               from e in db.Events
+               join o in db.Organizations on e.OrganizationId equals o.Id
+               where e.IsActive && !e.IsDeleted && e.IsLive
+               group new { e, o } by new
+               {
+                   e.Id,
+                   e.OrganizationId,
+                   OrganizationName = o.Name,
+                   EventName = e.Name,
+                   EventDate = e.StartDate,
+                   TrackName = e.TrackName,
+                   Schedule = e.Schedule
+               } into g
+               select new EventListSummary
+               {
+                   Id = g.Key.Id,
+                   OrganizationId = g.Key.OrganizationId,
+                   OrganizationName = g.Key.OrganizationName,
+                   EventName = g.Key.EventName,
+                   EventDate = g.Key.EventDate.ToString("yyyy-MM-dd"),
+                   IsLive = true,
+                   TrackName = g.Key.TrackName,
+                   Schedule = g.Key.Schedule
+               }).ToListAsync();
 
         return summaries;
     }
@@ -331,10 +352,10 @@ public abstract class EventsControllerBase : ControllerBase
             Logger.LogWarning("HTTP request to {url} timed out after {elapsed} ms", url, sw.ElapsedMilliseconds);
             return StatusCode(408, "Request timeout");
         }
-        catch (HttpRequestException ex)
+        catch (HttpRequestException)
         {
-            Logger.LogError(ex, "HTTP request to {url} failed after {elapsed} ms", url, sw.ElapsedMilliseconds);
-            return StatusCode(503, "Service unavailable");
+            Logger.LogError("HTTP request to {url} failed after {elapsed} ms", url, sw.ElapsedMilliseconds);
+            return NotFound();
         }
     }
 

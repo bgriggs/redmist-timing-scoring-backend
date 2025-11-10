@@ -10,6 +10,7 @@ using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.TimingAndScoringService.EventStatus;
+using RedMist.TimingAndScoringService.EventStatus.DriverInformation;
 using RedMist.TimingAndScoringService.EventStatus.FlagData;
 using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.LapData;
@@ -19,6 +20,7 @@ using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
 using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
+using RedMist.TimingAndScoringService.EventStatus.Video;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using RedMist.TimingAndScoringService.Models;
 using RedMist.TimingCommon.Models;
@@ -55,6 +57,8 @@ public class SessionStateProcessingPipelineTests
     private ResetProcessor _resetProcessor = null!;
     private DriverModeProcessor _driverModeProcessor = null!;
     private LapProcessor _lapProcessor = null!;
+    private DriverEnricher _driverEnricher = null!;
+    private VideoEnricher _videoEnricher = null!;
     private UpdateConsolidator _updateConsolidator = null!;
     private StatusAggregator _statusAggregator = null!;
     private StartingPositionProcessor _startingPositionProcessor = null!;
@@ -188,6 +192,8 @@ public class SessionStateProcessingPipelineTests
             _sessionContext);
         _positionEnricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
         _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor, _timeProvider);
+        _driverEnricher = new DriverEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
+        _videoEnricher = new VideoEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _statusAggregator = new StatusAggregator(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
     }
@@ -207,8 +213,9 @@ public class SessionStateProcessingPipelineTests
             _resetProcessor,
             _driverModeProcessor,
             _lapProcessor,
-            _updateConsolidator,
-            _statusAggregator
+            _driverEnricher,
+            _videoEnricher,
+            _updateConsolidator
         );
     }
 
@@ -227,7 +234,7 @@ public class SessionStateProcessingPipelineTests
 
         // Act
         var tm = new TimingMessage("rmonitor", "$I,\"07:29:44\",\"26 Apr 25\"", 1, DateTime.Now);
-        await _pipeline.Post(tm);
+        await _pipeline.PostAsync(tm);
 
         // Assert
         Assert.IsEmpty(_sessionContext.SessionState.CarPositions);
@@ -245,7 +252,7 @@ public class SessionStateProcessingPipelineTests
         {
             var d = data.GetNextRecord();
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            await _pipeline.Post(tm);
+            await _pipeline.PostAsync(tm);
         }
 
         // Assert
@@ -284,13 +291,13 @@ public class SessionStateProcessingPipelineTests
         {
             var d = entriesData.GetNextRecord();
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            await _pipeline.Post(tm);
+            await _pipeline.PostAsync(tm);
         }
         while (!initialPositionData.IsFinished)
         {
             var d = initialPositionData.GetNextRecord();
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            await _pipeline.Post(tm);
+            await _pipeline.PostAsync(tm);
         }
 
         // Assert
@@ -324,19 +331,19 @@ public class SessionStateProcessingPipelineTests
         {
             var d = entriesData.GetNextRecord();
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            await _pipeline.Post(tm);
+            await _pipeline.PostAsync(tm);
         }
         while (!initialPositionData.IsFinished)
         {
             var d = initialPositionData.GetNextRecord();
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            await _pipeline.Post(tm);
+            await _pipeline.PostAsync(tm);
         }
         while (!startData.IsFinished)
         {
             var d = startData.GetNextRecord();
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            await _pipeline.Post(tm);
+            await _pipeline.PostAsync(tm);
         }
 
         // Assert
@@ -390,7 +397,7 @@ public class SessionStateProcessingPipelineTests
         {
             var d = entriesData.GetNextRecord();
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            await _pipeline.Post(tm);
+            await _pipeline.PostAsync(tm);
 
             var lines = d.data.Split('\n');
             foreach (var line in lines)
@@ -426,7 +433,7 @@ public class SessionStateProcessingPipelineTests
 
                         // Simulate session change message to SessionMonitorV2
                         var sessionChangeTm = new TimingMessage(Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE, sJson, s.Id, d.ts);
-                        await _pipeline.Post(sessionChangeTm);
+                        await _pipeline.PostAsync(sessionChangeTm);
                     }
                 }
             }
@@ -461,7 +468,7 @@ public class SessionStateProcessingPipelineTests
             }
 
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            await _pipeline.Post(tm);
+            await _pipeline.PostAsync(tm);
         }
 
         // Assert
@@ -489,7 +496,7 @@ public class SessionStateProcessingPipelineTests
             }
 
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            await _pipeline.Post(tm);
+            await _pipeline.PostAsync(tm);
         }
 
         // Assert
@@ -518,7 +525,7 @@ public class SessionStateProcessingPipelineTests
             }
 
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            await _pipeline.Post(tm);
+            await _pipeline.PostAsync(tm);
         }
 
         // Assert
@@ -543,7 +550,7 @@ public class SessionStateProcessingPipelineTests
             }
 
             var tm = new TimingMessage(d.type, d.data, 1, d.ts);
-            await _pipeline.Post(tm);
+            await _pipeline.PostAsync(tm);
         }
 
         // Allow time for pending laps to be processed (LapProcessor has 1 second wait time)

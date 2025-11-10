@@ -12,6 +12,7 @@ using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.StatusApi.Controllers.V1;
 using RedMist.StatusApi.Services;
 using StackExchange.Redis;
 using System.Reflection;
@@ -143,6 +144,7 @@ public class Program
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 512, name: "Process Allocated Memory", tags: ["memory"]);
 
         builder.Services.AddRedMistSignalR(redisConn);
+        builder.Services.AddSingleton<Controllers.V2.EventsController>();
 
         builder.Services.AddMemoryCache();
         builder.Services.AddHttpClient("EventProcessor", client =>
@@ -180,7 +182,7 @@ public class Program
         .AddApiExplorer(options =>
         {
             options.GroupNameFormat = "'v'VVV";
-               options.SubstituteApiVersionInUrl = true;
+            options.SubstituteApiVersionInUrl = true;
         });
 
         builder.Services.AddHostedService<MetricsPublisher>();
