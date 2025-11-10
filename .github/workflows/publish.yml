@@ -50,11 +50,8 @@ jobs:
             dockerfile: "./RedMist.EventLogger/Dockerfile"
             image: "bigmission/redmist-event-logger-svc"
           - name: "Sentinel Video Service"
-            dockerfile: "./RedMist.SentinelVideo/Dockerfile"
-            image: "bigmission/redmist-sentinel-video-svc"
-          - name: "Database Migration Runner"
-            dockerfile: "./RedMist.DatabaseMigrationRunner/Dockerfile"
-            image: "bigmission/redmist-database-migration-runner"
+            dockerfile: "./RedMist.ExternalDataCollection/Dockerfile"
+            image: "bigmission/redmist-external-data-collection-svc"
 
     steps:
       - name: Checkout code
@@ -102,5 +99,4 @@ jobs:
           echo "  - bigmission/redmist-event-orchestration:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-control-log-svc:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-event-logger-svc:${{ needs.extract-version.outputs.version }}"
-          echo "  - bigmission/redmist-sentinel-video-svc:${{ needs.extract-version.outputs.version }}"
-          echo "  - bigmission/redmist-database-migration-runner:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-external-data-collection-svc:${{ needs.extract-version.outputs.version }}"

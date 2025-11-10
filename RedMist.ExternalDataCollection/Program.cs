@@ -6,11 +6,11 @@ using Prometheus;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
-using RedMist.SentinelVideo.Clients;
-using RedMist.SentinelVideo.Services;
+using RedMist.ExternalDataCollection.Clients;
+using RedMist.ExternalDataCollection.Services;
 using StackExchange.Redis;
 
-namespace RedMist.SentinelVideo;
+namespace RedMist.ExternalDataCollection;
 
 public class Program
 {
@@ -36,7 +36,7 @@ public class Program
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 150, name: "Process Allocated Memory", tags: ["memory"]);
 
         builder.Services.AddRedMistSignalR(redisConn);
-        builder.Services.AddHostedService<VideoStatusService>();
+        builder.Services.AddHostedService<SentinelStatusService>();
         builder.Services.AddTransient<SentinelClient>();
 
         var app = builder.Build();
@@ -45,7 +45,7 @@ public class Program
         // Configure the HTTP request pipeline.
         if (app.Environment.IsDevelopment())
         {
-            Console.Title = "Sentinel Video";
+            Console.Title = "External Data Collection";
         }
 
         app.MapHealthChecks("/healthz/startup", new HealthCheckOptions

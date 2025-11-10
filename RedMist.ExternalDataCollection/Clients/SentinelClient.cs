@@ -1,7 +1,7 @@
-﻿using RedMist.SentinelVideo.Models;
+﻿using RedMist.ExternalDataCollection.Models;
 using RestSharp;
 
-namespace RedMist.SentinelVideo.Clients;
+namespace RedMist.ExternalDataCollection.Clients;
 
 public class SentinelClient
 {

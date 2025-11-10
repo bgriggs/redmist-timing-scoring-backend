@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace RedMist.SentinelVideo.Models;
+namespace RedMist.ExternalDataCollection.Models;
 
 public class PublicStreams
 {

@@ -39,8 +39,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.EventLogger", "RedM
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.RelayApi", "RedMist.RelayApi\RedMist.RelayApi.csproj", "{4FF64448-E4D8-4718-9579-619FB4F03276}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.SentinelVideo", "RedMist.SentinelVideo\RedMist.SentinelVideo.csproj", "{203684BC-CFEB-4F6C-8DCA-E45A0654C568}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.DatabaseMigrationRunner", "RedMist.DatabaseMigrationRunner\RedMist.DatabaseMigrationRunner.csproj", "{C5962389-7120-4061-B4B2-9E13B1C332E8}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "articles", "articles", "{2C0D996B-F470-44D2-B045-3580249455B1}"
@@ -57,6 +55,8 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{19FD202B-0205-4250-9FB9-9D728241FB5D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.SampleProject", "RedMist.SampleProject\RedMist.SampleProject.csproj", "{36022EAD-29F1-4812-A129-545B72B1B115}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.ExternalDataCollection", "RedMist.ExternalDataCollection\RedMist.ExternalDataCollection.csproj", "{EDA3E483-4FC9-DDCD-0278-2216011F27C6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -112,10 +112,6 @@ Global
 		{4FF64448-E4D8-4718-9579-619FB4F03276}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4FF64448-E4D8-4718-9579-619FB4F03276}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4FF64448-E4D8-4718-9579-619FB4F03276}.Release|Any CPU.Build.0 = Release|Any CPU
-		{203684BC-CFEB-4F6C-8DCA-E45A0654C568}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{203684BC-CFEB-4F6C-8DCA-E45A0654C568}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{203684BC-CFEB-4F6C-8DCA-E45A0654C568}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{203684BC-CFEB-4F6C-8DCA-E45A0654C568}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C5962389-7120-4061-B4B2-9E13B1C332E8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{C5962389-7120-4061-B4B2-9E13B1C332E8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C5962389-7120-4061-B4B2-9E13B1C332E8}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -128,6 +124,10 @@ Global
 		{36022EAD-29F1-4812-A129-545B72B1B115}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{36022EAD-29F1-4812-A129-545B72B1B115}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{36022EAD-29F1-4812-A129-545B72B1B115}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EDA3E483-4FC9-DDCD-0278-2216011F27C6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EDA3E483-4FC9-DDCD-0278-2216011F27C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EDA3E483-4FC9-DDCD-0278-2216011F27C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EDA3E483-4FC9-DDCD-0278-2216011F27C6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

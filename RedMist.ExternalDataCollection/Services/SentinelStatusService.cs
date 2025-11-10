@@ -3,16 +3,16 @@ using Prometheus;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
-using RedMist.SentinelVideo.Clients;
-using RedMist.SentinelVideo.Models;
+using RedMist.ExternalDataCollection.Clients;
+using RedMist.ExternalDataCollection.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarVideo;
 using StackExchange.Redis;
 using System.Text.Json;
 
-namespace RedMist.SentinelVideo.Services;
+namespace RedMist.ExternalDataCollection.Services;
 
-public class VideoStatusService : BackgroundService
+public class SentinelStatusService : BackgroundService
 {
     private ILogger Logger { get; }
     private readonly int eventId;
@@ -24,7 +24,7 @@ public class VideoStatusService : BackgroundService
     private List<VideoMetadata>? lastVideoMetadata;
 
 
-    public VideoStatusService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
+    public SentinelStatusService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
         IHubContext<StatusHub> hubContext, SentinelClient sentinelClient)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);

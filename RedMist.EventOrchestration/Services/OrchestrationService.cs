@@ -22,7 +22,7 @@ public class OrchestrationService : BackgroundService
     private readonly ContainerDetails eventProcessorContainerDetails;
     private readonly ContainerDetails controlLogContainerDetails;
     private readonly ContainerDetails loggerContainerDetails;
-    private readonly ContainerDetails sentinelVideoContainerDetails;
+    private readonly ContainerDetails externalDataCollectionContainerDetails;
 
 
     public OrchestrationService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext)
@@ -42,8 +42,8 @@ public class OrchestrationService : BackgroundService
         loggerContainerDetails = new(
             "bigmission/redmist-event-logger-svc", version, "{0}-evt-{1}-logger", false, 
             "35m", "90Mi", "150m", "500Mi");
-        sentinelVideoContainerDetails = new(
-            "bigmission/redmist-sentinel-video-svc", version, "{0}-evt-{1}-sentinel-video", false, 
+        externalDataCollectionContainerDetails = new(
+            "bigmission/redmist-external-data-collection-svc", version, "{0}-evt-{1}-external-data-collection", false, 
             "10m", "85Mi", "70m", "150Mi");
 
         Logger.LogInformation("OrchestrationService initialized with version {version}", version);
@@ -373,16 +373,16 @@ public class OrchestrationService : BackgroundService
             Logger.LogTrace("Event processor job {epJobName} already exists for event {eventId}.", epJobName, evt.EventId);
         }
 
-        // Check for sentinel video job
-        var svJobName = string.Format(sentinelVideoContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
+        // Check for ExternalDataCollection job
+        var svJobName = string.Format(externalDataCollectionContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
         if (!jobs.Items.Any(job => job.Metadata.Name.Equals(svJobName, StringComparison.OrdinalIgnoreCase)))
         {
-            Logger.LogInformation("Sentinel video job {svJobName} does not exist for event {eventId}. Creating new job.", svJobName, evt.EventId);
-            await CreateJob(client, svJobName, ns, sentinelVideoContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+            Logger.LogInformation("ExternalDataCollection job {svJobName} does not exist for event {eventId}. Creating new job.", svJobName, evt.EventId);
+            await CreateJob(client, svJobName, ns, externalDataCollectionContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
         }
         else
         {
-            Logger.LogTrace("Sentinel video job {svJobName} already exists for event {eventId}.", svJobName, evt.EventId);
+            Logger.LogTrace("ExternalDataCollection job {svJobName} already exists for event {eventId}.", svJobName, evt.EventId);
         }
     }
 
