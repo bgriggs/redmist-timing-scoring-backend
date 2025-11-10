@@ -1,6 +1,6 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.Multiloop;
+﻿using RedMist.EventProcessor.EventStatus.Multiloop;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.Multiloop;
+namespace RedMist.EventProcessor.Tests.EventStatus.Multiloop;
 
 [TestClass]
 public class CompletedSectionTests

@@ -2,8 +2,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.0.11109.219
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.TimingAndScoringService", "RedMist.TimingAndScoringService\RedMist.TimingAndScoringService.csproj", "{D58D11F3-B446-4BF9-8CC0-250A981A0BB7}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.TimingAndScoringService.Tests", "RedMist.TimingAndScoringService.Tests\RedMist.TimingAndScoringService.Tests.csproj", "{05089F2B-9FF2-4E05-BA12-0B37E120F764}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.Database", "RedMist.Database\RedMist.Database.csproj", "{BAB69F74-D629-42A6-95C2-18433289F2E0}"
@@ -58,16 +56,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.SampleProject", "Re
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.ExternalDataCollection", "RedMist.ExternalDataCollection\RedMist.ExternalDataCollection.csproj", "{EDA3E483-4FC9-DDCD-0278-2216011F27C6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.EventProcessor", "RedMist.EventProcessor\RedMist.EventProcessor.csproj", "{16ADBCA9-4667-4A46-348A-07FF2C80984D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{D58D11F3-B446-4BF9-8CC0-250A981A0BB7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D58D11F3-B446-4BF9-8CC0-250A981A0BB7}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D58D11F3-B446-4BF9-8CC0-250A981A0BB7}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D58D11F3-B446-4BF9-8CC0-250A981A0BB7}.Release|Any CPU.Build.0 = Release|Any CPU
 		{05089F2B-9FF2-4E05-BA12-0B37E120F764}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{05089F2B-9FF2-4E05-BA12-0B37E120F764}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{05089F2B-9FF2-4E05-BA12-0B37E120F764}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -128,6 +124,10 @@ Global
 		{EDA3E483-4FC9-DDCD-0278-2216011F27C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EDA3E483-4FC9-DDCD-0278-2216011F27C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EDA3E483-4FC9-DDCD-0278-2216011F27C6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{16ADBCA9-4667-4A46-348A-07FF2C80984D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{16ADBCA9-4667-4A46-348A-07FF2C80984D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{16ADBCA9-4667-4A46-348A-07FF2C80984D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{16ADBCA9-4667-4A46-348A-07FF2C80984D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

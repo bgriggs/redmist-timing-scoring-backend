@@ -35,11 +35,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\RedMist.TimingAndScoringService\RedMist.TimingAndScoringService.csproj" />
 		<ProjectReference Include="..\RedMist.ControlLogs\RedMist.ControlLogs.csproj" />
 		<ProjectReference Include="..\RedMist.ControlLogProcessor\RedMist.ControlLogProcessor.csproj" />
 		<ProjectReference Include="..\RedMist.Backend.Shared\RedMist.Backend.Shared.csproj" />
 		<ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
+		<ProjectReference Include="..\RedMist.EventProcessor\RedMist.EventProcessor.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

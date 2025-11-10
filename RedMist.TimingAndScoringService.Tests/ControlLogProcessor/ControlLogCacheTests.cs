@@ -1,7 +1,7 @@
 ﻿using RedMist.ControlLogs;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.Tests.ControlLogProcessor;
+namespace RedMist.EventProcessor.Tests.ControlLogProcessor;
 
 /// <summary>
 /// Unit tests for ControlLogCache functionality, including worksheet change scenarios

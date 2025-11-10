@@ -4,10 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
+using RedMist.EventProcessor.EventStatus.RMonitor.StateChanges;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor.StateChanges;
+namespace RedMist.EventProcessor.Tests.EventStatus.RMonitor.StateChanges;
 
 [TestClass]
 public class SessionStateUpdatedTests

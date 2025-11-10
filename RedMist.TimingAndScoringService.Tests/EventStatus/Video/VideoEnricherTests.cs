@@ -2,15 +2,15 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Backend.Shared;
-using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.Video;
-using RedMist.TimingAndScoringService.Models;
+using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.Video;
+using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarVideo;
 using StackExchange.Redis;
 using System.Text.Json;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.Video;
+namespace RedMist.EventProcessor.Tests.EventStatus.Video;
 
 [TestClass]
 public class VideoEnricherTests

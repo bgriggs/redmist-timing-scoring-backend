@@ -3,12 +3,12 @@ using Microsoft.Extensions.Time.Testing;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using RedMist.Backend.Shared.Services;
-using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.Models;
+using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus;
+namespace RedMist.EventProcessor.Tests.EventStatus;
 
 [TestClass]
 public class ConsistencyCheckServiceTests

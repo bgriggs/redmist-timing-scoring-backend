@@ -2,7 +2,7 @@ using RedMist.Backend.Shared.Models;
 using StackExchange.Redis;
 using System.Text.Json;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.ProcessingPipeline;
+namespace RedMist.EventProcessor.Tests.EventStatus.ProcessingPipeline;
 
 /// <summary>
 /// Helper class to capture lap data sent to Redis StreamAddAsync during tests

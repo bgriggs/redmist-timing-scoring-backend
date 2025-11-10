@@ -1,12 +1,12 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.Multiloop;
-using RedMist.TimingAndScoringService.Models;
+using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.Multiloop;
+using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.Multiloop;
+namespace RedMist.EventProcessor.Tests.EventStatus.Multiloop;
 
 [TestClass]
 public class MultiloopProcessorTests
@@ -842,10 +842,10 @@ public class MultiloopProcessorTests
 
     private void SetupTestCompletedSections(string carNumber, string[] sectionIds)
     {
-        var sections = new Dictionary<string, RedMist.TimingAndScoringService.EventStatus.Multiloop.CompletedSection>();
+        var sections = new Dictionary<string, RedMist.EventProcessor.EventStatus.Multiloop.CompletedSection>();
         foreach (var sectionId in sectionIds)
         {
-            sections[sectionId] = new RedMist.TimingAndScoringService.EventStatus.Multiloop.CompletedSection();
+            sections[sectionId] = new RedMist.EventProcessor.EventStatus.Multiloop.CompletedSection();
         }
         _processor.CompletedSections[carNumber] = sections;
     }

@@ -3,9 +3,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.X2;
-using RedMist.TimingAndScoringService.Models;
+using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.X2;
+using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using RedMist.TimingCommon.Models.X2;
@@ -13,7 +13,7 @@ using System.Collections.Immutable;
 using ConfigurationEvent = RedMist.TimingCommon.Models.Configuration.Event;
 using JsonSerializer = System.Text.Json.JsonSerializer;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.X2;
+namespace RedMist.EventProcessor.Tests.EventStatus.X2;
 
 [TestClass]
 public class PitProcessorV2Tests

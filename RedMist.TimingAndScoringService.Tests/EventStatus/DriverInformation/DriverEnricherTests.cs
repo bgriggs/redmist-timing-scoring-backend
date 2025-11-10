@@ -7,15 +7,15 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Backend.Shared;
-using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.DriverInformation;
-using RedMist.TimingAndScoringService.Models;
+using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.DriverInformation;
+using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
 using System.Text.Json;
 using DriverInfo = RedMist.TimingCommon.Models.DriverInfo;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.DriverInformation;
+namespace RedMist.EventProcessor.Tests.EventStatus.DriverInformation;
 
 [TestClass]
 public class DriverEnricherTests

@@ -1,8 +1,8 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.RMonitor;
-using RedMist.TimingAndScoringService.EventStatus.RMonitor.StateChanges;
+﻿using RedMist.EventProcessor.EventStatus.RMonitor;
+using RedMist.EventProcessor.EventStatus.RMonitor.StateChanges;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor.StateChanges;
+namespace RedMist.EventProcessor.Tests.EventStatus.RMonitor.StateChanges;
 
 [TestClass]
 public class CarLapStateUpdateTests

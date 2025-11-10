@@ -2,12 +2,12 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Backend.Shared.Models;
-using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.PenaltyEnricher;
+using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.PenaltyEnricher;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.PenaltyEnricher;
+namespace RedMist.EventProcessor.Tests.EventStatus.PenaltyEnricher;
 
 [TestClass]
 public class ControlLogEnricherTests
@@ -92,7 +92,7 @@ public class ControlLogEnricherTests
         var car2 = CreateTestCarPosition("2", "B", 2);
         _sessionContext.UpdateCars([car1, car2]);
         SetUpdateReset(true);
-        SetPenaltyLookup("2", new CarPenality(1, 0));
+        SetPenaltyLookup("2", new CarPenalty(1, 0));
 
         // Act
         var result = _enricher.Process();
@@ -132,7 +132,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Simulate penalty lookup with warnings
-        SetPenaltyLookup("1", new CarPenality(2, 0));
+        SetPenaltyLookup("1", new CarPenalty(2, 0));
 
         // Act
         var result = _enricher.Process();
@@ -160,7 +160,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Simulate penalty lookup with laps
-        SetPenaltyLookup("1", new CarPenality(0, 3));
+        SetPenaltyLookup("1", new CarPenalty(0, 3));
 
         // Act
         var result = _enricher.Process();
@@ -189,7 +189,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Simulate penalty lookup with different values
-        SetPenaltyLookup("1", new CarPenality(3, 1));
+        SetPenaltyLookup("1", new CarPenalty(3, 1));
 
         // Act
         var result = _enricher.Process();
@@ -219,7 +219,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Simulate penalty lookup with same values
-        SetPenaltyLookup("1", new CarPenality(2, 1));
+        SetPenaltyLookup("1", new CarPenalty(2, 1));
 
         // Act
         var result = _enricher.Process();
@@ -253,9 +253,9 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Simulate penalty lookup
-        SetPenaltyLookup("1", new CarPenality(1, 0)); // Warnings changed
-        SetPenaltyLookup("2", new CarPenality(1, 2)); // Laps changed
-        SetPenaltyLookup("3", new CarPenality(2, 1)); // No change
+        SetPenaltyLookup("1", new CarPenalty(1, 0)); // Warnings changed
+        SetPenaltyLookup("2", new CarPenalty(1, 2)); // Laps changed
+        SetPenaltyLookup("3", new CarPenalty(2, 1)); // No change
 
         // Act
         var result = _enricher.Process();
@@ -285,7 +285,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
         
         // Set up penalty lookup to find the car
-        SetPenaltyLookup("1", new CarPenality(1, 0));
+        SetPenaltyLookup("1", new CarPenalty(1, 0));
         
         // Act
         var result = _enricher.Process();
@@ -314,7 +314,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Set penalties that would result in changes
-        SetPenaltyLookup("1", new CarPenality(1, 1));
+        SetPenaltyLookup("1", new CarPenalty(1, 1));
 
         // Act
         var result = _enricher.Process();
@@ -336,7 +336,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Only set penalty for car "1", not car "2"
-        SetPenaltyLookup("1", new CarPenality(1, 0));
+        SetPenaltyLookup("1", new CarPenalty(1, 0));
 
         // Act
         var result = _enricher.Process();
@@ -394,7 +394,7 @@ public class ControlLogEnricherTests
         };
     }
 
-    private void SetPenaltyLookup(string carNumber, CarPenality penalty)
+    private void SetPenaltyLookup(string carNumber, CarPenalty penalty)
     {
         // Use reflection to set the private penaltyLookup field for testing
         var penaltyLookupField = typeof(ControlLogEnricher).GetField("penaltyLookup", 
@@ -402,8 +402,8 @@ public class ControlLogEnricherTests
         
         if (penaltyLookupField != null)
         {
-            var currentLookup = (System.Collections.Immutable.ImmutableDictionary<string, CarPenality>?)penaltyLookupField.GetValue(_enricher) 
-                               ?? System.Collections.Immutable.ImmutableDictionary<string, CarPenality>.Empty;
+            var currentLookup = (System.Collections.Immutable.ImmutableDictionary<string, CarPenalty>?)penaltyLookupField.GetValue(_enricher) 
+                               ?? System.Collections.Immutable.ImmutableDictionary<string, CarPenalty>.Empty;
             
             var newLookup = currentLookup.SetItem(carNumber, penalty);
             penaltyLookupField.SetValue(_enricher, newLookup);

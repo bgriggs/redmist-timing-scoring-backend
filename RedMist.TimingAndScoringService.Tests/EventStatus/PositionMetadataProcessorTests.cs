@@ -1,8 +1,8 @@
-﻿using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
+﻿using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus;
+namespace RedMist.EventProcessor.Tests.EventStatus;
 
 [TestClass]
 public class PositionMetadataProcessorTests

@@ -3,11 +3,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
+using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.PositionEnricher;
+namespace RedMist.EventProcessor.Tests.EventStatus.PositionEnricher;
 
 [TestClass]
 public class PositionDataEnricherTests

@@ -4,11 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using RedMist.TimingAndScoringService.EventStatus.Multiloop;
-using RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
+using RedMist.EventProcessor.EventStatus.Multiloop;
+using RedMist.EventProcessor.EventStatus.Multiloop.StateChanges;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.Multiloop.StateChanges;
+namespace RedMist.EventProcessor.Tests.EventStatus.Multiloop.StateChanges;
 
 [TestClass]
 public class FlagMetricsStateUpdateTests

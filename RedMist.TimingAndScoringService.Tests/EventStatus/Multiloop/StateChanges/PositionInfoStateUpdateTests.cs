@@ -1,8 +1,8 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.Multiloop;
-using RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
+﻿using RedMist.EventProcessor.EventStatus.Multiloop;
+using RedMist.EventProcessor.EventStatus.Multiloop.StateChanges;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.Multiloop.StateChanges;
+namespace RedMist.EventProcessor.Tests.EventStatus.Multiloop.StateChanges;
 
 [TestClass]
 public class PositionInfoStateUpdateTests

@@ -6,13 +6,13 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
-using RedMist.TimingAndScoringService.EventStatus.RMonitor;
-using RedMist.TimingAndScoringService.Models;
-using RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
+using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.PipelineBlocks;
+using RedMist.EventProcessor.EventStatus.RMonitor;
+using RedMist.EventProcessor.Models;
+using RedMist.EventProcessor.Tests.EventStatus.RMonitor;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus;
+namespace RedMist.EventProcessor.Tests.EventStatus;
 
 [TestClass]
 public class SessionMonitorTests

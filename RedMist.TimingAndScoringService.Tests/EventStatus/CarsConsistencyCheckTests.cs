@@ -1,10 +1,10 @@
 ﻿using Microsoft.Extensions.Logging;
 using Moq;
-using RedMist.TimingAndScoringService.EventStatus;
+using RedMist.EventProcessor.EventStatus;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus;
+namespace RedMist.EventProcessor.Tests.EventStatus;
 
 [TestClass]
 public class CarsConsistencyCheckTests

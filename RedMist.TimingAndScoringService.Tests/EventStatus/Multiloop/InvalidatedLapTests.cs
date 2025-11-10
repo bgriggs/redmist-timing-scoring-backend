@@ -1,11 +1,11 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.Multiloop;
+﻿using RedMist.EventProcessor.EventStatus.Multiloop;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.Multiloop;
+namespace RedMist.EventProcessor.Tests.EventStatus.Multiloop;
 
 [TestClass]
 public class InvalidatedLapTests

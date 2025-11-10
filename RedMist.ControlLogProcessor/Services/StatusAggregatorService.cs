@@ -130,7 +130,7 @@ public class StatusAggregatorService : BackgroundService
         var carPenalties = await controlLogCache.GetPenaltiesAsync(stoppingToken);
         foreach (var carPenalty in carPenalties)
         {
-            var penaltyJson = JsonSerializer.Serialize(new CarPenality(carPenalty.Value.warnings, carPenalty.Value.laps));
+            var penaltyJson = JsonSerializer.Serialize(new CarPenalty(carPenalty.Value.warnings, carPenalty.Value.laps));
             carPenaltyEntries.Add(new HashEntry(carPenalty.Key, penaltyJson));
         }
         await cache.HashSetAsync(carLogCacheKey, [.. carPenaltyEntries], CommandFlags.FireAndForget);

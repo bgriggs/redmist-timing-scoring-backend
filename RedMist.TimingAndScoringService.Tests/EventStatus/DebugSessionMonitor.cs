@@ -3,10 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
+using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.SessionMonitoring;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus;
+namespace RedMist.EventProcessor.Tests.EventStatus;
 
 internal class DebugSessionMonitor : SessionMonitor
 {

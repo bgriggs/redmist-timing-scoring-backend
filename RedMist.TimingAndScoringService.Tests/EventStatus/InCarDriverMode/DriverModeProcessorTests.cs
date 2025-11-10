@@ -2,12 +2,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
-using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
+using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.InCarDriverMode;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.InCarDriverMode;
+namespace RedMist.EventProcessor.Tests.EventStatus.InCarDriverMode;
 
 [TestClass]
 public class DriverModeProcessorTests

@@ -9,27 +9,27 @@ using Moq;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
-using RedMist.TimingAndScoringService.EventStatus;
-using RedMist.TimingAndScoringService.EventStatus.DriverInformation;
-using RedMist.TimingAndScoringService.EventStatus.FlagData;
-using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
-using RedMist.TimingAndScoringService.EventStatus.LapData;
-using RedMist.TimingAndScoringService.EventStatus.Multiloop;
-using RedMist.TimingAndScoringService.EventStatus.PenaltyEnricher;
-using RedMist.TimingAndScoringService.EventStatus.PipelineBlocks;
-using RedMist.TimingAndScoringService.EventStatus.PositionEnricher;
-using RedMist.TimingAndScoringService.EventStatus.RMonitor;
-using RedMist.TimingAndScoringService.EventStatus.SessionMonitoring;
-using RedMist.TimingAndScoringService.EventStatus.Video;
-using RedMist.TimingAndScoringService.EventStatus.X2;
-using RedMist.TimingAndScoringService.Models;
+using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.DriverInformation;
+using RedMist.EventProcessor.EventStatus.FlagData;
+using RedMist.EventProcessor.EventStatus.InCarDriverMode;
+using RedMist.EventProcessor.EventStatus.LapData;
+using RedMist.EventProcessor.EventStatus.Multiloop;
+using RedMist.EventProcessor.EventStatus.PenaltyEnricher;
+using RedMist.EventProcessor.EventStatus.PipelineBlocks;
+using RedMist.EventProcessor.EventStatus.PositionEnricher;
+using RedMist.EventProcessor.EventStatus.RMonitor;
+using RedMist.EventProcessor.EventStatus.SessionMonitoring;
+using RedMist.EventProcessor.EventStatus.Video;
+using RedMist.EventProcessor.EventStatus.X2;
+using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
 using System.Diagnostics;
 using System.Text.Json;
 
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.ProcessingPipeline;
+namespace RedMist.EventProcessor.Tests.EventStatus.ProcessingPipeline;
 
 [TestClass]
 public class SessionStateProcessingPipelineTests

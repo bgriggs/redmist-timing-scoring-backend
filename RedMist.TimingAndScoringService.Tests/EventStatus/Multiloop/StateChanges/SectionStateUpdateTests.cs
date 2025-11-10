@@ -1,9 +1,9 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.Multiloop.StateChanges;
+﻿using RedMist.EventProcessor.EventStatus.Multiloop.StateChanges;
 using RedMist.TimingCommon.Models;
-using MultiloopCompletedSection = RedMist.TimingAndScoringService.EventStatus.Multiloop.CompletedSection;
+using MultiloopCompletedSection = RedMist.EventProcessor.EventStatus.Multiloop.CompletedSection;
 using TimingCommonCompletedSection = RedMist.TimingCommon.Models.CompletedSection;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.Multiloop.StateChanges;
+namespace RedMist.EventProcessor.Tests.EventStatus.Multiloop.StateChanges;
 
 [TestClass]
 public class SectionStateUpdateTests

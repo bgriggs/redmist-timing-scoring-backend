@@ -1,4 +1,4 @@
-﻿namespace RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
+﻿namespace RedMist.EventProcessor.Tests.EventStatus.RMonitor;
 
 internal class TestDataReader
 {

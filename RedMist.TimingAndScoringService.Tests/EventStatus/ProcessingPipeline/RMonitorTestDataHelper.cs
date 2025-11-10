@@ -1,6 +1,6 @@
 ﻿using System.Globalization;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.ProcessingPipeline;
+namespace RedMist.EventProcessor.Tests.EventStatus.ProcessingPipeline;
 
 internal class RMonitorTestDataHelper(string filePath)
 {

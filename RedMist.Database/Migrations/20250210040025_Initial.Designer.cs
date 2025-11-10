@@ -25,7 +25,7 @@ namespace RedMist.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("RedMist.TimingAndScoringService.Database.Models.Event", b =>
+            modelBuilder.Entity("RedMist.EventProcessor.Database.Models.Event", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -52,7 +52,7 @@ namespace RedMist.Migrations
                     b.ToTable("Events");
                 });
 
-            modelBuilder.Entity("RedMist.TimingAndScoringService.Database.Models.Organization", b =>
+            modelBuilder.Entity("RedMist.EventProcessor.Database.Models.Organization", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()

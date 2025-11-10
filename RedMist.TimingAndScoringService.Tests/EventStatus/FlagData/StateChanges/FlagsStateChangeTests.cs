@@ -1,7 +1,7 @@
-﻿using RedMist.TimingAndScoringService.EventStatus.FlagData.StateChanges;
+﻿using RedMist.EventProcessor.EventStatus.FlagData.StateChanges;
 using RedMist.TimingCommon.Models;
 
-namespace RedMist.TimingAndScoringService.Tests.EventStatus.FlagData.StateChanges;
+namespace RedMist.EventProcessor.Tests.EventStatus.FlagData.StateChanges;
 
 [TestClass]
 public class FlagsStateChangeTests

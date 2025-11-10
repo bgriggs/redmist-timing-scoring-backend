@@ -1,4 +1,4 @@
-﻿namespace RedMist.TimingAndScoringService.Tests.EventStatus.Multiloop;
+﻿namespace RedMist.EventProcessor.Tests.EventStatus.Multiloop;
 
 [TestClass]
 public class VersionTests
@@ -7,7 +7,7 @@ public class VersionTests
     public void ProcessHeader_Parse_V_Test()
     {
         var command = "$V�R�1�Q1�1�5�Multiloop feed";
-        var v = new TimingAndScoringService.EventStatus.Multiloop.Version();
+        var v = new EventProcessor.EventStatus.Multiloop.Version();
         v.ProcessV(command);
 
         Assert.AreEqual(1, v.Major);
