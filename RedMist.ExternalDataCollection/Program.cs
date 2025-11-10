@@ -20,7 +20,6 @@ public class Program
         builder.Logging.ClearProviders();
         builder.Logging.AddNLog("NLog");
 
-        // Add services to the container.
         builder.Services.AddAuthorization();
 
         AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
@@ -35,9 +34,11 @@ public class Program
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 150, name: "Process Allocated Memory", tags: ["memory"]);
 
+        builder.Services.AddSingleton<EventsChecker>();
         builder.Services.AddRedMistSignalR(redisConn);
         builder.Services.AddHostedService<SentinelStatusService>();
         builder.Services.AddTransient<SentinelClient>();
+        builder.Services.AddSingleton<ExternalTelemetryClient>();
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.EventOrchestration.Services;
 using StackExchange.Redis;
@@ -32,6 +33,7 @@ public class Program
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 400, name: "Process Allocated Memory", tags: ["memory"]);
 
+        builder.Services.AddSingleton<EventsChecker>();
         builder.Services.AddHostedService<OrchestrationService>();
 
         var app = builder.Build();

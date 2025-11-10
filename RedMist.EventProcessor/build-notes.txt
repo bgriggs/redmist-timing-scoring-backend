@@ -31,8 +31,8 @@ docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.EventLogger\Doc
 docker push bigmission/redmist-event-logger-svc
 
 # External Data Collection service
-docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.ExternalDataCollection\Dockerfile" --force-rm -t bigmission/redmist-external-data-collection-svc "C:\Code\RedMist.TimingAndScoringService"
-docker push bigmission/redmist-external-data-collection-svc
+docker build -f "C:\Code\RedMist.TimingAndScoringService\RedMist.ExternalDataCollection\Dockerfile" --force-rm -t bigmission/redmist-external-data-collection "C:\Code\RedMist.TimingAndScoringService"
+docker push bigmission/redmist-external-data-collection
 
 # deploy to k8s
 kubectl config set-context --current --namespace=timing

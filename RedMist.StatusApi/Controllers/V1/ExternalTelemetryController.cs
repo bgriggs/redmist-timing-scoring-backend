@@ -81,7 +81,7 @@ public class ExternalTelemetryController : Controller
                     changed = true;
                 }
 
-                // Set new driver info to update the experiation
+                // Set new driver info to update the expiration
                 await cache.StringSetAsync(key, json, expiry: TimeSpan.FromMinutes(10));
 
                 if (changed)

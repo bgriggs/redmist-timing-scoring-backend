@@ -2,6 +2,7 @@
 using k8s.Models;
 using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Models;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.EventOrchestration.Models;
 using StackExchange.Redis;
@@ -14,6 +15,7 @@ public class OrchestrationService : BackgroundService
 {
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly EventsChecker eventsChecker;
 
     private ILogger Logger { get; }
     private const string namespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
@@ -22,29 +24,27 @@ public class OrchestrationService : BackgroundService
     private readonly ContainerDetails eventProcessorContainerDetails;
     private readonly ContainerDetails controlLogContainerDetails;
     private readonly ContainerDetails loggerContainerDetails;
-    private readonly ContainerDetails externalDataCollectionContainerDetails;
 
 
-    public OrchestrationService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IDbContextFactory<TsContext> tsContext)
+    public OrchestrationService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, 
+        IDbContextFactory<TsContext> tsContext, EventsChecker eventsChecker)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
+        this.eventsChecker = eventsChecker;
 
         // Get the current assembly version for container tags
         var version = GetAssemblyVersion();
         eventProcessorContainerDetails = new(
-            "bigmission/redmist-timing-svc", version, "{0}-evt-{1}-event-processor", true, 
-            "85m", "200Mi", "350m", "500Mi");
+            "bigmission/redmist-event-processor", version, "{0}-evt-{1}-event-processor", true, 
+            "85m", "200Mi", "350m", "560Mi");
         controlLogContainerDetails = new(
-            "bigmission/redmist-control-log-svc", version, "{0}-evt-{1}-control-log", false,
+            "bigmission/redmist-control-log", version, "{0}-evt-{1}-control-log", false,
             "60m", "165Mi", "150m", "250Mi");
         loggerContainerDetails = new(
-            "bigmission/redmist-event-logger-svc", version, "{0}-evt-{1}-logger", false, 
+            "bigmission/redmist-event-logger", version, "{0}-evt-{1}-logger", false, 
             "35m", "90Mi", "150m", "500Mi");
-        externalDataCollectionContainerDetails = new(
-            "bigmission/redmist-external-data-collection-svc", version, "{0}-evt-{1}-external-data-collection", false, 
-            "10m", "85Mi", "70m", "150Mi");
 
         Logger.LogInformation("OrchestrationService initialized with version {version}", version);
     }
@@ -114,7 +114,7 @@ public class OrchestrationService : BackgroundService
             try
             {
                 // Set live events first for running outside of K8s in debug where K8s calls will fail
-                var currentEvents = await GetCurrentEventsAsync();
+                var currentEvents = await eventsChecker.GetCurrentEventsAsync();
                 Logger.LogDebug("Found {eventCount} current events", currentEvents.Count);
 
                 // Update the live events in the database
@@ -199,30 +199,6 @@ public class OrchestrationService : BackgroundService
         }
 
         return jobs;
-    }
-
-    /// <summary>
-    /// Based on active signalR connections of relays, get the current events for those relays.
-    /// </summary>
-    /// <returns></returns>
-    private async Task<List<RelayConnectionEventEntry>> GetCurrentEventsAsync()
-    {
-        var cache = cacheMux.GetDatabase();
-        var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
-
-        var entries = await cache.HashGetAllAsync(hashKey);
-        var result = new List<RelayConnectionEventEntry>();
-        foreach (var entry in entries)
-        {
-            if (entry.Name.IsNullOrEmpty || entry.Value.IsNullOrEmpty) continue;
-
-            var eventEntry = JsonSerializer.Deserialize<RelayConnectionEventEntry>(entry.Value!);
-            if (eventEntry != null && eventEntry.EventId > 0)
-            {
-                result.Add(eventEntry);
-            }
-        }
-        return result;
     }
 
     /// <summary>
@@ -345,7 +321,7 @@ public class OrchestrationService : BackgroundService
             if (!jobs.Items.Any(job => job.Metadata.Name.Equals(clJobName, StringComparison.OrdinalIgnoreCase)))
             {
                 Logger.LogInformation("Control log job {clJobName} does not exist for event {eventId}. Creating new job.", clJobName, evt.EventId);
-                await CreateJob(client, clJobName, ns, controlLogContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+                await CreateJobAsync(client, clJobName, ns, controlLogContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
             }
         }
 
@@ -354,7 +330,7 @@ public class OrchestrationService : BackgroundService
         if (!jobs.Items.Any(job => job.Metadata.Name.Equals(loggerJobName, StringComparison.OrdinalIgnoreCase)))
         {
             Logger.LogInformation("Logger job {loggerJobName} does not exist for event {eventId}. Creating new job.", loggerJobName, evt.EventId);
-            await CreateJob(client, loggerJobName, ns, loggerContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+            await CreateJobAsync(client, loggerJobName, ns, loggerContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
         }
         else
         {
@@ -366,27 +342,15 @@ public class OrchestrationService : BackgroundService
         if (!jobs.Items.Any(job => job.Metadata.Name.Equals(epJobName, StringComparison.OrdinalIgnoreCase)))
         {
             Logger.LogInformation("Event processor job {epJobName} does not exist for event {eventId}. Creating new job.", epJobName, evt.EventId);
-            await CreateJob(client, epJobName, ns, eventProcessorContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+            await CreateJobAsync(client, epJobName, ns, eventProcessorContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
         }
         else
         {
             Logger.LogTrace("Event processor job {epJobName} already exists for event {eventId}.", epJobName, evt.EventId);
         }
-
-        // Check for ExternalDataCollection job
-        var svJobName = string.Format(externalDataCollectionContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
-        if (!jobs.Items.Any(job => job.Metadata.Name.Equals(svJobName, StringComparison.OrdinalIgnoreCase)))
-        {
-            Logger.LogInformation("ExternalDataCollection job {svJobName} does not exist for event {eventId}. Creating new job.", svJobName, evt.EventId);
-            await CreateJob(client, svJobName, ns, externalDataCollectionContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
-        }
-        else
-        {
-            Logger.LogTrace("ExternalDataCollection job {svJobName} already exists for event {eventId}.", svJobName, evt.EventId);
-        }
     }
 
-    private async Task CreateJob(Kubernetes client, string name, string ns, ContainerDetails containerDetails, int eventId, string eventName, int organizationId, string organizationName, CancellationToken stoppingToken)
+    private async Task CreateJobAsync(Kubernetes client, string name, string ns, ContainerDetails containerDetails, int eventId, string eventName, int organizationId, string organizationName, CancellationToken stoppingToken)
     {
         eventName = eventName.Replace(" ", "-").ToLowerInvariant();
         organizationName = organizationName.Replace(" ", "-").ToLowerInvariant();

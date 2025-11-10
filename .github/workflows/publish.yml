@@ -27,7 +27,7 @@ jobs:
         service:
           - name: "Timing Service"
             dockerfile: "./RedMist.TimingAndScoringService/Dockerfile"
-            image: "bigmission/redmist-timing-svc"
+            image: "bigmission/redmist-event-processor"
           - name: "Event Management"
             dockerfile: "./RedMist.EventManagement/Dockerfile"
             image: "bigmission/redmist-event-management"
@@ -45,13 +45,13 @@ jobs:
             image: "bigmission/redmist-event-orchestration"
           - name: "Control Log Service"
             dockerfile: "./RedMist.ControlLogProcessor/Dockerfile"
-            image: "bigmission/redmist-control-log-svc"
+            image: "bigmission/redmist-control-log"
           - name: "Event Logger Service"
             dockerfile: "./RedMist.EventLogger/Dockerfile"
-            image: "bigmission/redmist-event-logger-svc"
+            image: "bigmission/redmist-event-logger"
           - name: "Sentinel Video Service"
             dockerfile: "./RedMist.ExternalDataCollection/Dockerfile"
-            image: "bigmission/redmist-external-data-collection-svc"
+            image: "bigmission/redmist-external-data-collection"
 
     steps:
       - name: Checkout code
@@ -91,12 +91,12 @@ jobs:
         run: |
           echo "✅ Successfully built and pushed all containers in parallel with version: ${{ needs.extract-version.outputs.version }}"
           echo "📦 Published containers:"
-          echo "  - bigmission/redmist-timing-svc:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-event-processor:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-event-management:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-user-management:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-status-api:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-relay-api:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-event-orchestration:${{ needs.extract-version.outputs.version }}"
-          echo "  - bigmission/redmist-control-log-svc:${{ needs.extract-version.outputs.version }}"
-          echo "  - bigmission/redmist-event-logger-svc:${{ needs.extract-version.outputs.version }}"
-          echo "  - bigmission/redmist-external-data-collection-svc:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-control-log:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-event-logger:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-external-data-collection:${{ needs.extract-version.outputs.version }}"
