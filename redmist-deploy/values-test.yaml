@@ -8,6 +8,8 @@ global:
     "Keycloak__Realm": "redmist"
     "Keycloak__AuthServerUrl": "https://auth.redmist.racing"
     "SentinelApiUrl": "https://svs-api.sentinel.racing/api/"
+    "Server__ExtTelemUrl": "https://api-test.redmist.racing/status/v1/ExternalTelemetry"
+
   secrets:
     - env: "REDIS_PW"
       name: "rmkeys-test"

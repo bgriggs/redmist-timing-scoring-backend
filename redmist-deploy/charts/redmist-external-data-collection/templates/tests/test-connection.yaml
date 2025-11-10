@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "redmist-external-data-collection.fullname" . }}-test-connection"
+  labels:
+    {{- include "redmist-external-data-collection.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['{{ include "redmist-external-data-collection.fullname" . }}:{{ .Values.service.port }}']
+  restartPolicy: Never

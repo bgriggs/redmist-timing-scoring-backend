@@ -1,0 +1,5 @@
+apiVersion: v2
+name: redmist-external-data-collection
+description: Endpoint for external data collection like driver name and video
+type: application
+version: 0.1.0
