@@ -14,7 +14,7 @@
 		<UserSecretsId>cf019365-db97-4247-a080-531d28e516b9</UserSecretsId>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Microsoft.Extensions.ApiDescription.Client" Version="7.0.2">
+		<PackageReference Include="Microsoft.Extensions.ApiDescription.Client" Version="9.0.10">
 		  <PrivateAssets>all</PrivateAssets>
 		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
@@ -24,7 +24,7 @@
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.10" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.10" />
 		<PackageReference Include="BigMission.Shared" Version="1.0.3" />
-		<PackageReference Include="RedMist.TimingCommon" Version="1.2.1" />
+		<PackageReference Include="RedMist.TimingCommon" Version="1.2.4" />
 		<PackageReference Include="RestSharp" Version="112.1.0" />
 	</ItemGroup>
 	<ItemGroup>
