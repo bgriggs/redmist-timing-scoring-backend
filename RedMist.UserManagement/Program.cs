@@ -8,7 +8,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
-using RedMist.Backend.Shared.Extensions;
 using RedMist.Database;
 using System.Reflection;
 
@@ -39,16 +38,15 @@ public class Program
             options.RoleClaimType = KeycloakConstants.RoleClaimType;
         });
 
-        // Configure Rate Limiting - stricter limits for user management API
-        builder.Services.AddRedMistRateLimiting(options =>
-        {
-            options.SwaggerPermitLimit = 5; // Lower limit for admin API
-            options.GlobalPermitLimit = 30;
-        });
+        //// Configure Rate Limiting - stricter limits for user management API
+        //builder.Services.AddRedMistRateLimiting(options =>
+        //{
+        //    options.SwaggerPermitLimit = 5; // Lower limit for admin API
+        //    options.GlobalPermitLimit = 30;
+        //});
 
-        // Add services to the container.
         builder.Services.AddControllers();
-        
+
         // Configure API Versioning
         builder.Services.AddApiVersioning(options =>
         {
@@ -141,8 +139,8 @@ public class Program
             app.UsePathBase(pathBase);
         }
 
-        // Apply rate limiting middleware (must be after UsePathBase, before endpoints)
-        app.UseRateLimiter();
+        //// Apply rate limiting middleware (must be after UsePathBase, before endpoints)
+        //app.UseRateLimiter();
 
         // Enable Swagger only in Development
         if (app.Environment.IsDevelopment())
@@ -154,10 +152,10 @@ public class Program
                     // Ensure swagger knows about the path base for proper URL generation
                     if (!string.IsNullOrEmpty(pathBase))
                     {
-                        swagger.Servers = new List<Microsoft.OpenApi.Models.OpenApiServer>
-                        {
+                        swagger.Servers =
+                        [
                             new() { Url = $"{httpReq.Scheme}://{httpReq.Host.Value}{pathBase}" }
-                        };
+                        ];
                     }
                 });
             });

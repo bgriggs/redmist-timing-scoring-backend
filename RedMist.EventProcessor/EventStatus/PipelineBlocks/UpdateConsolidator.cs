@@ -11,7 +11,6 @@ public class UpdateConsolidator
 {
     private ILogger Logger { get; }
     private static readonly TimeSpan DebounceInterval = TimeSpan.FromMilliseconds(20);
-    private DateTime lastProcessTime = DateTime.MinValue;
 
     // Accumulated patches that get built incrementally
     private SessionStatePatch? accumulatedSessionPatch;
@@ -52,7 +51,6 @@ public class UpdateConsolidator
             try
             {
                 patchesToSend = GetAndResetAccumulatedPatches();
-                lastProcessTime = DateTime.UtcNow;
             }
             finally
             {

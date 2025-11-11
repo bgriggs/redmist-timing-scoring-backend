@@ -56,6 +56,7 @@ public class EventsController : EventsControllerBase
     /// <para>For V2 API, use the V2 endpoint which returns SessionState format.</para>
     /// </remarks>
     [HttpGet]
+    [Produces("application/json")]
     [ProducesResponseType<Payload>(StatusCodes.Status200OK)]
     public async Task<Payload?> LoadSessionResults(int eventId, int sessionId)
     {

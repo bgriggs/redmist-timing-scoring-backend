@@ -36,6 +36,7 @@ public class ExternalTelemetryController : Controller
     /// if the input is invalid, 401 Unauthorized if the user is not authorized, or 500 Internal Server Error if an
     /// unexpected error occurs.</returns>
     [HttpPost]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -115,6 +116,7 @@ public class ExternalTelemetryController : Controller
     /// input is invalid, 401 Unauthorized if the user is not authorized, or 500 Internal Server Error if an error
     /// occurs during processing.</returns>
     [HttpPost]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

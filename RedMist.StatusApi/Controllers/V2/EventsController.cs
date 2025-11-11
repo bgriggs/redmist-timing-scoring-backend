@@ -52,6 +52,7 @@ public class EventsController : EventsControllerBase
     /// <para>Breaking change from V1: Returns SessionState instead of Payload.</para>
     /// </remarks>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<SessionState>(StatusCodes.Status200OK)]
     public async Task<SessionState?> LoadSessionResults(int eventId, int sessionId)
     {
@@ -80,6 +81,7 @@ public class EventsController : EventsControllerBase
     /// <para>The data is cached with a 15-minute expiration to reduce database load.</para>
     /// </remarks>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<UIVersionInfo>(StatusCodes.Status200OK)]
     public async Task<UIVersionInfo> GetUIVersionInfoAsync()
     {

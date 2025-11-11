@@ -1,6 +1,5 @@
 ﻿using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
-using Riok.Mapperly.Abstractions;
 using System.Diagnostics;
 
 namespace RedMist.EventProcessor.EventStatus.PositionEnricher;

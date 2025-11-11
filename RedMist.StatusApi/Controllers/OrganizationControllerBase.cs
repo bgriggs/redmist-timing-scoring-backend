@@ -60,8 +60,6 @@ public abstract class OrganizationControllerBase : ControllerBase
             async entry => await LoadOrganizationIcon(organizationId),
             new HybridCacheEntryOptions { Expiration = TimeSpan.FromMinutes(30) });
 
-        //using var context = await tsContext.CreateDbContextAsync();
-        //var organization = await context.OrganizationExtViews.FirstOrDefaultAsync(o => o.Id == organizationId);
         if (data == null)
             return NotFound();
         var mimeType = GetImageMimeType(data);

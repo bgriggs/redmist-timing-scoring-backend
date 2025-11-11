@@ -25,6 +25,7 @@ public abstract class EventControllerBase : ControllerBase
     protected readonly IConnectionMultiplexer cacheMux;
     protected ILogger Logger { get; }
 
+
     /// <summary>
     /// Initializes a new instance of the <see cref="EventControllerBase"/> class.
     /// </summary>
@@ -38,17 +39,21 @@ public abstract class EventControllerBase : ControllerBase
         this.cacheMux = cacheMux;
     }
 
+
     /// <summary>
     /// Loads summary information for all events belonging to the authenticated user's organization.
     /// </summary>
     /// <returns>A list of event summaries ordered by start date (newest first).</returns>
     /// <response code="200">Returns the list of event summaries.</response>
+    /// <response code="401">If the user is not authenticated.</response>
     /// <remarks>
     /// Events are filtered by the authenticated user's client_id to ensure users only see their organization's events.
     /// Deleted events are excluded from results.
     /// </remarks>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<EventSummary>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public virtual async Task<List<EventSummary>> LoadEventSummaries()
     {
         Logger.LogTrace("LoadEventSummaries");
@@ -70,11 +75,15 @@ public abstract class EventControllerBase : ControllerBase
     /// <param name="eventId">The unique identifier of the event.</param>
     /// <returns>The event details, or null if not found or user is not authorized.</returns>
     /// <response code="200">Returns the event details.</response>
+    /// <response code="401">If the user is not authenticated.</response>
     /// <remarks>
     /// Users can only load events that belong to their organization.
+    /// Returns null if the event is not found or the user does not have access to it.
     /// </remarks>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<Event>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public virtual async Task<Event?> LoadEvent(int eventId)
     {
         Logger.LogTrace("LoadEvent {event}", eventId);
@@ -93,26 +102,32 @@ public abstract class EventControllerBase : ControllerBase
     /// <param name="newEvent">The event details to create.</param>
     /// <returns>The ID of the newly created event.</returns>
     /// <response code="200">Returns the new event ID.</response>
-    /// <exception cref="Exception">Thrown when the user's organization is not found.</exception>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <response code="404">If the user's organization is not found.</response>
     /// <remarks>
     /// The event is automatically associated with the authenticated user's organization.
     /// After creation, a configuration change notification is published to update dependent services.
     /// </remarks>
     [HttpPost]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<int>(StatusCodes.Status200OK)]
-    public virtual async Task<int> SaveNewEvent(Event newEvent)
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<ActionResult<int>> SaveNewEvent(Event newEvent)
     {
         Logger.LogTrace("SaveNewEvent {event}", newEvent.Name);
         var clientId = User.FindFirstValue("client_id");
         using var context = await tsContext.CreateDbContextAsync();
-        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId) ?? throw new Exception("Organization not found");
+        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        if (org == null)
+            return NotFound("org");
         newEvent.OrganizationId = org.Id;
         context.Events.Add(newEvent);
         await context.SaveChangesAsync();
-        
+
         // Publish event configuration change notification
         await PublishEventConfigurationChangedAsync(newEvent.Id);
-        
+
         return newEvent.Id;
     }
 
@@ -122,19 +137,27 @@ public abstract class EventControllerBase : ControllerBase
     /// <param name="event">The event with updated details.</param>
     /// <returns>No content on success.</returns>
     /// <response code="200">Event updated successfully.</response>
-    /// <exception cref="Exception">Thrown when the user's organization is not found.</exception>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <response code="404">If the user's organization or the event is not found.</response>
     /// <remarks>
     /// Users can only update events belonging to their organization.
     /// After update, a configuration change notification is published to update dependent services.
+    /// If the event is not found or does not belong to the user's organization, returns 200 OK without making changes.
     /// </remarks>
     [HttpPost]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public virtual async Task UpdateEvent(Event @event)
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<IActionResult> UpdateEvent(Event @event)
     {
         Logger.LogTrace("UpdateEvent {event}", @event.Name);
         var clientId = User.FindFirstValue("client_id");
         using var context = await tsContext.CreateDbContextAsync();
-        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId) ?? throw new Exception("Organization not found");
+        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        if (org == null)
+            return NotFound("org");
+
         var dbEvent = await context.Events.FirstOrDefaultAsync(x => x.Id == @event.Id && x.OrganizationId == org.Id);
         if (dbEvent != null)
         {
@@ -151,10 +174,12 @@ public abstract class EventControllerBase : ControllerBase
             dbEvent.Broadcast = @event.Broadcast;
             dbEvent.LoopsMetadata = @event.LoopsMetadata;
             await context.SaveChangesAsync();
-            
+
             // Publish event configuration change notification
             await PublishEventConfigurationChangedAsync(@event.Id);
         }
+
+        return Ok();
     }
 
     /// <summary>
@@ -164,19 +189,26 @@ public abstract class EventControllerBase : ControllerBase
     /// <param name="eventId">The unique identifier of the event to activate.</param>
     /// <returns>No content on success.</returns>
     /// <response code="200">Event status updated successfully.</response>
-    /// <exception cref="Exception">Thrown when the user's organization is not found.</exception>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <response code="404">If the user's organization or the event is not found.</response>
     /// <remarks>
     /// Only one event can be active per organization at a time.
     /// After activation, a configuration change notification is published.
+    /// If the event is not found or does not belong to the user's organization, returns 200 OK without making changes.
     /// </remarks>
     [HttpPut]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public virtual async Task UpdateEventStatusActive(int eventId)
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<IActionResult> UpdateEventStatusActive(int eventId)
     {
         Logger.LogTrace("UpdateEventStatusActive {event}", eventId);
         var clientId = User.FindFirstValue("client_id");
         using var context = await tsContext.CreateDbContextAsync();
-        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId) ?? throw new Exception("Organization not found");
+        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        if (org == null)
+            return NotFound("org");
+
         var dbEvent = await context.Events.FirstOrDefaultAsync(x => x.Id == eventId && x.OrganizationId == org.Id);
         if (dbEvent != null)
         {
@@ -186,6 +218,7 @@ public abstract class EventControllerBase : ControllerBase
             // Publish event configuration change notification
             await PublishEventConfigurationChangedAsync(eventId);
         }
+        return Ok();
     }
 
     /// <summary>
@@ -194,19 +227,26 @@ public abstract class EventControllerBase : ControllerBase
     /// <param name="eventId">The unique identifier of the event to delete.</param>
     /// <returns>No content on success.</returns>
     /// <response code="200">Event deleted successfully.</response>
-    /// <exception cref="Exception">Thrown when the user's organization is not found.</exception>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <response code="404">If the user's organization or the event is not found.</response>
     /// <remarks>
     /// <para>If the deleted event was active, the most recent event is automatically set as active.</para>
     /// <para>A configuration change notification is published after deletion.</para>
+    /// <para>If the event is not found or does not belong to the user's organization, completes without making changes.</para>
     /// </remarks>
     [HttpPut]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public virtual async Task DeleteEvent(int eventId)
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<IActionResult> DeleteEvent(int eventId)
     {
         Logger.LogTrace("DeleteEvent {event}", eventId);
         var clientId = User.FindFirstValue("client_id");
         using var context = await tsContext.CreateDbContextAsync();
-        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId) ?? throw new Exception("Organization not found");
+        var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        if (org == null)
+            return NotFound("org");
+
         var dbEvent = await context.Events.FirstOrDefaultAsync(x => x.Id == eventId && x.OrganizationId == org.Id);
         if (dbEvent != null)
         {
@@ -227,6 +267,12 @@ public abstract class EventControllerBase : ControllerBase
                 }
             }
         }
+        else
+        {
+            return NotFound("event");
+        }
+
+        return Ok();
     }
 
     /// <summary>
@@ -251,7 +297,7 @@ public abstract class EventControllerBase : ControllerBase
                 var cache = cacheMux.GetDatabase();
                 var streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
                 var fieldName = $"{Consts.EVENT_CONFIGURATION_CHANGED}-{eventId}-999999";
-                
+
                 await cache.StreamAddAsync(streamKey, fieldName, eventId.ToString());
                 Logger.LogDebug("Published event configuration change notification for event {EventId}", eventId);
                 return;
@@ -259,15 +305,15 @@ public abstract class EventControllerBase : ControllerBase
             catch (RedisConnectionException ex)
             {
                 retryCount++;
-                Logger.LogWarning("Redis connection issue publishing event configuration change for event {EventId}, attempt {AttemptNumber}/{MaxRetries}: {Exception}", 
+                Logger.LogWarning("Redis connection issue publishing event configuration change for event {EventId}, attempt {AttemptNumber}/{MaxRetries}: {Exception}",
                     eventId, retryCount, maxRetries, ex.Message);
-                
+
                 if (retryCount >= maxRetries)
                 {
                     Logger.LogError("Failed to publish event configuration change notification for event {EventId} after {MaxRetries} attempts", eventId, maxRetries);
                     throw;
                 }
-                
+
                 await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, retryCount))); // Exponential backoff
             }
             catch (Exception ex)

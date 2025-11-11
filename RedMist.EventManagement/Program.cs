@@ -3,12 +3,13 @@ using HealthChecks.UI.Client;
 using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
 using Keycloak.AuthServices.Common;
+using MessagePack.AspNetCoreMvcFormatter;
+using MessagePack.Resolvers;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
-using RedMist.Backend.Shared.Extensions;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using StackExchange.Redis;
@@ -41,14 +42,21 @@ public class Program
             options.RoleClaimType = KeycloakConstants.RoleClaimType;
         });
 
-        // Configure Rate Limiting - stricter limits for internal-facing admin API
-        builder.Services.AddRedMistRateLimiting(options =>
+        //// Configure Rate Limiting - stricter limits for internal-facing admin API
+        //builder.Services.AddRedMistRateLimiting(options =>
+        //{
+        //    options.SwaggerPermitLimit = 5; // Lower limit for admin API
+        //    options.GlobalPermitLimit = 30;
+        //});
+
+        builder.Services.AddControllers(options =>
         {
-            options.SwaggerPermitLimit = 5; // Lower limit for admin API
-            options.GlobalPermitLimit = 30;
+            // Add MessagePack formatter
+            options.InputFormatters.Add(new MessagePackInputFormatter(ContractlessStandardResolver.Options));
+            options.OutputFormatters.Add(new MessagePackOutputFormatter(ContractlessStandardResolver.Options));
+            options.FormatterMappings.SetMediaTypeMappingForFormat("msgpack", "application/x-msgpack");
         });
 
-        builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(c =>
         {
@@ -143,8 +151,8 @@ public class Program
             app.UsePathBase(pathBase);
         }
 
-        // Apply rate limiting middleware (must be after UsePathBase, before endpoints)
-        app.UseRateLimiter();
+        //// Apply rate limiting middleware (must be after UsePathBase, before endpoints)
+        //app.UseRateLimiter();
 
         // Enable Swagger in all environments
         app.UseSwagger(c =>

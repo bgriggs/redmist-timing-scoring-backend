@@ -68,6 +68,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <returns>An array of events with their associated sessions and organization details.</returns>
     /// <response code="200">Returns the array of events.</response>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
     public virtual async Task<Event[]> LoadEvents(DateTime startDateUtc)
     {
@@ -124,6 +125,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// </remarks>
     [AllowAnonymous]
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
     public virtual async Task<List<EventListSummary>> LoadLiveEvents()
     {
@@ -182,6 +184,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// </remarks>
     [AllowAnonymous]
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
     public virtual async Task<List<EventListSummary>> LoadLiveAndRecentEvents()
     {
@@ -217,6 +220,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <returns>The event details including sessions, organization info, and configuration, or null if not found.</returns>
     /// <response code="200">Returns the event details.</response>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<Event>(StatusCodes.Status200OK)]
     public virtual async Task<Event?> LoadEvent(int eventId)
     {
@@ -266,6 +270,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <returns>A list of car positions representing each completed lap.</returns>
     /// <response code="200">Returns the list of lap positions for the car.</response>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<CarPosition>>(StatusCodes.Status200OK)]
     public virtual async Task<List<CarPosition>> LoadCarLaps(int eventId, int sessionId, string carNumber)
     {
@@ -306,6 +311,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <returns>A list of sessions associated with the event.</returns>
     /// <response code="200">Returns the list of sessions.</response>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<Session>>(StatusCodes.Status200OK)]
     public virtual async Task<List<Session>> LoadSessions(int eventId)
     {
@@ -329,6 +335,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// The response is in MessagePack format for efficient serialization.
     /// </remarks>
     [HttpGet]
+    [Produces("application/x-msgpack")]
     [ProducesResponseType(typeof(SessionState), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public virtual async Task<IActionResult> GetCurrentSessionState(int eventId)
@@ -411,6 +418,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// Metadata is sourced from Orbits timing systems when available and configured by the organizer.
     /// </remarks>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<CompetitorMetadata>(StatusCodes.Status200OK)]
     public virtual async Task<CompetitorMetadata?> LoadCompetitorMetadata(int eventId, string car)
     {
@@ -458,6 +466,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// Control logs are only available if configured by the event organizer.
     /// </remarks>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<ControlLogEntry>>(StatusCodes.Status200OK)]
     public virtual async Task<List<ControlLogEntry>> LoadControlLog(int eventId)
     {
@@ -485,6 +494,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// Useful for drivers/teams to see only penalties and incidents affecting their car.
     /// </remarks>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<CarControlLogs>(StatusCodes.Status200OK)]
     public virtual async Task<CarControlLogs?> LoadCarControlLogs(int eventId, string car)
     {
@@ -516,6 +526,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// In-car data includes current position, gap to cars ahead/behind, best lap comparison, and flag status.
     /// </remarks>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<InCarPayload>(StatusCodes.Status200OK)]
     public virtual async Task<InCarPayload?> LoadInCarPayload(int eventId, string car)
     {
@@ -546,6 +557,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// Flag types include Green, Yellow (caution), Red (stopped), White (final lap), Checkered (finished), and Black.
     /// </remarks>
     [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<FlagDuration>>(StatusCodes.Status200OK)]
     public virtual async Task<List<FlagDuration>> LoadFlags(int eventId, int sessionId)
     {

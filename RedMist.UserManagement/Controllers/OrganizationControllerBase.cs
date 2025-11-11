@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
-using RedMist.Database.Extensions;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using RedMist.UserManagement.Models;
@@ -31,6 +30,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     protected readonly string realm;
     protected ILogger Logger { get; }
 
+
     /// <summary>
     /// Initializes a new instance of the <see cref="OrganizationControllerBase"/> class.
     /// </summary>
@@ -50,6 +50,7 @@ public abstract class OrganizationControllerBase : ControllerBase
         realm = configuration["Keycloak:Realm"] ?? throw new InvalidOperationException("Keycloak Realm is not configured.");
     }
 
+
     /// <summary>
     /// Loads the organization associated with the authenticated user.
     /// </summary>
@@ -60,6 +61,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// The user's identity (username) is extracted from authentication claims to find their organization.
     /// </remarks>
     [HttpGet]
+    [Produces("application/json")]
     [ProducesResponseType<OrganizationDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public virtual async Task<ActionResult<OrganizationDto>> LoadUserOrganization()
@@ -114,6 +116,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// Users may belong to multiple organizations with different roles.
     /// </remarks>
     [HttpGet]
+    [Produces("application/json")]
     [ProducesResponseType<List<UserOrganizationDto>>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public virtual async Task<ActionResult<List<UserOrganizationDto>>> LoadUserOrganizationRoles()
@@ -178,6 +181,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// <para>If no logo is provided, a default image will be used.</para>
     /// </remarks>
     [HttpPost]
+    [Produces("application/json")]
     [ProducesResponseType<int>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public virtual async Task<ActionResult<int>> SaveNewOrganization(OrganizationDto newOrganization)
@@ -323,6 +327,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// Updatable fields: Name, Website, Logo.
     /// </remarks>
     [HttpPost]
+    [Produces("application/json")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -365,6 +370,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// The relay client is used by track-side software to send timing data to the cloud.
     /// </remarks>
     [HttpGet]
+    [Produces("application/json")]
     [ProducesResponseType<RelayConnectionInfoDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

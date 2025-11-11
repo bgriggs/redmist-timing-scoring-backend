@@ -27,6 +27,8 @@
 		<PackageReference Include="Keycloak.AuthServices.Authentication" Version="2.7.0" />
 		<PackageReference Include="StackExchange.Redis" Version="2.9.32" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
+		<PackageReference Include="MessagePack" Version="3.1.4" />
+		<PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.4" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.10">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
