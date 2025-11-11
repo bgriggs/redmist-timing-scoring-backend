@@ -36,12 +36,12 @@ public class EventAggregatorService : BackgroundService
 
     private readonly SessionStateProcessingPipeline processingPipeline;
     private readonly SessionContext sessionContext;
-    private readonly PitProcessorV2 pitProcessorV2;
+    private readonly PitProcessor pitProcessorV2;
 
 
     public EventAggregatorService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, 
         IConfiguration configuration, IMediator mediator, IHubContext<StatusHub> hubContext, 
-        SessionStateProcessingPipeline processingPipeline, SessionContext sessionContext, PitProcessorV2 pitProcessorV2)
+        SessionStateProcessingPipeline processingPipeline, SessionContext sessionContext, PitProcessor pitProcessorV2)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;

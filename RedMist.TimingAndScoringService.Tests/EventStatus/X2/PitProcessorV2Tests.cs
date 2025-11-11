@@ -18,7 +18,7 @@ namespace RedMist.EventProcessor.Tests.EventStatus.X2;
 [TestClass]
 public class PitProcessorV2Tests
 {
-    private PitProcessorV2 _processor = null!;
+    private PitProcessor _processor = null!;
     private Mock<IDbContextFactory<TsContext>> _mockDbContextFactory = null!;
     private Mock<ILoggerFactory> _mockLoggerFactory = null!;
     private Mock<ILogger> _mockLogger = null!;
@@ -54,7 +54,7 @@ public class PitProcessorV2Tests
         // Setup default transponder to car number mapping
         SetupTransponderMapping();
 
-        _processor = new PitProcessorV2(_mockDbContextFactory.Object, _mockLoggerFactory.Object, _sessionContext);
+        _processor = new PitProcessor(_mockDbContextFactory.Object, _mockLoggerFactory.Object, _sessionContext);
     }
 
     private void SetupTransponderMapping()
@@ -498,7 +498,7 @@ public class PitProcessorV2Tests
         };
 
         // Add some pit laps to the internal collection using reflection
-        var carLapsField = typeof(PitProcessorV2).GetField("carLapsWithPitStops",
+        var carLapsField = typeof(PitProcessor).GetField("carLapsWithPitStops",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         Assert.IsNotNull(carLapsField, "carLapsWithPitStops field should exist");
         var carLapsDict = (Dictionary<string, HashSet<int>>)carLapsField.GetValue(_processor)!;
@@ -557,7 +557,7 @@ public class PitProcessorV2Tests
         };
 
         // Add pit laps for a different car
-        var carLapsField = typeof(PitProcessorV2).GetField("carLapsWithPitStops",
+        var carLapsField = typeof(PitProcessor).GetField("carLapsWithPitStops",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         Assert.IsNotNull(carLapsField, "carLapsWithPitStops field should exist");
         var carLapsDict = (Dictionary<string, HashSet<int>>)carLapsField.GetValue(_processor)!;
@@ -585,7 +585,7 @@ public class PitProcessorV2Tests
         };
 
         // Add pit laps to the internal collection using reflection
-        var carLapsField = typeof(PitProcessorV2).GetField("carLapsWithPitStops",
+        var carLapsField = typeof(PitProcessor).GetField("carLapsWithPitStops",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         Assert.IsNotNull(carLapsField, "carLapsWithPitStops field should exist");
         var carLapsDict = (Dictionary<string, HashSet<int>>)carLapsField.GetValue(_processor)!;
@@ -1068,7 +1068,7 @@ public class PitProcessorV2Tests
     public void Constructor_ValidParameters_CreatesInstance()
     {
         // Arrange & Act
-        var processor = new PitProcessorV2(_mockDbContextFactory.Object, _mockLoggerFactory.Object, _sessionContext);
+        var processor = new PitProcessor(_mockDbContextFactory.Object, _mockLoggerFactory.Object, _sessionContext);
 
         // Assert
         Assert.IsNotNull(processor);
@@ -1081,7 +1081,7 @@ public class PitProcessorV2Tests
     {
         // Act & Assert
         Assert.ThrowsExactly<ArgumentNullException>(() =>
-            new PitProcessorV2(null!, _mockLoggerFactory.Object, _sessionContext));
+            new PitProcessor(null!, _mockLoggerFactory.Object, _sessionContext));
     }
 
     [TestMethod]
@@ -1089,7 +1089,7 @@ public class PitProcessorV2Tests
     {
         // Act & Assert
         Assert.ThrowsExactly<ArgumentNullException>(() =>
-            new PitProcessorV2(_mockDbContextFactory.Object, null!, _sessionContext));
+            new PitProcessor(_mockDbContextFactory.Object, null!, _sessionContext));
     }
 
     [TestMethod]
@@ -1097,7 +1097,7 @@ public class PitProcessorV2Tests
     {
         // Act & Assert
         Assert.ThrowsExactly<ArgumentNullException>(() =>
-            new PitProcessorV2(_mockDbContextFactory.Object, _mockLoggerFactory.Object, null!));
+            new PitProcessor(_mockDbContextFactory.Object, _mockLoggerFactory.Object, null!));
     }
 
     #endregion

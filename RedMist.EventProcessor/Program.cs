@@ -105,7 +105,7 @@ public class Program
         builder.Services.AddSingleton<SessionContext>();
         builder.Services.AddSingleton<MultiloopProcessor>();
         builder.Services.AddSingleton<RMonitorDataProcessor>();
-        builder.Services.AddSingleton<PitProcessorV2>();
+        builder.Services.AddSingleton<PitProcessor>();
         builder.Services.AddSingleton<FlagProcessorV2>();
         builder.Services.AddSingleton<PositionDataEnricher>();
         builder.Services.AddSingleton<ResetProcessor>();

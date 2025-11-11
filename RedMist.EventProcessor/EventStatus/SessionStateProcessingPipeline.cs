@@ -27,7 +27,7 @@ public class SessionStateProcessingPipeline
     // Processor instances
     private readonly RMonitorDataProcessor rMonitorProcessor;
     private readonly MultiloopProcessor multiloopProcessor;
-    private readonly PitProcessorV2 pitProcessor;
+    private readonly PitProcessor pitProcessor;
     private readonly FlagProcessorV2 flagProcessor;
     private readonly SessionMonitorV2 sessionMonitor;
     private readonly PositionDataEnricher positionEnricher;
@@ -65,7 +65,7 @@ public class SessionStateProcessingPipeline
     public SessionStateProcessingPipeline(SessionContext context, ILoggerFactory loggerFactory,
         RMonitorDataProcessor rMonitorDataProcessorV2,
         MultiloopProcessor multiloopProcessor,
-        PitProcessorV2 pitProcessorV2,
+        PitProcessor pitProcessorV2,
         FlagProcessorV2 flagProcessorV2,
         SessionMonitorV2 sessionMonitorV2,
         PositionDataEnricher positionEnricher,

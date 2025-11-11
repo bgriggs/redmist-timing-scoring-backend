@@ -20,7 +20,7 @@ public class LapProcessor : IDisposable
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly SessionContext sessionContext;
     private readonly IConnectionMultiplexer cacheMux;
-    private readonly PitProcessorV2 pitProcessor;
+    private readonly PitProcessor pitProcessor;
     private readonly TimeProvider _timeProvider;
     private readonly Dictionary<string, CarPosition> lastCarPositionLookup = [];
     private readonly Dictionary<(int evt, int sess), Dictionary<string, int>> eventCarLastLapLookup = [];
@@ -32,7 +32,7 @@ public class LapProcessor : IDisposable
 
 
     public LapProcessor(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
-        SessionContext sessionContext, IConnectionMultiplexer cacheMux, PitProcessorV2 pitProcessor, TimeProvider? timeProvider = null)
+        SessionContext sessionContext, IConnectionMultiplexer cacheMux, PitProcessor pitProcessor, TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;

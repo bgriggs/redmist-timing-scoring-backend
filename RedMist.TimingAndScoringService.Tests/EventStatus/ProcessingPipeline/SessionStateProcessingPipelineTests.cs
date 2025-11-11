@@ -49,7 +49,7 @@ public class SessionStateProcessingPipelineTests
     // Real processor instances for end-to-end testing
     private RMonitorDataProcessor _rMonitorProcessor = null!;
     private MultiloopProcessor _multiloopProcessor = null!;
-    private PitProcessorV2 _pitProcessor = null!;
+    private PitProcessor _pitProcessor = null!;
     private FlagProcessorV2 _flagProcessor = null!;
     private SessionMonitorV2 _sessionMonitor = null!;
     private PositionDataEnricher _positionEnricher = null!;
@@ -179,7 +179,7 @@ public class SessionStateProcessingPipelineTests
         _startingPositionProcessor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object);
         _rMonitorProcessor = new RMonitorDataProcessor(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor);
         _multiloopProcessor = new MultiloopProcessor(_mockLoggerFactory.Object, _sessionContext);
-        _pitProcessor = new PitProcessorV2(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
+        _pitProcessor = new PitProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _controlLogEnricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);
         _flagProcessor = new FlagProcessorV2(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _sessionMonitor = new SessionMonitorV2(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
