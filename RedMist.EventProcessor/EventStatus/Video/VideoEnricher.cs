@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.FileSystemGlobbing;
-using RedMist.Backend.Shared;
+﻿using RedMist.Backend.Shared;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarVideo;
@@ -59,8 +58,14 @@ public class VideoEnricher
         }
 
         CarPositionPatch? patch = null;
-        if (!string.IsNullOrEmpty(video.CarNumber))
+        if (!string.IsNullOrWhiteSpace(video.CarNumber))
         {
+            if (sessionContext.EventId != video.EventId)
+            {
+                Logger.LogTrace("VideoMetadata event ID {e} is not this event, ignoring.", video.EventId);
+                return null;
+            }
+
             var car = sessionContext.GetCarByNumber(video.CarNumber);
             if (car != null)
             {
@@ -78,6 +83,11 @@ public class VideoEnricher
                     patch = UpdateCar(video, car);
                 }
             }
+        }
+        else
+        {
+            Logger.LogTrace("Unable to resolve car for VideoMetadata event:{e}, car:{c}, transponder:{t}", 
+                video.EventId, video.CarNumber, video.TransponderId);
         }
 
         if (patch != null)

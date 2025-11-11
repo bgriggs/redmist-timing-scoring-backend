@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -15,7 +10,7 @@ using StackExchange.Redis;
 using System.Text.Json;
 using DriverInfo = RedMist.TimingCommon.Models.DriverInfo;
 
-namespace RedMist.EventProcessor.Tests.EventStatus.DriverInformation;
+namespace RedMist.TimingAndScoringService.Tests.EventStatus.DriverInformation;
 
 [TestClass]
 public class DriverEnricherTests
@@ -72,6 +67,7 @@ public class DriverEnricherTests
 
         var driverInfo = new DriverInfo
         {
+            EventId = 1,
             CarNumber = "42",
             DriverId = "driver-123",
             DriverName = "John Doe"
@@ -101,6 +97,7 @@ public class DriverEnricherTests
         // Arrange
         var driverInfo = new DriverInfo
         {
+            EventId = 1,
             CarNumber = "99",
             DriverId = "driver-123",
             DriverName = "John Doe"
@@ -248,6 +245,7 @@ public class DriverEnricherTests
 
         var driverInfo = new DriverInfo
         {
+            EventId = 1,
             CarNumber = "42",
             TransponderId = 67890, // Different transponder
             DriverId = "driver-123",
@@ -273,6 +271,69 @@ public class DriverEnricherTests
         
         // Car 2 should remain unchanged
         Assert.IsTrue(string.IsNullOrEmpty(car2.DriverId));
+    }
+
+    #endregion
+
+    #region Process Method Tests - Event ID Validation
+
+    [TestMethod]
+    public void Process_MismatchedEventId_ReturnsNull()
+    {
+        // Arrange
+        var car = new CarPosition { Number = "42", TransponderId = 12345 };
+        sessionContext.UpdateCars([car]);
+
+        var driverInfo = new DriverInfo
+        {
+            EventId = 999, // Different event
+            CarNumber = "42",
+            DriverId = "driver-123",
+            DriverName = "John Doe"
+        };
+
+        var message = new TimingMessage(
+            Consts.DRIVER_EVENT_TYPE,
+            JsonSerializer.Serialize(driverInfo),
+            1,
+            DateTime.UtcNow);
+
+        // Act
+        var result = driverEnricher.Process(message);
+
+        // Assert
+        Assert.IsNull(result);
+    }
+
+    [TestMethod]
+    public void Process_MatchingEventId_UpdatesCarPosition()
+    {
+        // Arrange
+        var car = new CarPosition { Number = "42", TransponderId = 12345 };
+        sessionContext.UpdateCars([car]);
+
+        var driverInfo = new DriverInfo
+        {
+            EventId = 1, // Matches sessionContext.EventId
+            CarNumber = "42",
+            DriverId = "driver-123",
+            DriverName = "John Doe"
+        };
+
+        var message = new TimingMessage(
+            Consts.DRIVER_EVENT_TYPE,
+            JsonSerializer.Serialize(driverInfo),
+            1,
+            DateTime.UtcNow);
+
+        // Act
+        var result = driverEnricher.Process(message);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.AreEqual("driver-123", car.DriverId);
+        Assert.AreEqual("John Doe", car.DriverName);
     }
 
     #endregion
@@ -339,6 +400,7 @@ public class DriverEnricherTests
 
         var driverInfo = new DriverInfo
         {
+            EventId = 1,
             CarNumber = "42",
             DriverId = "driver-123",
             DriverName = "John Doe"

@@ -151,7 +151,12 @@ public class SessionStateProcessingPipeline
                             }
 
                             // Apply pit data in case of reset
-                            var distinctNumbers = allAppliedChanges.SelectMany(c => c.CarPatches).Select(c => c.Number).Distinct();
+                            var distinctNumbers = allAppliedChanges
+                                .SelectMany(c => c.CarPatches)
+                                .Select(c => c.Number)
+                                .Distinct()
+                                .Where(n => !string.IsNullOrWhiteSpace(n));
+
                             var pitPatches = new List<CarPositionPatch>();
                             foreach (var cn in distinctNumbers)
                             {

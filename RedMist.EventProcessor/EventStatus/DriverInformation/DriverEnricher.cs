@@ -1,4 +1,5 @@
-﻿using RedMist.Backend.Shared;
+﻿using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using RedMist.Backend.Shared;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
@@ -51,8 +52,14 @@ public class DriverEnricher
         }
 
         CarPositionPatch? patch = null;
-        if (!string.IsNullOrEmpty(driverInfo.CarNumber))
+        if (!string.IsNullOrWhiteSpace(driverInfo.CarNumber))
         {
+            if (sessionContext.EventId != driverInfo.EventId)
+            {
+                Logger.LogTrace("DriverInfo event ID {DriverEventId} is not this event, ignoring.", driverInfo.EventId);
+                return null;
+            }
+
             var car = sessionContext.GetCarByNumber(driverInfo.CarNumber);
             if (car != null)
             {
@@ -70,6 +77,11 @@ public class DriverEnricher
                     patch = UpdateCar(driverInfo, car);
                 }
             }
+        }
+        else
+        {
+            Logger.LogTrace("Unable to resolve car for DriverInfo event:{e}, car:{c}, transponder:{t}",
+                driverInfo.EventId, driverInfo.CarNumber, driverInfo.TransponderId);
         }
 
         if (patch != null)

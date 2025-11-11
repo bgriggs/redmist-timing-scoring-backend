@@ -34,7 +34,7 @@ public class Consts
     public const string EVENT_SERVICE_ENDPOINT = "evt-{0}-processor-endpoint";
 
     #region External Metadata
-    public const string EVENT_DRIVER_CHANGE_STREAM_FIELD = "dr-{0}-999999";
+    public const string EVENT_DRIVER_CHANGE_STREAM_FIELD = "drevt-{0}-999999";
     public const string EVENT_DRIVER_KEY = "drevt{0}-car{1}";
     public const string DRIVER_CHANGE_TRANSPONDER_FIELD = "drtrans-999999-999999";
     public const string DRIVER_TRANSPONDER_KEY = "drtrans{0}";

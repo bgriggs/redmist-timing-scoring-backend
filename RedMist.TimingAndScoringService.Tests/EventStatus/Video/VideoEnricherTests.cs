@@ -10,7 +10,7 @@ using RedMist.TimingCommon.Models.InCarVideo;
 using StackExchange.Redis;
 using System.Text.Json;
 
-namespace RedMist.EventProcessor.Tests.EventStatus.Video;
+namespace RedMist.TimingAndScoringService.Tests.EventStatus.Video;
 
 [TestClass]
 public class VideoEnricherTests
@@ -67,6 +67,7 @@ public class VideoEnricherTests
 
         var videoMetadata = new VideoMetadata
         {
+            EventId = 1,
             CarNumber = "42",
             SystemType = VideoSystemType.Sentinel,
             Destinations = new List<VideoDestination>
@@ -105,6 +106,7 @@ public class VideoEnricherTests
         // Arrange
         var videoMetadata = new VideoMetadata
         {
+            EventId = 1,
             CarNumber = "99",
             SystemType = VideoSystemType.Sentinel
         };
@@ -252,6 +254,7 @@ public class VideoEnricherTests
 
         var videoMetadata = new VideoMetadata
         {
+            EventId = 1,
             CarNumber = "42",
             TransponderId = 67890, // Different transponder
             SystemType = VideoSystemType.Sentinel
@@ -272,6 +275,72 @@ public class VideoEnricherTests
         
         var patch = result.CarPatches[0];
         Assert.AreEqual("42", patch.Number); // Should match car number, not transponder
+    }
+
+    #endregion
+
+    #region Process Method Tests - Event ID Validation
+
+    [TestMethod]
+    public void Process_MismatchedEventId_ReturnsNull()
+    {
+        // Arrange
+        var car = new CarPosition { Number = "42", TransponderId = 12345 };
+        sessionContext.UpdateCars([car]);
+
+        var videoMetadata = new VideoMetadata
+        {
+            EventId = 999, // Different event
+            CarNumber = "42",
+            SystemType = VideoSystemType.Sentinel
+        };
+
+        var message = new TimingMessage(
+            Consts.VIDEO_TYPE,
+            JsonSerializer.Serialize(videoMetadata),
+            1,
+            DateTime.UtcNow);
+
+        // Act
+        var result = videoEnricher.Process(message);
+
+        // Assert
+        Assert.IsNull(result);
+    }
+
+    [TestMethod]
+    public void Process_MatchingEventId_UpdatesCarPosition()
+    {
+        // Arrange
+        var car = new CarPosition { Number = "42", TransponderId = 12345 };
+        sessionContext.UpdateCars([car]);
+
+        var videoMetadata = new VideoMetadata
+        {
+            EventId = 1, // Matches sessionContext.EventId
+            CarNumber = "42",
+            SystemType = VideoSystemType.Sentinel,
+            Destinations = new List<VideoDestination>
+            {
+                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/test" }
+            }
+        };
+
+        var message = new TimingMessage(
+            Consts.VIDEO_TYPE,
+            JsonSerializer.Serialize(videoMetadata),
+            1,
+            DateTime.UtcNow);
+
+        // Act
+        var result = videoEnricher.Process(message);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.AreEqual("42", result.CarPatches[0].Number);
+        Assert.IsNotNull(car.InCarVideo);
+        Assert.AreEqual(VideoSystemType.Sentinel, car.InCarVideo.VideoSystemType);
     }
 
     #endregion
@@ -332,6 +401,7 @@ public class VideoEnricherTests
 
         var videoMetadata = new VideoMetadata
         {
+            EventId = 1,
             CarNumber = "42",
             SystemType = VideoSystemType.Sentinel,
             Destinations = new List<VideoDestination>
@@ -366,6 +436,7 @@ public class VideoEnricherTests
 
         var videoMetadata = new VideoMetadata
         {
+            EventId = 1,
             CarNumber = "42",
             SystemType = VideoSystemType.Sentinel,
             Destinations = new List<VideoDestination>()
@@ -508,6 +579,7 @@ public class VideoEnricherTests
         var patch = result.CarPatches[0];
         Assert.AreEqual("42", patch.Number);
         Assert.IsNotNull(patch.InCarVideo);
+        Assert.AreEqual(VideoSystemType.Sentinel, patch.InCarVideo.VideoSystemType);
     }
 
     [TestMethod]
@@ -729,6 +801,7 @@ public class VideoEnricherTests
 
         var videoMetadata = new VideoMetadata
         {
+            EventId = 1,
             CarNumber = "42",
             SystemType = VideoSystemType.None,
             Destinations = new List<VideoDestination>()
@@ -758,6 +831,7 @@ public class VideoEnricherTests
 
         var metadata1 = new VideoMetadata
         {
+            EventId = 1,
             CarNumber = "42",
             SystemType = VideoSystemType.Sentinel,
             Destinations = new List<VideoDestination>
@@ -783,6 +857,7 @@ public class VideoEnricherTests
         // Arrange second update
         var metadata2 = new VideoMetadata
         {
+            EventId = 1,
             CarNumber = "42",
             SystemType = VideoSystemType.Sentinel,
             Destinations = new List<VideoDestination>
@@ -992,6 +1067,7 @@ public class VideoEnricherTests
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
         Assert.IsNotNull(result.InCarVideo);
+        Assert.AreEqual(VideoSystemType.Sentinel, result.InCarVideo.VideoSystemType);
     }
 
     [TestMethod]
@@ -1215,6 +1291,7 @@ public class VideoEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.IsNotNull(result.InCarVideo!.VideoDestination);
+        // VideoDestination is created with default values, Url will be null
         Assert.IsTrue(string.IsNullOrEmpty(result.InCarVideo.VideoDestination.Url));
     }
 

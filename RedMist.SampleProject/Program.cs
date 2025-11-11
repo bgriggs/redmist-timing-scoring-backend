@@ -12,6 +12,7 @@ namespace RedMist.SampleProject;
 internal class Program
 {
     private static IConfiguration configuration = null!;
+
     static async Task Main(string[] args)
     {
         Console.WriteLine("Starting...");
@@ -23,40 +24,97 @@ internal class Program
         var host = builder.Build();
         configuration = host.Services.GetRequiredService<IConfiguration>();
 
-        await SetExternalTelemetryAsync(host.Services.GetRequiredService<ExternalTelemetryClient>());
+        var client = host.Services.GetRequiredService<ExternalTelemetryClient>();
+
+        Console.WriteLine("Press any key to set drivers");
+        Console.ReadLine();
+        await SetDriverExternalTelemetryAsync(client);
+
+        Console.WriteLine("Press any key to remove drivers");
+        Console.ReadLine();
+        await RemoveDriverExternalTelemetryAsync(client);
+
+        Console.WriteLine("Press any key to set video entries");
+        Console.ReadLine();
+        await SetVideoExternalTelemetryAsync(client);
+
+        Console.WriteLine("Press any key to remove video entries");
+        Console.ReadLine();
+        await RemoveVideoExternalTelemetryAsync(client);
     }
 
     /// <summary>
-    /// Sets up external telemetry such as car video and driver.
+    /// Sets driver names.
     /// </summary>
-    /// <returns></returns>
-    static async Task SetExternalTelemetryAsync(ExternalTelemetryClient client)
+    static async Task SetDriverExternalTelemetryAsync(ExternalTelemetryClient client)
     {
         // Either the driver and video can be linked by EventId and CarNumber or by TransponderId.
-        var driverCar = new DriverInfo { EventId = 1234, CarNumber = "42", DriverId = "driver-001", DriverName = "Jane Doe" };
-        var driverTrans = new DriverInfo { TransponderId = 1, DriverId = "driver-001", DriverName = "Jane Doe" };
+        var driverCar = new DriverInfo { EventId = 7, CarNumber = "60", DriverId = "driver-001", DriverName = "Jane Doe" };
+        var driverTrans = new DriverInfo { TransponderId = 1329228, DriverName = "Some Driver" };
         bool result = await client.UpdateDriversAsync([driverCar, driverTrans]);
-        Console.WriteLine($"UpdateDriversAsync result: {result}");
+        Console.WriteLine($"Set driver result: {result}");
+    }
 
+    /// <summary>
+    /// Sets driver names.
+    /// </summary>
+    static async Task RemoveDriverExternalTelemetryAsync(ExternalTelemetryClient client)
+    {
+        // Either the driver and video can be linked by EventId and CarNumber or by TransponderId.
+        var driverCar = new DriverInfo { EventId = 7, CarNumber = "60" };
+        var driverTrans = new DriverInfo { TransponderId = 1329228 };
+        bool result = await client.UpdateDriversAsync([driverCar, driverTrans]);
+        Console.WriteLine($"Remove driver result: {result}");
+    }
+
+    /// <summary>
+    /// Sends car video details.
+    /// </summary>
+    static async Task SetVideoExternalTelemetryAsync(ExternalTelemetryClient client)
+    {
+        // Either the driver and video can be linked by EventId and CarNumber or by TransponderId.
         var videoCar = new VideoMetadata
         {
-            EventId = 1,
-            CarNumber = "123",
+            EventId = 7,
+            CarNumber = "60",
             IsLive = true,
             SystemType = VideoSystemType.Generic,
-            Destinations =
-            [
-                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com" },
-            ]
+            Destinations = [new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com" }]
         };
+
         var videoTrans = new VideoMetadata
         {
-            TransponderId = 123456,
+            TransponderId = 14451114,
             IsLive = true,
             SystemType = VideoSystemType.Sentinel,
             Destinations = [new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com" }]
         };
-        result = await client.UpdateCarVideosAsync([videoCar, videoTrans]);
-        Console.WriteLine($"UpdateCarVideoAsync result: {result}");
+
+        var videoAll = new VideoMetadata
+        {
+            EventId = 7,
+            CarNumber = "1",
+            TransponderId = 1329228,
+            IsLive = true,
+            SystemType = VideoSystemType.MyRacesLive,
+            Destinations = [new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com" }]
+        };
+
+        var result = await client.UpdateCarVideosAsync([videoCar, videoTrans, videoAll]);
+        Console.WriteLine($"Set car video result: {result}");
+    }
+
+    /// <summary>
+    /// Removes car video details.
+    /// </summary>
+    static async Task RemoveVideoExternalTelemetryAsync(ExternalTelemetryClient client)
+    {
+        var videoCar = new VideoMetadata { EventId = 7, CarNumber = "60" };
+
+        var videoTrans = new VideoMetadata { TransponderId = 14451114 };
+
+        var videoAll = new VideoMetadata { EventId = 7, CarNumber = "1", TransponderId = 1329228 };
+        var result = await client.UpdateCarVideosAsync([videoCar, videoTrans, videoAll]);
+        Console.WriteLine($"Remove car video result: {result}");
     }
 }
