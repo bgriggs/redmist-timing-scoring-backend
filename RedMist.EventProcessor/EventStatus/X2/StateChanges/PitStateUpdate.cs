@@ -1,7 +1,6 @@
 ﻿using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using RedMist.TimingCommon.Models.X2;
-using System.Collections.Immutable;
 
 namespace RedMist.EventProcessor.EventStatus.X2.StateChanges;
 
@@ -63,6 +62,12 @@ public record PitStateUpdate(
         if (!patch.IsInPit ?? false && !string.IsNullOrEmpty(patch.Number))
         {
             patch.LapIncludedPit = CarLapsWithPitStops.TryGetValue(patch.Number!, out var laps) && laps.Contains(state.LastLapCompleted);
+        }
+
+        // If previously included in a pit stop, clear it out
+        if (state.LapIncludedPit && patch.LapIncludedPit == null)
+        {
+            patch.LapIncludedPit = false;
         }
 
         return patch;
