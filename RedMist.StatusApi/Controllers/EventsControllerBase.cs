@@ -72,7 +72,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
     public virtual async Task<Event[]> LoadEvents(DateTime startDateUtc)
     {
-        Logger.LogTrace("LoadEvents");
+        Logger.LogTrace("{m} for {d}", nameof(LoadEvents), startDateUtc);
 
         using var context = await tsContext.CreateDbContextAsync();
         var dbEvents = await context.Events
@@ -188,7 +188,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
     public virtual async Task<List<EventListSummary>> LoadLiveAndRecentEvents()
     {
-        Logger.LogTrace("LoadLiveAndRecentEvents");
+        Logger.LogTrace(nameof(LoadLiveAndRecentEvents));
 
         using var db1 = await tsContext.CreateDbContextAsync();
         var recentEvents = await (
@@ -219,12 +219,14 @@ public abstract class EventsControllerBase : ControllerBase
     /// <param name="eventId">The unique identifier of the event.</param>
     /// <returns>The event details including sessions, organization info, and configuration, or null if not found.</returns>
     /// <response code="200">Returns the event details.</response>
+    /// <response code="404">Event not found.</response>
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<Event>(StatusCodes.Status200OK)]
-    public virtual async Task<Event?> LoadEvent(int eventId)
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<ActionResult<Event>> LoadEvent(int eventId)
     {
-        Logger.LogTrace("LoadEvent");
+        Logger.LogTrace("{m} for {id}", nameof(LoadEvent), eventId);
 
         using var context = await tsContext.CreateDbContextAsync();
         var dbEvent = await context.Events
@@ -232,7 +234,7 @@ public abstract class EventsControllerBase : ControllerBase
             .Where(x => x.e.Id == eventId && !x.e.IsDeleted).FirstOrDefaultAsync();
 
         if (dbEvent == null)
-            return null;
+            return NotFound("event");
 
         byte[] defaultLogo = [];
         if (dbEvent.o.Logo == null)
@@ -274,7 +276,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<CarPosition>>(StatusCodes.Status200OK)]
     public virtual async Task<List<CarPosition>> LoadCarLaps(int eventId, int sessionId, string carNumber)
     {
-        Logger.LogTrace("GetCarPositions for event {eventId}", eventId);
+        Logger.LogTrace("{m} for event {eventId}", nameof(LoadCarLaps), eventId);
         using var context = tsContext.CreateDbContext();
         var laps = await context.CarLapLogs
             .Where(c => c.EventId == eventId && c.SessionId == sessionId && c.CarNumber == carNumber && c.LapNumber > 0 && c.Timestamp == context.CarLapLogs
@@ -315,7 +317,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<Session>>(StatusCodes.Status200OK)]
     public virtual async Task<List<Session>> LoadSessions(int eventId)
     {
-        Logger.LogTrace("GetSessions for event {eventId}", eventId);
+        Logger.LogTrace("{m} for event {eventId}", nameof(LoadSessions), eventId);
         using var context = await tsContext.CreateDbContextAsync();
         return await context.Sessions.Where(s => s.EventId == eventId).ToListAsync();
     }
@@ -422,7 +424,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<CompetitorMetadata>(StatusCodes.Status200OK)]
     public virtual async Task<CompetitorMetadata?> LoadCompetitorMetadata(int eventId, string car)
     {
-        Logger.LogTrace("LoadCompetitorMetadata for event {eventId}, car {car}", eventId, car);
+        Logger.LogTrace("{m} for event {eventId}, car {car}", nameof(LoadCompetitorMetadata), eventId, car);
         return await GetCompetitorMetadata(eventId, car);
     }
 
@@ -470,7 +472,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<ControlLogEntry>>(StatusCodes.Status200OK)]
     public virtual async Task<List<ControlLogEntry>> LoadControlLog(int eventId)
     {
-        Logger.LogTrace("LoadControlLog for event {eventId}", eventId);
+        Logger.LogTrace("{m} for event {eventId}", nameof(LoadControlLog), eventId);
         var logCacheKey = string.Format(Consts.CONTROL_LOG, eventId);
         var cache = cacheMux.GetDatabase();
         var json = await cache.StringGetAsync(logCacheKey);
@@ -498,7 +500,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<CarControlLogs>(StatusCodes.Status200OK)]
     public virtual async Task<CarControlLogs?> LoadCarControlLogs(int eventId, string car)
     {
-        Logger.LogTrace("LoadCarControlLog for event {eventId} car {c}", eventId, car);
+        Logger.LogTrace("{m} for event {eventId} car {c}", nameof(LoadCarControlLogs), eventId, car);
         var carLogEntryKey = string.Format(Consts.CONTROL_LOG_CAR, eventId, car);
         var cache = cacheMux.GetDatabase();
         var json = await cache.StringGetAsync(carLogEntryKey);
@@ -530,7 +532,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<InCarPayload>(StatusCodes.Status200OK)]
     public virtual async Task<InCarPayload?> LoadInCarPayload(int eventId, string car)
     {
-        Logger.LogTrace("LoadInCarPayload for event {eventId}, car {car}", eventId, car);
+        Logger.LogTrace("{m} for event {eventId}, car {car}", nameof(LoadInCarPayload), eventId, car);
         var cache = cacheMux.GetDatabase();
         var cacheKey = string.Format(Consts.IN_CAR_DATA, eventId, car);
         var json = await cache.StringGetAsync(cacheKey);
@@ -561,7 +563,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<FlagDuration>>(StatusCodes.Status200OK)]
     public virtual async Task<List<FlagDuration>> LoadFlags(int eventId, int sessionId)
     {
-        Logger.LogTrace("LoadFlags for event {eventId}, session {sessionId}", eventId, sessionId);
+        Logger.LogTrace("{m} for event {eventId}, session {sessionId}", nameof(LoadFlags), eventId, sessionId);
         using var context = await tsContext.CreateDbContextAsync();
         var flagLogs = await context.FlagLog
             .Where(f => f.EventId == eventId && f.SessionId == sessionId)
