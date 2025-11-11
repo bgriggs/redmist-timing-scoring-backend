@@ -24,14 +24,14 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.8" />
-		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-		<PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="17.14.2" />
-		<PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="1.8.3" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.10" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.0" />
+		<PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.1.0" />
+		<PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.0.1" />
 		<PackageReference Include="Moq" Version="4.20.72" />
-		<PackageReference Include="MSTest" Version="3.10.3" />
+		<PackageReference Include="MSTest" Version="4.0.1" />
 		<PackageReference Include="BigMission.TestHelpers" Version="3.0.8" />
-		<PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.9.0" />
+		<PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.10.0" />
 	</ItemGroup>
 
 	<ItemGroup>

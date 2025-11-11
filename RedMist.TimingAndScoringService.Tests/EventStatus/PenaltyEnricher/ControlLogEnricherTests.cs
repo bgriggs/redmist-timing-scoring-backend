@@ -296,7 +296,7 @@ public class ControlLogEnricherTests
         // and penalty exists in lookup. The actual implementation doesn't throw exceptions
         // for normal scenarios like car not found - it handles them gracefully.
         // This test verifies the method handles edge cases without throwing exceptions.
-        Assert.AreEqual(1, result.Count); // Car will be processed successfully
+        Assert.HasCount(1, result); // Car will be processed successfully
     }
 
     [TestMethod]

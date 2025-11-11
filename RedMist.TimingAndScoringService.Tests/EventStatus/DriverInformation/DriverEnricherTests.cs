@@ -88,7 +88,7 @@ public class DriverEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         // Verify car position was updated
         Assert.AreEqual("driver-123", car.DriverId);

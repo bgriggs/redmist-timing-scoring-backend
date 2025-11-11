@@ -1,8 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
-using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.TimingCommon.Models;
@@ -12,7 +10,6 @@ namespace RedMist.EventProcessor.Tests.EventStatus.PositionEnricher;
 [TestClass]
 public class PositionDataEnricherTests
 {
-    private Mock<IDbContextFactory<TsContext>> _mockDbContextFactory = null!;
     private Mock<ILoggerFactory> _mockLoggerFactory = null!;
     private Mock<ILogger> _mockLogger = null!;
     private SessionContext _sessionContext = null!;
@@ -21,7 +18,6 @@ public class PositionDataEnricherTests
     [TestInitialize]
     public void Setup()
     {
-        _mockDbContextFactory = new Mock<IDbContextFactory<TsContext>>();
         _mockLoggerFactory = new Mock<ILoggerFactory>();
         _mockLogger = new Mock<ILogger>();
 
@@ -95,7 +91,7 @@ public class PositionDataEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionPatches.Count);
+        Assert.HasCount(0, result.SessionPatches);
         
         // The enricher might not generate patches if there are no actual changes
         // Let's be more flexible about this assertion
@@ -139,7 +135,7 @@ public class PositionDataEnricherTests
         // Let's be more flexible about this test
         if (result.CarPatches.Count > 0)
         {
-            Assert.AreEqual(2, result.CarPatches.Count);
+            Assert.HasCount(2, result.CarPatches);
 
             // Verify class positions were set
             var car1Patch = result.CarPatches.FirstOrDefault(p => p.Number == "1");
@@ -364,123 +360,8 @@ public class PositionDataEnricherTests
         else
         {
             // If it returns a result, it should be empty or have no valid patches
-            Assert.AreEqual(0, result.CarPatches.Count, "Should have no patches due to processing errors");
+            Assert.IsEmpty(result.CarPatches, "Should have no patches due to processing errors");
         }
-    }
-
-    #endregion
-
-    #region Clear Tests
-
-    //[TestMethod]
-    //public void Clear_CallsClearOnProcessor()
-    //{
-    //    // Arrange
-    //    var car = CreateTestCarPosition("1", "A", 1);
-    //    car.OverallPosition = 1;
-    //    car.OverallStartingPosition = 3;
-    //    _sessionContext.SessionState.CarPositions.Add(car);
-
-    //    // Process once to populate internal state
-    //    _enricher.Process();
-
-    //    // Act
-    //    _enricher.Clear();
-
-    //    // Assert
-    //    // After clear, processing the same car again should treat it as new
-    //    var result = _enricher.Process();
-    //    Assert.IsNotNull(result);
-    //}
-
-    #endregion
-
-    #region CarPositionMapper Tests
-
-    [TestMethod]
-    public void CarPositionMapper_CloneCarPositions_CreatesDeepCopy()
-    {
-        // Arrange
-        var mapper = new CarPositionMapper();
-        var original = CreateTestCarPosition("1", "A", 1);
-        original.TotalTime = "00:10:00.000";
-
-        var completedSection = new CompletedSection
-        {
-            Number = "1",
-            SectionId = "Sector1",
-            ElapsedTimeMs = 30000
-        };
-        original.CompletedSections.Add(completedSection);
-
-        var originalList = new List<CarPosition> { original };
-
-        // Act
-        var cloned = mapper.CloneCarPositions(originalList);
-
-        // Assert
-        Assert.AreEqual(1, cloned.Count);
-
-        // Verify the CarPosition objects are different instances using ReferenceEquals
-        Assert.IsFalse(ReferenceEquals(original, cloned[0]), "Original and cloned CarPosition should be different instances");
-
-        // Verify the properties are correctly copied
-        Assert.AreEqual(original.Number, cloned[0].Number);
-        Assert.AreEqual(original.TotalTime, cloned[0].TotalTime);
-        Assert.AreEqual(original.Class, cloned[0].Class);
-        Assert.AreEqual(original.OverallPosition, cloned[0].OverallPosition);
-
-        // Verify CompletedSections collection is a different instance using ReferenceEquals
-        Assert.IsFalse(ReferenceEquals(original.CompletedSections, cloned[0].CompletedSections),
-            "Original and cloned CompletedSections collections should be different instances");
-
-        // Verify CompletedSections collection has the same count
-        Assert.AreEqual(original.CompletedSections.Count, cloned[0].CompletedSections.Count);
-
-        // Verify the CompletedSection objects are different instances but have same values
-        if (original.CompletedSections.Count > 0 && cloned[0].CompletedSections.Count > 0)
-        {
-            var originalSection = original.CompletedSections[0];
-            var clonedSection = cloned[0].CompletedSections[0];
-
-            // Use ReferenceEquals to verify different instances
-            Assert.IsFalse(ReferenceEquals(originalSection, clonedSection),
-                "Original and cloned CompletedSection should be different instances");
-
-            // Verify the values are correctly copied
-            Assert.AreEqual(originalSection.Number, clonedSection.Number);
-            Assert.AreEqual(originalSection.SectionId, clonedSection.SectionId);
-            Assert.AreEqual(originalSection.ElapsedTimeMs, clonedSection.ElapsedTimeMs);
-        }
-    }
-
-    [TestMethod]
-    public void Debug_CloneCarPositions_VerifyDeepCopy()
-    {
-        // Arrange
-        var mapper = new CarPositionMapper();
-        var original = CreateTestCarPosition("1", "A", 1);
-        original.InClassStartingPosition = 5;
-        original.OverallStartingPosition = 3;
-
-        // Act
-        var cloned = mapper.CloneCarPositions([original]);
-
-        // Modify the cloned car
-        cloned[0].InClassStartingPosition = 10;
-        cloned[0].OverallStartingPosition = 8;
-
-        // Assert
-        Console.WriteLine($"Original InClassStartingPosition: {original.InClassStartingPosition}");
-        Console.WriteLine($"Original OverallStartingPosition: {original.OverallStartingPosition}");
-        Console.WriteLine($"Cloned InClassStartingPosition: {cloned[0].InClassStartingPosition}");
-        Console.WriteLine($"Cloned OverallStartingPosition: {cloned[0].OverallStartingPosition}");
-
-        // Verify that original values are preserved
-        Assert.AreEqual(5, original.InClassStartingPosition, "Original InClassStartingPosition should not be modified");
-        Assert.AreEqual(3, original.OverallStartingPosition, "Original OverallStartingPosition should not be modified");
-        Assert.AreEqual(10, cloned[0].InClassStartingPosition, "Cloned InClassStartingPosition should be modified");
-        Assert.AreEqual(8, cloned[0].OverallStartingPosition, "Cloned OverallStartingPosition should be modified");
     }
 
     #endregion

@@ -16,7 +16,7 @@ using JsonSerializer = System.Text.Json.JsonSerializer;
 namespace RedMist.EventProcessor.Tests.EventStatus.X2;
 
 [TestClass]
-public class PitProcessorV2Tests
+public class PitProcessorTests
 {
     private PitProcessor _processor = null!;
     private Mock<IDbContextFactory<TsContext>> _mockDbContextFactory = null!;

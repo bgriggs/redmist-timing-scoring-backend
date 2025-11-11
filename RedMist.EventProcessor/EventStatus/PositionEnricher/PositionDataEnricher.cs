@@ -1,4 +1,5 @@
-﻿using RedMist.TimingCommon.Models;
+﻿using RedMist.TimingCommon.Extensions;
+using RedMist.TimingCommon.Models;
 using Riok.Mapperly.Abstractions;
 using System.Diagnostics;
 
@@ -13,7 +14,6 @@ public class PositionDataEnricher
     private ILogger Logger { get; }
     private readonly SessionContext sessionContext;
     private readonly PositionMetadataProcessor positionMetadataProcessor = new();
-    private readonly CarPositionMapper carPositionMapper = new();
     private readonly Dictionary<string, int> lastMLOverallStartingPositions = [];
     private readonly Dictionary<string, int> mlInClassStartingPositions = [];
 
@@ -45,7 +45,7 @@ public class PositionDataEnricher
                 return null;
             }
 
-            var copiedCarPositions = carPositionMapper.CloneCarPositions(originalCarPositions);
+            var copiedCarPositions = originalCarPositions.DeepCopy().ToList();
             ApplyStartingPositions(copiedCarPositions);
 
             // Update the copies with position metadata
@@ -176,23 +176,6 @@ public class PositionDataEnricher
             }
         }
     }
-}
-
-/// <summary>
-/// Mapper for CarPosition objects using Mapperly code generation
-/// </summary>
-[Mapper(UseDeepCloning = true)]
-public partial class CarPositionMapper
-{
-    /// <summary>
-    /// Creates deep copies of a list of CarPosition objects
-    /// </summary>
-    public partial List<CarPosition> CloneCarPositions(List<CarPosition> source);
-
-    /// <summary>
-    /// Creates a deep copy of a CarPosition object
-    /// </summary>
-    public partial CarPosition CloneCarPosition(CarPosition source);
 }
 
 /// <summary>

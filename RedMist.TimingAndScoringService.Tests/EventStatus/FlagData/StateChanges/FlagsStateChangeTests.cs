@@ -24,7 +24,7 @@ public class FlagsStateChangeTests
         // Assert
         Assert.IsNotNull(stateChange);
         Assert.AreSame(flagDurations, stateChange.FlagDurations);
-        Assert.AreEqual(2, stateChange.FlagDurations.Count);
+        Assert.HasCount(2, stateChange.FlagDurations);
     }
 
     [TestMethod]
@@ -39,7 +39,7 @@ public class FlagsStateChangeTests
         // Assert
         Assert.IsNotNull(stateChange);
         Assert.AreSame(flagDurations, stateChange.FlagDurations);
-        Assert.AreEqual(0, stateChange.FlagDurations.Count);
+        Assert.HasCount(0, stateChange.FlagDurations);
     }
 
     #endregion
@@ -77,7 +77,7 @@ public class FlagsStateChangeTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreSame(newFlagDurations, result.FlagDurations);
-        Assert.AreEqual(2, result.FlagDurations!.Count);
+        Assert.HasCount(2, result.FlagDurations!);
     }
 
     [TestMethod]
@@ -358,7 +358,7 @@ public class FlagsStateChangeTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreSame(newFlagDurations, result.FlagDurations);
-        Assert.AreEqual(3, result.FlagDurations!.Count);
+        Assert.HasCount(3, result.FlagDurations!);
     }
 
     [TestMethod]
@@ -394,7 +394,7 @@ public class FlagsStateChangeTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreSame(newFlagDurations, result.FlagDurations);
-        Assert.AreEqual(3, result.FlagDurations!.Count);
+        Assert.HasCount(3, result.FlagDurations!);
     }
 
     [TestMethod]
@@ -430,7 +430,7 @@ public class FlagsStateChangeTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreSame(newFlagDurations, result.FlagDurations);
-        Assert.AreEqual(3, result.FlagDurations!.Count);
+        Assert.HasCount(3, result.FlagDurations!);
     }
 
     #endregion
@@ -479,7 +479,7 @@ public class FlagsStateChangeTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreSame(newFlagDurations, result.FlagDurations);
-        Assert.AreEqual(100, result.FlagDurations!.Count);
+        Assert.HasCount(100, result.FlagDurations!);
     }
 
     #endregion
@@ -524,7 +524,7 @@ public class FlagsStateChangeTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreSame(newFlagDurations, result.FlagDurations);
-        Assert.AreEqual(5, result.FlagDurations!.Count);
+        Assert.HasCount(5, result.FlagDurations!);
         
         // Verify the last flag changed to Checkered
         var lastFlag = result.FlagDurations.Last();
@@ -587,7 +587,7 @@ public class FlagsStateChangeTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreSame(newFlagDurations, result.FlagDurations);
-        Assert.AreEqual(12, result.FlagDurations!.Count);
+        Assert.HasCount(12, result.FlagDurations!);
     }
 
     [TestMethod]
@@ -650,7 +650,7 @@ public class FlagsStateChangeTests
         var result = stateChange.GetChanges(currentState);
 
         // Assert
-        Assert.AreEqual(newFlagDurations.Count, result!.FlagDurations!.Count);
+        Assert.HasCount(newFlagDurations.Count, result!.FlagDurations!);
     }
 
     #endregion

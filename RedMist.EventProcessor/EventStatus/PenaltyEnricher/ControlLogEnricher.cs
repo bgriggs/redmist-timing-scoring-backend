@@ -43,10 +43,10 @@ public class ControlLogEnricher : BackgroundService
                 var penalties = new Dictionary<string, CarPenalty>();
                 foreach (var entry in controlLogHash!)
                 {
-                    var penality = JsonSerializer.Deserialize<CarPenalty>(entry.Value.ToString()!);
-                    if (penality != null && entry.Name.HasValue)
+                    var penalty = JsonSerializer.Deserialize<CarPenalty>(entry.Value.ToString()!);
+                    if (penalty != null && entry.Name.HasValue)
                     {
-                        penalties[entry.Name!] = penality;
+                        penalties[entry.Name!] = penalty;
                     }
                 }
                 penaltyLookup = penalties.ToImmutableDictionary();
@@ -80,20 +80,20 @@ public class ControlLogEnricher : BackgroundService
                 if (car.Number == null)
                     continue;
 
-                if (penaltyLookup.TryGetValue(car.Number, out var penality))
+                if (penaltyLookup.TryGetValue(car.Number, out var penalty))
                 {
-                    if (car != null && penality != null)
+                    if (car != null && penalty != null)
                     {
                         var patch = new CarPositionPatch();
-                        if (car.PenalityWarnings != penality.Warnings)
+                        if (car.PenalityWarnings != penalty.Warnings)
                         {
-                            car.PenalityWarnings = penality.Warnings;
-                            patch.PenalityWarnings = penality.Warnings;
+                            car.PenalityWarnings = penalty.Warnings;
+                            patch.PenalityWarnings = penalty.Warnings;
                         }
-                        if (car.PenalityLaps != penality.Laps)
+                        if (car.PenalityLaps != penalty.Laps)
                         {
-                            car.PenalityLaps = penality.Laps;
-                            patch.PenalityLaps = penality.Laps;
+                            car.PenalityLaps = penalty.Laps;
+                            patch.PenalityLaps = penalty.Laps;
                         }
                         if (TimingCommon.Models.Mappers.CarPositionMapper.IsValidPatch(patch))
                         {

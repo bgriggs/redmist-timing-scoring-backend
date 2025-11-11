@@ -22,7 +22,7 @@ public class ControlLogCacheTests
         var log = new ControlLogEntry { Car1 = "1", PenalityAction = "waRniNg" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
-        Assert.AreEqual(1, results.Count);
+        Assert.HasCount(1, results);
         Assert.AreEqual(1, results["1"].warnings);
         Assert.AreEqual(0, results["1"].laps);
     }
@@ -34,7 +34,7 @@ public class ControlLogCacheTests
         var log = new ControlLogEntry { Car1 = "1", PenalityAction = "warns" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
-        Assert.AreEqual(1, results.Count);
+        Assert.HasCount(1, results);
         Assert.AreEqual(0, results["1"].warnings);
     }
 
@@ -45,7 +45,7 @@ public class ControlLogCacheTests
         var log = new ControlLogEntry { Car1 = "1", PenalityAction = "1 lap" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
-        Assert.AreEqual(1, results.Count);
+        Assert.HasCount(1, results);
         Assert.AreEqual(0, results["1"].warnings);
         Assert.AreEqual(1, results["1"].laps);
     }
@@ -57,7 +57,7 @@ public class ControlLogCacheTests
         var log = new ControlLogEntry { Car1 = "1", PenalityAction = "1 loop" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
-        Assert.AreEqual(1, results.Count);
+        Assert.HasCount(1, results);
         Assert.AreEqual(0, results["1"].warnings);
         Assert.AreEqual(0, results["1"].laps);
     }
@@ -69,7 +69,7 @@ public class ControlLogCacheTests
         var log = new ControlLogEntry { Car1 = "1", PenalityAction = "10 laps" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
-        Assert.AreEqual(1, results.Count);
+        Assert.HasCount(1, results);
         Assert.AreEqual(0, results["1"].warnings);
         Assert.AreEqual(10, results["1"].laps);
     }
@@ -81,7 +81,7 @@ public class ControlLogCacheTests
         var log = new ControlLogEntry { Car1 = "1", Car2 = "2", PenalityAction = "10 laps" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
-        Assert.AreEqual(1, results.Count);
+        Assert.HasCount(1, results  );
         Assert.AreEqual(0, results["1"].warnings);
         // When no car is highlighted, penalty defaults to Car1
         Assert.AreEqual(10, results["1"].laps);
@@ -94,7 +94,7 @@ public class ControlLogCacheTests
         var log = new ControlLogEntry { Car1 = "1", Car2 = "2", PenalityAction = "10 laps", IsCar1Highlighted = true };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
-        Assert.AreEqual(1, results.Count);
+        Assert.HasCount(1, results);
         Assert.AreEqual(0, results["1"].warnings);
         Assert.AreEqual(10, results["1"].laps);
     }
@@ -106,7 +106,7 @@ public class ControlLogCacheTests
         var log = new ControlLogEntry { Car1 = "1", Car2 = "2", PenalityAction = "10 laps", IsCar2Highlighted = true };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
-        Assert.AreEqual(1, results.Count);
+        Assert.HasCount(1, results);
         Assert.AreEqual(0, results["1"].warnings);
         // Car1 is not highlighted, so no penalty for car 1
         Assert.AreEqual(0, results["1"].laps);
@@ -120,7 +120,7 @@ public class ControlLogCacheTests
         logs["1"] = [log];
         logs["2"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
-        Assert.AreEqual(2, results.Count);
+        Assert.HasCount(2, results);
         Assert.AreEqual(0, results["2"].warnings);
         Assert.AreEqual(10, results["2"].laps);
     }
@@ -132,7 +132,7 @@ public class ControlLogCacheTests
         var log = new ControlLogEntry { Car1 = "1", PenalityAction = "xx Laps" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
-        Assert.AreEqual(1, results.Count);
+        Assert.HasCount(1, results);
         Assert.AreEqual(0, results["1"].warnings);
         Assert.AreEqual(0, results["1"].laps);
     }
@@ -145,7 +145,7 @@ public class ControlLogCacheTests
         var log2 = new ControlLogEntry { Car1 = "1", PenalityAction = "Warning" };
         logs["1"] = [log1, log2];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
-        Assert.AreEqual(1, results.Count);
+        Assert.HasCount(1, results);
         Assert.AreEqual(1, results["1"].warnings);
         Assert.AreEqual(2, results["1"].laps);
     }
@@ -250,7 +250,7 @@ public class ControlLogCacheTests
         var worksheet1Results = ControlLogCache.GetWarningsAndPenalties(worksheet1Logs);
 
         // Assert - Verify first worksheet results
-        Assert.AreEqual(3, worksheet1Results.Count, "Should have entries for 3 cars from worksheet 1");
+        Assert.HasCount(3, worksheet1Results, "Should have entries for 3 cars from worksheet 1");
         
         // Car 15 gets a warning
         Assert.IsTrue(worksheet1Results.ContainsKey("15"), "Should have penalties for car 15");
@@ -271,7 +271,7 @@ public class ControlLogCacheTests
         var worksheet2Results = ControlLogCache.GetWarningsAndPenalties(worksheet2Logs);
 
         // Assert - Verify second worksheet results (completely different data)
-        Assert.AreEqual(3, worksheet2Results.Count, "Should have entries for 3 cars from worksheet 2");
+        Assert.HasCount(3, worksheet2Results, "Should have entries for 3 cars from worksheet 2");
         
         // Verify old worksheet cars are not present
         Assert.IsFalse(worksheet2Results.ContainsKey("15"), "Should NOT have car 15 from old worksheet");
@@ -339,7 +339,7 @@ public class ControlLogCacheTests
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
 
         // Assert
-        Assert.AreEqual(4, results.Count, "Should have penalties for 4 cars");
+        Assert.HasCount(4, results, "Should have penalties for 4 cars");
 
         // Verify highlighted cars get penalties
         Assert.AreEqual(1, results["15"].warnings, "Car 15 (highlighted) should have 1 warning");
