@@ -50,7 +50,7 @@ public class VideoEnricher
             Logger.LogWarning(ex, "Unable to deserialize VideoMetadata from message data: {Data}", message.Data);
             return null;
         }
-        
+
         if (video == null)
         {
             Logger.LogWarning("Unable to deserialize VideoMetadata from message data: {Data}", message.Data);
@@ -86,7 +86,7 @@ public class VideoEnricher
         }
         else
         {
-            Logger.LogTrace("Unable to resolve car for VideoMetadata event:{e}, car:{c}, transponder:{t}", 
+            Logger.LogTrace("Unable to resolve car for VideoMetadata event:{e}, car:{c}, transponder:{t}",
                 video.EventId, video.CarNumber, video.TransponderId);
         }
 
@@ -220,17 +220,23 @@ public class VideoEnricher
 
     private static CarPositionPatch UpdateCar(VideoMetadata video, CarPosition car)
     {
-        var status = new VideoStatus
+        VideoDestination destination;
+        if (video.Destinations.Any(d => d.Type == VideoDestinationType.DirectSrt))
         {
-            VideoSystemType = video.SystemType,
-            VideoDestination = video.Destinations?.FirstOrDefault() ?? new VideoDestination(),
-        };
+            // Prefer SRT to avoid YouTube copyright issues
+            destination = video.Destinations.First(d => d.Type == VideoDestinationType.DirectSrt);
+        }
+        else
+        {
+            destination = video.Destinations.FirstOrDefault() ?? new VideoDestination();
+        }
 
+        var status = new VideoStatus { VideoSystemType = video.SystemType, VideoDestination = destination };
+
+        // Perform direct update to session state car
         car.InCarVideo = status;
-        return new CarPositionPatch()
-        {
-            Number = car.Number,
-            InCarVideo = status,
-        };
+
+        // Capture patch to send out to clients
+        return new CarPositionPatch() { Number = car.Number, InCarVideo = status };
     }
 }

@@ -2,6 +2,7 @@
 using RedMist.TimingCommon.Models.InCarVideo;
 using RestSharp;
 using BigMission.Shared.Auth;
+using MessagePack;
 
 namespace RedMist.ExternalDataCollection.Clients;
 
@@ -23,6 +24,9 @@ public class ExternalTelemetryClient
             Authenticator = new KeycloakServiceAuthenticator(string.Empty, authUrl, realm, clientId, clientSecret)
         };
         restClient = new RestClient(options);
+
+        // Add default Accept header for all requests (MessagePack preferred, JSON fallback)
+        restClient.AddDefaultHeader("Accept", "application/msgpack, application/json");
     }
 
 
@@ -33,7 +37,8 @@ public class ExternalTelemetryClient
     public virtual async Task<bool> UpdateDriversAsync(List<DriverInfo> drivers, CancellationToken stoppingToken = default)
     {
         var request = new RestRequest("UpdateDrivers", Method.Post);
-        request.AddJsonBody(drivers);
+        var serialized = MessagePackSerializer.Serialize(drivers, cancellationToken: stoppingToken);
+        request.AddBody(serialized, "application/x-msgpack");
         var result = await restClient.ExecutePostAsync(request, stoppingToken);
         return result.IsSuccessful;
     }
@@ -45,7 +50,8 @@ public class ExternalTelemetryClient
     public virtual async Task<bool> UpdateCarVideosAsync(List<VideoMetadata> videos, CancellationToken stoppingToken = default)
     {
         var request = new RestRequest("UpdateCarVideos", Method.Post);
-        request.AddJsonBody(videos);
+        var serialized = MessagePackSerializer.Serialize(videos, cancellationToken: stoppingToken);
+        request.AddBody(serialized, "application/x-msgpack");
         var result = await restClient.ExecutePostAsync(request, stoppingToken);
         return result.IsSuccessful;
     }

@@ -39,6 +39,7 @@ public class Program
         builder.Services.AddHostedService<SentinelStatusService>();
         builder.Services.AddTransient<SentinelClient>();
         builder.Services.AddSingleton<ExternalTelemetryClient>();
+        builder.Services.AddHttpClient();
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();

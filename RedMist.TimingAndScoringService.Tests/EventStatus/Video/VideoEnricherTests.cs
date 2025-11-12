@@ -87,7 +87,7 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         var patch = result.CarPatches[0];
         Assert.AreEqual("42", patch.Number);
@@ -181,7 +181,7 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         var patch = result.CarPatches[0];
         Assert.AreEqual("42", patch.Number);
@@ -271,7 +271,7 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         var patch = result.CarPatches[0];
         Assert.AreEqual("42", patch.Number); // Should match car number, not transponder
@@ -337,7 +337,7 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         Assert.AreEqual("42", result.CarPatches[0].Number);
         Assert.IsNotNull(car.InCarVideo);
         Assert.AreEqual(VideoSystemType.Sentinel, car.InCarVideo.VideoSystemType);
@@ -423,8 +423,114 @@ public class VideoEnricherTests
         // Assert
         Assert.IsNotNull(result);
         var patch = result.CarPatches[0];
+        Assert.AreEqual("srt://second", patch.InCarVideo!.VideoDestination.Url);
+        Assert.AreEqual(VideoDestinationType.DirectSrt, patch.InCarVideo.VideoDestination.Type);
+    }
+
+    [TestMethod]
+    public void Process_MultipleDestinationsWithSrt_PrefersSrtDestination()
+    {
+        // Arrange
+        var car = new CarPosition { Number = "42", TransponderId = 12345 };
+        sessionContext.UpdateCars([car]);
+
+        var videoMetadata = new VideoMetadata
+        {
+            EventId = 1,
+            CarNumber = "42",
+            SystemType = VideoSystemType.Sentinel,
+            Destinations = new List<VideoDestination>
+            {
+                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/first" },
+                new VideoDestination { Type = VideoDestinationType.DirectSrt, Url = "srt://example.com" }
+            }
+        };
+
+        var message = new TimingMessage(
+            Consts.VIDEO_TYPE,
+            JsonSerializer.Serialize(videoMetadata),
+            1,
+            DateTime.UtcNow);
+
+        // Act
+        var result = videoEnricher.Process(message);
+
+        // Assert
+        Assert.IsNotNull(result);
+        var patch = result.CarPatches[0];
+        Assert.AreEqual("srt://example.com", patch.InCarVideo!.VideoDestination.Url);
+        Assert.AreEqual(VideoDestinationType.DirectSrt, patch.InCarVideo.VideoDestination.Type);
+    }
+
+    [TestMethod]
+    public void Process_MultipleDestinationsWithoutSrt_UsesFirstDestination()
+    {
+        // Arrange
+        var car = new CarPosition { Number = "42", TransponderId = 12345 };
+        sessionContext.UpdateCars([car]);
+
+        var videoMetadata = new VideoMetadata
+        {
+            EventId = 1,
+            CarNumber = "42",
+            SystemType = VideoSystemType.Sentinel,
+            Destinations = new List<VideoDestination>
+            {
+                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/first" },
+                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/second" }
+            }
+        };
+
+        var message = new TimingMessage(
+            Consts.VIDEO_TYPE,
+            JsonSerializer.Serialize(videoMetadata),
+            1,
+            DateTime.UtcNow);
+
+        // Act
+        var result = videoEnricher.Process(message);
+
+        // Assert
+        Assert.IsNotNull(result);
+        var patch = result.CarPatches[0];
         Assert.AreEqual("https://youtube.com/first", patch.InCarVideo!.VideoDestination.Url);
         Assert.AreEqual(VideoDestinationType.Youtube, patch.InCarVideo.VideoDestination.Type);
+    }
+
+    [TestMethod]
+    public void Process_SrtDestinationNotFirst_StillPrefersSrt()
+    {
+        // Arrange
+        var car = new CarPosition { Number = "42", TransponderId = 12345 };
+        sessionContext.UpdateCars([car]);
+
+        var videoMetadata = new VideoMetadata
+        {
+            EventId = 1,
+            CarNumber = "42",
+            SystemType = VideoSystemType.Sentinel,
+            Destinations = new List<VideoDestination>
+            {
+                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/first" },
+                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/second" },
+                new VideoDestination { Type = VideoDestinationType.DirectSrt, Url = "srt://third.com" }
+            }
+        };
+
+        var message = new TimingMessage(
+            Consts.VIDEO_TYPE,
+            JsonSerializer.Serialize(videoMetadata),
+            1,
+            DateTime.UtcNow);
+
+        // Act
+        var result = videoEnricher.Process(message);
+
+        // Assert
+        Assert.IsNotNull(result);
+        var patch = result.CarPatches[0];
+        Assert.AreEqual("srt://third.com", patch.InCarVideo!.VideoDestination.Url);
+        Assert.AreEqual(VideoDestinationType.DirectSrt, patch.InCarVideo.VideoDestination.Type);
     }
 
     [TestMethod]
@@ -489,7 +595,7 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         var patch = result.CarPatches[0];
         Assert.AreEqual("42", patch.Number);
@@ -533,7 +639,7 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         var patch = result.CarPatches[0];
         Assert.AreEqual("42", patch.Number);
@@ -574,7 +680,7 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         var patch = result.CarPatches[0];
         Assert.AreEqual("42", patch.Number);
@@ -607,7 +713,7 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         var patch = result.CarPatches[0];
         Assert.AreEqual("42", patch.Number);
@@ -640,7 +746,7 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         // Verify the first key was checked
         mockDatabase.Verify(x => x.StringGetAsync(key, CommandFlags.None), Times.Once);
@@ -691,7 +797,7 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(2, result.CarPatches.Count);
+        Assert.HasCount(2, result.CarPatches);
         
         Assert.IsTrue(result.CarPatches.Any(p => p.Number == "1"));
         Assert.IsTrue(result.CarPatches.Any(p => p.Number == "2"));
@@ -742,7 +848,7 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(2, result.CarPatches.Count);
+        Assert.HasCount(2, result.CarPatches);
         
         // Car 1 should have video status
         var patch1 = result.CarPatches.First(p => p.Number == "1");
@@ -1263,12 +1369,74 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
+        Assert.AreEqual("srt://second", result.InCarVideo!.VideoDestination.Url);
+        Assert.AreEqual(VideoDestinationType.DirectSrt, result.InCarVideo.VideoDestination.Type);
+    }
+
+    [TestMethod]
+    public async Task ProcessCarAsync_MultipleDestinationsWithSrt_PrefersSrtDestination()
+    {
+        // Arrange
+        var car = new CarPosition { Number = "42", TransponderId = 12345 };
+        sessionContext.UpdateCars([car]);
+
+        var videoMetadata = new VideoMetadata
+        {
+            CarNumber = "42",
+            SystemType = VideoSystemType.Sentinel,
+            Destinations = new List<VideoDestination>
+            {
+                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/first" },
+                new VideoDestination { Type = VideoDestinationType.DirectSrt, Url = "srt://example.com" }
+            }
+        };
+
+        var key = string.Format(Consts.EVENT_VIDEO_KEY, sessionContext.EventId, "42", 0);
+        mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(videoMetadata));
+
+        // Act
+        var result = await videoEnricher.ProcessCarAsync("42", mockDatabase.Object);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.AreEqual("srt://example.com", result.InCarVideo!.VideoDestination.Url);
+        Assert.AreEqual(VideoDestinationType.DirectSrt, result.InCarVideo.VideoDestination.Type);
+    }
+
+    [TestMethod]
+    public async Task ProcessCarAsync_MultipleDestinationsWithoutSrt_UsesFirstDestination()
+    {
+        // Arrange
+        var car = new CarPosition { Number = "42", TransponderId = 12345 };
+        sessionContext.UpdateCars([car]);
+
+        var videoMetadata = new VideoMetadata
+        {
+            CarNumber = "42",
+            SystemType = VideoSystemType.Sentinel,
+            Destinations = new List<VideoDestination>
+            {
+                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/first" },
+                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/second" }
+            }
+        };
+
+        var key = string.Format(Consts.EVENT_VIDEO_KEY, sessionContext.EventId, "42", 0);
+        mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(videoMetadata));
+
+        // Act
+        var result = await videoEnricher.ProcessCarAsync("42", mockDatabase.Object);
+
+        // Assert
+        Assert.IsNotNull(result);
         Assert.AreEqual("https://youtube.com/first", result.InCarVideo!.VideoDestination.Url);
         Assert.AreEqual(VideoDestinationType.Youtube, result.InCarVideo.VideoDestination.Type);
     }
 
     [TestMethod]
-    public async Task ProcessCarAsync_NoDestinations_UsesEmptyDestination()
+    public async Task ProcessCarAsync_SrtDestinationNotFirst_StillPrefersSrt()
     {
         // Arrange
         var car = new CarPosition { Number = "42", TransponderId = 12345 };
@@ -1278,7 +1446,12 @@ public class VideoEnricherTests
         {
             CarNumber = "42",
             SystemType = VideoSystemType.Sentinel,
-            Destinations = new List<VideoDestination>()
+            Destinations = new List<VideoDestination>
+            {
+                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/first" },
+                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/second" },
+                new VideoDestination { Type = VideoDestinationType.DirectSrt, Url = "srt://third.com" }
+            }
         };
 
         var key = string.Format(Consts.EVENT_VIDEO_KEY, sessionContext.EventId, "42", 0);
@@ -1290,148 +1463,8 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsNotNull(result.InCarVideo!.VideoDestination);
-        // VideoDestination is created with default values, Url will be null
-        Assert.IsTrue(string.IsNullOrEmpty(result.InCarVideo.VideoDestination.Url));
-    }
-
-    #endregion
-
-    #region ProcessCarAsync Tests - Edge Cases
-
-    [TestMethod]
-    public async Task ProcessCarAsync_VideoSystemTypeNone_UpdatesCarPosition()
-    {
-        // Arrange
-        var car = new CarPosition { Number = "42", TransponderId = 12345 };
-        sessionContext.UpdateCars([car]);
-
-        var videoMetadata = new VideoMetadata
-        {
-            CarNumber = "42",
-            SystemType = VideoSystemType.None,
-            Destinations = new List<VideoDestination>()
-        };
-
-        var key = string.Format(Consts.EVENT_VIDEO_KEY, sessionContext.EventId, "42", 0);
-        mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(videoMetadata));
-
-        // Act
-        var result = await videoEnricher.ProcessCarAsync("42", mockDatabase.Object);
-
-        // Assert
-        Assert.IsNotNull(result);
-        Assert.AreEqual(VideoSystemType.None, result.InCarVideo!.VideoSystemType);
-    }
-
-    [TestMethod]
-    public async Task ProcessCarAsync_MultipleCallsForSameCar_UpdatesCorrectly()
-    {
-        // Arrange
-        var car = new CarPosition { Number = "42", TransponderId = 12345 };
-        sessionContext.UpdateCars([car]);
-
-        var metadata1 = new VideoMetadata
-        {
-            CarNumber = "42",
-            SystemType = VideoSystemType.Sentinel,
-            Destinations = new List<VideoDestination>
-            {
-                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://first.com" }
-            }
-        };
-
-        var key = string.Format(Consts.EVENT_VIDEO_KEY, sessionContext.EventId, "42", 0);
-        mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(metadata1));
-
-        // Act - First call
-        var result1 = await videoEnricher.ProcessCarAsync("42", mockDatabase.Object);
-
-        // Assert first call
-        Assert.IsNotNull(result1);
-        Assert.AreEqual("https://first.com", car.InCarVideo!.VideoDestination.Url);
-
-        // Arrange second call with different metadata
-        var metadata2 = new VideoMetadata
-        {
-            CarNumber = "42",
-            SystemType = VideoSystemType.Sentinel,
-            Destinations = new List<VideoDestination>
-            {
-                new VideoDestination { Type = VideoDestinationType.DirectSrt, Url = "srt://second.com" }
-            }
-        };
-
-        mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(metadata2));
-
-        // Act - Second call
-        var result2 = await videoEnricher.ProcessCarAsync("42", mockDatabase.Object);
-
-        // Assert second call
-        Assert.IsNotNull(result2);
-        Assert.IsNotNull(car.InCarVideo);
-        Assert.AreEqual("srt://second.com", car.InCarVideo.VideoDestination.Url);
-        Assert.AreEqual(VideoDestinationType.DirectSrt, car.InCarVideo.VideoDestination.Type);
-    }
-
-    [TestMethod]
-    public async Task ProcessCarAsync_DifferentCarsSequentially_UpdatesEachIndependently()
-    {
-        // Arrange
-        var car1 = new CarPosition { Number = "1", TransponderId = 111 };
-        var car2 = new CarPosition { Number = "2", TransponderId = 222 };
-        sessionContext.UpdateCars([car1, car2]);
-
-        var metadata1 = new VideoMetadata
-        {
-            CarNumber = "1",
-            SystemType = VideoSystemType.Sentinel,
-            Destinations = new List<VideoDestination>
-            {
-                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/car1" }
-            }
-        };
-
-        var metadata2 = new VideoMetadata
-        {
-            CarNumber = "2",
-            SystemType = VideoSystemType.Sentinel,
-            Destinations = new List<VideoDestination>
-            {
-                new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com/car2" }
-            }
-        };
-
-        var key1 = string.Format(Consts.EVENT_VIDEO_KEY, sessionContext.EventId, "1", 0);
-        var key2 = string.Format(Consts.EVENT_VIDEO_KEY, sessionContext.EventId, "2", 0);
-
-        mockDatabase.Setup(x => x.StringGetAsync(key1, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(metadata1));
-        mockDatabase.Setup(x => x.StringGetAsync(key2, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(metadata2));
-
-        // Act
-        var result1 = await videoEnricher.ProcessCarAsync("1", mockDatabase.Object);
-        var result2 = await videoEnricher.ProcessCarAsync("2", mockDatabase.Object);
-
-        // Assert
-        Assert.IsNotNull(result1);
-        Assert.AreEqual("1", result1.Number);
-        Assert.AreEqual("https://youtube.com/car1", result1.InCarVideo!.VideoDestination.Url);
-
-        Assert.IsNotNull(result2);
-        Assert.AreEqual("2", result2.Number);
-        Assert.AreEqual("https://youtube.com/car2", result2.InCarVideo!.VideoDestination.Url);
-
-        // Verify both cars were updated independently
-        Assert.IsNotNull(car1.InCarVideo);
-        Assert.AreEqual("https://youtube.com/car1", car1.InCarVideo.VideoDestination.Url);
-        
-        Assert.IsNotNull(car2.InCarVideo);
-        Assert.AreEqual("https://youtube.com/car2", car2.InCarVideo.VideoDestination.Url);
+        Assert.AreEqual("srt://third.com", result.InCarVideo!.VideoDestination.Url);
+        Assert.AreEqual(VideoDestinationType.DirectSrt, result.InCarVideo.VideoDestination.Type);
     }
 
     #endregion

@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Extensions;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using StackExchange.Redis;
@@ -49,13 +50,7 @@ public class Program
         //    options.GlobalPermitLimit = 30;
         //});
 
-        builder.Services.AddControllers(options =>
-        {
-            // Add MessagePack formatter
-            options.InputFormatters.Add(new MessagePackInputFormatter(ContractlessStandardResolver.Options));
-            options.OutputFormatters.Add(new MessagePackOutputFormatter(ContractlessStandardResolver.Options));
-            options.FormatterMappings.SetMediaTypeMappingForFormat("msgpack", "application/x-msgpack");
-        });
+        builder.Services.AddControllersWithMessagePack();
 
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(c =>

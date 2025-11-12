@@ -3,14 +3,13 @@ using HealthChecks.UI.Client;
 using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
 using Keycloak.AuthServices.Common;
-using MessagePack.AspNetCoreMvcFormatter;
-using MessagePack.Resolvers;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Extensions;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
@@ -60,13 +59,7 @@ public class Program
         //    options.GlobalPermitLimit = 30;
         //});
 
-        builder.Services.AddControllers(options =>
-        {
-            // Add MessagePack formatter
-            options.InputFormatters.Add(new MessagePackInputFormatter(ContractlessStandardResolver.Options));
-            options.OutputFormatters.Add(new MessagePackOutputFormatter(ContractlessStandardResolver.Options));
-            options.FormatterMappings.SetMediaTypeMappingForFormat("msgpack", "application/x-msgpack");
-        });
+        builder.Services.AddControllersWithMessagePack();
 
         // Configure Swagger/OpenAPI with XML comments
         builder.Services.AddEndpointsApiExplorer();

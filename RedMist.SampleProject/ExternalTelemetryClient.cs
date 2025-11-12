@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarVideo;
 using RestSharp;
+using MessagePack;
 
 namespace RedMist.SampleProject;
 
@@ -24,6 +25,9 @@ internal class ExternalTelemetryClient
             Authenticator = new KeycloakServiceAuthenticator(string.Empty, authUrl, realm, clientId, clientSecret)
         };
         restClient = new RestClient(options);
+
+        // Add default Accept header for all requests (MessagePack preferred, JSON fallback)
+        restClient.AddDefaultHeader("Accept", "application/msgpack, application/json");
     }
 
 
@@ -31,11 +35,12 @@ internal class ExternalTelemetryClient
     /// Assigns a driver to a car.
     /// </summary>
     /// <returns>The task result is <see langword="true"/> if the driver was successfully assigned; otherwise, <see langword="false"/>.</returns>
-    public virtual async Task<bool> UpdateDriversAsync(List<DriverInfo> drivers)
+    public virtual async Task<bool> UpdateDriversAsync(List<DriverInfo> drivers, CancellationToken stoppingToken = default)
     {
         var request = new RestRequest("UpdateDrivers", Method.Post);
-        request.AddJsonBody(drivers);
-        var result = await restClient.ExecutePostAsync(request);
+        var serialized = MessagePackSerializer.Serialize(drivers, cancellationToken: stoppingToken);
+        request.AddBody(serialized, "application/x-msgpack");
+        var result = await restClient.ExecutePostAsync(request, cancellationToken: stoppingToken);
         return result.IsSuccessful;
     }
 
@@ -43,11 +48,12 @@ internal class ExternalTelemetryClient
     /// Adds video information to cars.
     /// </summary>
     /// <returns>The task result is <see langword="true"/> if the driver was successfully assigned; otherwise, <see langword="false"/>.</returns>
-    public virtual async Task<bool> UpdateCarVideosAsync(List<VideoMetadata> videos)
+    public virtual async Task<bool> UpdateCarVideosAsync(List<VideoMetadata> videos, CancellationToken stoppingToken = default)
     {
         var request = new RestRequest("UpdateCarVideos", Method.Post);
-        request.AddJsonBody(videos);
-        var result = await restClient.ExecutePostAsync(request);
+        var serialized = MessagePackSerializer.Serialize(videos, cancellationToken: stoppingToken);
+        request.AddBody(serialized, "application/x-msgpack");
+        var result = await restClient.ExecutePostAsync(request, cancellationToken: stoppingToken);
         return result.IsSuccessful;
     }
 }

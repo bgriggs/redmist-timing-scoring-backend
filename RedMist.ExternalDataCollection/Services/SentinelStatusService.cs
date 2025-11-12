@@ -20,7 +20,12 @@ public class SentinelStatusService : BackgroundService
     private readonly SentinelClient sentinelClient;
     private readonly EventsChecker eventsChecker;
     private readonly ExternalTelemetryClient externalTelemetryClient;
-    private TimeSpan updateInterval = TimeSpan.FromSeconds(15);
+    private readonly IHttpClientFactory httpClientFactory;
+    /// <summary>
+    /// Interval for checking for updates from Sentinel endpoint. This is accessible
+    /// for unit testing.
+    /// </summary>
+    private TimeSpan UpdateInterval { get; set; } = TimeSpan.FromSeconds(15);
     private readonly SemaphoreSlim subscriptionCheckLock = new(1);
     private List<VideoMetadata>? lastVideoMetadata;
     private List<DriverInfo>? lastDriverInfo;
@@ -29,7 +34,7 @@ public class SentinelStatusService : BackgroundService
 
     public SentinelStatusService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux,
         IHubContext<StatusHub> hubContext, SentinelClient sentinelClient, EventsChecker eventsChecker,
-        ExternalTelemetryClient externalTelemetryClient)
+        ExternalTelemetryClient externalTelemetryClient, IHttpClientFactory httpClientFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
@@ -37,6 +42,7 @@ public class SentinelStatusService : BackgroundService
         this.sentinelClient = sentinelClient;
         this.eventsChecker = eventsChecker;
         this.externalTelemetryClient = externalTelemetryClient;
+        this.httpClientFactory = httpClientFactory;
     }
 
 
@@ -59,14 +65,14 @@ public class SentinelStatusService : BackgroundService
                 Logger.LogInformation("Found {e} current events", currentEvents.Count);
                 if (currentEvents.Count == 0)
                 {
-                    await Task.Delay(updateInterval, stoppingToken);
+                    await Task.Delay(UpdateInterval, stoppingToken);
                     continue;
                 }
 
                 var streams = await sentinelClient.GetStreamsAsync();
                 Logger.LogInformation("Fetched {Count} live Sentinel video streams", streams.Count);
 
-                //eventStreams.Add(new PublicStreams { DriverName = "test driver", TransponderId = 10908083, YouTubeUrl = "https://redmist.racing" });
+                //streams.Add(new PublicStreams { DriverName = "test driver",TransponderIdStr = "1329228", YouTubeUrl = "https://redmist.racing" });
 
                 var videoMetadata = new List<VideoMetadata>();
                 var driverInfo = new List<DriverInfo>();
@@ -98,12 +104,17 @@ public class SentinelStatusService : BackgroundService
                     }
                     if (!string.IsNullOrWhiteSpace(stream.SvnUrl))
                     {
-                        var dest = new VideoDestination
+                        // Check that the video is active before adding as often it is provided but is 404
+                        bool success = await CheckUrlSuccessAsync(stream.SvnUrl);
+                        if (success)
                         {
-                            Type = VideoDestinationType.DirectSrt,
-                            Url = stream.SvnUrl
-                        };
-                        metadata.Destinations.Add(dest);
+                            var dest = new VideoDestination
+                            {
+                                Type = VideoDestinationType.DirectSrt,
+                                Url = stream.SvnUrl
+                            };
+                            metadata.Destinations.Add(dest);
+                        }
                     }
 
                     videoMetadata.Add(metadata);
@@ -127,7 +138,7 @@ public class SentinelStatusService : BackgroundService
                 requestCounter.Inc();
                 Logger.LogInformation("Total Sentinel: requests: {r}, failures: {f}", requestCounter.Value, failureCounter.Value);
             }
-            await Task.Delay(updateInterval, stoppingToken);
+            await Task.Delay(UpdateInterval, stoppingToken);
         }
     }
 
@@ -193,6 +204,7 @@ public class SentinelStatusService : BackgroundService
         }
     }
 
+    [Obsolete("This will be removed in the future. Use other SendVideoMetadataAsync.")]
     private async Task SendVideoMetadataAsync(List<VideoMetadata> metadata, List<int> currentEvents, CancellationToken stoppingToken = default)
     {
         Logger.LogInformation("Sending video metadata for {Count} entries", metadata.Count);
@@ -220,6 +232,23 @@ public class SentinelStatusService : BackgroundService
         {
             await hubContext.Clients.Client(cmd.ConnectionId)
                 .SendAsync("ReceiveInCarVideoMetadata", lastVideoMetadata, stoppingToken);
+        }
+    }
+
+    private async Task<bool> CheckUrlSuccessAsync(string? url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return false;
+        
+        using HttpClient client = httpClientFactory.CreateClient();
+        try
+        {
+            var response = await client.GetAsync(url);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
         }
     }
 }

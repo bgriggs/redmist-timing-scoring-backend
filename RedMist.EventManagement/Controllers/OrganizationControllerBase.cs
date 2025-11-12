@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RedMist.ControlLogs;
 using RedMist.Database;
-using RedMist.Database.Extensions;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using System.Security.Claims;
@@ -26,7 +25,7 @@ public abstract class OrganizationControllerBase : Controller
     protected readonly IControlLogFactory controlLogFactory;
     protected ILogger Logger { get; }
 
-    
+
     /// <summary>
     /// Initializes a new instance of the <see cref="OrganizationControllerBase"/> class.
     /// </summary>
@@ -50,17 +49,23 @@ public abstract class OrganizationControllerBase : Controller
     /// The organization is determined by the authenticated user's client_id claim.
     /// </remarks>
     [HttpGet]
-    public virtual async Task<Organization?> LoadOrganization()
+    [Produces("application/json", "application/x-msgpack")]
+    [ProducesResponseType<Organization>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<ActionResult<Organization>> LoadOrganization()
     {
-        Logger.LogTrace("LoadOrganization");
+        Logger.LogTrace("{m}", nameof(LoadOrganization));
         var clientId = User.FindFirstValue("client_id");
         using var db = await tsContext.CreateDbContextAsync();
         var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        if (org == null)
+            return NotFound();
+
         if (org != null && org.Logo == null)
         {
             org.Logo = db.DefaultOrgImages.FirstOrDefault()?.ImageData;
         }
-        return org;
+        return Ok(org);
     }
 
     /// <summary>
@@ -69,17 +74,17 @@ public abstract class OrganizationControllerBase : Controller
     /// <param name="organization">The organization with updated settings.</param>
     /// <returns>No content on success.</returns>
     /// <response code="200">Organization updated successfully.</response>
-    /// <response code="401">User is not authorized to update this organization.</response>
+    /// <response code="404">Organization not found.</response>
     /// <remarks>
     /// <para>Users can only update their own organization's settings.</para>
-    /// <para>Updatable fields include: Website, ControlLogType, ControlLogParams, Orbits configuration, and X2 timing system settings.</para>
     /// </remarks>
     [HttpPost]
+    [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public virtual async Task UpdateOrganization(Organization organization)
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<IActionResult> UpdateOrganization(Organization organization)
     {
-        Logger.LogTrace("UpdateOrganization");
+        Logger.LogTrace("{o}", nameof(UpdateOrganization));
         var clientId = User.FindFirstValue("client_id");
         using var db = await tsContext.CreateDbContextAsync();
         var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
@@ -96,7 +101,9 @@ public abstract class OrganizationControllerBase : Controller
             org.MultiloopPort = organization.MultiloopPort;
             org.OrbitsLogsPath = organization.OrbitsLogsPath;
             await db.SaveChangesAsync();
+            return Ok();
         }
+        return NotFound();
     }
 
     /// <summary>
@@ -110,9 +117,10 @@ public abstract class OrganizationControllerBase : Controller
     /// <para>Useful for testing control log settings before saving them.</para>
     /// </remarks>
     [HttpPost]
+    [Produces("application/json", "application/x-msgpack")]
     public virtual async Task<ControlLogStatistics> GetControlLogStatistics(Organization organization)
     {
-        Logger.LogTrace("GetControlLogStatistics");
+        Logger.LogTrace("{m}", nameof(GetControlLogStatistics));
         var cls = new ControlLogStatistics();
         if (!string.IsNullOrEmpty(organization.ControlLogType))
         {
