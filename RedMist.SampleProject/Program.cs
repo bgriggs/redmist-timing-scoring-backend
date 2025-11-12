@@ -11,6 +11,7 @@ namespace RedMist.SampleProject;
 /// </summary>
 internal class Program
 {
+    private const int EVENTID = 2;
     private static IConfiguration configuration = null!;
 
     static async Task Main(string[] args)
@@ -49,7 +50,7 @@ internal class Program
     static async Task SetDriverExternalTelemetryAsync(ExternalTelemetryClient client)
     {
         // Either the driver and video can be linked by EventId and CarNumber or by TransponderId.
-        var driverCar = new DriverInfo { EventId = 7, CarNumber = "60", DriverId = "driver-001", DriverName = "Jane Doe" };
+        var driverCar = new DriverInfo { EventId = EVENTID, CarNumber = "60", DriverId = "driver-001", DriverName = "Jane Doe" };
         var driverTrans = new DriverInfo { TransponderId = 1329228, DriverName = "Some Driver" };
         bool result = await client.UpdateDriversAsync([driverCar, driverTrans]);
         Console.WriteLine($"Set driver result: {result}");
@@ -61,7 +62,7 @@ internal class Program
     static async Task RemoveDriverExternalTelemetryAsync(ExternalTelemetryClient client)
     {
         // Either the driver and video can be linked by EventId and CarNumber or by TransponderId.
-        var driverCar = new DriverInfo { EventId = 7, CarNumber = "60" };
+        var driverCar = new DriverInfo { EventId = EVENTID, CarNumber = "60" };
         var driverTrans = new DriverInfo { TransponderId = 1329228 };
         bool result = await client.UpdateDriversAsync([driverCar, driverTrans]);
         Console.WriteLine($"Remove driver result: {result}");
@@ -75,7 +76,7 @@ internal class Program
         // Either the driver and video can be linked by EventId and CarNumber or by TransponderId.
         var videoCar = new VideoMetadata
         {
-            EventId = 7,
+            EventId = EVENTID,
             CarNumber = "60",
             IsLive = true,
             SystemType = VideoSystemType.Generic,
@@ -92,7 +93,7 @@ internal class Program
 
         var videoAll = new VideoMetadata
         {
-            EventId = 7,
+            EventId = EVENTID,
             CarNumber = "1",
             TransponderId = 1329228,
             IsLive = true,
@@ -109,11 +110,11 @@ internal class Program
     /// </summary>
     static async Task RemoveVideoExternalTelemetryAsync(ExternalTelemetryClient client)
     {
-        var videoCar = new VideoMetadata { EventId = 7, CarNumber = "60" };
+        var videoCar = new VideoMetadata { EventId = EVENTID, CarNumber = "60" };
 
         var videoTrans = new VideoMetadata { TransponderId = 14451114 };
 
-        var videoAll = new VideoMetadata { EventId = 7, CarNumber = "1", TransponderId = 1329228 };
+        var videoAll = new VideoMetadata { EventId = EVENTID, CarNumber = "1", TransponderId = 1329228 };
         var result = await client.UpdateCarVideosAsync([videoCar, videoTrans, videoAll]);
         Console.WriteLine($"Remove car video result: {result}");
     }
