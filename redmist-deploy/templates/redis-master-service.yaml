@@ -1,0 +1,22 @@
+{{- if index .Values "redis-operator" "enabled" }}
+# Service to connect to the Redis master instance
+# The Redis operator sets the label "redisfailovers-role: master" on the current master pod
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-master
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      protocol: TCP
+      targetPort: 6379
+  selector:
+    redisfailovers-role: master
+{{- end }}

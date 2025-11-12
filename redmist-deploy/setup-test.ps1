@@ -60,6 +60,24 @@ if ([string]::IsNullOrEmpty($secretExists)) {
     Write-Host "Secret 'rmkeys-test' already exists." -ForegroundColor Green
 }
 
+# Create Redis operator auth secret
+Write-Host "Creating Redis operator auth secret..." -ForegroundColor Yellow
+$redisSecretExists = kubectl get secret redis-auth -n $namespace --ignore-not-found 2>$null
+if ([string]::IsNullOrEmpty($redisSecretExists)) {
+    kubectl create secret generic redis-auth `
+        --from-literal=password="$RedisPassword" `
+        --namespace=$namespace
+    
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Secret 'redis-auth' created successfully." -ForegroundColor Green
+    } else {
+        Write-Error "Failed to create secret 'redis-auth'"
+        exit 1
+    }
+} else {
+    Write-Host "Secret 'redis-auth' already exists." -ForegroundColor Green
+}
+
 Write-Host ""
 Write-Host "Test environment setup complete!" -ForegroundColor Green
 Write-Host "Configuration:" -ForegroundColor Cyan

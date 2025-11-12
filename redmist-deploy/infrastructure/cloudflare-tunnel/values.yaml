@@ -14,9 +14,13 @@ ingress:
   - hostname: api.redmist.racing
     service: http://ingress-nginx-controller.ingress-nginx.svc.cluster.local:80
 
-  # Future environments
-  # - hostname: auth-test.redmist.racing
-  # - hostname: auth-dev.redmist.racing
+  # API Test
+  - hostname: api-test.redmist.racing
+    service: http://ingress-nginx-controller.ingress-nginx.svc.cluster.local:80
+
+  # API Dev
+  - hostname: api-dev.redmist.racing
+    service: http://ingress-nginx-controller.ingress-nginx.svc.cluster.local:80
 
 resources:
   requests:
