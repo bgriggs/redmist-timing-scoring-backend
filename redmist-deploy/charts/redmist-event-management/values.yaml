@@ -31,10 +31,10 @@ autoscaling:
 resources:
   requests:
     cpu: "25m"
-    memory: "150Mi"
+    memory: "200Mi"
   limits:
     cpu: "100m"
-    memory: "375Mi"
+    memory: "400Mi"
 
 serviceAccount:
   create: false

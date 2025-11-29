@@ -1,5 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore.Metadata.Internal;
-using RedMist.Backend.Shared;
+﻿using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Models;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
@@ -37,7 +37,8 @@ public class DriverEnricher
         DriverInfo? driverInfo;
         try
         {
-            driverInfo = JsonSerializer.Deserialize<DriverInfo>(message.Data);
+            var dis = JsonSerializer.Deserialize<DriverInfoSource>(message.Data);
+            driverInfo = dis?.DriverInfo;
         }
         catch (JsonException ex)
         {
@@ -157,7 +158,8 @@ public class DriverEnricher
         {
             try
             {
-                driverInfo = JsonSerializer.Deserialize<DriverInfo>(json!.ToString());
+                var dis = JsonSerializer.Deserialize<DriverInfoSource>(json!.ToString());
+                driverInfo = dis?.DriverInfo;
             }
             catch (JsonException ex)
             {
@@ -173,7 +175,8 @@ public class DriverEnricher
             {
                 try
                 {
-                    driverInfo = JsonSerializer.Deserialize<DriverInfo>(json!.ToString());
+                    var dis = JsonSerializer.Deserialize<DriverInfoSource>(json!.ToString());
+                    driverInfo = dis?.DriverInfo;
                 }
                 catch (JsonException ex)
                 {

@@ -1,9 +1,12 @@
 ﻿using Asp.Versioning;
+using k8s.KubeConfigModels;
 using Microsoft.AspNetCore.Mvc;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarVideo;
 using StackExchange.Redis;
+using System.Globalization;
 using System.Text.Json;
 
 namespace RedMist.StatusApi.Controllers.V1;
@@ -33,28 +36,36 @@ public class ExternalTelemetryController : Controller
     /// <param name="drivers">A list of driver information objects to update. Each object must contain sufficient identifying information,
     /// such as a car number and event ID or a transponder ID. The list cannot be null or empty.</param>
     /// <returns>An IActionResult indicating the result of the operation. Returns 200 OK if the update succeeds, 400 Bad Request
-    /// if the input is invalid, 401 Unauthorized if the user is not authorized, or 500 Internal Server Error if an
-    /// unexpected error occurs.</returns>
+    /// if the input is invalid, 401 Unauthorized if the user is not authorized, 423 if the record is set by a higher priority source,
+    /// or 500 Internal Server Error if an unexpected error occurs.</returns>
     [HttpPost]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status423Locked)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> UpdateDriversAsync([FromBody]List<DriverInfo> drivers)
+    public async Task<IActionResult> UpdateDriversAsync([FromBody] List<DriverInfo> drivers)
     {
-        if (!User.IsInRole("ext-telem"))
+        var clientId = User.Claims.First(c => c.Type == "azp").Value;
+        if (string.IsNullOrEmpty(clientId))
+            return BadRequest("No client ID found");
+        // All relay apps and external telemetry API apps are allowed
+        bool isRelaySource = clientId.StartsWith("relay", true, CultureInfo.InvariantCulture);
+        if (!isRelaySource && !User.IsInRole("ext-telem"))
             return Forbid();
         if (drivers == null || drivers.Count == 0)
             return BadRequest("No drivers found");
 
-        Logger.LogTrace("{m}", nameof(UpdateDriversAsync));
+        Logger.LogTrace("{m} source: {s}", nameof(UpdateDriversAsync), clientId);
+
         var cache = cacheMux.GetDatabase();
         foreach (var driver in drivers)
         {
             try
             {
-                var json = JsonSerializer.Serialize(driver);
+                var dis = new DriverInfoSource(driver, clientId, DateTime.UtcNow);
+                var json = JsonSerializer.Serialize(dis);
                 string key = string.Empty;
                 if (!string.IsNullOrEmpty(driver.CarNumber) && driver.EventId > 0)
                 {
@@ -75,7 +86,34 @@ public class ExternalTelemetryController : Controller
                 bool changed = false;
                 if (existingDriverJson.HasValue)
                 {
-                    changed = existingDriverJson != json;
+                    try
+                    {
+                        var existingDis = JsonSerializer.Deserialize<DriverInfoSource>(existingDriverJson!);
+                        if (existingDis == null)
+                        {
+                            changed = true;
+                        }
+                        // Prioritize the relay source for change detection
+                        else if (isRelaySource)
+                        {
+                            changed = existingDis.EqualsDriverInfo(dis);
+                        }
+                        // Non-relay source, only mark as changed if the existing source is also non-relay
+                        else if (!existingDis.ClientId.StartsWith("relay", true, CultureInfo.InvariantCulture))
+                        {
+                            changed = existingDis.EqualsDriverInfo(dis);
+                        }
+                        else
+                        {
+                            Logger.LogDebug("Rejecting change for non-relay source over existing relay source");
+                            return StatusCode(StatusCodes.Status423Locked, "Record is locked by a higher priority user");
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Logger.LogError(e, "Error deserializing existing driver info");
+                        changed = true;
+                    }
                 }
                 else
                 {

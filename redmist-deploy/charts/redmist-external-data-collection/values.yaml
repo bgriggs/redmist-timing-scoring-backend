@@ -18,10 +18,10 @@ autoscaling:
 resources:
   requests:
     cpu: "10m"
-    memory: "85Mi"
+    memory: "100Mi"
   limits:
     cpu: "70m"
-    memory: "150Mi"
+    memory: "250Mi"
 
 serviceAccount:
   # Specifies whether a service account should be created
