@@ -100,6 +100,8 @@ public abstract class OrganizationControllerBase : Controller
             org.MultiloopIp = organization.MultiloopIp;
             org.MultiloopPort = organization.MultiloopPort;
             org.OrbitsLogsPath = organization.OrbitsLogsPath;
+            org.FlagtronicsUrl = organization.FlagtronicsUrl;
+            org.FlagtronicsApiKey = organization.FlagtronicsApiKey;
             await db.SaveChangesAsync();
             return Ok();
         }

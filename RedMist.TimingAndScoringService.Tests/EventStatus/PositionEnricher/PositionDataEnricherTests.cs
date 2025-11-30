@@ -99,7 +99,7 @@ public class PositionDataEnricherTests
         {
             var carPatch = result.CarPatches.First();
             Assert.AreEqual("1", carPatch.Number);
-            Assert.IsTrue(carPatch.ClassPosition > 0); // Should be updated
+            Assert.IsGreaterThan(0, carPatch.ClassPosition ?? 0); // Should be updated
         }
         else
         {

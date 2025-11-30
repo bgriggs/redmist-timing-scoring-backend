@@ -2,11 +2,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Models;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.DriverInformation;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
+using System.IO;
 using System.Text.Json;
 using DriverInfo = RedMist.TimingCommon.Models.DriverInfo;
 
@@ -75,7 +77,7 @@ public class DriverEnricherTests
 
         var message = new TimingMessage(
             Consts.DRIVER_EVENT_TYPE,
-            JsonSerializer.Serialize(driverInfo),
+            JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)),
             1,
             DateTime.UtcNow);
 
@@ -162,7 +164,7 @@ public class DriverEnricherTests
 
         var message = new TimingMessage(
             Consts.DRIVER_EVENT_TYPE,
-            JsonSerializer.Serialize(driverInfo),
+            JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)),
             1,
             DateTime.UtcNow);
 
@@ -171,7 +173,7 @@ public class DriverEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         // Verify car position was updated
         Assert.AreEqual("driver-456", car.DriverId);
@@ -254,7 +256,7 @@ public class DriverEnricherTests
 
         var message = new TimingMessage(
             Consts.DRIVER_EVENT_TYPE,
-            JsonSerializer.Serialize(driverInfo),
+            JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)),
             1,
             DateTime.UtcNow);
 
@@ -263,7 +265,7 @@ public class DriverEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         // Should match car number, not transponder
         Assert.AreEqual("driver-123", car1.DriverId);
@@ -322,7 +324,7 @@ public class DriverEnricherTests
 
         var message = new TimingMessage(
             Consts.DRIVER_EVENT_TYPE,
-            JsonSerializer.Serialize(driverInfo),
+            JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)),
             1,
             DateTime.UtcNow);
 
@@ -331,7 +333,7 @@ public class DriverEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         Assert.AreEqual("driver-123", car.DriverId);
         Assert.AreEqual("John Doe", car.DriverName);
     }
@@ -439,14 +441,14 @@ public class DriverEnricherTests
 
         var key = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, "42");
         mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(driverInfo));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)));
 
         // Act
         var result = await driverEnricher.ProcessApplyFullAsync();
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         // Verify car position was updated
         Assert.AreEqual("driver-123", car.DriverId);
@@ -475,14 +477,14 @@ public class DriverEnricherTests
         // Second key (transponder only) returns metadata
         var key2 = string.Format(Consts.DRIVER_TRANSPONDER_KEY, 12345);
         mockDatabase.Setup(x => x.StringGetAsync(key2, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(driverInfo));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)));
 
         // Act
         var result = await driverEnricher.ProcessApplyFullAsync();
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         // Verify car position was updated
         Assert.AreEqual("driver-456", car.DriverId);
@@ -511,7 +513,7 @@ public class DriverEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         var patch = result.CarPatches[0];
         Assert.AreEqual(string.Empty, patch.DriverId);
@@ -548,16 +550,16 @@ public class DriverEnricherTests
         var key2 = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, "2");
 
         mockDatabase.Setup(x => x.StringGetAsync(key1, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(info1));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(info1, string.Empty, DateTime.Now)));
         mockDatabase.Setup(x => x.StringGetAsync(key2, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(info2));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(info2, string.Empty, DateTime.Now)));
 
         // Act
         var result = await driverEnricher.ProcessApplyFullAsync();
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(2, result.CarPatches.Count);
+        Assert.HasCount(2, result.CarPatches);
         
         Assert.AreEqual("driver-1", car1.DriverId);
         Assert.AreEqual("Driver One", car1.DriverName);
@@ -611,7 +613,7 @@ public class DriverEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         
         // Verify warning was logged
         VerifyLogWarning("Unable to deserialize DriverInfo");
@@ -641,7 +643,7 @@ public class DriverEnricherTests
 
         var key = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, "42");
         mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(driverInfo));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)));
 
         // Act
         var result = await driverEnricher.ProcessCarAsync("42", mockDatabase.Object);
@@ -668,7 +670,7 @@ public class DriverEnricherTests
 
         var key = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, "42");
         mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(driverInfo));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)));
 
         // Act - Call without explicit cache parameter
         var result = await driverEnricher.ProcessCarAsync("42");
@@ -742,7 +744,7 @@ public class DriverEnricherTests
         // Second key (transponder only) returns metadata
         var key2 = string.Format(Consts.DRIVER_TRANSPONDER_KEY, 12345);
         mockDatabase.Setup(x => x.StringGetAsync(key2, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(driverInfo));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)));
 
         // Act
         var result = await driverEnricher.ProcessCarAsync("42", mockDatabase.Object);
@@ -769,7 +771,7 @@ public class DriverEnricherTests
 
         var key = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, "42");
         mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(driverInfo));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)));
 
         // Act
         var result = await driverEnricher.ProcessCarAsync("42", mockDatabase.Object);
@@ -802,7 +804,7 @@ public class DriverEnricherTests
 
         var key = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, "42");
         mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(info1));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(info1, string.Empty, DateTime.Now)));
 
         // Act - First call
         var result1 = await driverEnricher.ProcessCarAsync("42", mockDatabase.Object);
@@ -821,7 +823,7 @@ public class DriverEnricherTests
         };
 
         mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(info2));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(info2, string.Empty, DateTime.Now)));
 
         // Act - Second call
         var result2 = await driverEnricher.ProcessCarAsync("42", mockDatabase.Object);
@@ -858,9 +860,9 @@ public class DriverEnricherTests
         var key2 = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, "2");
 
         mockDatabase.Setup(x => x.StringGetAsync(key1, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(info1));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(info1, string.Empty, DateTime.Now)));
         mockDatabase.Setup(x => x.StringGetAsync(key2, CommandFlags.None))
-            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(info2));
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(info2, string.Empty, DateTime.Now)));
 
         // Act
         var result1 = await driverEnricher.ProcessCarAsync("1", mockDatabase.Object);

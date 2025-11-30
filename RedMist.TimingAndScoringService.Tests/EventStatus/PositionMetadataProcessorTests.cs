@@ -138,7 +138,7 @@ public class PositionMetadataProcessorTests
         var result = processor.UpdateCarPositions(emptyList);
 
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.Count);
+        Assert.HasCount(0, result);
     }
 
     [TestMethod]
@@ -155,7 +155,7 @@ public class PositionMetadataProcessorTests
         Assert.AreEqual("", car1.OverallGap);
         Assert.AreEqual("", car1.OverallDifference);
         // car2 should be skipped in calculations
-        Assert.AreEqual(null, car3.OverallGap);
+        Assert.IsNull(car3.OverallGap);
         Assert.AreEqual("2.000", car3.OverallDifference);
     }
 
@@ -728,7 +728,7 @@ public class PositionMetadataProcessorTests
 
         // car2 should be skipped due to invalid time, so car3 gap should be calculated from car1
         Assert.AreEqual("", car1.OverallGap);
-        Assert.AreEqual(null, car3.OverallGap);
+        Assert.IsNull(car3.OverallGap);
         Assert.AreEqual("2.000", car3.OverallDifference);
     }
 

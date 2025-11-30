@@ -78,7 +78,7 @@ public class FlagProcessorTests
         // Assert
         var resultFlags = await processor.GetFlagsAsync(CancellationToken.None);
         
-        Assert.AreEqual(4, resultFlags.Count, "Should have 4 flag durations");
+        Assert.HasCount(4, resultFlags);
         
         // Verify Yellow flag
         var yellowFlag = resultFlags.FirstOrDefault(f => f.Flag == Flags.Yellow);
@@ -144,7 +144,7 @@ public class FlagProcessorTests
 
         // Verify initial state
         var initialResult = await processor.GetFlagsAsync(CancellationToken.None);
-        Assert.AreEqual(2, initialResult.Count, "Should have 2 initial flag durations");
+        Assert.HasCount(2, initialResult);
 
         // Second batch of flags (after the gap)
         var laterFlags = new List<FlagDuration>
@@ -191,7 +191,7 @@ public class FlagProcessorTests
         // Assert final state
         var finalFlags = await processor.GetFlagsAsync(CancellationToken.None);
         
-        Assert.AreEqual(5, finalFlags.Count, "Should have 5 flag durations total");
+        Assert.HasCount(5, finalFlags);
         
         // Verify first Yellow flag
         var firstYellow = finalFlags.Where(f => f.Flag == Flags.Yellow && f.StartTime == startTime).FirstOrDefault();
@@ -247,7 +247,7 @@ public class FlagProcessorTests
         await processor.ProcessFlags(testSessionId, ongoingFlags, CancellationToken.None);
 
         var initialResult = await processor.GetFlagsAsync(CancellationToken.None);
-        Assert.AreEqual(1, initialResult.Count, "Should have 1 flag duration");
+        Assert.HasCount(1, initialResult);
         Assert.IsNull(initialResult[0].EndTime, "Flag should initially be ongoing");
 
         // Second process: Same flag now with end time
@@ -264,7 +264,7 @@ public class FlagProcessorTests
         await processor.ProcessFlags(testSessionId, completedFlags, CancellationToken.None);
 
         var finalResult = await processor.GetFlagsAsync(CancellationToken.None);
-        Assert.AreEqual(1, finalResult.Count, "Should still have 1 flag duration");
+        Assert.HasCount(1, finalResult);
         Assert.IsNotNull(finalResult[0].EndTime, "Flag should now have end time");
         Assert.AreEqual(startTime.AddMinutes(5), finalResult[0].EndTime, "End time should match");
     }
@@ -289,7 +289,7 @@ public class FlagProcessorTests
         await processor.ProcessFlags(testSessionId, session1Flags, CancellationToken.None);
         
         var session1Result = await processor.GetFlagsAsync(CancellationToken.None);
-        Assert.AreEqual(1, session1Result.Count, "Session 1 should have 1 flag");
+        Assert.HasCount(1, session1Result);
 
         // Change to new session
         var newSessionId = testSessionId + 1;
@@ -306,7 +306,7 @@ public class FlagProcessorTests
         await processor.ProcessFlags(newSessionId, session2Flags, CancellationToken.None);
         
         var session2Result = await processor.GetFlagsAsync(CancellationToken.None);
-        Assert.AreEqual(1, session2Result.Count, "Session 2 should have 1 flag");
+        Assert.HasCount(1, session2Result);
         Assert.AreEqual(Flags.Yellow, session2Result[0].Flag, "Session 2 should have Yellow flag");
         Assert.AreEqual(newSessionId, processor.SessionId, "Processor should track new session ID");
     }
@@ -331,7 +331,7 @@ public class FlagProcessorTests
 
         var result = await processor.GetFlagsAsync(CancellationToken.None);
         
-        Assert.AreEqual(6, result.Count, "Should have 6 flag durations");
+        Assert.HasCount(6, result);
         
         // Verify we have all expected flag types
         Assert.IsTrue(result.Any(f => f.Flag == Flags.Green), "Should have Green flag");
@@ -367,7 +367,7 @@ public class FlagProcessorTests
         await processor.ProcessFlags(67, yellowFlags, CancellationToken.None); // Using session 67 from the issue
 
         var initialResult = await processor.GetFlagsAsync(CancellationToken.None);
-        Assert.AreEqual(1, initialResult.Count, "Should have 1 flag duration");
+        Assert.HasCount(1, initialResult);
         Assert.IsNull(initialResult[0].EndTime, "Yellow flag should initially be ongoing");
 
         // Second process: Green flag (Flag 1) starts later - should auto-complete the Yellow flag
@@ -386,7 +386,7 @@ public class FlagProcessorTests
         await processor.ProcessFlags(67, greenFlags, CancellationToken.None);
 
         var finalResult = await processor.GetFlagsAsync(CancellationToken.None);
-        Assert.AreEqual(2, finalResult.Count, "Should have 2 flag durations");
+        Assert.HasCount(2, finalResult);
         
         // Verify Yellow flag was auto-completed
         var yellowFlag = finalResult.FirstOrDefault(f => f.Flag == Flags.Yellow);
@@ -416,7 +416,7 @@ public class FlagProcessorTests
         ], CancellationToken.None);
 
         var result1 = await processor.GetFlagsAsync(CancellationToken.None);
-        Assert.AreEqual(1, result1.Count, "Should have 1 flag after yellow");
+        Assert.HasCount(1, result1, "Should have 1 flag after yellow");
         Assert.IsNull(result1[0].EndTime, "Yellow flag should be ongoing");
 
         // Scenario 2: Green flag starts, should auto-complete yellow
@@ -427,7 +427,7 @@ public class FlagProcessorTests
         ], CancellationToken.None);
 
         var result2 = await processor.GetFlagsAsync(CancellationToken.None);
-        Assert.AreEqual(2, result2.Count, "Should have 2 flags after green");
+        Assert.HasCount(2, result2, "Should have 2 flags after green");
 
         var yellow = result2.First(f => f.Flag == Flags.Yellow);
         var green = result2.First(f => f.Flag == Flags.Green);
@@ -444,7 +444,7 @@ public class FlagProcessorTests
         ], CancellationToken.None);
 
         var result3 = await processor.GetFlagsAsync(CancellationToken.None);
-        Assert.AreEqual(3, result3.Count, "Should have 3 flags after white");
+        Assert.HasCount(3, result3, "Should have 3 flags after white");
 
         var updatedGreen = result3.First(f => f.Flag == Flags.Green);
         var white = result3.First(f => f.Flag == Flags.White);
@@ -461,7 +461,7 @@ public class FlagProcessorTests
         ], CancellationToken.None);
 
         var finalResult = await processor.GetFlagsAsync(CancellationToken.None);
-        Assert.AreEqual(4, finalResult.Count, "Should have 4 flags after checkered");
+        Assert.HasCount(4, finalResult, "Should have 4 flags after checkered");
         
         var updatedWhite = finalResult.First(f => f.Flag == Flags.White);
         var checkered = finalResult.First(f => f.Flag == Flags.Checkered);

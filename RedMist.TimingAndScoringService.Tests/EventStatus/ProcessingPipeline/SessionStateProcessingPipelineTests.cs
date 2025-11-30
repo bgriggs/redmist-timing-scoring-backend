@@ -256,8 +256,8 @@ public class SessionStateProcessingPipelineTests
         }
 
         // Assert
-        Assert.AreEqual(48, _sessionContext.SessionState.CarPositions.Count);
-        Assert.AreEqual(48, _sessionContext.SessionState.EventEntries.Count);
+        Assert.HasCount(48, _sessionContext.SessionState.CarPositions);
+        Assert.HasCount(48, _sessionContext.SessionState.EventEntries);
         Assert.AreEqual(67, _sessionContext.SessionState.SessionId);
         Assert.AreEqual("Saturday 8 Hour", _sessionContext.SessionState.SessionName);
         Assert.AreEqual(9999, _sessionContext.SessionState.LapsToGo);
@@ -301,8 +301,8 @@ public class SessionStateProcessingPipelineTests
         }
 
         // Assert
-        Assert.AreEqual(48, _sessionContext.SessionState.CarPositions.Count);
-        Assert.AreEqual(48, _sessionContext.SessionState.EventEntries.Count);
+        Assert.HasCount(48, _sessionContext.SessionState.CarPositions);
+        Assert.HasCount(48, _sessionContext.SessionState.EventEntries);
 
         var car70 = _sessionContext.GetCarByNumber("70");
         Assert.IsNotNull(car70);
@@ -473,7 +473,7 @@ public class SessionStateProcessingPipelineTests
 
         // Assert
         Assert.AreEqual("00:02:25.077", _sessionContext.SessionState.CarPositions.Single(c => c.Number == "70").LastLapTime);
-        Assert.AreEqual(null, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "2").LastLapTime);
+        Assert.IsNull(_sessionContext.SessionState.CarPositions.Single(c => c.Number == "2").LastLapTime);
         Assert.AreEqual("00:02:27.407", _sessionContext.SessionState.CarPositions.Single(c => c.Number == "74").LastLapTime);
         Assert.AreEqual("00:02:30.314", _sessionContext.SessionState.CarPositions.Single(c => c.Number == "99").LastLapTime);
     }

@@ -83,7 +83,7 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionPatches.Count > 0);
+        Assert.IsNotEmpty(result.SessionPatches);
 
         // Verify heartbeat data is applied to session context
         Assert.AreEqual(14, _sessionContext.SessionState.LapsToGo);
@@ -110,11 +110,11 @@ public class RMonitorDataProcessorV2Tests
         Assert.IsNotNull(result);
 
         // The current implementation should generate car patches when competitors are added
-        Assert.IsTrue(result.CarPatches.Count > 0, "Expected car patches to be generated for new competitor");
+        Assert.IsNotEmpty(result.CarPatches, "Expected car patches to be generated for new competitor");
 
         // Verify competitor data is applied to session context
-        Assert.IsTrue(_sessionContext.SessionState.EventEntries.Count > 0);
-        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count > 0);
+        Assert.IsNotEmpty(_sessionContext.SessionState.EventEntries);
+        Assert.IsNotEmpty(_sessionContext.SessionState.CarPositions);
     }
 
     [TestMethod]
@@ -131,11 +131,11 @@ public class RMonitorDataProcessorV2Tests
         Assert.IsNotNull(result);
 
         // The current implementation should generate car patches when competitors are added
-        Assert.IsTrue(result.CarPatches.Count > 0, "Expected car patches to be generated for new competitor");
+        Assert.IsNotEmpty(result.CarPatches, "Expected car patches to be generated for new competitor");
 
         // Verify competitor data is applied to session context
-        Assert.IsTrue(_sessionContext.SessionState.EventEntries.Count > 0);
-        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count > 0);
+        Assert.IsNotEmpty(_sessionContext.SessionState.EventEntries);
+        Assert.IsNotEmpty(_sessionContext.SessionState.CarPositions);
     }
 
     [TestMethod]
@@ -153,10 +153,10 @@ public class RMonitorDataProcessorV2Tests
         Assert.IsNotNull(result);
 
         // The current implementation should generate car patches when competitors are added
-        Assert.IsTrue(result.CarPatches.Count >= 2, $"Expected at least 2 car patches to be generated for new competitors, got {result.CarPatches.Count}");
+        Assert.IsGreaterThanOrEqualTo(result.CarPatches.Count, 2, $"Expected at least 2 car patches to be generated for new competitors, got {result.CarPatches.Count}");
 
         // Verify multiple competitors are applied
-        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count >= 2);
+        Assert.IsGreaterThanOrEqualTo(2, _sessionContext.SessionState.CarPositions.Count);
     }
 
     #endregion
@@ -174,7 +174,7 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionPatches.Count > 0);
+        Assert.IsNotEmpty(result.SessionPatches);
 
         // Verify session data is applied to context
         Assert.AreEqual(5, _sessionContext.SessionState.SessionId);
@@ -193,8 +193,8 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionPatches.Count); // Same session reference should not generate patches
-        Assert.AreEqual(0, result.CarPatches.Count);
+        Assert.IsEmpty(result.SessionPatches); // Same session reference should not generate patches
+        Assert.IsEmpty(result.CarPatches);
     }
 
     #endregion
@@ -218,7 +218,7 @@ public class RMonitorDataProcessorV2Tests
 
         // The reset should clear car positions - this happens in the ResetProcessor.Process() call
         // which is called asynchronously within ProcessI, so car positions should be cleared
-        Assert.AreEqual(0, _sessionContext.SessionState.CarPositions.Count, "Car positions should be cleared after reset");
+        Assert.IsEmpty(_sessionContext.SessionState.CarPositions);
     }
 
     #endregion
@@ -236,8 +236,8 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionPatches.Count); // Malformed command should not generate patches
-        Assert.AreEqual(0, result.CarPatches.Count);
+        Assert.IsEmpty(result.SessionPatches);
+        Assert.IsEmpty(result.CarPatches);
         VerifyLogError("Error processing command");
     }
 
@@ -252,8 +252,8 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionPatches.Count); // Unknown command should not generate patches
-        Assert.AreEqual(0, result.CarPatches.Count);
+        Assert.IsEmpty(result.SessionPatches);
+        Assert.IsEmpty(result.CarPatches);
         VerifyLogWarning("Unknown command");
     }
 
@@ -268,8 +268,8 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.SessionPatches.Count);
-        Assert.AreEqual(0, result.CarPatches.Count);
+        Assert.IsEmpty(result.SessionPatches);
+        Assert.IsEmpty(result.CarPatches);
     }
 
     #endregion
@@ -304,8 +304,8 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionPatches.Count > 0);
-        Assert.IsTrue(result.CarPatches.Count > 0);
+        Assert.IsNotEmpty(result.SessionPatches);
+        Assert.IsNotEmpty(result.CarPatches);
 
         // Verify session data is applied immediately
         Assert.AreEqual(1, _sessionContext.SessionState.SessionId);
@@ -314,7 +314,7 @@ public class RMonitorDataProcessorV2Tests
         Assert.AreEqual("00:45:30", _sessionContext.SessionState.TimeToGo);
 
         // Verify competitors are added
-        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count >= 2);
+        Assert.IsGreaterThanOrEqualTo(_sessionContext.SessionState.CarPositions.Count, 2);
     }
 
     [TestMethod]
@@ -333,13 +333,13 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionPatches.Count > 0); // Session patches from reset, competitor, and heartbeat
-        Assert.IsTrue(result.CarPatches.Count > 0); // Car patches from competitor
+        Assert.IsNotEmpty(result.SessionPatches);
+        Assert.IsNotEmpty(result.CarPatches);
 
         // Verify reset happened first (car positions cleared)
         // Then competitor added 
         // Then heartbeat applied
-        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count > 0); // Competitor was added after reset
+        Assert.IsNotEmpty(_sessionContext.SessionState.CarPositions);
         Assert.AreEqual(50, _sessionContext.SessionState.LapsToGo); // Heartbeat was applied
     }
 
@@ -383,7 +383,7 @@ public class RMonitorDataProcessorV2Tests
             "$A,\"1234BE\",\"12\",52474,\"John\",\"Doe\",\"USA\",1", 1, DateTime.Now);
 
         await _processor.ProcessAsync(setupMessage, _sessionContext);
-        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count > 0);
+        Assert.IsNotEmpty(_sessionContext.SessionState.CarPositions);
 
         // Act - Send reset in same message with new competitor
         var resetMessage = new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE,
@@ -396,14 +396,14 @@ public class RMonitorDataProcessorV2Tests
         Assert.IsNotNull(result);
 
         // Verify reset happened first, then competitor was added
-        Assert.IsTrue(_sessionContext.SessionState.CarPositions.Count > 0);
+        Assert.IsNotEmpty(_sessionContext.SessionState.CarPositions);
         var newCar = _sessionContext.GetCarByNumber("34");
         Assert.IsNotNull(newCar);
 
         // The reset clears internal competitor dictionaries, so the old competitor should be gone
-        // However, if the old competitor had the same registration number as the new one, it might still exist
+        // However, if the old competitor had the same registration number as the new, it might still exist
         // Let's check if the old car is truly gone by checking there's only one car now
-        Assert.AreEqual(1, _sessionContext.SessionState.CarPositions.Count, "Should only have one car after reset and adding new competitor");
+        Assert.HasCount(1, _sessionContext.SessionState.CarPositions);
 
         // Verify the remaining car is the new one, not the old one
         var remainingCar = _sessionContext.SessionState.CarPositions.First();
@@ -423,7 +423,7 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.SessionPatches.Count >= 2); // Session state update and heartbeat
+        Assert.IsGreaterThanOrEqualTo(result.SessionPatches.Count, 2);
 
         // Verify session state was immediately updated and heartbeat could see it
         Assert.AreEqual(5, _sessionContext.SessionState.SessionId);
@@ -445,7 +445,7 @@ public class RMonitorDataProcessorV2Tests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.CarPatches.Count > 0, "Expected car patches to be generated");
+        Assert.IsNotEmpty(result.CarPatches);
 
         // Verify competitor was created with correct class mapping
         var car = _sessionContext.GetCarByNumber("12X");

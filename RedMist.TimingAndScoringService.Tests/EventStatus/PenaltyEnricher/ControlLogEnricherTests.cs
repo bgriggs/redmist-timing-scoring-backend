@@ -65,7 +65,7 @@ public class ControlLogEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.Count);
+        Assert.IsEmpty(result);
     }
 
     [TestMethod]
@@ -81,7 +81,7 @@ public class ControlLogEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.Count);
+        Assert.IsEmpty(result);
     }
 
     [TestMethod]
@@ -100,7 +100,7 @@ public class ControlLogEnricherTests
         // Assert
         Assert.IsNotNull(result);
         // Should only process car "2", skip car with null number
-        Assert.AreEqual(1, result.Count);
+        Assert.HasCount(1, result);
         Assert.AreEqual("2", result[0].Number);
     }
 
@@ -119,7 +119,7 @@ public class ControlLogEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.Count);
+        Assert.IsEmpty(result);
     }
 
     [TestMethod]
@@ -139,7 +139,7 @@ public class ControlLogEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.Count);
+        Assert.HasCount(1, result);
         
         var patch = result[0];
         Assert.AreEqual("1", patch.Number);
@@ -167,7 +167,7 @@ public class ControlLogEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.Count);
+        Assert.HasCount(1, result);
         
         var patch = result[0];
         Assert.AreEqual("1", patch.Number);
@@ -196,7 +196,7 @@ public class ControlLogEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.Count);
+        Assert.HasCount(1, result);
         
         var patch = result[0];
         Assert.AreEqual("1", patch.Number);
@@ -226,7 +226,7 @@ public class ControlLogEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.Count); // No changes, no patch created
+        Assert.IsEmpty(result); // No changes, no patch created
         
         // Verify car state remains the same
         Assert.AreEqual(2, car1.PenalityWarnings);
@@ -262,7 +262,7 @@ public class ControlLogEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(2, result.Count); // Only car1 and car2 should have patches
+        Assert.HasCount(2, result); // Only car1 and car2 should have patches
         
         var car1Patch = result.FirstOrDefault(p => p.Number == "1");
         var car2Patch = result.FirstOrDefault(p => p.Number == "2");
@@ -323,7 +323,7 @@ public class ControlLogEnricherTests
         Assert.IsNotNull(result);
         // If the patch is valid, we should get 1 result
         // If it's invalid (which shouldn't happen in normal cases), we'd get 0
-        Assert.AreEqual(1, result.Count);
+        Assert.HasCount(1, result);
     }
 
     [TestMethod]
@@ -343,7 +343,7 @@ public class ControlLogEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.Count); // Only car "1" should have a patch
+        Assert.HasCount(1, result); // Only car "1" should have a patch
         Assert.AreEqual("1", result[0].Number);
     }
 

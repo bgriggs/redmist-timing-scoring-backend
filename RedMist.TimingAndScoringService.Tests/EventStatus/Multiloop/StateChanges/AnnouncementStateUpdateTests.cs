@@ -27,7 +27,7 @@ public class AnnouncementStateUpdateTests
         // Assert
         Assert.IsNotNull(stateUpdate);
         Assert.AreSame(announcements, stateUpdate.Announcements);
-        Assert.AreEqual(2, stateUpdate.Announcements.Count);
+        Assert.HasCount(2, stateUpdate.Announcements);
     }
 
     [TestMethod]
@@ -42,7 +42,7 @@ public class AnnouncementStateUpdateTests
         // Assert
         Assert.IsNotNull(stateUpdate);
         Assert.AreSame(announcements, stateUpdate.Announcements);
-        Assert.AreEqual(0, stateUpdate.Announcements.Count);
+        Assert.IsEmpty(stateUpdate.Announcements);
     }
 
     #endregion
@@ -74,7 +74,7 @@ public class AnnouncementStateUpdateTests
         Assert.IsNotNull(result);
         Assert.AreEqual(123, result.SessionId);
         Assert.IsNotNull(result.Announcements);
-        Assert.AreEqual(2, result.Announcements.Count);
+        Assert.HasCount(2, result.Announcements);
     }
 
     [TestMethod]
@@ -143,7 +143,7 @@ public class AnnouncementStateUpdateTests
         Assert.IsNotNull(result);
         Assert.AreEqual(456, result.SessionId);
         Assert.IsNotNull(result.Announcements);
-        Assert.AreEqual(1, result.Announcements.Count);
+        Assert.HasCount(1, result.Announcements);
     }
 
     [TestMethod]
@@ -179,7 +179,7 @@ public class AnnouncementStateUpdateTests
         Assert.IsNotNull(result);
         Assert.AreEqual(789, result.SessionId);
         Assert.IsNotNull(result.Announcements);
-        Assert.AreEqual(3, result.Announcements.Count);
+        Assert.HasCount(3, result.Announcements);
     }
 
     #endregion
@@ -214,7 +214,7 @@ public class AnnouncementStateUpdateTests
         Assert.IsNotNull(result);
         Assert.AreEqual(100, result.SessionId);
         Assert.IsNotNull(result.Announcements);
-        Assert.AreEqual(0, result.Announcements.Count);
+        Assert.IsEmpty(result.Announcements);
     }
 
     [TestMethod]
@@ -346,7 +346,7 @@ public class AnnouncementStateUpdateTests
         Assert.IsNotNull(result);
         Assert.AreEqual(500, result.SessionId);
         Assert.IsNotNull(result.Announcements);
-        Assert.AreEqual(1000, result.Announcements.Count);
+        Assert.HasCount(1000, result.Announcements);
     }
 
     #endregion
@@ -378,7 +378,7 @@ public class AnnouncementStateUpdateTests
         Assert.IsNotNull(result1);
         Assert.IsNotNull(result2);
         Assert.AreEqual(result1.SessionId, result2.SessionId);
-        Assert.AreEqual(result1.Announcements!.Count, result2.Announcements!.Count);
+        Assert.HasCount(result1.Announcements!.Count, result2.Announcements!);
     }
 
     #endregion
@@ -409,14 +409,14 @@ public class AnnouncementStateUpdateTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(3, result.Announcements!.Count);
+        Assert.HasCount(3, result.Announcements!);
         
         // The order should be based on the Values enumeration of the dictionary
         // Dictionary.Values preserves insertion order in .NET Core 2.0+
-        var texts = result.Announcements.Select(a => a.Text).ToArray();
-        Assert.AreEqual("Third message", texts[0]);
-        Assert.AreEqual("First message", texts[1]);
-        Assert.AreEqual("Second message", texts[2]);
+        var texts = result.Announcements?.Select(a => a.Text).ToArray();
+        Assert.AreEqual("Third message", texts?[0]);
+        Assert.AreEqual("First message", texts?[1]);
+        Assert.AreEqual("Second message", texts?[2]);
     }
 
     #endregion
@@ -451,10 +451,10 @@ public class AnnouncementStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(20241215, result.SessionId);
-        Assert.AreEqual(4, result.Announcements!.Count);
+        Assert.HasCount(4, result.Announcements!);
         
         // Verify that announcements have expected content
-        var texts = result.Announcements.Select(a => a.Text).ToArray();
+        var texts = result.Announcements?.Select(a => a.Text).ToArray();
         Assert.IsTrue(texts.Contains("Race Start"));
         Assert.IsTrue(texts.Contains("Car #42 pit stop"));
         Assert.IsTrue(texts.Contains("Yellow flag sector 2"));
@@ -492,10 +492,10 @@ public class AnnouncementStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(555, result.SessionId);
-        Assert.AreEqual(3, result.Announcements!.Count);
+        Assert.HasCount(3, result.Announcements!);
         
         // Verify the announcements were replaced/updated
-        var texts = result.Announcements.Select(a => a.Text).ToArray();
+        var texts = result.Announcements?.Select(a => a.Text).ToArray();
         Assert.IsTrue(texts.Contains("Updated message 1"));
         Assert.IsTrue(texts.Contains("Updated message 2"));
         Assert.IsTrue(texts.Contains("New message 3"));
@@ -555,7 +555,7 @@ public class AnnouncementStateUpdateTests
 
         // Assert
         Assert.AreSame(announcements, stateUpdate.Announcements);
-        Assert.AreEqual(1, stateUpdate.Announcements.Count);
+        Assert.HasCount(1, stateUpdate.Announcements);
         Assert.IsTrue(stateUpdate.Announcements.ContainsKey(10));
     }
 

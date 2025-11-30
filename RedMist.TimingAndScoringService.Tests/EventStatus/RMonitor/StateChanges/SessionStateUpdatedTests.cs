@@ -751,7 +751,7 @@ public class SessionStateUpdatedTests
         Task.WaitAll(tasks.ToArray());
 
         // Assert
-        Assert.AreEqual(100, results.Count);
+        Assert.HasCount(100, results);
         Assert.IsTrue(results.All(r => r is not null));
         Assert.IsTrue(results.All(r => r!.SessionId == 3000));
         Assert.IsTrue(results.All(r => r!.SessionName == "Concurrent Session"));

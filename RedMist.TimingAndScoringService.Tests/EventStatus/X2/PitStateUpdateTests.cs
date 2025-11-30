@@ -98,7 +98,7 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        Assert.AreEqual(true, patch.IsInPit);
+        Assert.IsTrue(patch.IsInPit);
     }
 
     [TestMethod]
@@ -114,7 +114,7 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        Assert.AreEqual(false, patch.IsInPit);
+        Assert.IsFalse(patch.IsInPit);
     }
 
     [TestMethod]
@@ -153,7 +153,7 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        Assert.AreEqual(true, patch.IsEnteredPit);
+        Assert.IsTrue(patch.IsEnteredPit);
     }
 
     [TestMethod]
@@ -172,7 +172,7 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        Assert.AreEqual(true, patch.IsExitedPit);
+        Assert.IsTrue(patch.IsExitedPit);
     }
 
     [TestMethod]
@@ -191,7 +191,7 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        Assert.AreEqual(true, patch.IsPitStartFinish);
+        Assert.IsTrue(patch.IsPitStartFinish);
     }
 
     [TestMethod]
@@ -216,8 +216,8 @@ public class PitStateUpdateTests
         // patch.IsInPit will be set to false (state.IsInPit=true != newIsInPit=false)
         // Then the condition `if (!patch.IsInPit ?? false)` will be true (since !false ?? false = true)
         // So IsInPit gets set to IsEnteredPit (true)
-        Assert.AreEqual(true, patch.IsInPit); // Enabled by entrance
-        Assert.AreEqual(true, patch.IsEnteredPit);
+        Assert.IsTrue(patch.IsInPit); // Enabled by entrance
+        Assert.IsTrue(patch.IsEnteredPit);
     }
 
     [TestMethod]
@@ -241,8 +241,8 @@ public class PitStateUpdateTests
         // patch.IsInPit will be set to false (state.IsInPit=true != newIsInPit=false)
         // Then the condition `if (!patch.IsInPit ?? false)` will be true (since !false ?? false = true)
         // So IsInPit gets set to IsPitStartFinish (true)
-        Assert.AreEqual(true, patch.IsInPit); // Enabled by S/F
-        Assert.AreEqual(true, patch.IsPitStartFinish);
+        Assert.IsTrue(patch.IsInPit); // Enabled by S/F
+        Assert.IsTrue(patch.IsPitStartFinish);
     }
 
     #endregion
@@ -356,7 +356,7 @@ public class PitStateUpdateTests
         // Assert
         Assert.IsNotNull(patch);
         Assert.IsTrue(carLapsWithPitStops.ContainsKey("123"));
-        Assert.IsTrue(carLapsWithPitStops["123"].Contains(6)); // LastLapCompleted + 1
+        Assert.Contains(6, carLapsWithPitStops["123"]); // LastLapCompleted + 1
     }
 
     [TestMethod]
@@ -379,8 +379,8 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        Assert.IsTrue(carLapsWithPitStops["123"].Contains(3)); // Previous lap still there
-        Assert.IsTrue(carLapsWithPitStops["123"].Contains(6)); // New lap added
+        Assert.Contains(3, carLapsWithPitStops["123"]); // Previous lap still there
+        Assert.Contains(6, carLapsWithPitStops["123"]); // New lap added
     }
 
     [TestMethod]
@@ -500,7 +500,7 @@ public class PitStateUpdateTests
         
         // But the test says LapIncludedPit is true, which means the condition DID execute
         // This is confusing. Let me just check what's actually happening by accepting the behavior
-        Assert.AreEqual(true, patch.LapIncludedPit); // Apparently the condition does execute
+        Assert.IsTrue(patch.LapIncludedPit); // Apparently the condition does execute
     }
 
     #endregion
@@ -523,7 +523,7 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        Assert.AreEqual(false, patch.LapIncludedPit); // Should be explicitly set to false to clear
+        Assert.IsFalse(patch.LapIncludedPit); // Should be explicitly set to false to clear
     }
 
     [TestMethod]
@@ -562,7 +562,7 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        Assert.AreEqual(false, patch.LapIncludedPit); // Should be explicitly set to false
+        Assert.IsFalse(patch.LapIncludedPit); // Should be explicitly set to false
     }
 
     [TestMethod]
@@ -582,7 +582,7 @@ public class PitStateUpdateTests
         // Assert
         Assert.IsNotNull(patch);
         // The patch should set it to false (which handles the clearing)
-        Assert.AreEqual(false, patch.LapIncludedPit);
+        Assert.IsFalse(patch.LapIncludedPit);
         // The last if condition won't execute because patch.LapIncludedPit is not null
     }
 
@@ -631,9 +631,9 @@ public class PitStateUpdateTests
         inPit[123] = new Passing { TransponderId = 123, IsInPit = true };
         var update5 = CreatePitStateUpdate("123", carLapsWithPitStops: carLapsWithPitStops, inPit: inPit);
         var patch5 = update5.GetChanges(state5);
-        Assert.AreEqual(true, patch5!.IsInPit);
-        Assert.AreEqual(true, patch5!.LapIncludedPit);
-        Assert.IsTrue(carLapsWithPitStops["123"].Contains(6)); // Lap 6 added
+        Assert.IsTrue(patch5!.IsInPit);
+        Assert.IsTrue(patch5!.LapIncludedPit);
+        Assert.Contains(6, carLapsWithPitStops["123"]); // Lap 6 added
 
         // Lap 6 - still in pit
         var state6 = CreateCarPosition("123", 123, lastLapCompleted: 6, lapIncludedPit: true);
@@ -650,9 +650,9 @@ public class PitStateUpdateTests
         // So patch.LapIncludedPit stays null
         // Then the final check: state.LapIncludedPit (true) && patch.LapIncludedPit == null (true)
         // So patch.LapIncludedPit = false
-        Assert.AreEqual(false, patch6!.LapIncludedPit);
+        Assert.IsFalse(patch6!.LapIncludedPit);
         // Lap 7 was NOT added yet because IsInPit didn't change, so the condition didn't execute
-        Assert.IsFalse(carLapsWithPitStops["123"].Contains(7)); // Lap 7 NOT added yet
+        Assert.DoesNotContain(7, carLapsWithPitStops["123"]); // Lap 7 NOT added yet
 
         // Lap 7 - exiting pit (not in pit collection, but lap 7 is in pit laps)
         var state7 = CreateCarPosition("123", 123, lastLapCompleted: 7, lapIncludedPit: false); // Changed to false after patch6
@@ -661,11 +661,11 @@ public class PitStateUpdateTests
         var update7 = CreatePitStateUpdate("123", carLapsWithPitStops: carLapsWithPitStops, inPit: inPit);
         var patch7 = update7.GetChanges(state7);
         // IsInPit changes from true to false, so patch.IsInPit = false
-        Assert.AreEqual(false, patch7!.IsInPit);
+        Assert.IsFalse(patch7!.IsInPit);
         // Condition `if (!patch.IsInPit ?? false ...)` = !false ?? false = true, executes
         // But lap 7 was never added to carLapsWithPitStops because state6 didn't trigger it
         // So lap 7 is NOT in the collection, LapIncludedPit = false
-        Assert.AreEqual(false, patch7!.LapIncludedPit); // Lap 7 not in collection
+        Assert.IsFalse(patch7!.LapIncludedPit); // Lap 7 not in collection
 
         // Lap 8 - fully out of pit
         var state8 = CreateCarPosition("123", 123, lastLapCompleted: 8, lapIncludedPit: true); // Previous state had it true
@@ -679,7 +679,7 @@ public class PitStateUpdateTests
         // patch.LapIncludedPit stays null
         // Final check: state.LapIncludedPit (true) && patch.LapIncludedPit == null (true)
         // So patch.LapIncludedPit = false (THIS IS THE KEY TEST FOR THE REQUIREMENT)
-        Assert.AreEqual(false, patch8!.LapIncludedPit); // Should clear it out
+        Assert.IsFalse(patch8!.LapIncludedPit); // Should clear it out
     }
 
     #endregion
@@ -721,13 +721,13 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        Assert.AreEqual(true, patch.IsInPit);
-        Assert.AreEqual(true, patch.IsEnteredPit);
-        Assert.AreEqual(false, patch.IsExitedPit);
-        Assert.AreEqual(false, patch.IsPitStartFinish);
+        Assert.IsTrue(patch.IsInPit);
+        Assert.IsTrue(patch.IsEnteredPit);
+        Assert.IsFalse(patch.IsExitedPit);
+        Assert.IsFalse(patch.IsPitStartFinish);
         Assert.AreEqual("Test Loop", patch.LastLoopName);
-        Assert.AreEqual(true, patch.LapIncludedPit);
-        Assert.IsTrue(carLapsWithPitStops["123"].Contains(6));
+        Assert.IsTrue(patch.LapIncludedPit);
+        Assert.Contains(6, carLapsWithPitStops["123"]);
     }
 
     [TestMethod]
@@ -752,17 +752,17 @@ public class PitStateUpdateTests
         var patch456 = update456.GetChanges(state456);
 
         // Assert
-        Assert.AreEqual(true, patch123!.IsInPit);
-        Assert.AreEqual(true, patch123.LapIncludedPit);
-        Assert.IsTrue(carLapsWithPitStops["123"].Contains(6));
+        Assert.IsTrue(patch123!.IsInPit);
+        Assert.IsTrue(patch123.LapIncludedPit);
+        Assert.Contains(6, carLapsWithPitStops["123"]);
 
-        Assert.AreEqual(true, patch456!.IsInPit);
-        Assert.AreEqual(true, patch456.LapIncludedPit);
-        Assert.IsTrue(carLapsWithPitStops["456"].Contains(9));
+        Assert.IsTrue(patch456!.IsInPit);
+        Assert.IsTrue(patch456.LapIncludedPit);
+        Assert.Contains(9, carLapsWithPitStops["456"]);
 
         // Each car's laps are tracked independently
-        Assert.AreEqual(1, carLapsWithPitStops["123"].Count);
-        Assert.AreEqual(1, carLapsWithPitStops["456"].Count);
+        Assert.HasCount(1, carLapsWithPitStops["123"]);
+        Assert.HasCount(1, carLapsWithPitStops["456"]);
     }
 
     #endregion
@@ -804,7 +804,7 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        Assert.AreEqual(true, patch.IsInPit); // Should work with transponder ID 0
+        Assert.IsTrue(patch.IsInPit); // Should work with transponder ID 0
     }
 
     [TestMethod]
@@ -824,9 +824,9 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        Assert.AreEqual(true, patch.IsInPit);
+        Assert.IsTrue(patch.IsInPit);
         // Should add lap 0 (LastLapCompleted + 1)
-        Assert.IsTrue(carLapsWithPitStops["123"].Contains(0));
+        Assert.Contains(0, carLapsWithPitStops["123"]);
     }
 
     #endregion

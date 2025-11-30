@@ -79,7 +79,7 @@ public class SessionMonitorTests
         // Final check for session finalization
         await TriggerSessionMonitoring(sessionMonitor, sessionContext, previousState);
 
-        Assert.IsTrue(finalCount > 0, $"Expected at least one session to be finalized, but got {finalCount}. " +
+        Assert.IsGreaterThan(0, finalCount, $"Expected at least one session to be finalized, but got {finalCount}. " +
                                       $"Current flag: {sessionContext.SessionState.CurrentFlag}, " +
                                       $"Cars: {sessionContext.SessionState.CarPositions.Count}");
     }
@@ -148,7 +148,7 @@ public class SessionMonitorTests
             await TriggerSessionMonitoring(sessionMonitor, sessionContext, finalState);
         }
 
-        Assert.IsTrue(finalCount > 0, $"Expected at least one session to be finalized, but got {finalCount}. " +
+        Assert.IsGreaterThan(0, finalCount, $"Expected at least one session to be finalized, but got {finalCount}. " +
                                       $"Current flag: {sessionContext.SessionState.CurrentFlag}, " +
                                       $"Cars: {sessionContext.SessionState.CarPositions.Count}");
     }
@@ -217,7 +217,7 @@ public class SessionMonitorTests
             await TriggerSessionMonitoring(sessionMonitor, sessionContext, finalState);
         }
 
-        Assert.IsTrue(finalCount > 0, $"Expected at least one session to be finalized, but got {finalCount}. " +
+        Assert.IsGreaterThan(0, finalCount, $"Expected at least one session to be finalized, but got {finalCount}. " +
                                       $"Current flag: {sessionContext.SessionState.CurrentFlag}, " +
                                       $"Cars: {sessionContext.SessionState.CarPositions.Count}");
     }

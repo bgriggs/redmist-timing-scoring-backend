@@ -52,7 +52,7 @@ public class PracticeQualifyingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(123, result.SessionId);
-        Assert.AreEqual(true, result.IsPracticeQualifying);
+        Assert.IsTrue(result.IsPracticeQualifying);
     }
 
     [TestMethod]
@@ -100,7 +100,7 @@ public class PracticeQualifyingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(789, result.SessionId);
-        Assert.AreEqual(true, result.IsPracticeQualifying);
+        Assert.IsTrue(result.IsPracticeQualifying);
     }
 
     [TestMethod]
@@ -148,7 +148,7 @@ public class PracticeQualifyingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(131415, result.SessionId);
-        Assert.AreEqual(true, result.IsPracticeQualifying);
+        Assert.IsTrue(result.IsPracticeQualifying);
     }
 
     [TestMethod]
@@ -196,7 +196,7 @@ public class PracticeQualifyingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(192021, result.SessionId);
-        Assert.AreEqual(false, result.IsPracticeQualifying);
+        Assert.IsFalse(result.IsPracticeQualifying);
     }
 
     [TestMethod]
@@ -244,7 +244,7 @@ public class PracticeQualifyingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(0, result.SessionId);
-        Assert.AreEqual(true, result.IsPracticeQualifying);
+        Assert.IsTrue(result.IsPracticeQualifying);
     }
 
     [TestMethod]
@@ -266,7 +266,7 @@ public class PracticeQualifyingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(-1, result.SessionId);
-        Assert.AreEqual(true, result.IsPracticeQualifying);
+        Assert.IsTrue(result.IsPracticeQualifying);
     }
 
     #endregion
@@ -300,7 +300,7 @@ public class PracticeQualifyingStateUpdateTests
 
             // Assert
             Assert.IsNotNull(result, $"Result should not be null for RunType: {runType}");
-            Assert.AreEqual(true, result.IsPracticeQualifying, $"IsPracticeQualifying should be true for RunType: {runType}");
+            Assert.IsTrue(result.IsPracticeQualifying, $"IsPracticeQualifying should be true for RunType: {runType}");
         }
     }
 
@@ -322,7 +322,7 @@ public class PracticeQualifyingStateUpdateTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(false, result.IsPracticeQualifying);
+        Assert.IsFalse(result.IsPracticeQualifying);
     }
 
     #endregion
@@ -351,8 +351,8 @@ public class PracticeQualifyingStateUpdateTests
         Assert.IsNotNull(result2);
         Assert.AreEqual(result1.SessionId, result2.SessionId);
         Assert.AreEqual(result1.IsPracticeQualifying, result2.IsPracticeQualifying);
-        Assert.AreEqual(true, result1.IsPracticeQualifying);
-        Assert.AreEqual(true, result2.IsPracticeQualifying);
+        Assert.IsTrue(result1.IsPracticeQualifying);
+        Assert.IsTrue(result2.IsPracticeQualifying);
     }
 
     [TestMethod]
@@ -387,11 +387,11 @@ public class PracticeQualifyingStateUpdateTests
         
         // Practice session should set to true
         Assert.AreEqual(400, practiceResult.SessionId);
-        Assert.AreEqual(true, practiceResult.IsPracticeQualifying);
+        Assert.IsTrue(practiceResult.IsPracticeQualifying);
         
         // Race session should set to false
         Assert.AreEqual(401, raceResult.SessionId);
-        Assert.AreEqual(false, raceResult.IsPracticeQualifying);
+        Assert.IsFalse(raceResult.IsPracticeQualifying);
     }
 
     #endregion
@@ -421,7 +421,7 @@ public class PracticeQualifyingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(20241215, result.SessionId);
-        Assert.AreEqual(true, result.IsPracticeQualifying);
+        Assert.IsTrue(result.IsPracticeQualifying);
         
         // Verify that other properties are not touched
         Assert.IsNull(result.EventId);
@@ -452,7 +452,7 @@ public class PracticeQualifyingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(555, result.SessionId);
-        Assert.AreEqual(true, result.IsPracticeQualifying);
+        Assert.IsTrue(result.IsPracticeQualifying);
     }
 
     [TestMethod]
@@ -478,7 +478,7 @@ public class PracticeQualifyingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual(777, result.SessionId);
-        Assert.AreEqual(false, result.IsPracticeQualifying);
+        Assert.IsFalse(result.IsPracticeQualifying);
     }
 
     [TestMethod]

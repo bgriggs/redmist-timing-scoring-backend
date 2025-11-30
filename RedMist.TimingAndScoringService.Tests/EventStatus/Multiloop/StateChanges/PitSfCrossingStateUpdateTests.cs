@@ -47,7 +47,7 @@ public class PitSfCrossingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
-        Assert.AreEqual(true, result.IsPitStartFinish);
+        Assert.IsTrue(result.IsPitStartFinish);
     }
 
     [TestMethod]
@@ -69,7 +69,7 @@ public class PitSfCrossingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("23", result.Number);
-        Assert.AreEqual(false, result.IsPitStartFinish);
+        Assert.IsFalse(result.IsPitStartFinish);
     }
 
     [TestMethod]
@@ -139,7 +139,7 @@ public class PitSfCrossingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("", result.Number);
-        Assert.AreEqual(true, result.IsPitStartFinish);
+        Assert.IsTrue(result.IsPitStartFinish);
     }
 
     [TestMethod]
@@ -161,7 +161,7 @@ public class PitSfCrossingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.IsNull(result.Number);
-        Assert.AreEqual(true, result.IsPitStartFinish);
+        Assert.IsTrue(result.IsPitStartFinish);
     }
 
     #endregion
@@ -200,7 +200,7 @@ public class PitSfCrossingStateUpdateTests
             // Assert
             Assert.IsNotNull(result, $"Result should not be null for car number: {carNumber}");
             Assert.AreEqual(carNumber, result.Number, $"Car number should match for: {carNumber}");
-            Assert.AreEqual(true, result.IsPitStartFinish, $"IsPitStartFinish should be true for car: {carNumber}");
+            Assert.IsTrue(result.IsPitStartFinish, $"IsPitStartFinish should be true for car: {carNumber}");
         }
     }
 
@@ -231,9 +231,9 @@ public class PitSfCrossingStateUpdateTests
         Assert.AreEqual(result1.Number, result2.Number);
         Assert.AreEqual(result1.IsPitStartFinish, result2.IsPitStartFinish);
         Assert.AreEqual("42", result1.Number);
-        Assert.AreEqual(true, result1.IsPitStartFinish);
+        Assert.IsTrue(result1.IsPitStartFinish);
         Assert.AreEqual("42", result2.Number);
-        Assert.AreEqual(true, result2.IsPitStartFinish);
+        Assert.IsTrue(result2.IsPitStartFinish);
     }
 
     [TestMethod]
@@ -268,11 +268,11 @@ public class PitSfCrossingStateUpdateTests
         
         // First result should change to pit
         Assert.AreEqual("42", result1.Number);
-        Assert.AreEqual(true, result1.IsPitStartFinish);
+        Assert.IsTrue(result1.IsPitStartFinish);
         
         // Second result should change back to track
         Assert.AreEqual("42", result2.Number);
-        Assert.AreEqual(false, result2.IsPitStartFinish);
+        Assert.IsFalse(result2.IsPitStartFinish);
     }
 
     #endregion
@@ -303,8 +303,8 @@ public class PitSfCrossingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
-        Assert.AreEqual(true, result.IsPitStartFinish);
-        Assert.AreEqual(true, result.IsInPit);
+        Assert.IsTrue(result.IsPitStartFinish);
+        Assert.IsTrue(result.IsInPit);
         
         // Verify that other properties are not affected
         Assert.IsNull(result.LastLapCompleted);
@@ -336,7 +336,7 @@ public class PitSfCrossingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("99", result.Number);
-        Assert.AreEqual(false, result.IsPitStartFinish);
+        Assert.IsFalse(result.IsPitStartFinish);
     }
 
     [TestMethod]
@@ -363,15 +363,15 @@ public class PitSfCrossingStateUpdateTests
         // Assert
         Assert.IsNotNull(result42);
         Assert.AreEqual("42", result42.Number);
-        Assert.AreEqual(true, result42.IsPitStartFinish);
+        Assert.IsTrue(result42.IsPitStartFinish);
 
         Assert.IsNotNull(result99);
         Assert.AreEqual("99", result99.Number);
-        Assert.AreEqual(false, result99.IsPitStartFinish);
+        Assert.IsFalse(result99.IsPitStartFinish);
 
         Assert.IsNotNull(result7);
         Assert.AreEqual("7", result7.Number);
-        Assert.AreEqual(true, result7.IsPitStartFinish);
+        Assert.IsTrue(result7.IsPitStartFinish);
     }
 
     #endregion
@@ -476,7 +476,7 @@ public class PitSfCrossingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
-        Assert.AreEqual(false, result.IsPitStartFinish);
+        Assert.IsFalse(result.IsPitStartFinish);
     }
 
     [TestMethod]
@@ -498,7 +498,7 @@ public class PitSfCrossingStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
-        Assert.AreEqual(true, result.IsPitStartFinish);
+        Assert.IsTrue(result.IsPitStartFinish);
     }
 
     #endregion

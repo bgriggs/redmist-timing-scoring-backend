@@ -527,9 +527,9 @@ public class FlagsStateChangeTests
         Assert.HasCount(5, result.FlagDurations!);
         
         // Verify the last flag changed to Checkered
-        var lastFlag = result.FlagDurations.Last();
-        Assert.AreEqual(Flags.Checkered, lastFlag.Flag);
-        Assert.IsNull(lastFlag.EndTime); // Should be ongoing
+        var lastFlag = result.FlagDurations?.Last();
+        Assert.AreEqual(Flags.Checkered, lastFlag?.Flag);
+        Assert.IsNull(lastFlag?.EndTime); // Should be ongoing
         
         // Verify that other properties are not touched
         Assert.IsNull(result.SessionId);

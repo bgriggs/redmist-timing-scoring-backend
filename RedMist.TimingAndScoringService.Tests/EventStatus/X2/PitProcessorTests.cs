@@ -215,7 +215,7 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(2, result.CarPatches.Count); // Now creates one change per passing with valid car number
+        Assert.HasCount(2, result.CarPatches); // Now creates one change per passing with valid car number
 
         // Find the specific car patches by checking the Number property
         var carPatch123 = result.CarPatches.FirstOrDefault(p => p.Number == "123");
@@ -225,21 +225,21 @@ public class PitProcessorTests
         Assert.IsNotNull(carPatch456);
 
         // Check that IsInPit and IsEnteredPit flags are set correctly in the patches
-        Assert.AreEqual(true, carPatch123.IsInPit);
-        Assert.AreEqual(true, carPatch123.IsEnteredPit);
+        Assert.IsTrue(carPatch123.IsInPit);
+        Assert.IsTrue(carPatch123.IsEnteredPit);
 
         // For car 456, check if patch has IsInPit set
         if (carPatch456.IsInPit.HasValue)
         {
-            Assert.AreEqual(false, carPatch456.IsInPit);
+            Assert.IsFalse(carPatch456.IsInPit);
         }
         else
         {
             // If patch doesn't contain IsInPit, verify current state should be false
             var currentCar = _sessionContext.GetCarByNumber("456");
-            Assert.AreEqual(false, currentCar?.IsInPit);
+            Assert.IsFalse(currentCar?.IsInPit);
         }
-        Assert.AreEqual(true, carPatch456.IsExitedPit);
+        Assert.IsTrue(carPatch456.IsExitedPit);
     }
 
     [TestMethod]
@@ -261,21 +261,21 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         var carPatch = result.CarPatches[0];
         Assert.AreEqual("123", carPatch.Number);
-        Assert.AreEqual(true, carPatch.IsEnteredPit);
+        Assert.IsTrue(carPatch.IsEnteredPit);
         
         // The patch may or may not contain IsInPit depending on whether it changed from current state
         if (carPatch.IsInPit.HasValue)
         {
-            Assert.AreEqual(false, carPatch.IsInPit); // IsInPit was false
+            Assert.IsFalse(carPatch.IsInPit); // IsInPit was false
         }
         else
         {
             // If patch doesn't contain IsInPit, verify current state is correct
             var currentCar = _sessionContext.GetCarByNumber("123");
-            Assert.AreEqual(false, currentCar?.IsInPit);
+            Assert.IsFalse(currentCar?.IsInPit);
         }
     }
 
@@ -298,10 +298,10 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         var carPatch = result.CarPatches[0];
         Assert.AreEqual("123", carPatch.Number);
-        Assert.AreEqual(true, carPatch.IsExitedPit);
+        Assert.IsTrue(carPatch.IsExitedPit);
     }
 
     [TestMethod]
@@ -323,10 +323,10 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         var carPatch = result.CarPatches[0];
         Assert.AreEqual("123", carPatch.Number);
-        Assert.AreEqual(true, carPatch.IsPitStartFinish);
+        Assert.IsTrue(carPatch.IsPitStartFinish);
     }
 
     [TestMethod]
@@ -348,7 +348,7 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         var carPatch = result.CarPatches[0];
         Assert.AreEqual("123", carPatch.Number);
         // For PitOther, we mainly check that the patch was created
@@ -374,7 +374,7 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         var carPatch = result.CarPatches[0];
         Assert.AreEqual("123", carPatch.Number);
         // For Other loops, we mainly check that the patch was created
@@ -405,14 +405,14 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(2, result.CarPatches.Count); // Two separate car patches
+        Assert.HasCount(2, result.CarPatches); // Two separate car patches
 
         // Get the last patch for transponder 123 (should reflect final state)
         var lastPatch = result.CarPatches.Last(p => p.Number == "123");
 
         // Should reflect the latest passing for transponder 123
-        Assert.AreEqual(true, lastPatch.IsExitedPit); // Should be exit (loop 2)
-        Assert.AreEqual(false, lastPatch.IsInPit); // IsInPit was false in latest
+        Assert.IsTrue(lastPatch.IsExitedPit); // Should be exit (loop 2)
+        Assert.IsFalse(lastPatch.IsInPit); // IsInPit was false in latest
     }
 
     [TestMethod]
@@ -434,15 +434,15 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         var carPatch = result.CarPatches[0];
 
         // Should only update IsInPit based on IsInPit flag, not any loop-specific flags
-        Assert.AreEqual(true, carPatch.IsInPit);
+        Assert.IsTrue(carPatch.IsInPit);
         // No loop-specific flags should be set (they will be false, not null)
-        Assert.AreEqual(false, carPatch.IsEnteredPit);
-        Assert.AreEqual(false, carPatch.IsExitedPit);
-        Assert.AreEqual(false, carPatch.IsPitStartFinish);
+        Assert.IsFalse(carPatch.IsEnteredPit);
+        Assert.IsFalse(carPatch.IsExitedPit);
+        Assert.IsFalse(carPatch.IsPitStartFinish);
     }
 
     [TestMethod]
@@ -465,7 +465,7 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.CarPatches.Count); // Should skip processing for unknown transponder
+        Assert.IsEmpty(result.CarPatches); // Should skip processing for unknown transponder
     }
 
     #endregion
@@ -631,7 +631,7 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(5, result.CarPatches.Count); // One patch per valid transponder
+        Assert.HasCount(5, result.CarPatches); // One patch per valid transponder
 
         // Find patches by car number
         var patch100 = result.CarPatches.First(p => p.Number == "100");
@@ -641,37 +641,37 @@ public class PitProcessorTests
         var patch500 = result.CarPatches.First(p => p.Number == "500");
 
         // Verify IsInPit flags
-        Assert.AreEqual(true, patch100.IsInPit);
-        Assert.AreEqual(true, patch200.IsInPit);
-        Assert.AreEqual(true, patch300.IsInPit);
+        Assert.IsTrue(patch100.IsInPit);
+        Assert.IsTrue(patch200.IsInPit);
+        Assert.IsTrue(patch300.IsInPit);
         
         // For cars 400 and 500, check if patch has IsInPit set
         if (patch400.IsInPit.HasValue)
         {
-            Assert.AreEqual(false, patch400.IsInPit); // IsInPit was false
+            Assert.IsFalse(patch400.IsInPit); // IsInPit was false
         }
         else
         {
             // If patch doesn't contain IsInPit, verify current state should be false
             var currentCar = _sessionContext.GetCarByNumber("400");
-            Assert.AreEqual(false, currentCar?.IsInPit);
+            Assert.IsFalse(currentCar?.IsInPit);
         }
         
         if (patch500.IsInPit.HasValue)
         {
-            Assert.AreEqual(false, patch500.IsInPit); // IsInPit was false
+            Assert.IsFalse(patch500.IsInPit); // IsInPit was false
         }
         else
         {
             // If patch doesn't contain IsInPit, verify current state should be false
             var currentCar = _sessionContext.GetCarByNumber("500");
-            Assert.AreEqual(false, currentCar?.IsInPit);
+            Assert.IsFalse(currentCar?.IsInPit);
         }
 
         // Verify loop-specific flags
-        Assert.AreEqual(true, patch100.IsEnteredPit);
-        Assert.AreEqual(true, patch200.IsExitedPit);
-        Assert.AreEqual(true, patch300.IsPitStartFinish);
+        Assert.IsTrue(patch100.IsEnteredPit);
+        Assert.IsTrue(patch200.IsExitedPit);
+        Assert.IsTrue(patch300.IsPitStartFinish);
         // patch400 and patch500 should have patches but no specific loop flags since they're PitOther/Other
         Assert.IsNotNull(patch400);
         Assert.IsNotNull(patch500);
@@ -713,14 +713,14 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(1, result.CarPatches.Count);
+        Assert.HasCount(1, result.CarPatches);
         var carPatch = result.CarPatches[0];
 
         // Should still process IsInPit
-        Assert.AreEqual(true, carPatch.IsInPit);
+        Assert.IsTrue(carPatch.IsInPit);
 
         // But no loop-specific processing should occur (they will be false, not null)
-        Assert.AreEqual(false, carPatch.IsEnteredPit);
+        Assert.IsFalse(carPatch.IsEnteredPit);
     }
 
     #endregion
@@ -966,9 +966,9 @@ public class PitProcessorTests
 
         // Verify first result uses original configuration
         Assert.IsNotNull(firstResult);
-        Assert.AreEqual(1, firstResult.CarPatches.Count);
+        Assert.HasCount(1, firstResult.CarPatches);
         var firstCarPatch = firstResult.CarPatches[0];
-        Assert.AreEqual(true, firstCarPatch.IsEnteredPit); // Should be entrance (loop 1 = PitIn)
+        Assert.IsTrue(firstCarPatch.IsEnteredPit);
 
         // Setup modified configuration for reload - change loop 1 from PitIn to PitExit
         var modifiedEventConfig = new ConfigurationEvent
@@ -976,7 +976,7 @@ public class PitProcessorTests
             Id = eventId,
             LoopsMetadata = new List<LoopMetadata>
             {
-                new LoopMetadata { Id = 1, Type = LoopType.PitExit, Name = "Modified to PitExit" }, // Changed from PitIn to PitExit
+                new LoopMetadata { Id = 1, Type = LoopType.PitExit, Name = "Changed from PitIn to PitExit" }, // Changed from PitIn to PitExit
                 new LoopMetadata { Id = 2, Type = LoopType.PitIn, Name = "Pit Entry" }
             }
         };
@@ -1005,12 +1005,12 @@ public class PitProcessorTests
 
         // Assert
         Assert.IsNotNull(secondResult);
-        Assert.AreEqual(1, secondResult.CarPatches.Count);
+        Assert.HasCount(1, secondResult.CarPatches);
         var secondCarPatch = secondResult.CarPatches[0];
 
         // Now loop 1 should be treated as PitExit instead of PitIn
-        Assert.AreEqual(false, secondCarPatch.IsEnteredPit); // Should NOT be entrance anymore
-        Assert.AreEqual(true, secondCarPatch.IsExitedPit); // Should be exit now
+        Assert.IsFalse(secondCarPatch.IsEnteredPit);
+        Assert.IsTrue(secondCarPatch.IsExitedPit);
 
         // Verify reload was logged
         _mockLogger.Verify(

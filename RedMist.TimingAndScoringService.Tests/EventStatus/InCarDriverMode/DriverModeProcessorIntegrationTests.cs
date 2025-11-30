@@ -74,7 +74,7 @@ public class DriverModeProcessorIntegrationTests
         // Assert
         Assert.AreEqual(1, _updateSender.UpdateCallCount);
         var sentUpdates = _updateSender.GetLastSentUpdate();
-        Assert.AreEqual(4, sentUpdates.Count); // Should have updates for all 4 cars
+        Assert.HasCount(4, sentUpdates);
         
         // Verify flag is set correctly
         foreach (var update in sentUpdates)
@@ -98,7 +98,7 @@ public class DriverModeProcessorIntegrationTests
         // Assert
         Assert.AreEqual(1, _updateSender.UpdateCallCount);
         var sentUpdates = _updateSender.GetLastSentUpdate();
-        Assert.AreEqual(4, sentUpdates.Count); // Should send updates for all cars due to flag change
+        Assert.HasCount(4, sentUpdates);
         
         foreach (var update in sentUpdates)
         {
@@ -120,7 +120,7 @@ public class DriverModeProcessorIntegrationTests
         // Assert
         Assert.AreEqual(1, _updateSender.UpdateCallCount);
         var sentUpdates = _updateSender.GetLastSentUpdate();
-        Assert.AreEqual(0, sentUpdates.Count); // No changes, so no updates
+        Assert.IsEmpty(sentUpdates);
     }
 
     [TestMethod]
@@ -202,7 +202,7 @@ public class DriverModeProcessorIntegrationTests
         var carSets = _processor.GetCarSetsLookup();
 
         // Assert
-        Assert.AreEqual(4, carSets.Count);
+        Assert.HasCount(4, carSets);
         Assert.IsTrue(carSets.ContainsKey("1"));
         Assert.IsTrue(carSets.ContainsKey("2"));
         Assert.IsTrue(carSets.ContainsKey("3"));

@@ -28,7 +28,7 @@ public class SectionStateUpdateTests
         Assert.IsNotNull(stateUpdate);
         Assert.AreEqual(carNumber, stateUpdate.CarNumber);
         Assert.AreSame(multiloopSections, stateUpdate.MultiloopCompletedSections);
-        Assert.AreEqual(2, stateUpdate.MultiloopCompletedSections.Count);
+        Assert.HasCount(2, stateUpdate.MultiloopCompletedSections);
     }
 
     [TestMethod]
@@ -76,7 +76,7 @@ public class SectionStateUpdateTests
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
         Assert.IsNotNull(result.CompletedSections);
-        Assert.AreEqual(2, result.CompletedSections.Count);
+        Assert.HasCount(2, result.CompletedSections);
         
         // Verify the sections were mapped correctly
         var s1 = result.CompletedSections.FirstOrDefault(s => s.SectionId == "S1");
@@ -151,7 +151,7 @@ public class SectionStateUpdateTests
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
         Assert.IsNotNull(result.CompletedSections);
-        Assert.AreEqual(1, result.CompletedSections.Count);
+        Assert.HasCount(1, result.CompletedSections);
         
         var updatedSection = result.CompletedSections.First();
         Assert.AreEqual("42", updatedSection.Number);
@@ -196,7 +196,7 @@ public class SectionStateUpdateTests
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
         Assert.IsNotNull(result.CompletedSections);
-        Assert.AreEqual(3, result.CompletedSections.Count);
+        Assert.HasCount(3, result.CompletedSections!);
     }
 
     #endregion
@@ -233,7 +233,7 @@ public class SectionStateUpdateTests
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
         Assert.IsNotNull(result.CompletedSections);
-        Assert.AreEqual(0, result.CompletedSections.Count);
+        Assert.IsEmpty(result.CompletedSections);
     }
 
     [TestMethod]
@@ -381,7 +381,7 @@ public class SectionStateUpdateTests
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
         Assert.IsNotNull(result.CompletedSections);
-        Assert.AreEqual(50, result.CompletedSections.Count);
+        Assert.HasCount(50, result.CompletedSections);
     }
 
     #endregion
@@ -444,13 +444,13 @@ public class SectionStateUpdateTests
 
         // Assert
         Assert.IsNotNull(result);
-        Assert.AreEqual(3, result.CompletedSections!.Count);
+        Assert.HasCount(3, result.CompletedSections!);
         
         // The order should be preserved from the multiloop sections
-        var sectionIds = result.CompletedSections.Select(s => s.SectionId).ToArray();
-        Assert.AreEqual("S3", sectionIds[0]);
-        Assert.AreEqual("S1", sectionIds[1]);
-        Assert.AreEqual("S2", sectionIds[2]);
+        var sectionIds = result.CompletedSections?.Select(s => s.SectionId).ToArray();
+        Assert.AreEqual("S3", sectionIds?[0]);
+        Assert.AreEqual("S1", sectionIds?[1]);
+        Assert.AreEqual("S2", sectionIds?[2]);
     }
 
     #endregion
@@ -486,18 +486,18 @@ public class SectionStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
-        Assert.AreEqual(4, result.CompletedSections!.Count);
+        Assert.HasCount(4, result.CompletedSections!);
         
         // Verify the sections have expected timing data
-        var s1 = result.CompletedSections.First(s => s.SectionId == "S1");
-        var s2 = result.CompletedSections.First(s => s.SectionId == "S2");
-        var s3 = result.CompletedSections.First(s => s.SectionId == "S3");
-        var sf = result.CompletedSections.First(s => s.SectionId == "SF");
+        var s1 = result.CompletedSections?.First(s => s.SectionId == "S1");
+        var s2 = result.CompletedSections?.First(s => s.SectionId == "S2");
+        var s3 = result.CompletedSections?.First(s => s.SectionId == "S3");
+        var sf = result.CompletedSections?.First(s => s.SectionId == "SF");
         
-        Assert.AreEqual(45000, s1.ElapsedTimeMs);
-        Assert.AreEqual(95000, s2.ElapsedTimeMs);
-        Assert.AreEqual(150000, s3.ElapsedTimeMs);
-        Assert.AreEqual(180000, sf.ElapsedTimeMs);
+        Assert.AreEqual(45000, s1?.ElapsedTimeMs);
+        Assert.AreEqual(95000, s2?.ElapsedTimeMs);
+        Assert.AreEqual(150000, s3?.ElapsedTimeMs);
+        Assert.AreEqual(180000, sf?.ElapsedTimeMs);
         
         // Verify that other properties are not touched
         Assert.IsNull(result.LastLapCompleted);
@@ -536,19 +536,19 @@ public class SectionStateUpdateTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("42", result.Number);
-        Assert.AreEqual(3, result.CompletedSections!.Count);
+        Assert.HasCount(3, result.CompletedSections!);
         
         // Verify the sections were replaced/updated
-        var sectionIds = result.CompletedSections.Select(s => s.SectionId).ToArray();
+        var sectionIds = result.CompletedSections?.Select(s => s.SectionId).ToArray();
         Assert.IsTrue(sectionIds.Contains("S1"));
         Assert.IsTrue(sectionIds.Contains("S2"));
         Assert.IsTrue(sectionIds.Contains("S3"));
         
         // Verify improved times
-        var s1 = result.CompletedSections.First(s => s.SectionId == "S1");
-        var s2 = result.CompletedSections.First(s => s.SectionId == "S2");
-        Assert.AreEqual(48000, s1.ElapsedTimeMs); // Improved from 50000
-        Assert.AreEqual(105000, s2.ElapsedTimeMs); // Improved from 110000
+        var s1 = result.CompletedSections?.First(s => s.SectionId == "S1");
+        var s2 = result.CompletedSections?.First(s => s.SectionId == "S2");
+        Assert.AreEqual(48000, s1?.ElapsedTimeMs); // Improved from 50000
+        Assert.AreEqual(105000, s2?.ElapsedTimeMs); // Improved from 110000
     }
 
     [TestMethod]
@@ -589,15 +589,15 @@ public class SectionStateUpdateTests
         // Assert
         Assert.IsNotNull(result42);
         Assert.AreEqual("42", result42.Number);
-        Assert.AreEqual(2, result42.CompletedSections!.Count);
+        Assert.HasCount(2, result42.CompletedSections!);
 
         Assert.IsNotNull(result99);
         Assert.AreEqual("99", result99.Number);
-        Assert.AreEqual(1, result99.CompletedSections!.Count);
+        Assert.HasCount(1, result99.CompletedSections!);
 
         Assert.IsNotNull(result7);
         Assert.AreEqual("7", result7.Number);
-        Assert.AreEqual(3, result7.CompletedSections!.Count);
+        Assert.HasCount(3, result7.CompletedSections!);
     }
 
     #endregion
