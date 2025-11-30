@@ -2,18 +2,21 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RedMist.Database.PostgreSQL;
 
 #nullable disable
 
-namespace RedMist.Database.Migrations.PostgreSQL
+namespace RedMist.Database.PostgreSQL.Migrations
 {
     [DbContext(typeof(TsContextPostgreSQL))]
-    partial class TsContextPostgreSQLModelSnapshot : ModelSnapshot
+    [Migration("20251130200639_FlagtronicsSet")]
+    partial class FlagtronicsSet
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

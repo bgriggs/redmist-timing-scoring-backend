@@ -52,100 +52,85 @@ public class TsContextPostgreSQL : DbContext
 
         // Configure Organizations table (NO VIEW CONFIGURATION)
         modelBuilder.Entity<Organization>().ToTable("Organizations");
-     modelBuilder.Entity<Organization>()
-     .HasIndex(o => o.ClientId)
-.IsUnique();
+        modelBuilder.Entity<Organization>().HasIndex(o => o.ClientId).IsUnique();
 
         // JSON configuration for complex types - PostgreSQL uses JSONB
- var orbitsConverter = new ValueConverter<OrbitsConfiguration, string>(
+        var orbitsConverter = new ValueConverter<OrbitsConfiguration, string>(
             v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-          v => JsonSerializer.Deserialize<OrbitsConfiguration>(v, (JsonSerializerOptions?)null) ?? new OrbitsConfiguration());
+            v => JsonSerializer.Deserialize<OrbitsConfiguration>(v, (JsonSerializerOptions?)null) ?? new OrbitsConfiguration());
 
- var orbitsProperty = modelBuilder.Entity<Organization>()
-         .Property(o => o.Orbits);
+        var orbitsProperty = modelBuilder.Entity<Organization>().Property(o => o.Orbits);
         orbitsProperty.HasConversion(orbitsConverter!);
-orbitsProperty.HasColumnType("jsonb");
+        orbitsProperty.HasColumnType("jsonb");
 
-  // X2
+        // X2
         var x2Converter = new ValueConverter<X2Configuration, string>(
-      v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-   v => JsonSerializer.Deserialize<X2Configuration>(v, (JsonSerializerOptions?)null) ?? new X2Configuration());
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<X2Configuration>(v, (JsonSerializerOptions?)null) ?? new X2Configuration());
 
-        var x2Property = modelBuilder.Entity<Organization>()
-            .Property(o => o.X2);
+        var x2Property = modelBuilder.Entity<Organization>().Property(o => o.X2);
         x2Property.HasConversion(x2Converter!);
-  x2Property.HasColumnType("jsonb");
+        x2Property.HasColumnType("jsonb");
 
         // Broadcast
-var broadcastConverter = new ValueConverter<BroadcasterConfig, string>(
- v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-   v => JsonSerializer.Deserialize<BroadcasterConfig>(v, (JsonSerializerOptions?)null) ?? new BroadcasterConfig());
+        var broadcastConverter = new ValueConverter<BroadcasterConfig, string>(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<BroadcasterConfig>(v, (JsonSerializerOptions?)null) ?? new BroadcasterConfig());
 
-      var broadcastProperty = modelBuilder.Entity<TimingCommon.Models.Configuration.Event>()
-      .Property(o => o.Broadcast);
- broadcastProperty.HasConversion(broadcastConverter!);
+        var broadcastProperty = modelBuilder.Entity<TimingCommon.Models.Configuration.Event>().Property(o => o.Broadcast);
+        broadcastProperty.HasConversion(broadcastConverter!);
         broadcastProperty.HasColumnType("jsonb");
 
         // Schedule
         var dtJsonOptions = new JsonSerializerOptions { Converters = { new UnspecifiedDateTimeConverter() } };
         var scheduleConverter = new ValueConverter<EventSchedule, string>(
-    v => JsonSerializer.Serialize(v, dtJsonOptions),
+            v => JsonSerializer.Serialize(v, dtJsonOptions),
             v => JsonSerializer.Deserialize<EventSchedule>(v, dtJsonOptions) ?? new EventSchedule());
 
-        var scheduleProperty = modelBuilder.Entity<TimingCommon.Models.Configuration.Event>()
-     .Property(o => o.Schedule);
+        var scheduleProperty = modelBuilder.Entity<TimingCommon.Models.Configuration.Event>().Property(o => o.Schedule);
         scheduleProperty.HasConversion(scheduleConverter!);
         scheduleProperty.HasColumnType("jsonb");
 
         // Loops
- var loopMetadataConverter = new ValueConverter<List<LoopMetadata>, string>(
-    v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-     v => JsonSerializer.Deserialize<List<LoopMetadata>>(v, (JsonSerializerOptions?)null) ?? new List<LoopMetadata>());
+        var loopMetadataConverter = new ValueConverter<List<LoopMetadata>, string>(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<List<LoopMetadata>>(v, (JsonSerializerOptions?)null) ?? new List<LoopMetadata>());
 
         var loopsComparer = new ValueComparer<List<LoopMetadata>>(
-  (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
+            (c1, c2) => c1 != null && c2 != null && c1.SequenceEqual(c2),
             c => c != null ? c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())) : 0,
             c => c != null ? c.ToList() : new List<LoopMetadata>());
 
-     var loopsMetadata = modelBuilder.Entity<TimingCommon.Models.Configuration.Event>()
-            .Property(o => o.LoopsMetadata);
+        var loopsMetadata = modelBuilder.Entity<TimingCommon.Models.Configuration.Event>().Property(o => o.LoopsMetadata);
         loopsMetadata.HasConversion(loopMetadataConverter!);
         loopsMetadata.Metadata.SetValueComparer(loopsComparer);
         loopsMetadata.HasColumnType("jsonb");
 
         // SessionResult Payload
         var payloadConverter = new ValueConverter<Payload, string>(
-  v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-       v => JsonSerializer.Deserialize<Payload>(v, (JsonSerializerOptions?)null) ?? new Payload());
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<Payload>(v, (JsonSerializerOptions?)null) ?? new Payload());
         var sessionStateConverter = new ValueConverter<SessionState, string>(
-     v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-      v => JsonSerializer.Deserialize<SessionState>(v, (JsonSerializerOptions?)null) ?? new SessionState());
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<SessionState>(v, (JsonSerializerOptions?)null) ?? new SessionState());
 
-        var payloadProperty = modelBuilder.Entity<SessionResult>()
-            .Property(o => o.Payload);
+        var payloadProperty = modelBuilder.Entity<SessionResult>().Property(o => o.Payload);
         payloadProperty.HasConversion(payloadConverter!);
-    payloadProperty.HasColumnType("jsonb");
+        payloadProperty.HasColumnType("jsonb");
 
-        var sessionStateProperty = modelBuilder.Entity<SessionResult>()
-        .Property(o => o.SessionState);
+        var sessionStateProperty = modelBuilder.Entity<SessionResult>().Property(o => o.SessionState);
         sessionStateProperty.HasConversion(sessionStateConverter!);
         sessionStateProperty.HasColumnType("jsonb");
 
-   // Configure TimingCommon models
-   modelBuilder.Entity<Session>()
-            .HasKey(s => new { s.Id, s.EventId });
+        // Configure TimingCommon models
+        modelBuilder.Entity<Session>().HasKey(s => new { s.Id, s.EventId });
 
-        modelBuilder.Entity<CompetitorMetadata>()
-  .HasKey(c => new { c.EventId, c.CarNumber });
+        modelBuilder.Entity<CompetitorMetadata>().HasKey(c => new { c.EventId, c.CarNumber });
 
-        modelBuilder.Entity<Loop>()
- .HasKey(l => new { l.OrganizationId, l.EventId, l.Id });
+        modelBuilder.Entity<Loop>().HasKey(l => new { l.OrganizationId, l.EventId, l.Id });
 
-        modelBuilder.Entity<Passing>()
-         .HasKey(p => new { p.OrganizationId, p.EventId, p.Id });
+        modelBuilder.Entity<Passing>().HasKey(p => new { p.OrganizationId, p.EventId, p.Id });
 
-   modelBuilder.Entity<UIVersionInfo>()
-            .HasNoKey()
-            .ToTable("UIVersions");
+        modelBuilder.Entity<UIVersionInfo>().HasNoKey().ToTable("UIVersions");
     }
 }
