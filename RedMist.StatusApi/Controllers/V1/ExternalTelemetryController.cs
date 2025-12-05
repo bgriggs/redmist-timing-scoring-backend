@@ -96,6 +96,14 @@ public class ExternalTelemetryController : Controller
                         // Prioritize the relay source for change detection
                         else if (isRelaySource)
                         {
+                            // Check to see if there is a name set by a non-relay source and the relay source is trying to clear it
+                            if (!existingDis.ClientId.StartsWith("relay", true, CultureInfo.InvariantCulture) 
+                                && !string.IsNullOrWhiteSpace(existingDis.DriverInfo.DriverName) 
+                                && string.IsNullOrWhiteSpace(dis.DriverInfo.DriverName))
+                            {
+                                // Reject the change to prioritizing using the name from another source when the relay does not have one
+                                return StatusCode(StatusCodes.Status423Locked, "Record is set with data from another source that has a name");
+                            }
                             changed = existingDis.EqualsDriverInfo(dis);
                         }
                         // Non-relay source, only mark as changed if the existing source is also non-relay
