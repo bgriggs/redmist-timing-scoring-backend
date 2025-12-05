@@ -104,12 +104,12 @@ public class ExternalTelemetryController : Controller
                                 // Reject the change to prioritizing using the name from another source when the relay does not have one
                                 return StatusCode(StatusCodes.Status423Locked, "Record is set with data from another source that has a name");
                             }
-                            changed = existingDis.EqualsDriverInfo(dis);
+                            changed = !existingDis.EqualsDriverInfo(dis);
                         }
                         // Non-relay source, only mark as changed if the existing source is also non-relay
                         else if (!existingDis.ClientId.StartsWith("relay", true, CultureInfo.InvariantCulture))
                         {
-                            changed = existingDis.EqualsDriverInfo(dis);
+                            changed = !existingDis.EqualsDriverInfo(dis);
                         }
                         else
                         {
@@ -171,7 +171,11 @@ public class ExternalTelemetryController : Controller
         if (!User.IsInRole("ext-telem"))
             return Forbid();
 
-        Logger.LogTrace("{m}", nameof(UpdateCarVideosAsync));
+        var clientId = User.Claims.First(c => c.Type == "azp").Value;
+        if (string.IsNullOrEmpty(clientId))
+            return BadRequest("No client ID found");
+
+        Logger.LogTrace("{m} {c}", nameof(UpdateCarVideosAsync), clientId);
         if (videos == null || videos.Count == 0)
             return BadRequest("No video data found");
 
