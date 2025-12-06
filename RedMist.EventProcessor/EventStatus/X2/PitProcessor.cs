@@ -27,6 +27,7 @@ public class PitProcessor
     private readonly Dictionary<uint, Passing> pitSf = [];
     private readonly Dictionary<uint, Passing> pitOther = [];
     private readonly Dictionary<uint, Passing> other = [];
+    private int lastSessionId = -1;
 
     /// <summary>
     /// Callback to notify when pit messages are received for specific cars
@@ -102,6 +103,15 @@ public class PitProcessor
         {
             // Multiloop is active, do not process X2 pit data
             return null;
+        }
+
+        // Check for session change and clear out old data
+        if (lastSessionId != sessionContext.SessionState.SessionId)
+        {
+            Logger.LogInformation("Session changed from {LastSessionId} to {CurrentSessionId}, clearing pit processor state",
+                lastSessionId, sessionContext.SessionState.SessionId);
+            carLapsWithPitStops.Clear();
+            lastSessionId = sessionContext.SessionState.SessionId;
         }
 
         List<Passing>? passings;
