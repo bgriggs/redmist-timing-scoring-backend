@@ -347,6 +347,182 @@ public class ControlLogEnricherTests
         Assert.AreEqual("1", result[0].Number);
     }
 
+    [TestMethod]
+    public void Process_CarNotInPenaltyLookupButHasWarnings_ClearsWarnings()
+    {
+        // Arrange - Car has warnings from previous race
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.PenalityWarnings = 2; // Car had 2 warnings previously
+        car1.PenalityLaps = 0;
+        _sessionContext.UpdateCars([car1]);
+        SetUpdateReset(true);
+
+        // Car "1" is NOT in penalty lookup (no penalties today)
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(1, result);
+        
+        var patch = result[0];
+        Assert.AreEqual("1", patch.Number);
+        Assert.AreEqual(0, patch.PenalityWarnings);
+        Assert.IsNull(patch.PenalityLaps); // Laps were already 0, no need to patch
+        
+        // Verify car state was cleared
+        Assert.AreEqual(0, car1.PenalityWarnings);
+    }
+
+    [TestMethod]
+    public void Process_CarNotInPenaltyLookupButHasLaps_ClearsLaps()
+    {
+        // Arrange - Car has lap penalties from previous race
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.PenalityWarnings = 0;
+        car1.PenalityLaps = 3; // Car had 3 lap penalty previously
+        _sessionContext.UpdateCars([car1]);
+        SetUpdateReset(true);
+
+        // Car "1" is NOT in penalty lookup (no penalties today)
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(1, result);
+        
+        var patch = result[0];
+        Assert.AreEqual("1", patch.Number);
+        Assert.IsNull(patch.PenalityWarnings); // Warnings were already 0, no need to patch
+        Assert.AreEqual(0, patch.PenalityLaps);
+        
+        // Verify car state was cleared
+        Assert.AreEqual(0, car1.PenalityLaps);
+    }
+
+    [TestMethod]
+    public void Process_CarNotInPenaltyLookupButHasBoth_ClearsBothPenalties()
+    {
+        // Arrange - Car has both warnings and lap penalties from previous race
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.PenalityWarnings = 2;
+        car1.PenalityLaps = 3;
+        _sessionContext.UpdateCars([car1]);
+        SetUpdateReset(true);
+
+        // Car "1" is NOT in penalty lookup (no penalties today)
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(1, result);
+        
+        var patch = result[0];
+        Assert.AreEqual("1", patch.Number);
+        Assert.AreEqual(0, patch.PenalityWarnings);
+        Assert.AreEqual(0, patch.PenalityLaps);
+        
+        // Verify car state was cleared
+        Assert.AreEqual(0, car1.PenalityWarnings);
+        Assert.AreEqual(0, car1.PenalityLaps);
+    }
+
+    [TestMethod]
+    public void Process_CarNotInPenaltyLookupAndNoPenalties_DoesNotCreatePatch()
+    {
+        // Arrange - Car never had penalties
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.PenalityWarnings = 0;
+        car1.PenalityLaps = 0;
+        _sessionContext.UpdateCars([car1]);
+        SetUpdateReset(true);
+
+        // Car "1" is NOT in penalty lookup
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.IsEmpty(result); // No patch needed since car has no penalties to clear
+    }
+
+    [TestMethod]
+    public void Process_MixedScenario_UpdatesSomeClearsSome()
+    {
+        // Arrange - Multiple cars with different scenarios
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.PenalityWarnings = 0;
+        car1.PenalityLaps = 0;
+        
+        var car2 = CreateTestCarPosition("2", "B", 2);
+        car2.PenalityWarnings = 3; // Had penalties, now cleared
+        car2.PenalityLaps = 2;
+        
+        var car3 = CreateTestCarPosition("3", "A", 3);
+        car3.PenalityWarnings = 1;
+        car3.PenalityLaps = 0;
+        
+        var car4 = CreateTestCarPosition("4", "B", 4);
+        car4.PenalityWarnings = 0;
+        car4.PenalityLaps = 1; // Had lap penalty, now cleared
+        
+        _sessionContext.UpdateCars([car1, car2, car3, car4]);
+        SetUpdateReset(true);
+
+        // Only car "1" and "3" have penalties today
+        SetPenaltyLookup("1", new CarPenalty(2, 1)); // New penalties for car 1
+        SetPenaltyLookup("3", new CarPenalty(2, 0)); // Updated penalty for car 3
+        // Car "2" and "4" are NOT in penalty lookup (should be cleared)
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(4, result); // All 4 cars should have patches
+        
+        var car1Patch = result.FirstOrDefault(p => p.Number == "1");
+        var car2Patch = result.FirstOrDefault(p => p.Number == "2");
+        var car3Patch = result.FirstOrDefault(p => p.Number == "3");
+        var car4Patch = result.FirstOrDefault(p => p.Number == "4");
+        
+        // Car 1: New penalties applied
+        Assert.IsNotNull(car1Patch);
+        Assert.AreEqual(2, car1Patch.PenalityWarnings);
+        Assert.AreEqual(1, car1Patch.PenalityLaps);
+        
+        // Car 2: Both penalties cleared
+        Assert.IsNotNull(car2Patch);
+        Assert.AreEqual(0, car2Patch.PenalityWarnings);
+        Assert.AreEqual(0, car2Patch.PenalityLaps);
+        
+        // Car 3: Warnings updated
+        Assert.IsNotNull(car3Patch);
+        Assert.AreEqual(2, car3Patch.PenalityWarnings);
+        Assert.IsNull(car3Patch.PenalityLaps); // Was already 0
+        
+        // Car 4: Lap penalty cleared
+        Assert.IsNotNull(car4Patch);
+        Assert.IsNull(car4Patch.PenalityWarnings); // Was already 0
+        Assert.AreEqual(0, car4Patch.PenalityLaps);
+        
+        // Verify all car states
+        Assert.AreEqual(2, car1.PenalityWarnings);
+        Assert.AreEqual(1, car1.PenalityLaps);
+        Assert.AreEqual(0, car2.PenalityWarnings);
+        Assert.AreEqual(0, car2.PenalityLaps);
+        Assert.AreEqual(2, car3.PenalityWarnings);
+        Assert.AreEqual(0, car3.PenalityLaps);
+        Assert.AreEqual(0, car4.PenalityWarnings);
+        Assert.AreEqual(0, car4.PenalityLaps);
+    }
+
     #endregion
 
     #region Helper Methods

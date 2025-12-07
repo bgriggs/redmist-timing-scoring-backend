@@ -82,6 +82,7 @@ public class ControlLogEnricher : BackgroundService
 
                 if (penaltyLookup.TryGetValue(car.Number, out var penalty))
                 {
+                    // Car has penalties - update if different
                     if (car != null && penalty != null)
                     {
                         var patch = new CarPositionPatch();
@@ -99,6 +100,30 @@ public class ControlLogEnricher : BackgroundService
                         {
                             patch.Number = car.Number;
                             patches.Add(patch);
+                        }
+                    }
+                }
+                else
+                {
+                    // Car not in penalty list - clear penalties if they were previously set
+                    if (car.PenalityWarnings > 0 || car.PenalityLaps > 0)
+                    {
+                        var patch = new CarPositionPatch();
+                        if (car.PenalityWarnings > 0)
+                        {
+                            car.PenalityWarnings = 0;
+                            patch.PenalityWarnings = 0;
+                        }
+                        if (car.PenalityLaps > 0)
+                        {
+                            car.PenalityLaps = 0;
+                            patch.PenalityLaps = 0;
+                        }
+                        if (TimingCommon.Models.Mappers.CarPositionMapper.IsValidPatch(patch))
+                        {
+                            patch.Number = car.Number;
+                            patches.Add(patch);
+                            Logger.LogDebug("Cleared penalties for car {carNumber} (no longer in penalty list)", car.Number);
                         }
                     }
                 }
