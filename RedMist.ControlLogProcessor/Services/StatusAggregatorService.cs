@@ -27,7 +27,9 @@ public class StatusAggregatorService : BackgroundService
     private readonly SemaphoreSlim subscriptionCheckLock = new(1);
 
 
-    public StatusAggregatorService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration, IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory, IHubContext<StatusHub> hubContext)
+    public StatusAggregatorService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, 
+        IConfiguration configuration, IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory,
+        IHubContext<StatusHub> hubContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.loggerFactory = loggerFactory;
@@ -126,17 +128,28 @@ public class StatusAggregatorService : BackgroundService
         // Update the cache with car penalties
         Logger.LogInformation("Updating cache with car penalties...");
         var carLogCacheKey = string.Format(Consts.CONTROL_LOG_CAR_PENALTIES, eventId);
-        var carPenaltyEntries = new List<HashEntry>();
         var carPenalties = await controlLogCache.GetPenaltiesAsync(stoppingToken);
+        
+        // Get current penalty car numbers to track which ones should remain
+        var activePenaltyCarNumbers = carPenalties.Keys.ToHashSet();
+        
+        var carPenaltyEntries = new List<HashEntry>();
         foreach (var carPenalty in carPenalties)
         {
             var penaltyJson = JsonSerializer.Serialize(new CarPenalty(carPenalty.Value.warnings, carPenalty.Value.laps));
             carPenaltyEntries.Add(new HashEntry(carPenalty.Key, penaltyJson));
         }
-        await cache.HashSetAsync(carLogCacheKey, [.. carPenaltyEntries], CommandFlags.FireAndForget);
+        
+        if (carPenaltyEntries.Count > 0)
+        {
+            await cache.HashSetAsync(carLogCacheKey, [.. carPenaltyEntries], CommandFlags.FireAndForget);
+        }
 
-        // Clean up inactive car cache entries
-        await CleanupInactiveCarCacheEntriesAsync([.. carEntriesLookup.Keys.Where(k => !string.IsNullOrWhiteSpace(k))], stoppingToken);
+        // Clean up inactive car cache entries (this will now also clean up stale penalties)
+        await CleanupInactiveCarCacheEntriesAsync(
+            [.. carEntriesLookup.Keys.Where(k => !string.IsNullOrWhiteSpace(k))],
+            activePenaltyCarNumbers,
+            stoppingToken);
 
         Logger.LogInformation("Finished updating cache");
     }
@@ -144,14 +157,13 @@ public class StatusAggregatorService : BackgroundService
     /// <summary>
     /// Removes Redis cache entries for cars that are no longer active in the control log
     /// </summary>
-    /// <param name="activeCarNumbers">Set of car numbers that are currently active</param>
+    /// <param name="activeCarNumbers">Set of car numbers that are currently active in control logs</param>
+    /// <param name="activePenaltyCarNumbers">Set of car numbers that currently have penalties</param>
     /// <param name="stoppingToken">Cancellation token</param>
-    private async Task CleanupInactiveCarCacheEntriesAsync(HashSet<string> activeCarNumbers, CancellationToken stoppingToken)
+    private async Task CleanupInactiveCarCacheEntriesAsync(HashSet<string> activeCarNumbers, HashSet<string> activePenaltyCarNumbers, CancellationToken stoppingToken)
     {
         if (eventId == null)
-        {
             return;
-        }
 
         try
         {
@@ -170,14 +182,14 @@ public class StatusAggregatorService : BackgroundService
                 var lastDashIndex = keyStr.LastIndexOf('-');
                 if (lastDashIndex > 0 && lastDashIndex < keyStr.Length - 1)
                 {
-                    var carNumber = keyStr.Substring(lastDashIndex + 1);
+                    var carNumber = keyStr[(lastDashIndex + 1)..];
                     existingCarKeys.Add(carNumber);
                 }
             }
 
-            // Find cars that are no longer active
-            var removedCars = existingCarKeys.Except(activeCarNumbers);
-            if (removedCars.Any())
+            // Find cars that are no longer active in control logs
+            var removedCars = existingCarKeys.Except(activeCarNumbers).ToList();
+            if (removedCars.Count != 0)
             {
                 Logger.LogInformation("Removing cache entries for inactive cars: {removedCars}", string.Join(", ", removedCars));
                 
@@ -187,11 +199,24 @@ public class StatusAggregatorService : BackgroundService
                     var carLogEntryKey = string.Format(Consts.CONTROL_LOG_CAR, eventId, removedCar);
                     await cache.KeyDeleteAsync(carLogEntryKey);
                     Logger.LogDebug("Removed cache entry for car {carNumber}: {cacheKey}", removedCar, carLogEntryKey);
-                    
-                    // Remove penalty entry from hash set
-                    var carLogCacheKey = string.Format(Consts.CONTROL_LOG_CAR_PENALTIES, eventId);
-                    await cache.HashDeleteAsync(carLogCacheKey, removedCar);
-                    Logger.LogDebug("Removed penalty entry for car {carNumber} from {cacheKey}", removedCar, carLogCacheKey);
+                }
+            }
+            
+            // Clean up stale penalty entries - check ALL existing penalty entries, not just removed cars
+            var carLogCacheKey = string.Format(Consts.CONTROL_LOG_CAR_PENALTIES, eventId);
+            var existingPenaltyEntries = await cache.HashKeysAsync(carLogCacheKey);
+            var stalePenaltyCars = existingPenaltyEntries
+                .Select(entry => entry.ToString())
+                .Except(activePenaltyCarNumbers)
+                .ToList();
+            
+            if (stalePenaltyCars.Count != 0)
+            {
+                Logger.LogInformation("Removing stale penalty entries for cars: {stalePenaltyCars}", string.Join(", ", stalePenaltyCars));
+                foreach (var stalePenaltyCar in stalePenaltyCars)
+                {
+                    await cache.HashDeleteAsync(carLogCacheKey, stalePenaltyCar);
+                    Logger.LogDebug("Removed penalty entry for car {carNumber} from {cacheKey}", stalePenaltyCar, carLogCacheKey);
                 }
             }
         }
