@@ -169,55 +169,103 @@ public class StatusAggregatorService : BackgroundService
         {
             var cache = cacheMux.GetDatabase();
             
-            // Get existing car cache keys to identify what needs to be removed
-            var existingCarKeys = new HashSet<string>();
+            // Get existing car cache keys by scanning with pattern
+            var existingCarKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var pattern = string.Format(Consts.CONTROL_LOG_CAR, eventId, "*");
-            var server = cacheMux.GetServer(cacheMux.GetEndPoints().First());
-            var keys = server.Keys(pattern: pattern);
             
-            foreach (var key in keys)
+            Logger.LogDebug("Scanning Redis for keys matching pattern: {pattern}", pattern);
+            
+            try
             {
-                // Extract car number from the key pattern: control-log-evt-{eventId}-car-{carNumber}
-                var keyStr = key.ToString();
-                var lastDashIndex = keyStr.LastIndexOf('-');
-                if (lastDashIndex > 0 && lastDashIndex < keyStr.Length - 1)
+                var server = cacheMux.GetServer(cacheMux.GetEndPoints().First());
+                var keys = server.Keys(pattern: pattern, pageSize: 1000);
+                
+                foreach (var key in keys)
                 {
-                    var carNumber = keyStr[(lastDashIndex + 1)..];
-                    existingCarKeys.Add(carNumber);
+                    // Extract car number from the key pattern: control-log-evt-{eventId}-car-{carNumber}
+                    var keyStr = key.ToString();
+                    Logger.LogTrace("Found cache key: {key}", keyStr);
+                    
+                    var expectedPrefix = $"control-log-evt-{eventId}-car-";
+                    if (keyStr.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var carNumber = keyStr[expectedPrefix.Length..];
+                        if (!string.IsNullOrWhiteSpace(carNumber))
+                        {
+                            existingCarKeys.Add(carNumber);
+                            Logger.LogTrace("Extracted car number: {carNumber}", carNumber);
+                        }
+                    }
                 }
+                
+                Logger.LogDebug("Found {count} existing car cache entries", existingCarKeys.Count);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Error scanning Redis keys with pattern {pattern}. This may happen in Redis cluster mode.", pattern);
             }
 
             // Find cars that are no longer active in control logs
-            var removedCars = existingCarKeys.Except(activeCarNumbers).ToList();
+            var removedCars = existingCarKeys.Except(activeCarNumbers, StringComparer.OrdinalIgnoreCase).ToList();
             if (removedCars.Count != 0)
             {
-                Logger.LogInformation("Removing cache entries for inactive cars: {removedCars}", string.Join(", ", removedCars));
+                Logger.LogInformation("Removing cache entries for {count} inactive cars: {removedCars}", removedCars.Count, string.Join(", ", removedCars));
                 
                 foreach (var removedCar in removedCars)
                 {
                     // Remove individual car control log cache entry
                     var carLogEntryKey = string.Format(Consts.CONTROL_LOG_CAR, eventId, removedCar);
-                    await cache.KeyDeleteAsync(carLogEntryKey);
-                    Logger.LogDebug("Removed cache entry for car {carNumber}: {cacheKey}", removedCar, carLogEntryKey);
+                    var deleted = await cache.KeyDeleteAsync(carLogEntryKey);
+                    if (deleted)
+                    {
+                        Logger.LogDebug("Removed cache entry for car {carNumber}: {cacheKey}", removedCar, carLogEntryKey);
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Failed to remove cache entry for car {carNumber}: {cacheKey} (key may not exist)", removedCar, carLogEntryKey);
+                    }
                 }
+            }
+            else
+            {
+                Logger.LogDebug("No inactive car cache entries to remove. Active: {activeCount}, Existing: {existingCount}", 
+                    activeCarNumbers.Count, existingCarKeys.Count);
             }
             
             // Clean up stale penalty entries - check ALL existing penalty entries, not just removed cars
             var carLogCacheKey = string.Format(Consts.CONTROL_LOG_CAR_PENALTIES, eventId);
             var existingPenaltyEntries = await cache.HashKeysAsync(carLogCacheKey);
-            var stalePenaltyCars = existingPenaltyEntries
-                .Select(entry => entry.ToString())
-                .Except(activePenaltyCarNumbers)
+            var existingPenaltyCarNumbers = existingPenaltyEntries.Select(entry => entry.ToString()).ToList();
+            
+            Logger.LogDebug("Found {count} existing penalty entries: {cars}", 
+                existingPenaltyCarNumbers.Count, string.Join(", ", existingPenaltyCarNumbers));
+            
+            var stalePenaltyCars = existingPenaltyCarNumbers
+                .Except(activePenaltyCarNumbers, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             
             if (stalePenaltyCars.Count != 0)
             {
-                Logger.LogInformation("Removing stale penalty entries for cars: {stalePenaltyCars}", string.Join(", ", stalePenaltyCars));
+                Logger.LogInformation("Removing {count} stale penalty entries for cars: {stalePenaltyCars}", 
+                    stalePenaltyCars.Count, string.Join(", ", stalePenaltyCars));
                 foreach (var stalePenaltyCar in stalePenaltyCars)
                 {
-                    await cache.HashDeleteAsync(carLogCacheKey, stalePenaltyCar);
-                    Logger.LogDebug("Removed penalty entry for car {carNumber} from {cacheKey}", stalePenaltyCar, carLogCacheKey);
+                    var deleted = await cache.HashDeleteAsync(carLogCacheKey, stalePenaltyCar);
+                    if (deleted)
+                    {
+                        Logger.LogDebug("Removed penalty entry for car {carNumber} from {cacheKey}", stalePenaltyCar, carLogCacheKey);
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Failed to remove penalty entry for car {carNumber} from {cacheKey} (entry may not exist)", 
+                            stalePenaltyCar, carLogCacheKey);
+                    }
                 }
+            }
+            else
+            {
+                Logger.LogDebug("No stale penalty entries to remove. Active penalties: {activeCount}, Existing penalties: {existingCount}", 
+                    activePenaltyCarNumbers.Count, existingPenaltyCarNumbers.Count);
             }
         }
         catch (Exception ex)
