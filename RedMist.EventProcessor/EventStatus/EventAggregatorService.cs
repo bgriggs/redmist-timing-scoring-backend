@@ -92,7 +92,7 @@ public class EventAggregatorService : BackgroundService
         _ = Task.Run(() => SendFullUpdates(stoppingToken), stoppingToken);
 
         // Publish reset event to get full set of data from the relay
-        await mediator.Publish(new RelayResetRequest { EventId = eventId, ForceTimingDataReset = true }, stoppingToken);
+        await mediator.Publish(new RelayResetRequest { EventId = eventId, ForceTimingDataReset = false }, stoppingToken);
 
         // Start a task to read timing source data from this service's stream.
         // The SignalR hub is responsible for sending timing data to the stream.

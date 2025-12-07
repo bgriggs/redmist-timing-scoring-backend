@@ -107,9 +107,14 @@ public class PositionMetadataProcessorTests
     {
         var secondaryProcessor = new PositionMetadataProcessor();
 
+        // Using shorter gaps to stay within the adaptive threshold
+        // Last lap times: 1:00, 1:00, 1:00
+        // 90th percentile = 1:00
+        // Threshold = 150% of 1:00 = 1:30
+        // Gaps/diffs must be under 1:30
         var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 10, LastLapTime = "00:01:00.000", OverallPosition = 1 };
-        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:11:01.000", LastLapCompleted = 10, LastLapTime = "00:01:01.000", OverallPosition = 2 };
-        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:12:02.000", LastLapCompleted = 10, LastLapTime = "00:01:02.000", OverallPosition = 3 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:10:30.500", LastLapCompleted = 10, LastLapTime = "00:01:00.000", OverallPosition = 2 };
+        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:11:01.000", LastLapCompleted = 10, LastLapTime = "00:01:00.000", OverallPosition = 3 };
 
         secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
 
@@ -118,15 +123,152 @@ public class PositionMetadataProcessorTests
         Assert.AreEqual("", car1.InClassGap);
         Assert.AreEqual("", car1.InClassDifference);
 
-        Assert.AreEqual("1:01.000", car2.OverallGap);
-        Assert.AreEqual("1:01.000", car2.OverallDifference);
-        Assert.AreEqual("1:01.000", car2.InClassGap);
-        Assert.AreEqual("1:01.000", car2.InClassDifference);
+        // Gap between car2 and car1 = 30.5 seconds (under 1:30 threshold)
+        Assert.AreEqual("30.500", car2.OverallGap);
+        Assert.AreEqual("30.500", car2.OverallDifference);
+        Assert.AreEqual("30.500", car2.InClassGap);
+        Assert.AreEqual("30.500", car2.InClassDifference);
 
-        Assert.AreEqual("1:01.000", car3.OverallGap);
-        Assert.AreEqual("2:02.000", car3.OverallDifference);
-        Assert.AreEqual("1:01.000", car3.InClassGap);
-        Assert.AreEqual("2:02.000", car3.InClassDifference);
+        // Gap between car3 and car2 = 30.5 seconds (under threshold)
+        // Diff between car3 and car1 = 1:01 (under 1:30 threshold)
+        Assert.AreEqual("30.500", car3.OverallGap);
+        Assert.AreEqual("1:01.000", car3.OverallDifference);
+        Assert.AreEqual("30.500", car3.InClassGap);
+        Assert.AreEqual("1:01.000", car3.InClassDifference);
+    }
+
+    [TestMethod]
+    public void UpdateCarPositions_SameLap_ExcessiveGap_AdaptiveThreshold_Test()
+    {
+        var processor = new PositionMetadataProcessor();
+
+        // Simulate stale data scenario where cars show same lap but have excessive gap
+        // Last lap times are around 2:20, so 90th percentile ~= 2:20
+        // Threshold would be 150% of 2:20 = 3:30
+        // Gap of 40:49.146 far exceeds this threshold
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 58, LastLapTime = "00:02:20.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:50:49.146", LastLapCompleted = 58, LastLapTime = "00:02:19.719", OverallPosition = 2 }; // 40:49.146 gap - stale data
+
+        processor.UpdateCarPositions([car1, car2]);
+
+        // Leader should have empty gap/diff
+        Assert.AreEqual("", car1.OverallGap);
+        Assert.AreEqual("", car1.OverallDifference);
+        Assert.AreEqual("", car1.InClassGap);
+        Assert.AreEqual("", car1.InClassDifference);
+
+        // Car2 gap exceeds adaptive threshold (150% of typical lap time), so should be filtered out (empty)
+        Assert.AreEqual("", car2.OverallGap);
+        Assert.AreEqual("", car2.OverallDifference);
+        Assert.AreEqual("", car2.InClassGap);
+        Assert.AreEqual("", car2.InClassDifference);
+    }
+
+    [TestMethod]
+    public void UpdateCarPositions_SameLap_WithinAdaptiveThreshold_Test()
+    {
+        var processor = new PositionMetadataProcessor();
+
+        // Last lap times around 2:00
+        // 90th percentile ~= 2:02
+        // Threshold would be 150% of 2:02 = 3:03 (183 seconds)
+        // Gaps and diffs must stay under 3:03
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 58, LastLapTime = "00:02:00.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:12:00.000", LastLapCompleted = 58, LastLapTime = "00:02:01.000", OverallPosition = 2 }; // 2:00 gap/diff - valid
+        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "00:13:00.000", LastLapCompleted = 58, LastLapTime = "00:02:02.000", OverallPosition = 3 }; // 1:00 gap, 3:00 diff - both valid
+
+        processor.UpdateCarPositions([car1, car2, car3]);
+
+        Assert.AreEqual("", car1.OverallGap);
+        Assert.AreEqual("", car1.OverallDifference);
+
+        // Gaps are within adaptive threshold - should be displayed
+        Assert.AreEqual("2:00.000", car2.OverallGap);
+        Assert.AreEqual("2:00.000", car2.OverallDifference);
+        Assert.AreEqual("1:00.000", car3.OverallGap);
+        Assert.AreEqual("3:00.000", car3.OverallDifference); // Just under 3:03 threshold
+    }
+
+    [TestMethod]
+    public void UpdateCarPositions_SameLap_JustOverAdaptiveThreshold_Test()
+    {
+        var processor = new PositionMetadataProcessor();
+
+        // Last lap time: 1:00
+        // 90th percentile = 1:00
+        // Threshold = 150% of 1:00 = 1:30
+        // Gap of 1:31 exceeds threshold
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 58, LastLapTime = "00:01:00.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:11:31.000", LastLapCompleted = 58, LastLapTime = "00:01:00.000", OverallPosition = 2 }; // 1:31 gap - just over threshold
+
+        processor.UpdateCarPositions([car1, car2]);
+
+        Assert.AreEqual("", car1.OverallGap);
+        Assert.AreEqual("", car1.OverallDifference);
+
+        // Gap exceeds adaptive threshold (1:30) - should be filtered
+        Assert.AreEqual("", car2.OverallGap);
+        Assert.AreEqual("", car2.OverallDifference);
+    }
+
+    [TestMethod]
+    public void UpdateCarPositions_SameLap_NoLapTimes_DefaultThreshold_Test()
+    {
+        var processor = new PositionMetadataProcessor();
+
+        // No last lap times provided - should use default 5 minute threshold
+        // Gap of 4:59 is under default threshold
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 58, LastLapTime = null, OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:14:59.000", LastLapCompleted = 58, LastLapTime = null, OverallPosition = 2 }; // 4:59 gap
+
+        processor.UpdateCarPositions([car1, car2]);
+
+        Assert.AreEqual("", car1.OverallGap);
+        Assert.AreEqual("", car1.OverallDifference);
+
+        // Gap is under default 5 minute threshold (150% of 5 min = 7:30) - should be displayed
+        Assert.AreEqual("4:59.000", car2.OverallGap);
+        Assert.AreEqual("4:59.000", car2.OverallDifference);
+    }
+
+    [TestMethod]
+    public void UpdateCarPositions_SameLap_NoLapTimes_ExceedsDefaultThreshold_Test()
+    {
+        var processor = new PositionMetadataProcessor();
+
+        // No last lap times provided - should use default 5 minute threshold
+        // Threshold = 150% of 5 min = 7:30
+        // Gap of 8:00 exceeds default threshold
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 58, LastLapTime = null, OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:18:00.000", LastLapCompleted = 58, LastLapTime = null, OverallPosition = 2 }; // 8:00 gap
+
+        processor.UpdateCarPositions([car1, car2]);
+
+        Assert.AreEqual("", car1.OverallGap);
+        Assert.AreEqual("", car1.OverallDifference);
+
+        // Gap exceeds default threshold (7:30) - should be filtered
+        Assert.AreEqual("", car2.OverallGap);
+        Assert.AreEqual("", car2.OverallDifference);
+    }
+
+    [TestMethod]
+    public void UpdateCarPositions_DifferentLaps_LargeGap_ShouldShowLaps_Test()
+    {
+        var processor = new PositionMetadataProcessor();
+
+        // Cars on different laps should show lap difference, not time (threshold doesn't apply)
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "00:10:00.000", LastLapCompleted = 58, LastLapTime = "00:02:20.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "00:08:00.000", LastLapCompleted = 57, LastLapTime = "00:02:19.000", OverallPosition = 2 };
+
+        processor.UpdateCarPositions([car1, car2]);
+
+        Assert.AreEqual("", car1.OverallGap);
+        Assert.AreEqual("", car1.OverallDifference);
+
+        // Different laps - should show lap difference
+        Assert.AreEqual("1 lap", car2.OverallGap);
+        Assert.AreEqual("1 lap", car2.OverallDifference);
     }
 
     [TestMethod]

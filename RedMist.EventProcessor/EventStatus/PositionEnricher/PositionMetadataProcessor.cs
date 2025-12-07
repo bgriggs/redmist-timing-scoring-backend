@@ -50,6 +50,7 @@ public class PositionMetadataProcessor
             return;
 
         carPositions.Sort(positionComparer);
+        var highLapTime = GetTypicalHighLapTime(carPositions);
 
         var leader = carPositions[0];
         var leaderTime = ParseRMTime(leader.TotalTime ?? string.Empty);
@@ -62,7 +63,6 @@ public class PositionMetadataProcessor
             {
                 continue;
             }
-
             // Leader
             if (i == 0)
             {
@@ -77,10 +77,19 @@ public class PositionMetadataProcessor
                 // Overall Gap
                 if (positionAhead.LastLapCompleted == currentPosition.LastLapCompleted)
                 {
-                    if (pat != default)
+                    if (pat != default && pat.TimeOfDay != default)
                     {
                         var g = cpt - pat;
-                        setGap(currentPosition, g.ToString(GetTimeFormat(g)));
+                        // If the gap is 150% larger than the typical high lap time at the given last lap completed,
+                        // consider it an invalid gap resulting from race condition from non-atomic rmonitor updates
+                        if (g > TimeSpan.FromMilliseconds((long)(highLapTime.TotalMilliseconds * 1.5)))
+                        {
+                            setGap(currentPosition, string.Empty);
+                        }
+                        else
+                        {
+                            setGap(currentPosition, g.ToString(GetTimeFormat(g)));
+                        }
                     }
                 }
                 else
@@ -101,7 +110,16 @@ public class PositionMetadataProcessor
                 if (leader.LastLapCompleted == currentPosition.LastLapCompleted)
                 {
                     var diff = cpt - leaderTime;
-                    setDiff(currentPosition, diff.ToString(GetTimeFormat(diff)));
+                    // If the diff is 150% larger than the typical high lap time at the given last lap completed,
+                    // consider it an invalid gap resulting from race condition from non-atomic rmonitor updates
+                    if (diff > TimeSpan.FromMilliseconds((long)(highLapTime.TotalMilliseconds * 1.5)))
+                    {
+                        setDiff(currentPosition, string.Empty);
+                    }
+                    else
+                    {
+                        setDiff(currentPosition, diff.ToString(GetTimeFormat(diff)));
+                    }
                 }
                 else
                 {
@@ -161,7 +179,7 @@ public class PositionMetadataProcessor
         }
     }
 
-    private void UpdatePositionChanges(List<CarPosition> carPositions)
+    private static void UpdatePositionChanges(List<CarPosition> carPositions)
     {
         foreach (var car in carPositions)
         {
@@ -232,6 +250,25 @@ public class PositionMetadataProcessor
             return "lap";
         }
         return "laps";
+    }
+
+    private static TimeSpan GetTypicalHighLapTime(List<CarPosition> carPositions)
+    {
+        var lapTimes = new List<TimeSpan>();
+        foreach (var car in carPositions)
+        {
+            if (car.LastLapTime != null)
+            {
+                var t = ParseRMTime(car.LastLapTime);
+                lapTimes.Add(t.TimeOfDay);
+            }
+        }
+        if (lapTimes.Count == 0)
+            return TimeSpan.FromMinutes(5); // Default high lap time
+        lapTimes.Sort();
+        int index = (int)(lapTimes.Count * 0.90); // 90th percentile
+        index = Math.Min(index, lapTimes.Count - 1);
+        return lapTimes[index];
     }
 
     /// <summary>

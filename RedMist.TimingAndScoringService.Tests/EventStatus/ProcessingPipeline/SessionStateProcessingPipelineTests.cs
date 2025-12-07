@@ -687,6 +687,159 @@ public class SessionStateProcessingPipelineTests
     //    //Assert.AreEqual(string.Empty, _sessionContext.SessionState.CarPositions.Single(c => c.Number == "101").OverallDifference);
     //}
 
+
+    /// <summary>
+    /// Check for any Gap or Diff of cars on the same lap that exceed the typical lap time of the track.
+    /// </summary>
+    /// <returns></returns>
+    [TestMethod]
+    public async Task GapGreaterThanLapTimeIssue_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "TestGap.txt");
+        await entriesData.LoadAsync();
+        var issuesFound = new List<string>();
+        var fiveMinutes = TimeSpan.FromMinutes(5);
+
+        // Act
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                // Advance time to simulate passage between records
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+
+                // Check for gap/diff issues on same lap BEFORE processing the next message
+                foreach (var car in _sessionContext.SessionState.CarPositions)
+                {
+                    if (car.Number == null || car.LastLapCompleted == 0)
+                        continue;
+
+                    // Check overall gap
+                    if (!string.IsNullOrEmpty(car.OverallGap) && !car.OverallGap.Contains("lap"))
+                    {
+                        var gapTimeSpan = ParseTimeString(car.OverallGap);
+                        if (gapTimeSpan.HasValue && gapTimeSpan.Value > fiveMinutes)
+                        {
+                            // Find the car ahead to verify they're on the same lap
+                            var carAhead = _sessionContext.SessionState.CarPositions
+                                .FirstOrDefault(c => c.OverallPosition == car.OverallPosition - 1);
+                            if (carAhead != null && carAhead.LastLapCompleted == car.LastLapCompleted)
+                            {
+                                issuesFound.Add($"Car {car.Number} (Pos {car.OverallPosition}) has overall gap of {car.OverallGap} to car {carAhead.Number} (Pos {carAhead.OverallPosition}) (both on lap {car.LastLapCompleted}) at RaceTime={_sessionContext.SessionState.RunningRaceTime}");
+                            }
+                        }
+                    }
+
+                    // Check overall difference
+                    if (!string.IsNullOrEmpty(car.OverallDifference) && !car.OverallDifference.Contains("lap"))
+                    {
+                        var diffTimeSpan = ParseTimeString(car.OverallDifference);
+                        if (diffTimeSpan.HasValue && diffTimeSpan.Value > fiveMinutes)
+                        {
+                            // Find the leader to verify they're on the same lap
+                            var leader = _sessionContext.SessionState.CarPositions
+                                .FirstOrDefault(c => c.OverallPosition == 1);
+                            if (leader != null && leader.LastLapCompleted == car.LastLapCompleted)
+                            {
+                                issuesFound.Add($"Car {car.Number} (Pos {car.OverallPosition}) has overall diff of {car.OverallDifference} to leader {leader.Number} (both on lap {car.LastLapCompleted}) at RaceTime={_sessionContext.SessionState.RunningRaceTime}");
+                            }
+                        }
+                    }
+
+                    // Check in-class gap
+                    if (!string.IsNullOrEmpty(car.InClassGap) && !car.InClassGap.Contains("lap"))
+                    {
+                        var gapTimeSpan = ParseTimeString(car.InClassGap);
+                        if (gapTimeSpan.HasValue && gapTimeSpan.Value > fiveMinutes)
+                        {
+                            // Find the class car ahead to verify they're on the same lap
+                            var classCarAhead = _sessionContext.SessionState.CarPositions
+                                .Where(c => c.Class == car.Class && c.ClassPosition == car.ClassPosition - 1)
+                                .FirstOrDefault();
+                            if (classCarAhead != null && classCarAhead.LastLapCompleted == car.LastLapCompleted)
+                            {
+                                issuesFound.Add($"Car {car.Number} (ClassPos {car.ClassPosition}) has in-class gap of {car.InClassGap} to car {classCarAhead.Number} (ClassPos {classCarAhead.ClassPosition}) (both on lap {car.LastLapCompleted}) at RaceTime={_sessionContext.SessionState.RunningRaceTime}");
+                            }
+                        }
+                    }
+
+                    // Check in-class difference
+                    if (!string.IsNullOrEmpty(car.InClassDifference) && !car.InClassDifference.Contains("lap"))
+                    {
+                        var diffTimeSpan = ParseTimeString(car.InClassDifference);
+                        if (diffTimeSpan.HasValue && diffTimeSpan.Value > fiveMinutes)
+                        {
+                            // Find the class leader to verify they're on the same lap
+                            var classLeader = _sessionContext.SessionState.CarPositions
+                                .Where(c => c.Class == car.Class && c.ClassPosition == 1)
+                                .FirstOrDefault();
+                            if (classLeader != null && classLeader.LastLapCompleted == car.LastLapCompleted)
+                            {
+                                issuesFound.Add($"Car {car.Number} (ClassPos {car.ClassPosition}) has in-class diff of {car.InClassDifference} to class leader {classLeader.Number} (both on lap {car.LastLapCompleted}) at RaceTime={_sessionContext.SessionState.RunningRaceTime}");
+                            }
+                        }
+                    }
+                }
+            }
+
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            await _pipeline.PostAsync(tm);
+        }
+        
+        // Assert
+        if (issuesFound.Count > 0)
+        {
+            var issueReport = string.Join(Environment.NewLine, issuesFound);
+            Assert.Fail($"Found {issuesFound.Count} gap/diff issues exceeding 5 minutes on same lap:{Environment.NewLine}{issueReport}");
+        }
+    }
+
+    /// <summary>
+    /// Parse time strings in various formats (m:ss.fff, mm:ss.fff, HH:mm:ss.fff, s.fff)
+    /// </summary>
+    private static TimeSpan? ParseTimeString(string timeString)
+    {
+        if (string.IsNullOrEmpty(timeString))
+            return null;
+
+        // Try parsing with PositionMetadataProcessor first (handles HH:mm:ss.fff)
+        var parsedDateTime = PositionMetadataProcessor.ParseRMTime(timeString);
+        if (parsedDateTime != default)
+            return parsedDateTime.TimeOfDay;
+
+        // Handle formats like "40:49.146" (mm:ss.fff) or "5:30.123" (m:ss.fff)
+        var parts = timeString.Split(':');
+        if (parts.Length == 2)
+        {
+            if (int.TryParse(parts[0], out var minutes))
+            {
+                var secondsParts = parts[1].Split('.');
+                if (secondsParts.Length == 2 &&
+                    int.TryParse(secondsParts[0], out var seconds) &&
+                    int.TryParse(secondsParts[1], out var milliseconds))
+                {
+                    return new TimeSpan(0, 0, minutes, seconds, milliseconds);
+                }
+            }
+        }
+
+        // Handle formats like "30.123" (s.fff)
+        if (parts.Length == 1)
+        {
+            var secondsParts = timeString.Split('.');
+            if (secondsParts.Length == 2 &&
+                int.TryParse(secondsParts[0], out var seconds) &&
+                int.TryParse(secondsParts[1], out var milliseconds))
+            {
+                return new TimeSpan(0, 0, 0, seconds, milliseconds);
+            }
+        }
+
+        return null;
+    }
+
     #region Database Initialization
 
     private void InitializeDatabase()
