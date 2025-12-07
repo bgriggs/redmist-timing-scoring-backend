@@ -157,11 +157,13 @@ public class PositionMetadataProcessorTests
         Assert.AreEqual("", car1.InClassGap);
         Assert.AreEqual("", car1.InClassDifference);
 
-        // Car2 gap exceeds adaptive threshold (150% of typical lap time), so should be filtered out (empty)
-        Assert.AreEqual("", car2.OverallGap);
-        Assert.AreEqual("", car2.OverallDifference);
-        Assert.AreEqual("", car2.InClassGap);
-        Assert.AreEqual("", car2.InClassDifference);
+        // Car2 gap exceeds adaptive threshold (150% of typical lap time)
+        // New behavior: the gap/diff are NOT calculated (left as null/empty from initialization)
+        // since this is the first calculation and it exceeds threshold
+        Assert.IsNull(car2.OverallGap);
+        Assert.IsNull(car2.OverallDifference);
+        Assert.IsNull(car2.InClassGap);
+        Assert.IsNull(car2.InClassDifference);
     }
 
     [TestMethod]
@@ -206,9 +208,9 @@ public class PositionMetadataProcessorTests
         Assert.AreEqual("", car1.OverallGap);
         Assert.AreEqual("", car1.OverallDifference);
 
-        // Gap exceeds adaptive threshold (1:30) - should be filtered
-        Assert.AreEqual("", car2.OverallGap);
-        Assert.AreEqual("", car2.OverallDifference);
+        // Gap exceeds adaptive threshold (1:30) - not calculated, left as null
+        Assert.IsNull(car2.OverallGap);
+        Assert.IsNull(car2.OverallDifference);
     }
 
     [TestMethod]
@@ -247,9 +249,9 @@ public class PositionMetadataProcessorTests
         Assert.AreEqual("", car1.OverallGap);
         Assert.AreEqual("", car1.OverallDifference);
 
-        // Gap exceeds default threshold (7:30) - should be filtered
-        Assert.AreEqual("", car2.OverallGap);
-        Assert.AreEqual("", car2.OverallDifference);
+        // Gap exceeds default threshold (7:30) - not calculated, left as null
+        Assert.IsNull(car2.OverallGap);
+        Assert.IsNull(car2.OverallDifference);
     }
 
     [TestMethod]

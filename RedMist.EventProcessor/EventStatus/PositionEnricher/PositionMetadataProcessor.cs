@@ -84,7 +84,7 @@ public class PositionMetadataProcessor
                         // consider it an invalid gap resulting from race condition from non-atomic rmonitor updates
                         if (g > TimeSpan.FromMilliseconds((long)(highLapTime.TotalMilliseconds * 1.5)))
                         {
-                            setGap(currentPosition, string.Empty);
+                            //setGap(currentPosition, string.Empty);
                         }
                         else
                         {
@@ -114,7 +114,7 @@ public class PositionMetadataProcessor
                     // consider it an invalid gap resulting from race condition from non-atomic rmonitor updates
                     if (diff > TimeSpan.FromMilliseconds((long)(highLapTime.TotalMilliseconds * 1.5)))
                     {
-                        setDiff(currentPosition, string.Empty);
+                        //setDiff(currentPosition, string.Empty);
                     }
                     else
                     {
