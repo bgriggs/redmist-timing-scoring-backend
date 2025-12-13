@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NLog.Extensions.Logging;
-using RedMist.Database.PostgreSQL;
+using RedMist.Database;
 
 namespace RedMist.DatabaseMigrationRunner;
 
@@ -32,7 +32,7 @@ public class Program
             // Enable legacy timestamp behavior for PostgreSQL
             AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
-            builder.Services.AddDbContext<TsContextPostgreSQL>(options =>
+            builder.Services.AddDbContext<TsContext>(options =>
                 options.UseNpgsql(sqlConn)
                        .LogTo(Console.WriteLine, LogLevel.Debug));
 
@@ -47,7 +47,7 @@ public class Program
             logger.LogInformation("Starting database migrations...");
 
             using var scope = host.Services.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<TsContextPostgreSQL>();
+            var context = scope.ServiceProvider.GetRequiredService<TsContext>();
 
             // Test database connectivity
             logger.LogInformation("Testing database connectivity...");

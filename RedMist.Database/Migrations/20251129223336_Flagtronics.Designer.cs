@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RedMist.Database;
@@ -11,9 +12,11 @@ using RedMist.Database;
 namespace RedMist.Database.Migrations
 {
     [DbContext(typeof(TsContext))]
-    partial class TsContextModelSnapshot : ModelSnapshot
+    [Migration("20251129223336_Flagtronics")]
+    partial class Flagtronics
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -440,11 +443,6 @@ namespace RedMist.Database.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
-
-                    b.Property<string>("FlagtronicsApiKey")
-                        .IsRequired()
-                        .HasMaxLength(42)
-                        .HasColumnType("character varying(42)");
 
                     b.Property<string>("FlagtronicsUrl")
                         .IsRequired()

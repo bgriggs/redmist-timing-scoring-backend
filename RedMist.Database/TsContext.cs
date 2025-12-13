@@ -38,7 +38,8 @@ public class TsContext : DbContext
         base.OnConfiguring(optionsBuilder);
         if (!optionsBuilder.IsConfigured)
         {
-            // Default to PostgreSQL for new development
+            // Enable legacy timestamp behavior BEFORE configuring Npgsql
+            AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
             optionsBuilder.UseNpgsql("Host=localhost;Database=redmist-timing-dev;Username=postgres;Password=");
         }
     }
@@ -47,24 +48,18 @@ public class TsContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // Determine the database provider in a design-time safe way
-        var isPostgreSQL = Database.ProviderName?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) ?? false;
-
         // Configure Organizations table
         modelBuilder.Entity<Organization>().ToTable("Organizations");
         modelBuilder.Entity<Organization>().HasIndex(o => o.ClientId).IsUnique();
 
-        // JSON configuration for complex types
+        // JSON configuration for complex types - PostgreSQL uses JSONB
         var orbitsConverter = new ValueConverter<OrbitsConfiguration, string>(
             v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
             v => JsonSerializer.Deserialize<OrbitsConfiguration>(v, (JsonSerializerOptions?)null) ?? new OrbitsConfiguration());
 
         var orbitsProperty = modelBuilder.Entity<Organization>().Property(o => o.Orbits);
         orbitsProperty.HasConversion(orbitsConverter!);
-
-        // Use JSONB for PostgreSQL for better performance
-        if (isPostgreSQL)
-            orbitsProperty.HasColumnType("jsonb");
+        orbitsProperty.HasColumnType("jsonb");
 
         // X2
         var x2Converter = new ValueConverter<X2Configuration, string>(
@@ -73,9 +68,7 @@ public class TsContext : DbContext
 
         var x2Property = modelBuilder.Entity<Organization>().Property(o => o.X2);
         x2Property.HasConversion(x2Converter!);
-
-        if (isPostgreSQL)
-            x2Property.HasColumnType("jsonb");
+        x2Property.HasColumnType("jsonb");
 
         // Broadcast
         var broadcastConverter = new ValueConverter<BroadcasterConfig, string>(
@@ -84,9 +77,7 @@ public class TsContext : DbContext
 
         var broadcastProperty = modelBuilder.Entity<TimingCommon.Models.Configuration.Event>().Property(o => o.Broadcast);
         broadcastProperty.HasConversion(broadcastConverter!);
-
-        if (isPostgreSQL)
-            broadcastProperty.HasColumnType("jsonb");
+        broadcastProperty.HasColumnType("jsonb");
 
         // Schedule
         var dtJsonOptions = new JsonSerializerOptions { Converters = { new UnspecifiedDateTimeConverter() } };
@@ -97,9 +88,7 @@ public class TsContext : DbContext
         var scheduleProperty = modelBuilder.Entity<TimingCommon.Models.Configuration.Event>()
             .Property(o => o.Schedule);
         scheduleProperty.HasConversion(scheduleConverter!);
-
-        if (isPostgreSQL)
-            scheduleProperty.HasColumnType("jsonb");
+        scheduleProperty.HasColumnType("jsonb");
 
         // Loops
         var loopMetadataConverter = new ValueConverter<List<LoopMetadata>, string>(
@@ -115,9 +104,7 @@ public class TsContext : DbContext
             .Property(o => o.LoopsMetadata);
         loopsMetadata.HasConversion(loopMetadataConverter!);
         loopsMetadata.Metadata.SetValueComparer(loopsComparer);
-
-        if (isPostgreSQL)
-            loopsMetadata.HasColumnType("jsonb");
+        loopsMetadata.HasColumnType("jsonb");
 
         // SessionResult Payload
         var payloadConverter = new ValueConverter<Payload, string>(
@@ -129,15 +116,11 @@ public class TsContext : DbContext
 
         var payloadProperty = modelBuilder.Entity<SessionResult>().Property(o => o.Payload);
         payloadProperty.HasConversion(payloadConverter!);
+        payloadProperty.HasColumnType("jsonb");
 
         var sessionStateProperty = modelBuilder.Entity<SessionResult>().Property(o => o.SessionState);
         sessionStateProperty.HasConversion(sessionStateConverter!);
-
-        if (isPostgreSQL)
-        {
-            payloadProperty.HasColumnType("jsonb");
-            sessionStateProperty.HasColumnType("jsonb");
-        }
+        sessionStateProperty.HasColumnType("jsonb");
 
         // Configure TimingCommon models
         modelBuilder.Entity<Session>().HasKey(s => new { s.Id, s.EventId });

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RedMist.Database;
@@ -11,9 +12,11 @@ using RedMist.Database;
 namespace RedMist.Database.Migrations
 {
     [DbContext(typeof(TsContext))]
-    partial class TsContextModelSnapshot : ModelSnapshot
+    [Migration("20251030021050_InitialPostgreSQL")]
+    partial class InitialPostgreSQL
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -53,7 +56,7 @@ namespace RedMist.Database.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("Timestamp")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
@@ -80,7 +83,7 @@ namespace RedMist.Database.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("LastLapTimestamp")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("SessionId")
                         .HasColumnType("integer");
@@ -126,7 +129,7 @@ namespace RedMist.Database.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("Timestamp")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -150,10 +153,10 @@ namespace RedMist.Database.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("StartTime")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("EndTime")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("EventId", "SessionId", "Flag", "StartTime");
 
@@ -205,7 +208,7 @@ namespace RedMist.Database.Migrations
                         .HasColumnType("character varying(300)");
 
                     b.Property<DateTime>("Timestamp")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
@@ -227,7 +230,7 @@ namespace RedMist.Database.Migrations
                         .HasColumnType("jsonb");
 
                     b.Property<DateTime>("Start")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("EventId", "SessionId");
 
@@ -273,66 +276,56 @@ namespace RedMist.Database.Migrations
                     b.Property<string>("Club")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasAnnotation("Relational:JsonPropertyName", "c");
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasAnnotation("Relational:JsonPropertyName", "a");
+                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasAnnotation("Relational:JsonPropertyName", "fn");
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("Hometown")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasAnnotation("Relational:JsonPropertyName", "h");
+                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasAnnotation("Relational:JsonPropertyName", "ln");
+                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTime>("LastUpdated")
-                        .HasColumnType("timestamp without time zone")
+                        .HasColumnType("timestamp with time zone")
                         .HasAnnotation("Relational:JsonPropertyName", "lu");
 
                     b.Property<string>("Make")
                         .IsRequired()
                         .HasMaxLength(48)
-                        .HasColumnType("character varying(48)")
-                        .HasAnnotation("Relational:JsonPropertyName", "mk");
+                        .HasColumnType("character varying(48)");
 
                     b.Property<string>("ModelEngine")
                         .IsRequired()
                         .HasMaxLength(48)
-                        .HasColumnType("character varying(48)")
-                        .HasAnnotation("Relational:JsonPropertyName", "mo");
+                        .HasColumnType("character varying(48)");
 
                     b.Property<string>("NationState")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasAnnotation("Relational:JsonPropertyName", "ns");
+                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("Sponsor")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasAnnotation("Relational:JsonPropertyName", "s");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Tires")
                         .IsRequired()
                         .HasMaxLength(48)
-                        .HasColumnType("character varying(48)")
-                        .HasAnnotation("Relational:JsonPropertyName", "tr");
+                        .HasColumnType("character varying(48)");
 
                     b.Property<long>("Transponder")
                         .HasColumnType("bigint")
@@ -373,7 +366,7 @@ namespace RedMist.Database.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<DateTime>("EndDate")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("EventUrl")
                         .IsRequired()
@@ -406,7 +399,7 @@ namespace RedMist.Database.Migrations
                         .HasColumnType("jsonb");
 
                     b.Property<DateTime>("StartDate")
-                        .HasColumnType("timestamp without time zone");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("TrackName")
                         .IsRequired()
@@ -441,18 +434,7 @@ namespace RedMist.Database.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
-                    b.Property<string>("FlagtronicsApiKey")
-                        .IsRequired()
-                        .HasMaxLength(42)
-                        .HasColumnType("character varying(42)");
-
-                    b.Property<string>("FlagtronicsUrl")
-                        .IsRequired()
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
-
                     b.Property<byte[]>("Logo")
-                        .HasMaxLength(5242880)
                         .HasColumnType("bytea");
 
                     b.Property<string>("MultiloopIp")
@@ -514,7 +496,7 @@ namespace RedMist.Database.Migrations
                         .HasAnnotation("Relational:JsonPropertyName", "eid");
 
                     b.Property<DateTime?>("EndTime")
-                        .HasColumnType("timestamp without time zone")
+                        .HasColumnType("timestamp with time zone")
                         .HasAnnotation("Relational:JsonPropertyName", "et");
 
                     b.Property<bool>("IsLive")
@@ -526,7 +508,7 @@ namespace RedMist.Database.Migrations
                         .HasAnnotation("Relational:JsonPropertyName", "pq");
 
                     b.Property<DateTime?>("LastUpdated")
-                        .HasColumnType("timestamp without time zone")
+                        .HasColumnType("timestamp with time zone")
                         .HasAnnotation("Relational:JsonPropertyName", "lu");
 
                     b.Property<double>("LocalTimeZoneOffset")
@@ -540,7 +522,7 @@ namespace RedMist.Database.Migrations
                         .HasAnnotation("Relational:JsonPropertyName", "n");
 
                     b.Property<DateTime>("StartTime")
-                        .HasColumnType("timestamp without time zone")
+                        .HasColumnType("timestamp with time zone")
                         .HasAnnotation("Relational:JsonPropertyName", "st");
 
                     b.HasKey("Id", "EventId");
@@ -638,11 +620,11 @@ namespace RedMist.Database.Migrations
                         .HasAnnotation("Relational:JsonPropertyName", "l");
 
                     b.Property<DateTime>("TimestampLocal")
-                        .HasColumnType("timestamp without time zone")
+                        .HasColumnType("timestamp with time zone")
                         .HasAnnotation("Relational:JsonPropertyName", "tl");
 
                     b.Property<DateTime>("TimestampUtc")
-                        .HasColumnType("timestamp without time zone")
+                        .HasColumnType("timestamp with time zone")
                         .HasAnnotation("Relational:JsonPropertyName", "tu");
 
                     b.Property<long>("TransponderId")

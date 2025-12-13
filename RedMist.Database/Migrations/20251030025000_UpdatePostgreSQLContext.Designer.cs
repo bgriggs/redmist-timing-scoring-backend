@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RedMist.Database;
@@ -11,9 +12,11 @@ using RedMist.Database;
 namespace RedMist.Database.Migrations
 {
     [DbContext(typeof(TsContext))]
-    partial class TsContextModelSnapshot : ModelSnapshot
+    [Migration("20251030025000_UpdatePostgreSQLContext")]
+    partial class UpdatePostgreSQLContext
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -273,32 +276,27 @@ namespace RedMist.Database.Migrations
                     b.Property<string>("Club")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasAnnotation("Relational:JsonPropertyName", "c");
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasAnnotation("Relational:JsonPropertyName", "a");
+                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasAnnotation("Relational:JsonPropertyName", "fn");
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("Hometown")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasAnnotation("Relational:JsonPropertyName", "h");
+                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasAnnotation("Relational:JsonPropertyName", "ln");
+                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTime>("LastUpdated")
                         .HasColumnType("timestamp without time zone")
@@ -307,32 +305,27 @@ namespace RedMist.Database.Migrations
                     b.Property<string>("Make")
                         .IsRequired()
                         .HasMaxLength(48)
-                        .HasColumnType("character varying(48)")
-                        .HasAnnotation("Relational:JsonPropertyName", "mk");
+                        .HasColumnType("character varying(48)");
 
                     b.Property<string>("ModelEngine")
                         .IsRequired()
                         .HasMaxLength(48)
-                        .HasColumnType("character varying(48)")
-                        .HasAnnotation("Relational:JsonPropertyName", "mo");
+                        .HasColumnType("character varying(48)");
 
                     b.Property<string>("NationState")
                         .IsRequired()
                         .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasAnnotation("Relational:JsonPropertyName", "ns");
+                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("Sponsor")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasAnnotation("Relational:JsonPropertyName", "s");
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Tires")
                         .IsRequired()
                         .HasMaxLength(48)
-                        .HasColumnType("character varying(48)")
-                        .HasAnnotation("Relational:JsonPropertyName", "tr");
+                        .HasColumnType("character varying(48)");
 
                     b.Property<long>("Transponder")
                         .HasColumnType("bigint")
@@ -441,18 +434,7 @@ namespace RedMist.Database.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
-                    b.Property<string>("FlagtronicsApiKey")
-                        .IsRequired()
-                        .HasMaxLength(42)
-                        .HasColumnType("character varying(42)");
-
-                    b.Property<string>("FlagtronicsUrl")
-                        .IsRequired()
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
-
                     b.Property<byte[]>("Logo")
-                        .HasMaxLength(5242880)
                         .HasColumnType("bytea");
 
                     b.Property<string>("MultiloopIp")
