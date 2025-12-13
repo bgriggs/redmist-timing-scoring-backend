@@ -200,7 +200,7 @@ public abstract class OrganizationControllerBase : ControllerBase
         var organization = new Organization
         {
             Name = newOrganization.Name,
-            ClientId = clientId,
+            ClientId = string.Format(Consts.RELAY_CLIENT_ID, newOrganization.ShortName),
             ShortName = newOrganization.ShortName,
             Website = newOrganization.Website,
             Logo = newOrganization.Logo,
