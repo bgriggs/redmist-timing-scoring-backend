@@ -30,11 +30,6 @@ dotnet ef database update --connection "Host=your-server;Database=redmist-timing
    dotnet ef database update --connection "Host=localhost;Database=redmist-timing-dev;Username=postgres;Password=yourpassword"
    ```
 
-2. **Create the OrganizationExtView:**
-   ```sh
-   psql -h localhost -U postgres -d redmist-timing-dev -f Migrations/CreateOrganizationExtView.sql
-   ```
-
 ## Important Notes
 
 ### OrganizationExtView
@@ -78,12 +73,6 @@ Host=your-pg-server.postgres.database.azure.com;Database=redmist-timing;Username
 ```
 
 ## Troubleshooting
-
-### "View does not exist"
-Run the `CreateOrganizationExtView.sql` script manually:
-```sh
-psql -h localhost -U postgres -d redmist-timing-dev -f Migrations/CreateOrganizationExtView.sql
-```
 
 ### Legacy Timestamp Behavior
 PostgreSQL migrations require the legacy timestamp behavior to be enabled. This is configured in the application startup:

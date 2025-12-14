@@ -53,14 +53,6 @@ public class TsContext : DbContext
         modelBuilder.Entity<Organization>().HasIndex(o => o.ClientId).IsUnique();
 
         // JSON configuration for complex types - PostgreSQL uses JSONB
-        var orbitsConverter = new ValueConverter<OrbitsConfiguration, string>(
-            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-            v => JsonSerializer.Deserialize<OrbitsConfiguration>(v, (JsonSerializerOptions?)null) ?? new OrbitsConfiguration());
-
-        var orbitsProperty = modelBuilder.Entity<Organization>().Property(o => o.Orbits);
-        orbitsProperty.HasConversion(orbitsConverter!);
-        orbitsProperty.HasColumnType("jsonb");
-
         // X2
         var x2Converter = new ValueConverter<X2Configuration, string>(
             v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
@@ -69,6 +61,14 @@ public class TsContext : DbContext
         var x2Property = modelBuilder.Entity<Organization>().Property(o => o.X2);
         x2Property.HasConversion(x2Converter!);
         x2Property.HasColumnType("jsonb");
+
+        // Class Metadata
+        var classMetadataConverter = new ValueConverter<List<ClassMetadata>, string>(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<List<ClassMetadata>>(v, (JsonSerializerOptions?)null) ?? new List<ClassMetadata>());
+        var classMetadataProperty = modelBuilder.Entity<Organization>().Property(o => o.Classes);
+        classMetadataProperty.HasConversion(classMetadataConverter!);
+        classMetadataProperty.HasColumnType("jsonb");
 
         // Broadcast
         var broadcastConverter = new ValueConverter<BroadcasterConfig, string>(
@@ -124,14 +124,9 @@ public class TsContext : DbContext
 
         // Configure TimingCommon models
         modelBuilder.Entity<Session>().HasKey(s => new { s.Id, s.EventId });
-
         modelBuilder.Entity<CompetitorMetadata>().HasKey(c => new { c.EventId, c.CarNumber });
-
-        // Configure other TimingCommon models as needed...
         modelBuilder.Entity<Loop>().HasKey(l => new { l.OrganizationId, l.EventId, l.Id });
-
         modelBuilder.Entity<Passing>().HasKey(p => new { p.OrganizationId, p.EventId, p.Id });
-
         modelBuilder.Entity<UIVersionInfo>().HasNoKey().ToTable("UIVersions");
     }
 }

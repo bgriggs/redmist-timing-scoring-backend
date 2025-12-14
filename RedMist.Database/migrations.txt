@@ -1,1 +1,3 @@
-﻿add-migration FlagtronicsSet -Context TsContextPostgreSQL
+﻿Default Project: RedMist.Database
+Startup Project: RedMist.EventManagement
+Add-Migration ClassMetadata -Context TsContext

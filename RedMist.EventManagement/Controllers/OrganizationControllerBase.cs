@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RedMist.ControlLogs;
 using RedMist.Database;
+using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using System.Security.Claims;
@@ -93,7 +94,7 @@ public abstract class OrganizationControllerBase : Controller
             org.Website = organization.Website;
             org.ControlLogType = organization.ControlLogType;
             org.ControlLogParams = organization.ControlLogParams;
-            org.Orbits = organization.Orbits;
+            org.Classes = organization.Classes;
             org.X2 = organization.X2;
             org.RMonitorIp = organization.RMonitorIp;
             org.RMonitorPort = organization.RMonitorPort;
@@ -102,6 +103,17 @@ public abstract class OrganizationControllerBase : Controller
             org.OrbitsLogsPath = organization.OrbitsLogsPath;
             org.FlagtronicsUrl = organization.FlagtronicsUrl;
             org.FlagtronicsApiKey = organization.FlagtronicsApiKey;
+            org.ShowControlLogConnection = organization.ShowControlLogConnection;
+            org.ShowX2Connection = organization.ShowX2Connection;
+            org.ShowMultiloopConnection = organization.ShowMultiloopConnection;
+            org.ShowOrbitsLogsConnection = organization.ShowOrbitsLogsConnection;
+            org.ShowFlagtronicsConnection = organization.ShowFlagtronicsConnection;
+
+            if (organization.Logo != null && organization.Logo.Length > 0)
+                org.Logo = organization.Logo;
+            else if (organization.Logo != null && organization.Logo.Length == 0)
+                org.Logo = null;
+
             await db.SaveChangesAsync();
             return Ok();
         }
@@ -133,5 +145,60 @@ public abstract class OrganizationControllerBase : Controller
         }
 
         return cls;
+    }
+
+    /// <summary>
+    /// Loads the list of administrator email addresses for the organization.
+    /// </summary>
+    /// <returns></returns>
+    [HttpGet]
+    [Produces("application/json")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<ActionResult<List<string>>> LoadOrganizationAdministratorsAsync()
+    {
+        Logger.LogTrace("{m}", nameof(LoadOrganizationAdministratorsAsync));
+        var clientId = User.FindFirstValue("client_id");
+        using var db = await tsContext.CreateDbContextAsync();
+        var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        if (org == null)
+            return NotFound();
+        var adminEmails = await db.UserOrganizationMappings.Where(uom => uom.OrganizationId == org.Id && uom.Role == "admin")
+            .Select(uom => uom.Username)
+            .ToListAsync();
+        return Ok(adminEmails);
+    }
+
+    /// <summary>
+    /// Saves the list of administrator email addresses for the organization.
+    /// </summary>
+    [HttpPost]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<IActionResult> SaveOrganizationAdministratorsAsync(List<string> usernames)
+    {
+        Logger.LogTrace("{m}", nameof(SaveOrganizationAdministratorsAsync));
+        var clientId = User.FindFirstValue("client_id");
+        using var db = await tsContext.CreateDbContextAsync();
+        var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        if (org == null)
+            return NotFound();
+
+        var existingAdmins = await db.UserOrganizationMappings
+            .Where(uom => uom.OrganizationId == org.Id)
+            .ToListAsync();
+        db.UserOrganizationMappings.RemoveRange(existingAdmins);
+        foreach (var username in usernames)
+        {
+            var newMapping = new UserOrganizationMapping
+            {
+                OrganizationId = org.Id,
+                Username = username,
+                Role = "admin"
+            };
+            db.UserOrganizationMappings.Add(newMapping);
+        }
+        await db.SaveChangesAsync();
+        return Ok();
     }
 }
