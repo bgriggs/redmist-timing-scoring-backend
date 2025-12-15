@@ -11,6 +11,7 @@ using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Extensions;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using StackExchange.Redis;
@@ -113,6 +114,7 @@ public class Program
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 400, name: "Process Allocated Memory", tags: new[] { "memory" });
 
         builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
+        builder.Services.AddTransient<AssetsCdn>();
 
         // Configure API Versioning
         builder.Services.AddApiVersioning(options =>

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using RedMist.Database.Models;
@@ -24,6 +25,8 @@ public abstract class OrganizationControllerBase : Controller
 {
     protected readonly IDbContextFactory<TsContext> tsContext;
     protected readonly IControlLogFactory controlLogFactory;
+    private readonly AssetsCdn assetsCdn;
+
     protected ILogger Logger { get; }
 
 
@@ -33,11 +36,14 @@ public abstract class OrganizationControllerBase : Controller
     /// <param name="loggerFactory">Factory to create loggers.</param>
     /// <param name="tsContext">Database context factory for timing and scoring data.</param>
     /// <param name="controlLogFactory">Factory to create control log providers.</param>
-    protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory)
+    /// <param name="assetsCdn"></param>
+    protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, 
+        IControlLogFactory controlLogFactory, AssetsCdn assetsCdn)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.controlLogFactory = controlLogFactory;
+        this.assetsCdn = assetsCdn;
     }
 
 
@@ -109,12 +115,25 @@ public abstract class OrganizationControllerBase : Controller
             org.ShowOrbitsLogsConnection = organization.ShowOrbitsLogsConnection;
             org.ShowFlagtronicsConnection = organization.ShowFlagtronicsConnection;
 
+            // Update logo
+            Task? updateCdnTask = null;
             if (organization.Logo != null && organization.Logo.Length > 0)
+            {
                 org.Logo = organization.Logo;
+                updateCdnTask = assetsCdn.SaveLogoAsync(org.Id, organization.Logo);
+            }
             else if (organization.Logo != null && organization.Logo.Length == 0)
+            {
                 org.Logo = null;
+                var defaultImage = db.DefaultOrgImages.FirstOrDefault();
+                if (defaultImage != null)
+                    updateCdnTask = assetsCdn.SaveLogoAsync(org.Id, defaultImage.ImageData);
+            }
 
             await db.SaveChangesAsync();
+            if (updateCdnTask != null)
+                await updateCdnTask;
+
             return Ok();
         }
         return NotFound();

@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using System.Reflection;
 
@@ -120,8 +121,9 @@ public class Program
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
 
         builder.Services.AddHealthChecks()
-            .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 200, name: "Process Allocated Memory", tags: ["memory"]);
+            .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"]);
+
+        builder.Services.AddTransient<AssetsCdn>();
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();

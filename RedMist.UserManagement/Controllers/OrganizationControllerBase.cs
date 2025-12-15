@@ -24,6 +24,7 @@ public abstract class OrganizationControllerBase : ControllerBase
 {
     protected readonly IDbContextFactory<TsContext> tsContext;
     protected readonly IConfiguration configuration;
+    private readonly AssetsCdn assetsCdn;
     protected readonly string keycloakUrl;
     protected readonly string clientId;
     protected readonly string clientSecret;
@@ -37,12 +38,15 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// <param name="loggerFactory">Factory to create loggers.</param>
     /// <param name="tsContext">Database context factory for timing and scoring data.</param>
     /// <param name="configuration">Application configuration containing Keycloak settings.</param>
+    /// <param name="assetsCdn"></param>
     /// <exception cref="InvalidOperationException">Thrown when required Keycloak configuration is missing.</exception>
-    protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IConfiguration configuration)
+    protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, 
+        IConfiguration configuration, AssetsCdn assetsCdn)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.configuration = configuration;
+        this.assetsCdn = assetsCdn;
 
         keycloakUrl = configuration["Keycloak:AuthServerUrl"] ?? throw new InvalidOperationException("Keycloak URL is not configured.");
         clientId = configuration["Keycloak:ClientId"] ?? throw new InvalidOperationException("Keycloak Client ID is not configured.");
@@ -159,7 +163,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     {
         Logger.LogMethodInfo("RelayClientNameExists {name}", name);
         var clientId = string.Format(Consts.RELAY_CLIENT_ID, name);
-        var client = await LoadKeycloakClient(clientId);
+        var client = await LoadKeycloakClientAsync(clientId);
         return client != null;
     }
 
@@ -218,6 +222,9 @@ public abstract class OrganizationControllerBase : ControllerBase
         await context.SaveChangesAsync();
         Logger.LogInformation("New organization created with ID {organizationId}", organization.Id);
 
+        // Update organization logo in CDN if provided
+        await UpdateLogoInCdnAsync(context, organization);
+
         // Add user to organization
         var userOrganization = new UserOrganizationMapping
         {
@@ -232,10 +239,30 @@ public abstract class OrganizationControllerBase : ControllerBase
 
         // Provision Keycloak relay client
         Logger.LogInformation("Creating Keycloak relay client for organization {organizationId}...", organization.Id);
-        var relayClientId = await CreateRelayClient(newOrganization.ShortName);
+        var relayClientId = await CreateRelayClientAsync(newOrganization.ShortName);
         Logger.LogInformation("Relay client created with ID {relayClientId}", relayClientId);
 
         return Ok(organization.Id);
+    }
+
+    private async Task UpdateLogoInCdnAsync(TsContext context, Organization organization)
+    {
+        if (organization.Logo != null && organization.Logo.Length > 2)
+        {
+            Logger.LogInformation("Uploading organization logo to CDN for organization ID {organizationId}...", organization.Id);
+            await assetsCdn.SaveLogoAsync(organization.Id, organization.Logo);
+            Logger.LogInformation("Organization logo uploaded to CDN for organization ID {organizationId}", organization.Id);
+        }
+        else // Save default image
+        {
+            var defaultLogo = await context.DefaultOrgImages.FirstOrDefaultAsync();
+            if (defaultLogo != null)
+            {
+                Logger.LogInformation("Uploading default organization logo to CDN for organization ID {organizationId}...", organization.Id);
+                await assetsCdn.SaveLogoAsync(organization.Id, defaultLogo.ImageData);
+                Logger.LogInformation("Default organization logo uploaded to CDN for organization ID {organizationId}", organization.Id);
+            }
+        }
     }
 
     /// <summary>
@@ -251,7 +278,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// <item>OpenID Connect protocol</item>
     /// </list>
     /// </remarks>
-    protected async Task<string?> CreateRelayClient(string name)
+    protected async Task<string?> CreateRelayClientAsync(string name)
     {
         using HttpClient httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
@@ -290,7 +317,7 @@ public abstract class OrganizationControllerBase : ControllerBase
         await keycloak.ClientsPOST3Async(client, realm);
 
         Logger.LogInformation("Created client with ID: {clientId}", clientId);
-        client = await LoadKeycloakClient(clientId);
+        client = await LoadKeycloakClientAsync(clientId);
         Logger.LogInformation("Loaded client with ID: {clientId}", client?.Id);
         if (client == null)
         {
@@ -298,7 +325,7 @@ public abstract class OrganizationControllerBase : ControllerBase
             return null;
         }
 
-        var relayRole = await LoadKeycloakRole("relay-svc");
+        var relayRole = await LoadKeycloakRoleAsync("relay-svc");
         if (relayRole != null)
         {
             Logger.LogInformation("Assigning relay role to service account user for client {clientId}", clientId);
@@ -353,6 +380,10 @@ public abstract class OrganizationControllerBase : ControllerBase
         organization.Logo = organizationDto.Logo;
         context.Organizations.Update(organization);
         await context.SaveChangesAsync();
+
+        // Update organization logo in CDN if provided
+        await UpdateLogoInCdnAsync(context, organization);
+
         return Ok();
     }
 
@@ -440,7 +471,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// </summary>
     /// <param name="clientName">The client ID to search for.</param>
     /// <returns>The Keycloak client representation, or null if not found.</returns>
-    protected async Task<ClientRepresentation?> LoadKeycloakClient(string clientName)
+    protected async Task<ClientRepresentation?> LoadKeycloakClientAsync(string clientName)
     {
         using HttpClient httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
@@ -462,7 +493,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// </summary>
     /// <param name="name">The role name to search for.</param>
     /// <returns>The Keycloak role representation, or null if not found.</returns>
-    protected async Task<RoleRepresentation?> LoadKeycloakRole(string name)
+    protected async Task<RoleRepresentation?> LoadKeycloakRoleAsync(string name)
     {
         using HttpClient httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
@@ -477,7 +508,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// <returns>The client secret, or null if not found.</returns>
     protected async Task<string?> LoadKeycloakServiceSecret(string name)
     {
-        var client = await LoadKeycloakClient(name);
+        var client = await LoadKeycloakClientAsync(name);
         if (client != null)
         {
             using HttpClient httpClient = await GetHttpClient();

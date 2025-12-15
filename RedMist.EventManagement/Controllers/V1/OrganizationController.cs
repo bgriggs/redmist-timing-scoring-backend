@@ -1,6 +1,7 @@
 using Asp.Versioning;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.ControlLogs;
 using RedMist.Database;
 
@@ -11,8 +12,9 @@ namespace RedMist.EventManagement.Controllers.V1;
 [ApiVersion("1.0")]
 public class OrganizationController : OrganizationControllerBase
 {
-    public OrganizationController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory)
-        : base(loggerFactory, tsContext, controlLogFactory)
+    public OrganizationController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, 
+        IControlLogFactory controlLogFactory, AssetsCdn assetsCdn)
+        : base(loggerFactory, tsContext, controlLogFactory, assetsCdn)
     {
     }
 }
