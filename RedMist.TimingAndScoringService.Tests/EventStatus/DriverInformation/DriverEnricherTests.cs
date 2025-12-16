@@ -1,11 +1,14 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Models;
+using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.DriverInformation;
 using RedMist.EventProcessor.Models;
+using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
 using System.IO;
@@ -39,7 +42,8 @@ public class DriverEnricherTests
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
-        sessionContext = new SessionContext(config);
+        var dbContextFactory = CreateDbContextFactory();
+        sessionContext = new SessionContext(config, dbContextFactory);
 
         driverEnricher = new DriverEnricher(sessionContext, mockLoggerFactory.Object, mockConnectionMultiplexer.Object);
     }
@@ -87,7 +91,7 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(1, result.CarPatches);
-        
+
         // Verify car position was updated
         Assert.AreEqual("driver-123", car.DriverId);
         Assert.AreEqual("John Doe", car.DriverName);
@@ -174,7 +178,7 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(1, result.CarPatches);
-        
+
         // Verify car position was updated
         Assert.AreEqual("driver-456", car.DriverId);
         Assert.AreEqual("Jane Smith", car.DriverName);
@@ -266,11 +270,11 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(1, result.CarPatches);
-        
+
         // Should match car number, not transponder
         Assert.AreEqual("driver-123", car1.DriverId);
         Assert.AreEqual("John Doe", car1.DriverName);
-        
+
         // Car 2 should remain unchanged
         Assert.IsTrue(string.IsNullOrEmpty(car2.DriverId));
     }
@@ -391,9 +395,9 @@ public class DriverEnricherTests
     public void Process_SameDriverInfo_ReturnsNull()
     {
         // Arrange
-        var car = new CarPosition 
-        { 
-            Number = "42", 
+        var car = new CarPosition
+        {
+            Number = "42",
             TransponderId = 12345,
             DriverId = "driver-123",
             DriverName = "John Doe"
@@ -449,7 +453,7 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(1, result.CarPatches);
-        
+
         // Verify car position was updated
         Assert.AreEqual("driver-123", car.DriverId);
         Assert.AreEqual("John Doe", car.DriverName);
@@ -485,7 +489,7 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(1, result.CarPatches);
-        
+
         // Verify car position was updated
         Assert.AreEqual("driver-456", car.DriverId);
         Assert.AreEqual("Jane Smith", car.DriverName);
@@ -495,9 +499,9 @@ public class DriverEnricherTests
     public async Task ProcessApplyFullAsync_NoDriverInfoInCache_ClearsExistingInfo()
     {
         // Arrange
-        var car = new CarPosition 
-        { 
-            Number = "42", 
+        var car = new CarPosition
+        {
+            Number = "42",
             TransponderId = 12345,
             DriverId = "old-driver",
             DriverName = "Old Driver"
@@ -514,7 +518,7 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(1, result.CarPatches);
-        
+
         var patch = result.CarPatches[0];
         Assert.AreEqual(string.Empty, patch.DriverId);
         Assert.AreEqual(string.Empty, patch.DriverName);
@@ -560,10 +564,10 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(2, result.CarPatches);
-        
+
         Assert.AreEqual("driver-1", car1.DriverId);
         Assert.AreEqual("Driver One", car1.DriverName);
-        
+
         Assert.AreEqual("driver-2", car2.DriverId);
         Assert.AreEqual("Driver Two", car2.DriverName);
     }
@@ -589,9 +593,9 @@ public class DriverEnricherTests
     public async Task ProcessApplyFullAsync_InvalidJsonInCache_ClearsDriverInfo()
     {
         // Arrange
-        var car = new CarPosition 
-        { 
-            Number = "42", 
+        var car = new CarPosition
+        {
+            Number = "42",
             TransponderId = 12345,
             DriverId = "old-driver",
             DriverName = "Old Driver"
@@ -604,7 +608,7 @@ public class DriverEnricherTests
 
         // Setup remaining keys to return null
         mockDatabase.Setup(x => x.StringGetAsync(
-            It.Is<RedisKey>(k => k.ToString() != key.ToString()), 
+            It.Is<RedisKey>(k => k.ToString() != key.ToString()),
             CommandFlags.None))
             .ReturnsAsync(RedisValue.Null);
 
@@ -614,10 +618,10 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(1, result.CarPatches);
-        
+
         // Verify warning was logged
         VerifyLogWarning("Unable to deserialize DriverInfo");
-        
+
         // Verify driver info was cleared
         Assert.AreEqual(string.Empty, car.DriverId);
         Assert.AreEqual(string.Empty, car.DriverName);
@@ -779,7 +783,7 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.AreEqual("driver-123", car.DriverId);
-        
+
         // Verify only the first key was checked
         mockDatabase.Verify(x => x.StringGetAsync(key, CommandFlags.None), Times.Once);
     }
@@ -892,6 +896,15 @@ public class DriverEnricherTests
                 It.IsAny<Exception?>(),
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce);
+    }
+
+    private static IDbContextFactory<TsContext> CreateDbContextFactory()
+    {
+        var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+        var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+        optionsBuilder.UseInMemoryDatabase(databaseName);
+        var options = optionsBuilder.Options;
+        return new TestDbContextFactory(options);
     }
 
     #endregion

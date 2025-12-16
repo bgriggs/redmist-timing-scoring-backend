@@ -1,12 +1,15 @@
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Backend.Shared.Hubs;
+using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.RMonitor;
 using RedMist.EventProcessor.Models;
+using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 
 namespace RedMist.EventProcessor.Tests.EventStatus.RMonitor;
@@ -33,7 +36,8 @@ public class RMonitorDataProcessorV2Tests
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
-        _sessionContext = new SessionContext(config);
+        var dbContextFactory = CreateDbContextFactory();
+        _sessionContext = new SessionContext(config, dbContextFactory);
 
         // Verify that CreateLogger is being called and set up the factory to return our mock
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
@@ -473,17 +477,26 @@ public class RMonitorDataProcessorV2Tests
             Times.AtLeastOnce);
     }
 
-    private void VerifyLogError(string expectedMessage)
-    {
-        _mockLogger.Verify(
-            x => x.Log(
-                LogLevel.Error,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains(expectedMessage)),
-                It.IsAny<Exception?>(),
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.AtLeastOnce);
-    }
+        private void VerifyLogError(string expectedMessage)
+        {
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Error,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains(expectedMessage)),
+                    It.IsAny<Exception?>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.AtLeastOnce);
+        }
 
-    #endregion
-}
+        private static IDbContextFactory<TsContext> CreateDbContextFactory()
+        {
+            var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+            var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+            optionsBuilder.UseInMemoryDatabase(databaseName);
+            var options = optionsBuilder.Options;
+            return new TestDbContextFactory(options);
+        }
+
+        #endregion
+    }

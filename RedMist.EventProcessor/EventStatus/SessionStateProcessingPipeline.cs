@@ -70,7 +70,6 @@ public class SessionStateProcessingPipeline
         SessionMonitorV2 sessionMonitorV2,
         PositionDataEnricher positionEnricher,
         ControlLogEnricher controlLogEnricher,
-        ResetProcessor resetProcessor,
         DriverModeProcessor driverModeProcessor,
         LapProcessor lapProcessor,
         DriverEnricher driverEnricher,

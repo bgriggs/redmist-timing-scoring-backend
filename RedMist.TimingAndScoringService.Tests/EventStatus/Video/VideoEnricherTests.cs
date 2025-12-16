@@ -1,10 +1,13 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Backend.Shared;
+using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.Video;
 using RedMist.EventProcessor.Models;
+using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarVideo;
 using StackExchange.Redis;
@@ -37,10 +40,21 @@ public class VideoEnricherTests
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
-        sessionContext = new SessionContext(config);
 
-        videoEnricher = new VideoEnricher(sessionContext, mockLoggerFactory.Object, mockConnectionMultiplexer.Object);
-    }
+        var dbContextFactory = CreateDbContextFactory();
+        sessionContext = new SessionContext(config, dbContextFactory);
+
+            videoEnricher = new VideoEnricher(sessionContext, mockLoggerFactory.Object, mockConnectionMultiplexer.Object);
+        }
+
+        private static IDbContextFactory<TsContext> CreateDbContextFactory()
+        {
+            var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+            var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+            optionsBuilder.UseInMemoryDatabase(databaseName);
+            var options = optionsBuilder.Options;
+            return new TestDbContextFactory(options);
+        }
 
     #region Constructor Tests
 

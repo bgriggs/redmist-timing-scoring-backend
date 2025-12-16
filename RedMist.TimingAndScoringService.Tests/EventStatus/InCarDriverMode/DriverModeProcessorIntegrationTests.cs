@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
+using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.InCarDriverMode;
+using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
 
@@ -29,7 +32,8 @@ public class DriverModeProcessorIntegrationTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
-        _sessionContext = new SessionContext(configuration, new FakeTimeProvider());
+        var dbContextFactory = CreateDbContextFactory();
+        _sessionContext = new SessionContext(configuration, dbContextFactory, new FakeTimeProvider());
 
         var carPositions = new List<CarPosition>
         {
@@ -219,8 +223,17 @@ public class DriverModeProcessorIntegrationTests
         _processor.ProcessAsync().Wait();
         Assert.AreEqual(Flags.Green, _processor.GetLastFlag());
 
-        _sessionContext.SessionState.CurrentFlag = Flags.Red;
-        _processor.ProcessAsync().Wait();
-        Assert.AreEqual(Flags.Red, _processor.GetLastFlag());
-    }
-}
+                _sessionContext.SessionState.CurrentFlag = Flags.Red;
+                _processor.ProcessAsync().Wait();
+                Assert.AreEqual(Flags.Red, _processor.GetLastFlag());
+            }
+
+            private static IDbContextFactory<TsContext> CreateDbContextFactory()
+            {
+                var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+                var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+                optionsBuilder.UseInMemoryDatabase(databaseName);
+                var options = optionsBuilder.Options;
+                return new TestDbContextFactory(options);
+            }
+        }

@@ -1,9 +1,12 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
+using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.Multiloop;
 using RedMist.EventProcessor.Models;
+using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 
 namespace RedMist.EventProcessor.Tests.EventStatus.Multiloop;
@@ -28,7 +31,8 @@ public class MultiloopProcessorTests
             .AddInMemoryCollection(dict)
             .Build();
 
-        _context = new SessionContext(config);
+        var dbContextFactory = CreateDbContextFactory();
+        _context = new SessionContext(config, dbContextFactory);
         _processor = new MultiloopProcessor(_mockLoggerFactory.Object, _context);
     }
 
@@ -455,15 +459,24 @@ public class MultiloopProcessorTests
         Assert.IsEmpty(cars);
     }
 
-    private void VerifyLogWarning(string expectedMessage)
-    {
-        _mockLogger.Verify(
-            x => x.Log(
-                LogLevel.Warning,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains(expectedMessage)),
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.AtLeastOnce);
+        private void VerifyLogWarning(string expectedMessage)
+        {
+            _mockLogger.Verify(
+                x => x.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains(expectedMessage)),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.AtLeastOnce);
+        }
+
+        private static IDbContextFactory<TsContext> CreateDbContextFactory()
+        {
+            var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+            var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+            optionsBuilder.UseInMemoryDatabase(databaseName);
+            var options = optionsBuilder.Options;
+            return new TestDbContextFactory(options);
+        }
     }
-}

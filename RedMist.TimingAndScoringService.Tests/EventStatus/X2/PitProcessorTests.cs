@@ -6,6 +6,7 @@ using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.X2;
 using RedMist.EventProcessor.Models;
+using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using RedMist.TimingCommon.Models.X2;
@@ -36,13 +37,14 @@ public class PitProcessorTests
             .AddInMemoryCollection(dict)
             .Build();
 
-        _sessionContext = new SessionContext(config) { IsMultiloopActive = true };
-
         // Create a real TsContext with InMemory database instead of mocking it
         var databaseName = $"TestDatabase_{Guid.NewGuid()}";
         var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
         optionsBuilder.UseInMemoryDatabase(databaseName);
         var options = optionsBuilder.Options;
+        var dbContextFactory = new TestDbContextFactory(options);
+
+        _sessionContext = new SessionContext(config, dbContextFactory) { IsMultiloopActive = true };
 
         // Use real TsContext instead of mock since we need to access non-virtual properties
         var realDbContext = new TsContext(options);

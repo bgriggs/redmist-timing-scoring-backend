@@ -1,9 +1,12 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
+using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.InCarDriverMode;
+using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
 
@@ -35,7 +38,8 @@ public class DriverModeProcessorTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
-        _sessionContext = new SessionContext(configuration, new FakeTimeProvider());
+        var dbContextFactory = CreateDbContextFactory();
+        _sessionContext = new SessionContext(configuration, dbContextFactory, new FakeTimeProvider());
 
         _processor = new DriverModeProcessor(
             loggerFactory: _mockLoggerFactory.Object,
@@ -43,8 +47,17 @@ public class DriverModeProcessorTests
             carPositionProvider: _mockCarPositionProvider.Object,
             competitorMetadataProvider: _mockCompetitorMetadataProvider.Object,
             updateSender: _mockUpdateSender.Object
-        );
-    }
+            );
+        }
+
+        private static IDbContextFactory<TsContext> CreateDbContextFactory()
+        {
+            var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+            var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+            optionsBuilder.UseInMemoryDatabase(databaseName);
+            var options = optionsBuilder.Options;
+            return new TestDbContextFactory(options);
+        }
 
     [TestMethod]
     public void GetCarAhead_WithValidClassPosition_ReturnsCorrectCar()

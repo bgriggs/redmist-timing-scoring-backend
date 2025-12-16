@@ -16,7 +16,7 @@ public class SessionMonitorV2 : BackgroundService
     private SessionState? last = null;
 
 
-    public SessionMonitorV2(IConfiguration configuration, IDbContextFactory<TsContext> tsContext, 
+    public SessionMonitorV2(IConfiguration configuration, IDbContextFactory<TsContext> tsContext,
         ILoggerFactory loggerFactory, SessionContext sessionContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -41,7 +41,15 @@ public class SessionMonitorV2 : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        
+        try
+        {
+            sessionContext.SetSessionClassMetadata();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error setting session class metadata");
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -58,7 +66,7 @@ public class SessionMonitorV2 : BackgroundService
 
     public async Task RunCheckForFinished(CancellationToken stoppingToken)
     {
-        using (await sessionContext.SessionStateLock.AcquireReadLockAsync(sessionContext.CancellationToken))
+        using (await sessionContext.SessionStateLock.AcquireReadLockAsync(stoppingToken))
         {
             if (last != null)
             {
@@ -78,5 +86,6 @@ public class SessionMonitorV2 : BackgroundService
         if (lastSession == null)
             return;
         await sessionContext.NewSession(lastSession.Id, lastSession.Name);
+        sessionContext.SetSessionClassMetadata();
     }
 }

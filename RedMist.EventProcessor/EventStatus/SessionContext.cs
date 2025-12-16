@@ -1,4 +1,6 @@
-﻿using RedMist.Backend.Shared.Utilities;
+﻿using Microsoft.EntityFrameworkCore;
+using RedMist.Backend.Shared.Utilities;
+using RedMist.Database;
 using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
@@ -21,6 +23,7 @@ public class SessionContext
     /// </summary>
     public SessionState PreviousSessionState { get; private set; } = new SessionState();
     private DateTime lastPreviousSessionStateUpdate = DateTime.MinValue;
+    private readonly IDbContextFactory<TsContext> tsContext;
     private readonly TimeProvider _timeProvider;
 
     public int EventId { get; }
@@ -40,10 +43,11 @@ public class SessionContext
     private readonly Dictionary<string, string> lastLapTimesBeforeReset = [];
 
 
-    public SessionContext(IConfiguration configuration, TimeProvider? timeProvider = null)
+    public SessionContext(IConfiguration configuration, IDbContextFactory<TsContext> tsContext, TimeProvider? timeProvider = null)
     {
         EventId = configuration.GetValue("event_id", 0);
         SessionState.EventId = EventId;
+        this.tsContext = tsContext;
         _timeProvider = timeProvider ?? TimeProvider.System; // Use system time by default
     }
 
@@ -206,6 +210,23 @@ public class SessionContext
             {
                 car.LastLapTime = lastLapTime;
             }
+        }
+    }
+
+    public virtual void SetSessionClassMetadata()
+    {
+        using var db = tsContext.CreateDbContext();
+
+        // Load organization by join on Event using EventId
+        var organization = db.Events
+            .Where(e => e.Id == EventId)
+            .Join(db.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => o)
+            .FirstOrDefault();
+
+        if (organization != null && organization.Classes != null)
+        {
+            SessionState.ClassColors = organization.Classes.ToDictionary(cm => cm.Name, cm => cm.ColorHex);
+            SessionState.ClassOrder = organization.Classes.ToDictionary(cm => cm.Name, cm => cm.Order.ToString());
         }
     }
 }

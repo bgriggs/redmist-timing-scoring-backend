@@ -1,4 +1,3 @@
-using Google.Apis.Sheets.v4.Data;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
@@ -23,9 +22,9 @@ using RedMist.EventProcessor.EventStatus.SessionMonitoring;
 using RedMist.EventProcessor.EventStatus.Video;
 using RedMist.EventProcessor.EventStatus.X2;
 using RedMist.EventProcessor.Models;
+using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
-using System.Diagnostics;
 using System.Text.Json;
 
 
@@ -75,7 +74,6 @@ public class SessionStateProcessingPipelineTests
         _redisLapCapture = new RedisLapCapture();
         SetupBasicMocks();
         SetupSessionContext();
-        SetupDbContextFactory();
         CreateProcessorInstances();
         CreatePipeline();
         InitializeDatabase();
@@ -157,7 +155,8 @@ public class SessionStateProcessingPipelineTests
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
 
-        _sessionContext = new SessionContext(_configuration, _timeProvider);
+        SetupDbContextFactory();
+        _sessionContext = new SessionContext(_configuration, _dbContextFactory, _timeProvider);
     }
 
     private void SetupDbContextFactory()
@@ -210,7 +209,6 @@ public class SessionStateProcessingPipelineTests
             _sessionMonitor,
             _positionEnricher,
             _controlLogEnricher,
-            _resetProcessor,
             _driverModeProcessor,
             _lapProcessor,
             _driverEnricher,
@@ -849,23 +847,6 @@ public class SessionStateProcessingPipelineTests
         // For in-memory database, we need to ensure the database is created
         // Since in-memory databases don't support migrations, we use EnsureCreated()
         context.Database.EnsureCreated();
-    }
-
-
-    /// <summary>
-    /// Simple implementation of IDbContextFactory for testing
-    /// </summary>
-    private class TestDbContextFactory(DbContextOptions<TsContext> options) : IDbContextFactory<TsContext>
-    {
-        public TsContext CreateDbContext()
-        {
-            return new TsContext(options);
-        }
-
-        public async ValueTask<TsContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
-        {
-            return await Task.FromResult(new TsContext(options));
-        }
     }
 
     public TestContext TestContext { get; set; }

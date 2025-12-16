@@ -1,10 +1,13 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using RedMist.Backend.Shared.Services;
+using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.Models;
+using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
 
@@ -35,7 +38,8 @@ public class ConsistencyCheckServiceTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(configDict)
             .Build();
-        sessionContext = new SessionContext(configuration, fakeTimeProvider);
+        var dbContextFactory = CreateDbContextFactory();
+        sessionContext = new SessionContext(configuration, dbContextFactory, fakeTimeProvider);
 
         testOptions = new ConsistencyCheckOptions
         {
@@ -241,6 +245,15 @@ public class ConsistencyCheckServiceTests
             await base.SendRelayReset();
         }
 
-        public async Task TestSendRelayReset() => await base.SendRelayReset();
-    }
-}
+                public async Task TestSendRelayReset() => await base.SendRelayReset();
+            }
+
+            private static IDbContextFactory<TsContext> CreateDbContextFactory()
+            {
+                var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+                var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+                optionsBuilder.UseInMemoryDatabase(databaseName);
+                var options = optionsBuilder.Options;
+                return new TestDbContextFactory(options);
+            }
+        }

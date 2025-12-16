@@ -11,6 +11,7 @@ using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.RMonitor;
 using RedMist.EventProcessor.Models;
 using RedMist.EventProcessor.Tests.EventStatus.RMonitor;
+using RedMist.EventProcessor.Tests.Utilities;
 
 namespace RedMist.EventProcessor.Tests.EventStatus;
 
@@ -25,12 +26,12 @@ public class SessionMonitorTests
     {
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
         var sessionContext = CreateSessionContext(1);
-        
+
         // Create the RMonitor processor to update session state
         var mockLoggerFactory = new Mock<ILoggerFactory>();
         var mockLogger = new Mock<ILogger>();
         mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(mockLogger.Object);
-        
+
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
         var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object);
@@ -67,7 +68,7 @@ public class SessionMonitorTests
             {
                 // Simulate session monitoring checking for finalized sessions
                 await TriggerSessionMonitoring(sessionMonitor, sessionContext, previousState);
-                
+
                 // Capture current state for next comparison
                 using (await sessionContext.SessionStateLock.AcquireReadLockAsync(sessionContext.CancellationToken))
                 {
@@ -89,12 +90,12 @@ public class SessionMonitorTests
     {
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
         var sessionContext = CreateSessionContext(1);
-        
+
         // Create the RMonitor processor to update session state
         var mockLoggerFactory = new Mock<ILoggerFactory>();
         var mockLogger = new Mock<ILogger>();
         mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(mockLogger.Object);
-        
+
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
         var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object);
@@ -131,7 +132,7 @@ public class SessionMonitorTests
             {
                 // Simulate session monitoring checking for finalized sessions
                 await TriggerSessionMonitoring(sessionMonitor, sessionContext, previousState);
-                
+
                 // Capture current state for next comparison
                 using (await sessionContext.SessionStateLock.AcquireReadLockAsync(sessionContext.CancellationToken))
                 {
@@ -158,12 +159,12 @@ public class SessionMonitorTests
     {
         var dbMock = new Mock<IDbContextFactory<TsContext>>();
         var sessionContext = CreateSessionContext(1);
-        
+
         // Create the RMonitor processor to update session state
         var mockLoggerFactory = new Mock<ILoggerFactory>();
         var mockLogger = new Mock<ILogger>();
         mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(mockLogger.Object);
-        
+
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
         var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object);
@@ -200,7 +201,7 @@ public class SessionMonitorTests
             {
                 // Simulate session monitoring checking for finalized sessions
                 await TriggerSessionMonitoring(sessionMonitor, sessionContext, previousState);
-                
+
                 // Capture current state for next comparison
                 using (await sessionContext.SessionStateLock.AcquireReadLockAsync(sessionContext.CancellationToken))
                 {
@@ -228,12 +229,23 @@ public class SessionMonitorTests
         {
             { "event_id", eventId.ToString() }
         };
-        
+
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(configDict)
             .Build();
-            
-        return new SessionContext(configuration);
+
+        var dbContextFactory = CreateDbContextFactory();
+
+        return new SessionContext(configuration, dbContextFactory);
+    }
+
+    private static IDbContextFactory<TsContext> CreateDbContextFactory()
+    {
+        var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+        var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+        optionsBuilder.UseInMemoryDatabase(databaseName);
+        var options = optionsBuilder.Options;
+        return new TestDbContextFactory(options);
     }
 
     /// <summary>
@@ -244,7 +256,7 @@ public class SessionMonitorTests
         using (await sessionContext.SessionStateLock.AcquireReadLockAsync(sessionContext.CancellationToken))
         {
             var currentState = CreateSimpleClone(sessionContext.SessionState);
-            
+
             if (previousState != null)
             {
                 sessionMonitor.CheckForFinished(previousState, currentState);
@@ -259,12 +271,12 @@ public class SessionMonitorTests
                     SessionId = currentState.SessionId,
                     LocalTimeOfDay = "08:00:00"
                 };
-                
+
                 sessionMonitor.CheckForFinished(syntheticPreviousState, currentState);
             }
         }
     }
-    
+
     /// <summary>
     /// Creates a simple clone of SessionState without relying on generated mappers
     /// </summary>

@@ -1,8 +1,11 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
+using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
+using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 
 namespace RedMist.EventProcessor.Tests.EventStatus.PositionEnricher;
@@ -29,8 +32,18 @@ public class PositionDataEnricherTests
             .AddInMemoryCollection(dict)
             .Build();
 
-        _sessionContext = new SessionContext(config);
+        var dbContextFactory = CreateDbContextFactory();
+        _sessionContext = new SessionContext(config, dbContextFactory);
         _enricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
+    }
+
+    private static IDbContextFactory<TsContext> CreateDbContextFactory()
+    {
+        var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+        var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+        optionsBuilder.UseInMemoryDatabase(databaseName);
+        var options = optionsBuilder.Options;
+        return new TestDbContextFactory(options);
     }
 
     #region Constructor Tests
@@ -92,7 +105,7 @@ public class PositionDataEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(0, result.SessionPatches);
-        
+
         // The enricher might not generate patches if there are no actual changes
         // Let's be more flexible about this assertion
         if (result.CarPatches.Count > 0)
@@ -130,7 +143,7 @@ public class PositionDataEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        
+
         // The enricher might not generate patches if no actual changes are detected
         // Let's be more flexible about this test
         if (result.CarPatches.Count > 0)
@@ -182,7 +195,7 @@ public class PositionDataEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        
+
         // The enricher might not generate patches if no actual changes are detected
         // Let's be more flexible about this test
         if (result.CarPatches.Count > 0)
@@ -196,7 +209,7 @@ public class PositionDataEnricherTests
                 Assert.IsNotNull(car2Patch.OverallGap);
                 Assert.IsNotNull(car2Patch.OverallDifference);
             }
-            
+
             if (car3Patch != null)
             {
                 Assert.IsNotNull(car3Patch.OverallGap);
@@ -250,7 +263,7 @@ public class PositionDataEnricherTests
                     Assert.IsTrue(car1Patch.IsBestTimeClass);
                 }
             }
-            
+
             if (car2Patch != null)
             {
                 // Car2 should have a patch but with no changes to best time flags (they remain false)
@@ -287,7 +300,7 @@ public class PositionDataEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        
+
         // Debug output
         Console.WriteLine($"Number of patches: {result.CarPatches.Count}");
         foreach (var patch in result.CarPatches)
@@ -456,7 +469,7 @@ public class PositionDataEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
-        
+
         // Verify that the starting position was applied during processing
         // The enricher creates copies and applies starting positions from session context
         if (result.CarPatches.Count > 0)
@@ -535,7 +548,7 @@ public class PositionDataEnricherTests
                 {
                     Assert.AreEqual(-2, carPatch.OverallPositionsGained.Value);
                 }
-                
+
                 // If in-class starting position defaults to 0 and current class position is 1, lost 1 position
                 if (carPatch.InClassPositionsGained.HasValue)
                 {
@@ -571,7 +584,7 @@ public class PositionDataEnricherTests
         // Since car number is null, starting positions should not be looked up
         // Original values should be preserved in the copied car positions
         // The enricher skips cars with null numbers for starting position lookup
-        
+
         // Verify original car position is not modified
         Assert.AreEqual(5, car.OverallStartingPosition);
         Assert.AreEqual(3, car.InClassStartingPosition);
@@ -786,7 +799,7 @@ public class PositionDataEnricherTests
 
         // In RMonitor mode, starting positions come from session context
         // In multiloop mode, in-class starting positions are calculated from class positions
-        
+
         // Both should produce valid results but with different logic applied
         if (rmonitorResult.CarPatches.Count > 0 && multiloopResult.CarPatches.Count > 0)
         {

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring;
+using RedMist.EventProcessor.Tests.Utilities;
 
 namespace RedMist.EventProcessor.Tests.EventStatus;
 
@@ -21,12 +22,23 @@ internal class DebugSessionMonitor : SessionMonitor
         {
             { "event_id", eventId.ToString() }
         };
-        
+
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(configDict)
             .Build();
-            
-        return new SessionContext(configuration);
+
+        var dbContextFactory = CreateDbContextFactory();
+
+        return new SessionContext(configuration, dbContextFactory);
+    }
+
+    private static IDbContextFactory<TsContext> CreateDbContextFactory()
+    {
+        var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+        var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+        optionsBuilder.UseInMemoryDatabase(databaseName);
+        var options = optionsBuilder.Options;
+        return new TestDbContextFactory(options);
     }
 
     protected override Task SaveLastUpdatedTimestampAsync(int eventId, int sessionId, CancellationToken stoppingToken = default)
@@ -77,20 +89,31 @@ internal class DebugSessionMonitorV2 : SessionMonitorV2
             .Build();
     }
 
-    private static SessionContext CreateSessionContext(int eventId)
-    {
-        var configDict = new Dictionary<string, string?>
+        private static SessionContext CreateSessionContext(int eventId)
         {
-            { "event_id", eventId.ToString() }
-        };
-        
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configDict)
-            .Build();
-            
-        return new SessionContext(configuration);
+            var configDict = new Dictionary<string, string?>
+            {
+                { "event_id", eventId.ToString() }
+            };
+
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(configDict)
+                .Build();
+
+            var dbContextFactory = CreateDbContextFactory();
+
+            return new SessionContext(configuration, dbContextFactory);
+        }
+
+        private static IDbContextFactory<TsContext> CreateDbContextFactory()
+        {
+            var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+            var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+            optionsBuilder.UseInMemoryDatabase(databaseName);
+            var options = optionsBuilder.Options;
+            return new TestDbContextFactory(options);
+        }
     }
-}
 
 // Create a debug-specific SessionMonitor that overrides database operations
 internal class DebugSessionMonitorInternal : SessionMonitor
