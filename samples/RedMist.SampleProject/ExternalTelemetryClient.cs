@@ -39,7 +39,7 @@ internal class ExternalTelemetryClient
     {
         var request = new RestRequest("UpdateDrivers", Method.Post);
         var serialized = MessagePackSerializer.Serialize(drivers, cancellationToken: stoppingToken);
-        request.AddBody(serialized, "application/x-msgpack");
+        request.AddParameter("application/x-msgpack", serialized, ParameterType.RequestBody);
         var result = await restClient.ExecutePostAsync(request, cancellationToken: stoppingToken);
         return result.IsSuccessful;
     }
@@ -52,7 +52,7 @@ internal class ExternalTelemetryClient
     {
         var request = new RestRequest("UpdateCarVideos", Method.Post);
         var serialized = MessagePackSerializer.Serialize(videos, cancellationToken: stoppingToken);
-        request.AddBody(serialized, "application/x-msgpack");
+        request.AddParameter("application/x-msgpack", serialized, ParameterType.RequestBody);
         var result = await restClient.ExecutePostAsync(request, cancellationToken: stoppingToken);
         return result.IsSuccessful;
     }

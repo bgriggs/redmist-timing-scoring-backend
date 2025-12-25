@@ -11,7 +11,7 @@ namespace RedMist.SampleProject;
 /// </summary>
 internal class Program
 {
-    private const int EVENTID = 2;
+    private const int EVENTID = 3;
     private static IConfiguration configuration = null!;
 
     static async Task Main(string[] args)
@@ -27,13 +27,13 @@ internal class Program
 
         var client = host.Services.GetRequiredService<ExternalTelemetryClient>();
 
-        Console.WriteLine("Press any key to set drivers");
-        Console.ReadLine();
-        await SetDriverExternalTelemetryAsync(client);
+        //Console.WriteLine("Press any key to set drivers");
+        //Console.ReadLine();
+        //await SetDriverExternalTelemetryAsync(client);
 
-        Console.WriteLine("Press any key to remove drivers");
-        Console.ReadLine();
-        await RemoveDriverExternalTelemetryAsync(client);
+        //Console.WriteLine("Press any key to remove drivers");
+        //Console.ReadLine();
+        //await RemoveDriverExternalTelemetryAsync(client);
 
         Console.WriteLine("Press any key to set video entries");
         Console.ReadLine();
@@ -94,8 +94,8 @@ internal class Program
         var videoAll = new VideoMetadata
         {
             EventId = EVENTID,
-            CarNumber = "1",
-            TransponderId = 1329228,
+            CarNumber = "72",
+            //TransponderId = 1329228,
             IsLive = true,
             SystemType = VideoSystemType.MyRacesLive,
             Destinations = [new VideoDestination { Type = VideoDestinationType.Youtube, Url = "https://youtube.com" }]
@@ -114,7 +114,7 @@ internal class Program
 
         var videoTrans = new VideoMetadata { TransponderId = 14451114 };
 
-        var videoAll = new VideoMetadata { EventId = EVENTID, CarNumber = "1", TransponderId = 1329228 };
+        var videoAll = new VideoMetadata { EventId = EVENTID, CarNumber = "72", TransponderId = 1329228 };
         var result = await client.UpdateCarVideosAsync([videoCar, videoTrans, videoAll]);
         Console.WriteLine($"Remove car video result: {result}");
     }
