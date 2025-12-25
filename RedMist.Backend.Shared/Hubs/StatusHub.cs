@@ -91,7 +91,7 @@ public class StatusHub : Hub
             // If the connection had an event subscription, remove it from the event connections cache
             if (!json.IsNullOrEmpty)
             {
-                var conn = JsonSerializer.Deserialize<StatusConnection>(json!);
+                var conn = JsonSerializer.Deserialize<StatusConnection>(json.ToString());
                 if (conn != null && conn.SubscribedEventId > 0)
                 {
                     var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, conn.SubscribedEventId);
@@ -483,7 +483,7 @@ public class StatusHub : Hub
             var connJson = await cache.HashGetAsync(Consts.STATUS_CONNECTIONS, connectionId);
             if (!connJson.IsNullOrEmpty)
             {
-                var conn = JsonSerializer.Deserialize<StatusConnection>(connJson!);
+                var conn = JsonSerializer.Deserialize<StatusConnection>(connJson.ToString());
                 if (conn != null && conn.ClientId != null)
                 {
                     // Update the connectionId with the eventId

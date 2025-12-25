@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
-		<TargetFramework>net9.0</TargetFramework>
+		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<Title>Red Mist Sample Project</Title>
@@ -10,7 +10,7 @@
 		<Company>Big Mission Motorsports</Company>
 		<Description>Samples for conencting to Red Mist</Description>
 		<Copyright>2025</Copyright>
-		<Version>0.0.0.1</Version>
+		<Version>0.0.0.2</Version>
 		<UserSecretsId>cf019365-db97-4247-a080-531d28e516b9</UserSecretsId>
 	</PropertyGroup>
 	<ItemGroup>

@@ -29,7 +29,7 @@ public class EventsChecker(IConnectionMultiplexer cacheMux)
         {
             if (entry.Name.IsNullOrEmpty || entry.Value.IsNullOrEmpty) continue;
 
-            var eventEntry = JsonSerializer.Deserialize<RelayConnectionEventEntry>(entry.Value!);
+            var eventEntry = JsonSerializer.Deserialize<RelayConnectionEventEntry>(entry.Value.ToString());
             if (eventEntry != null && eventEntry.EventId > 0)
             {
                 result.Add(eventEntry);

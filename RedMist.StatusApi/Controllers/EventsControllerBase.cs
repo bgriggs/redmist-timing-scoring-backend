@@ -481,7 +481,7 @@ public abstract class EventsControllerBase : ControllerBase
             Logger.LogWarning("Control log for event {eventId} not found in cache", eventId);
             return [];
         }
-        var ccl = JsonSerializer.Deserialize<CarControlLogs>(json!);
+        var ccl = JsonSerializer.Deserialize<CarControlLogs>(json.ToString());
         return ccl?.ControlLogEntries ?? [];
     }
 
@@ -509,7 +509,7 @@ public abstract class EventsControllerBase : ControllerBase
             Logger.LogWarning("Control log for event {eventId} car {c} not found in cache", eventId, car);
             return null;
         }
-        return JsonSerializer.Deserialize<CarControlLogs>(json!);
+        return JsonSerializer.Deserialize<CarControlLogs>(json.ToString());
     }
 
     #endregion
@@ -541,7 +541,7 @@ public abstract class EventsControllerBase : ControllerBase
             Logger.LogWarning("In-car data for event {eventId} car {car} not found in cache", eventId, car);
             return null;
         }
-        return JsonSerializer.Deserialize<InCarPayload>(json!);
+        return JsonSerializer.Deserialize<InCarPayload>(json.ToString());
     }
 
     #endregion

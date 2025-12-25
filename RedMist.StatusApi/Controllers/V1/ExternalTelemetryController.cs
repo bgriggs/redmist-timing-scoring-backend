@@ -88,7 +88,7 @@ public class ExternalTelemetryController : Controller
                 {
                     try
                     {
-                        var existingDis = JsonSerializer.Deserialize<DriverInfoSource>(existingDriverJson!);
+                        var existingDis = JsonSerializer.Deserialize<DriverInfoSource>(existingDriverJson.ToString());
                         if (existingDis == null)
                         {
                             changed = true;
