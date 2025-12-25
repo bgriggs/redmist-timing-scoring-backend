@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarVideo;
 
@@ -22,41 +23,34 @@ internal class Program
         builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
         builder.Configuration.AddUserSecrets<Program>();
 
+        // Configure logging
+        builder.Logging.ClearProviders();
+        builder.Logging.AddConsole();
+        builder.Logging.SetMinimumLevel(LogLevel.Information);
+
         builder.Services.AddSingleton<StatusClient>();
         builder.Services.AddSingleton<ExternalTelemetryClient>();
+        builder.Services.AddSingleton<StatusSubscriptionClient>();
         var host = builder.Build();
         configuration = host.Services.GetRequiredService<IConfiguration>();
 
         var statusClient = host.Services.GetRequiredService<StatusClient>();
         var client = host.Services.GetRequiredService<ExternalTelemetryClient>();
+        var subscriptionClient = host.Services.GetRequiredService<StatusSubscriptionClient>();
 
-        await ShowMenuAsync(statusClient, client);
+        await ShowMenuAsync(statusClient, client, subscriptionClient);
     }
 
-    static async Task ShowMenuAsync(StatusClient statusClient, ExternalTelemetryClient externalTelemetryClient)
+    static async Task ShowMenuAsync(StatusClient statusClient, ExternalTelemetryClient externalTelemetryClient, StatusSubscriptionClient subscriptionClient)
     {
         while (true)
         {
             Console.WriteLine("\n==== Red Mist Sample Client ====");
-            Console.WriteLine("\nStatus API:");
-            Console.WriteLine("1. Load Recent Events");
-            Console.WriteLine("2. Load Event");
-            Console.WriteLine("3. Load Event Status");
-            Console.WriteLine("4. Load Car Laps");
-            Console.WriteLine("5. Load Sessions");
-            Console.WriteLine("6. Load Session Results");
-            Console.WriteLine("7. Load Competitor Metadata");
-            Console.WriteLine("8. Load Control Log");
-            Console.WriteLine("9. Load Car Control Logs");
-            Console.WriteLine("10. Load In-Car Driver Mode Payload");
-            Console.WriteLine("11. Load Flags");
-            Console.WriteLine("\nExternal Telemetry:");
-            Console.WriteLine("12. Set Driver External Telemetry");
-            Console.WriteLine("13. Remove Driver External Telemetry");
-            Console.WriteLine("14. Set Video External Telemetry");
-            Console.WriteLine("15. Remove Video External Telemetry");
+            Console.WriteLine("1. Status API (REST)");
+            Console.WriteLine("2. Status Subscriptions (SignalR)");
+            Console.WriteLine("3. External Telemetry");
             Console.WriteLine("\n0. Exit");
-            Console.Write("\nSelect an option: ");
+            Console.Write("\nSelect a client: ");
 
             var input = Console.ReadLine();
             if (!int.TryParse(input, out int choice))
@@ -72,6 +66,60 @@ internal class Program
                     case 0:
                         Console.WriteLine("Exiting...");
                         return;
+                    case 1:
+                        await ShowStatusApiMenuAsync(statusClient);
+                        break;
+                    case 2:
+                        await ShowStatusSubscriptionMenuAsync(subscriptionClient);
+                        break;
+                    case 3:
+                        await ShowExternalTelemetryMenuAsync(externalTelemetryClient);
+                        break;
+                    default:
+                        Console.WriteLine("Invalid option. Please try again.");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+            }
+        }
+    }
+
+    static async Task ShowStatusApiMenuAsync(StatusClient statusClient)
+    {
+        while (true)
+        {
+            Console.WriteLine("\n==== Status API (REST) ====");
+            Console.WriteLine("\n1. Load Recent Events");
+            Console.WriteLine("2. Load Event");
+            Console.WriteLine("3. Load Event Status");
+            Console.WriteLine("4. Load Car Laps");
+            Console.WriteLine("5. Load Sessions");
+            Console.WriteLine("6. Load Session Results");
+            Console.WriteLine("7. Load Competitor Metadata");
+            Console.WriteLine("8. Load Control Log");
+            Console.WriteLine("9. Load Car Control Logs");
+            Console.WriteLine("10. Load In-Car Driver Mode Payload");
+            Console.WriteLine("11. Load Flags");
+            Console.WriteLine("\n0. Back to Main Menu");
+            Console.Write("\nSelect an option: ");
+
+            var input = Console.ReadLine();
+            if (!int.TryParse(input, out int choice))
+            {
+                Console.WriteLine("Invalid input. Please enter a number.");
+                continue;
+            }
+
+            if (choice == 0)
+                return;
+
+            try
+            {
+                switch (choice)
+                {
                     case 1:
                         await LoadRecentEventsAsync(statusClient);
                         break;
@@ -105,16 +153,126 @@ internal class Program
                     case 11:
                         await LoadFlagsAsync(statusClient);
                         break;
-                    case 12:
+                    default:
+                        Console.WriteLine("Invalid option. Please try again.");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+            }
+
+            Console.WriteLine("\nPress any key to continue...");
+            Console.ReadLine();
+        }
+    }
+
+    static async Task ShowStatusSubscriptionMenuAsync(StatusSubscriptionClient subscriptionClient)
+    {
+        while (true)
+        {
+            Console.WriteLine("\n==== Status Subscriptions (SignalR) ====");
+            Console.WriteLine("\n1. Subscribe to Event");
+            Console.WriteLine("2. Unsubscribe from Event");
+            Console.WriteLine("3. Subscribe to Control Logs");
+            Console.WriteLine("4. Unsubscribe from Control Logs");
+            Console.WriteLine("5. Subscribe to Car Control Logs");
+            Console.WriteLine("6. Unsubscribe from Car Control Logs");
+            Console.WriteLine("7. Subscribe to In-Car Driver Event");
+            Console.WriteLine("8. Unsubscribe from In-Car Driver Event");
+            Console.WriteLine("\n0. Back to Main Menu");
+            Console.Write("\nSelect an option: ");
+
+            var input = Console.ReadLine();
+            if (!int.TryParse(input, out int choice))
+            {
+                Console.WriteLine("Invalid input. Please enter a number.");
+                continue;
+            }
+
+            if (choice == 0)
+                return;
+
+            try
+            {
+                switch (choice)
+                {
+                    case 1:
+                        await SubscribeToEventAsync(subscriptionClient);
+                        break;
+                    case 2:
+                        await UnsubscribeFromEventAsync(subscriptionClient);
+                        break;
+                    case 3:
+                        await SubscribeToControlLogsAsync(subscriptionClient);
+                        break;
+                    case 4:
+                        await UnsubscribeFromControlLogsAsync(subscriptionClient);
+                        break;
+                    case 5:
+                        await SubscribeToCarControlLogsAsync(subscriptionClient);
+                        break;
+                    case 6:
+                        await UnsubscribeFromCarControlLogsAsync(subscriptionClient);
+                        break;
+                    case 7:
+                        await SubscribeToInCarDriverEventAsync(subscriptionClient);
+                        break;
+                    case 8:
+                        await UnsubscribeFromInCarDriverEventAsync(subscriptionClient);
+                        break;
+                    default:
+                        Console.WriteLine("Invalid option. Please try again.");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+            }
+
+            Console.WriteLine("\nPress any key to continue...");
+            Console.ReadLine();
+        }
+    }
+
+    static async Task ShowExternalTelemetryMenuAsync(ExternalTelemetryClient externalTelemetryClient)
+    {
+        while (true)
+        {
+            Console.WriteLine("\n==== External Telemetry ====");
+            Console.WriteLine("\n1. Set Driver External Telemetry");
+            Console.WriteLine("2. Remove Driver External Telemetry");
+            Console.WriteLine("3. Set Video External Telemetry");
+            Console.WriteLine("4. Remove Video External Telemetry");
+            Console.WriteLine("\n0. Back to Main Menu");
+            Console.Write("\nSelect an option: ");
+
+            var input = Console.ReadLine();
+            if (!int.TryParse(input, out int choice))
+            {
+                Console.WriteLine("Invalid input. Please enter a number.");
+                continue;
+            }
+
+            if (choice == 0)
+                return;
+
+            try
+            {
+                switch (choice)
+                {
+                    case 1:
                         await SetDriverExternalTelemetryAsync(externalTelemetryClient);
                         break;
-                    case 13:
+                    case 2:
                         await RemoveDriverExternalTelemetryAsync(externalTelemetryClient);
                         break;
-                    case 14:
+                    case 3:
                         await SetVideoExternalTelemetryAsync(externalTelemetryClient);
                         break;
-                    case 15:
+                    case 4:
                         await RemoveVideoExternalTelemetryAsync(externalTelemetryClient);
                         break;
                     default:
@@ -486,31 +644,203 @@ internal class Program
             }
         }
 
-        /// <summary>
-        /// Loads flags.
-        /// </summary>
-        static async Task LoadFlagsAsync(StatusClient client)
-        {
-            Console.Write("Enter Event ID: ");
-            if (!int.TryParse(Console.ReadLine(), out int eventId))
+            /// <summary>
+            /// Loads flags.
+            /// </summary>
+            static async Task LoadFlagsAsync(StatusClient client)
             {
-                Console.WriteLine("Invalid Event ID.");
-                return;
+                Console.Write("Enter Event ID: ");
+                if (!int.TryParse(Console.ReadLine(), out int eventId))
+                {
+                    Console.WriteLine("Invalid Event ID.");
+                    return;
+                }
+
+                Console.Write("Enter Session ID: ");
+                if (!int.TryParse(Console.ReadLine(), out int sessionId))
+                {
+                    Console.WriteLine("Invalid Session ID.");
+                    return;
+                }
+
+                Console.WriteLine($"Loading flags for session {sessionId}...");
+                var flags = await client.LoadFlagsAsync(eventId, sessionId);
+                Console.WriteLine($"Found {flags.Count} flag periods:");
+                foreach (var flag in flags)
+                {
+                    Console.WriteLine($"  {JsonSerializer.Serialize(flag)}");
+                }
             }
 
-            Console.Write("Enter Session ID: ");
-            if (!int.TryParse(Console.ReadLine(), out int sessionId))
+            /// <summary>
+            /// Subscribes to event updates via SignalR.
+            /// </summary>
+            static async Task SubscribeToEventAsync(StatusSubscriptionClient client)
             {
-                Console.WriteLine("Invalid Session ID.");
-                return;
+                Console.Write("Enter Event ID to subscribe: ");
+                if (int.TryParse(Console.ReadLine(), out int eventId))
+                {
+                    Console.WriteLine($"Subscribing to event {eventId}...");
+                    await client.SubscribeToEventAsync(eventId);
+                    Console.WriteLine("Subscribed! Updates will be logged. Keep the application running to receive updates.");
+                }
+                else
+                {
+                    Console.WriteLine("Invalid Event ID.");
+                }
             }
 
-            Console.WriteLine($"Loading flags for session {sessionId}...");
-            var flags = await client.LoadFlagsAsync(eventId, sessionId);
-            Console.WriteLine($"Found {flags.Count} flag periods:");
-            foreach (var flag in flags)
+            /// <summary>
+            /// Unsubscribes from event updates.
+            /// </summary>
+            static async Task UnsubscribeFromEventAsync(StatusSubscriptionClient client)
             {
-                Console.WriteLine($"  {JsonSerializer.Serialize(flag)}");
+                Console.Write("Enter Event ID to unsubscribe: ");
+                if (int.TryParse(Console.ReadLine(), out int eventId))
+                {
+                    Console.WriteLine($"Unsubscribing from event {eventId}...");
+                    await client.UnsubscribeFromEventAsync(eventId);
+                    Console.WriteLine("Unsubscribed.");
+                }
+                else
+                {
+                    Console.WriteLine("Invalid Event ID.");
+                }
+            }
+
+            /// <summary>
+            /// Subscribes to control logs via SignalR.
+            /// </summary>
+            static async Task SubscribeToControlLogsAsync(StatusSubscriptionClient client)
+            {
+                Console.Write("Enter Event ID: ");
+                if (int.TryParse(Console.ReadLine(), out int eventId))
+                {
+                    Console.WriteLine($"Subscribing to control logs for event {eventId}...");
+                    await client.SubscribeToControlLogsAsync(eventId);
+                    Console.WriteLine("Subscribed! Control log updates will be logged.");
+                }
+                else
+                {
+                    Console.WriteLine("Invalid Event ID.");
+                }
+            }
+
+            /// <summary>
+            /// Unsubscribes from control logs.
+            /// </summary>
+            static async Task UnsubscribeFromControlLogsAsync(StatusSubscriptionClient client)
+            {
+                Console.Write("Enter Event ID: ");
+                if (int.TryParse(Console.ReadLine(), out int eventId))
+                {
+                    Console.WriteLine($"Unsubscribing from control logs for event {eventId}...");
+                    await client.UnsubscribeFromControlLogsAsync(eventId);
+                    Console.WriteLine("Unsubscribed.");
+                }
+                else
+                {
+                    Console.WriteLine("Invalid Event ID.");
+                }
+            }
+
+            /// <summary>
+            /// Subscribes to car control logs via SignalR.
+            /// </summary>
+            static async Task SubscribeToCarControlLogsAsync(StatusSubscriptionClient client)
+            {
+                Console.Write("Enter Event ID: ");
+                if (!int.TryParse(Console.ReadLine(), out int eventId))
+                {
+                    Console.WriteLine("Invalid Event ID.");
+                    return;
+                }
+
+                Console.Write("Enter Car Number: ");
+                var carNumber = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(carNumber))
+                {
+                    Console.WriteLine("Invalid Car Number.");
+                    return;
+                }
+
+                Console.WriteLine($"Subscribing to control logs for car {carNumber}...");
+                await client.SubscribeToCarControlLogsAsync(eventId, carNumber);
+                Console.WriteLine("Subscribed! Car control log updates will be logged.");
+            }
+
+            /// <summary>
+            /// Unsubscribes from car control logs.
+            /// </summary>
+            static async Task UnsubscribeFromCarControlLogsAsync(StatusSubscriptionClient client)
+            {
+                Console.Write("Enter Event ID: ");
+                if (!int.TryParse(Console.ReadLine(), out int eventId))
+                {
+                    Console.WriteLine("Invalid Event ID.");
+                    return;
+                }
+
+                Console.Write("Enter Car Number: ");
+                var carNumber = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(carNumber))
+                {
+                    Console.WriteLine("Invalid Car Number.");
+                    return;
+                }
+
+                Console.WriteLine($"Unsubscribing from control logs for car {carNumber}...");
+                await client.UnsubscribeFromCarControlLogsAsync(eventId, carNumber);
+                Console.WriteLine("Unsubscribed.");
+            }
+
+            /// <summary>
+            /// Subscribes to in-car driver event via SignalR.
+            /// </summary>
+            static async Task SubscribeToInCarDriverEventAsync(StatusSubscriptionClient client)
+            {
+                Console.Write("Enter Event ID: ");
+                if (!int.TryParse(Console.ReadLine(), out int eventId))
+                {
+                    Console.WriteLine("Invalid Event ID.");
+                    return;
+                }
+
+                Console.Write("Enter Car Number: ");
+                var carNumber = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(carNumber))
+                {
+                    Console.WriteLine("Invalid Car Number.");
+                    return;
+                }
+
+                Console.WriteLine($"Subscribing to in-car driver event for car {carNumber}...");
+                await client.SubscribeToInCarDriverEventAsync(eventId, carNumber);
+                Console.WriteLine("Subscribed! In-car updates will be logged. Keep the application running to receive updates.");
+            }
+
+            /// <summary>
+            /// Unsubscribes from in-car driver event.
+            /// </summary>
+            static async Task UnsubscribeFromInCarDriverEventAsync(StatusSubscriptionClient client)
+            {
+                Console.Write("Enter Event ID: ");
+                if (!int.TryParse(Console.ReadLine(), out int eventId))
+                {
+                    Console.WriteLine("Invalid Event ID.");
+                    return;
+                }
+
+                Console.Write("Enter Car Number: ");
+                var carNumber = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(carNumber))
+                {
+                    Console.WriteLine("Invalid Car Number.");
+                    return;
+                }
+
+                Console.WriteLine($"Unsubscribing from in-car driver event for car {carNumber}...");
+                await client.UnsubscribeFromInCarDriverEventAsync(eventId, carNumber);
+                Console.WriteLine("Unsubscribed.");
             }
         }
-    }

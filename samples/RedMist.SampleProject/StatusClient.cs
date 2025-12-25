@@ -6,6 +6,9 @@ using RestSharp;
 
 namespace RedMist.SampleProject;
 
+/// <summary>
+/// Provides methods for retrieving event, session, competitor, and control log data.
+/// </summary>
 internal class StatusClient
 {
     private readonly RestClient restClient;
@@ -41,6 +44,9 @@ internal class StatusClient
         return await restClient.GetAsync<Event?>(request);
     }
 
+    /// <summary>
+    /// Gets the full status for a live event.
+    /// </summary>
     public async Task<SessionState?> LoadEventStatusAsync(int eventId)
     {
         var request = new RestRequest("GetCurrentSessionState", Method.Get);
