@@ -28,7 +28,7 @@ public class SessionStateProcessingPipeline
     private readonly RMonitorDataProcessor rMonitorProcessor;
     private readonly MultiloopProcessor multiloopProcessor;
     private readonly PitProcessor pitProcessor;
-    private readonly FlagProcessorV2 flagProcessor;
+    private readonly FlagProcessor flagProcessor;
     private readonly SessionMonitor sessionMonitor;
     private readonly PositionDataEnricher positionEnricher;
     private readonly ControlLogEnricher controlLogEnricher;
@@ -66,7 +66,7 @@ public class SessionStateProcessingPipeline
         RMonitorDataProcessor rMonitorDataProcessorV2,
         MultiloopProcessor multiloopProcessor,
         PitProcessor pitProcessorV2,
-        FlagProcessorV2 flagProcessorV2,
+        FlagProcessor flagProcessor,
         SessionMonitor sessionMonitor,
         PositionDataEnricher positionEnricher,
         ControlLogEnricher controlLogEnricher,
@@ -83,7 +83,7 @@ public class SessionStateProcessingPipeline
         rMonitorProcessor = rMonitorDataProcessorV2;
         this.multiloopProcessor = multiloopProcessor;
         pitProcessor = pitProcessorV2;
-        flagProcessor = flagProcessorV2;
+        this.flagProcessor = flagProcessor;
         this.sessionMonitor = sessionMonitor;
         this.positionEnricher = positionEnricher;
         this.controlLogEnricher = controlLogEnricher;

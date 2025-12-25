@@ -99,7 +99,7 @@ public class Program
         builder.Services.AddSingleton<MultiloopProcessor>();
         builder.Services.AddSingleton<RMonitorDataProcessor>();
         builder.Services.AddSingleton<PitProcessor>();
-        builder.Services.AddSingleton<FlagProcessorV2>();
+        builder.Services.AddSingleton<FlagProcessor>();
         builder.Services.AddSingleton<PositionDataEnricher>();
         builder.Services.AddSingleton<ResetProcessor>();
         builder.Services.AddSingleton<LapProcessor>();

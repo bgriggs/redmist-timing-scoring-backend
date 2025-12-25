@@ -1,7 +1,10 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using RedMist.Database;
 using RedMist.Database.Models;
+using RedMist.EventProcessor.EventStatus.FlagData.StateChanges;
+using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
+using System.Text.Json;
 
 namespace RedMist.EventProcessor.EventStatus.FlagData;
 
@@ -11,15 +14,48 @@ public class FlagProcessor
     private ILogger Logger { get; }
     private readonly int eventId;
     private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly SessionContext? sessionContext;
     private readonly List<FlagDuration> flags = [];
     private readonly SemaphoreSlim flagsLock = new(1, 1);
 
 
+    public FlagProcessor(IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory, SessionContext sessionContext)
+    {
+        this.sessionContext = sessionContext ?? throw new ArgumentNullException(nameof(sessionContext));
+        eventId = sessionContext.SessionState.EventId;
+        this.tsContext = tsContext;
+        Logger = loggerFactory.CreateLogger(GetType().Name);
+    }
+
+    // Legacy constructor for backward compatibility (e.g., tests)
     public FlagProcessor(int eventId, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory)
     {
         this.eventId = eventId;
         this.tsContext = tsContext;
+        sessionContext = null;
         Logger = loggerFactory.CreateLogger(GetType().Name);
+    }
+
+
+    public async Task<PatchUpdates?> Process(TimingMessage message)
+    {
+        if (sessionContext == null)
+            throw new InvalidOperationException("SessionContext is required for Process method. Use the constructor that accepts SessionContext.");
+
+        if (message.Type != Backend.Shared.Consts.FLAGS_TYPE)
+            return null;
+
+        var fs = JsonSerializer.Deserialize<List<FlagDuration>>(message.Data);
+        if (fs != null)
+        {
+            await ProcessFlags(sessionContext.SessionState.SessionId, fs, sessionContext.CancellationToken);
+            var flagDurations = await GetFlagsAsync(sessionContext.CancellationToken);
+            var flagChange = new FlagsStateChange(flagDurations);
+            var sp = flagChange.ApplySessionChange(sessionContext.SessionState);
+            if (sp != null)
+                return new PatchUpdates([sp], []);
+        }
+        return null;
     }
 
 

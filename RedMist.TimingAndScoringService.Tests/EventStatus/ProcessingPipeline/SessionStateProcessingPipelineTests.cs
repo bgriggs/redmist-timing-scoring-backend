@@ -49,7 +49,7 @@ public class SessionStateProcessingPipelineTests
     private RMonitorDataProcessor _rMonitorProcessor = null!;
     private MultiloopProcessor _multiloopProcessor = null!;
     private PitProcessor _pitProcessor = null!;
-    private FlagProcessorV2 _flagProcessor = null!;
+    private FlagProcessor _flagProcessor = null!;
     private SessionMonitor _sessionMonitor = null!;
     private PositionDataEnricher _positionEnricher = null!;
     private ControlLogEnricher _controlLogEnricher = null!;
@@ -180,7 +180,7 @@ public class SessionStateProcessingPipelineTests
         _multiloopProcessor = new MultiloopProcessor(_mockLoggerFactory.Object, _sessionContext);
         _pitProcessor = new PitProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _controlLogEnricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);
-        _flagProcessor = new FlagProcessorV2(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
+        _flagProcessor = new FlagProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _sessionMonitor = new SessionMonitor(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext, _mockConnectionMultiplexer.Object);
         _driverModeProcessor = new DriverModeProcessor(
             _mockHubContext.Object,
