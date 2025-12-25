@@ -6,7 +6,7 @@ using Keycloak.AuthServices.Common;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Services;
@@ -80,17 +80,10 @@ public class Program
                 Description = "JWT Authorization header using the Bearer scheme."
 
             });
-            c.AddSecurityRequirement(new OpenApiSecurityRequirement
+            c.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
             {
                 {
-                      new OpenApiSecurityScheme
-                      {
-                          Reference = new OpenApiReference
-                          {
-                              Type = ReferenceType.SecurityScheme,
-                              Id = "Bearer"
-                          }
-                      }, []
+                      new OpenApiSecuritySchemeReference("Bearer"), []
                 }
             });
         });

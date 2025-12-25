@@ -6,7 +6,7 @@ using Keycloak.AuthServices.Common;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using NLog.Extensions.Logging;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Extensions;
@@ -113,18 +113,11 @@ public class Program
                 Scheme = "Bearer"
             });
 
-            c.AddSecurityRequirement(new OpenApiSecurityRequirement
+            c.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
             {
                 {
-                    new OpenApiSecurityScheme
-                    {
-                        Reference = new OpenApiReference
-                        {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = "Bearer"
-                        }
-                    },
-                    Array.Empty<string>()
+                    new OpenApiSecuritySchemeReference("Bearer"),
+                    new List<string>()
                 }
             });
         });

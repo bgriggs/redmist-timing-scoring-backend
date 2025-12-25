@@ -14,17 +14,17 @@
 		<UserSecretsId>cf019365-db97-4247-a080-531d28e516b9</UserSecretsId>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Microsoft.Extensions.ApiDescription.Client" Version="9.0.10">
+		<PackageReference Include="Microsoft.Extensions.ApiDescription.Client" Version="10.0.1">
 		  <PrivateAssets>all</PrivateAssets>
 		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.10" />
-		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.10" />
-		<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="9.0.10" />
-		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.10" />
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.10" />
+		<PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.1" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.1" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.1" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
 		<PackageReference Include="BigMission.Shared" Version="1.0.4" />
-		<PackageReference Include="RedMist.TimingCommon" Version="1.2.7" />
+		<PackageReference Include="RedMist.TimingCommon" Version="1.2.8" />
 		<PackageReference Include="RestSharp" Version="113.0.0" />
 		<PackageReference Include="MessagePack" Version="3.1.4" />
 	</ItemGroup>

@@ -19,13 +19,13 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.10" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.1" />
 		<PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.1.0" />
-		<PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.0.1" />
+		<PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.0.2" />
 		<PackageReference Include="Moq" Version="4.20.72" />
-		<PackageReference Include="MSTest" Version="4.0.1" />
+		<PackageReference Include="MSTest" Version="4.0.2" />
 		<PackageReference Include="BigMission.TestHelpers" Version="3.0.8" />
-		<PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.10.0" />
+		<PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.1.0" />
 	</ItemGroup>
 
 	<ItemGroup>

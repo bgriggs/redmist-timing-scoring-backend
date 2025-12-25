@@ -20,8 +20,8 @@
 		<PackageReference Include="BunnyCDN.Net.Storage" Version="1.0.4" />
 		<PackageReference Include="StackExchange.Redis" Version="2.10.1" />
 		<PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
-		<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="9.0.10" />
-		<PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="9.0.10" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.1" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.1" />
 		<PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.4" />
 	</ItemGroup>
 
