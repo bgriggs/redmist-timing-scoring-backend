@@ -9,3 +9,6 @@ These service make up the backend of the Red Mist system. They are responsible f
 
 # Documentation
 Please visit https://docs.redmist.racing/ for the full documentation.
+
+# Sample Projects
+Sample projects demonstrating how to interact with the Red Mist backend services can be found in [samples](https://github.com/bgriggs/redmist-timing-scoring-backend/tree/main/samples).
