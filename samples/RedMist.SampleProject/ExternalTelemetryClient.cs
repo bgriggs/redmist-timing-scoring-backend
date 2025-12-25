@@ -7,6 +7,10 @@ using MessagePack;
 
 namespace RedMist.SampleProject;
 
+/// <summary>
+/// These endpoints allow external telemetry systems to provide driver and in-car video metadata 
+/// that will show up in the app during an event.
+/// </summary>
 internal class ExternalTelemetryClient
 {
     private readonly RestClient restClient;
