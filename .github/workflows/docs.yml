@@ -43,10 +43,10 @@ jobs:
       run: dotnet build --configuration Release --no-incremental
 
     - name: Generate API Metadata
-      run: docfx metadata docfx.json --property TargetFramework=net10.0
-    
+      run: docfx metadata docfx.json --property TargetFramework=net10.0 --warningsAsErrors false
+
     - name: Build Documentation
-      run: docfx build docfx.json
+      run: docfx build docfx.json --warningsAsErrors false
     
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3

@@ -12,9 +12,11 @@ Welcome to the Red Mist Timing & Scoring documentation - a cloud-based, real-tim
 ## Documentation Sections
 
 ### For Developers
-- [API Documentation](api/index.md) - Full API reference
+- [API Documentation](api/index.md) - Full API reference for public-facing services
 - [SignalR Hubs](articles/signalr-hubs.md) - Real-time communication
 - [Architecture](articles/architecture.md) - System design
+
+> **Note:** API documentation covers public-facing services (Status API, Event Management, User Management) and shared libraries. Internal processing services are not included in the API reference but are described in the architecture documentation.
 
 ## Quick Links
 

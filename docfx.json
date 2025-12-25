@@ -7,7 +7,6 @@
             "RedMist.StatusApi/**/*.csproj",
             "RedMist.EventManagement/**/*.csproj",
             "RedMist.UserManagement/**/*.csproj",
-            "RedMist.EventProcessor/**/*.csproj",
             "RedMist.Backend.Shared/**/*.csproj",
             "RedMist.Database/**/*.csproj",
             "RedMist.ControlLogs/**/*.csproj"
