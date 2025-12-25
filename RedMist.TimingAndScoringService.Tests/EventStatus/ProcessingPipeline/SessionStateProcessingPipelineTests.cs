@@ -181,7 +181,7 @@ public class SessionStateProcessingPipelineTests
         _pitProcessor = new PitProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _controlLogEnricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);
         _flagProcessor = new FlagProcessorV2(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
-        _sessionMonitor = new SessionMonitorV2(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
+        _sessionMonitor = new SessionMonitorV2(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext, _mockConnectionMultiplexer.Object);
         _driverModeProcessor = new DriverModeProcessor(
             _mockHubContext.Object,
             _mockLoggerFactory.Object,

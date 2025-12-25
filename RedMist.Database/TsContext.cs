@@ -113,6 +113,9 @@ public class TsContext : DbContext
         var sessionStateConverter = new ValueConverter<SessionState, string>(
             v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
             v => JsonSerializer.Deserialize<SessionState>(v, (JsonSerializerOptions?)null) ?? new SessionState());
+        var controlLogConverter = new ValueConverter<List<ControlLogEntry>, string>(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<List<ControlLogEntry>>(v, (JsonSerializerOptions?)null) ?? new List<ControlLogEntry>());
 
         var payloadProperty = modelBuilder.Entity<SessionResult>().Property(o => o.Payload);
         payloadProperty.HasConversion(payloadConverter!);
@@ -121,6 +124,10 @@ public class TsContext : DbContext
         var sessionStateProperty = modelBuilder.Entity<SessionResult>().Property(o => o.SessionState);
         sessionStateProperty.HasConversion(sessionStateConverter!);
         sessionStateProperty.HasColumnType("jsonb");
+        
+        var controlLogsProperty = modelBuilder.Entity<SessionResult>().Property(o => o.ControlLogs);
+        controlLogsProperty.HasConversion(controlLogConverter!);
+        controlLogsProperty.HasColumnType("jsonb");
 
         // Configure TimingCommon models
         modelBuilder.Entity<Session>().HasKey(s => new { s.Id, s.EventId });

@@ -3,6 +3,7 @@ using RedMist.Database;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Mappers;
+using StackExchange.Redis;
 using System.Text.Json;
 
 namespace RedMist.EventProcessor.EventStatus.SessionMonitoring;
@@ -17,11 +18,11 @@ public class SessionMonitorV2 : BackgroundService
 
 
     public SessionMonitorV2(IConfiguration configuration, IDbContextFactory<TsContext> tsContext,
-        ILoggerFactory loggerFactory, SessionContext sessionContext)
+        ILoggerFactory loggerFactory, SessionContext sessionContext, IConnectionMultiplexer cacheMux)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         var eventId = configuration.GetValue("event_id", 0);
-        InnerSessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory, sessionContext);
+        InnerSessionMonitor = new SessionMonitor(eventId, tsContext, loggerFactory, sessionContext, cacheMux);
         InnerSessionMonitor.FinalizedSession += Sm_FinalizedSession;
         this.sessionContext = sessionContext;
     }

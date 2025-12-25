@@ -2,17 +2,19 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Moq;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring;
 using RedMist.EventProcessor.Tests.Utilities;
+using StackExchange.Redis;
 
 namespace RedMist.EventProcessor.Tests.EventStatus;
 
 internal class DebugSessionMonitor : SessionMonitor
 {
-    public DebugSessionMonitor(int eventId, IDbContextFactory<TsContext> tsContext, SessionContext? sessionContext = null) 
-        : base(eventId, tsContext, new DebugLoggerFactory(), sessionContext ?? CreateSessionContext(eventId))
+    public DebugSessionMonitor(int eventId, IDbContextFactory<TsContext> tsContext, SessionContext? sessionContext = null, IConnectionMultiplexer? cacheMux = null) 
+        : base(eventId, tsContext, new DebugLoggerFactory(), sessionContext ?? CreateSessionContext(eventId), cacheMux ?? CreateMockCacheMux())
     {
     }
 
@@ -41,6 +43,15 @@ internal class DebugSessionMonitor : SessionMonitor
         return new TestDbContextFactory(options);
     }
 
+    private static IConnectionMultiplexer CreateMockCacheMux()
+    {
+        var mockConnectionMultiplexer = new Mock<IConnectionMultiplexer>();
+        var mockDatabase = new Mock<IDatabase>();
+        mockConnectionMultiplexer.Setup(x => x.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
+            .Returns(mockDatabase.Object);
+        return mockConnectionMultiplexer.Object;
+    }
+
     protected override Task SaveLastUpdatedTimestampAsync(int eventId, int sessionId, CancellationToken stoppingToken = default)
     {
         return Task.CompletedTask;
@@ -61,20 +72,15 @@ internal class DebugSessionMonitor : SessionMonitor
 
 internal class DebugSessionMonitorV2 : SessionMonitorV2
 {
-    private readonly SessionMonitor sm;
-
-    public DebugSessionMonitorV2(int eventId, IDbContextFactory<TsContext> tsContext, SessionContext? sessionContext = null) 
-        : base(CreateConfiguration(eventId), tsContext, new DebugLoggerFactory(), sessionContext ?? CreateSessionContext(eventId))
+    public DebugSessionMonitorV2(int eventId, IDbContextFactory<TsContext> tsContext, SessionContext? sessionContext = null, IConnectionMultiplexer? cacheMux = null) 
+        : base(CreateConfiguration(eventId), tsContext, new DebugLoggerFactory(), sessionContext ?? CreateSessionContext(eventId), cacheMux ?? CreateMockCacheMux())
     {
-        // Get reference to the internal SessionMonitor to access its FinalizedSession event
-        var field = typeof(SessionMonitorV2).GetField("sm", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        sm = (SessionMonitor)field!.GetValue(this)!;
     }
 
     public event Action? FinalizedSession
     {
-        add => sm.FinalizedSession += value;
-        remove => sm.FinalizedSession -= value;
+        add => InnerSessionMonitor.FinalizedSession += value;
+        remove => InnerSessionMonitor.FinalizedSession -= value;
     }
 
     private static IConfiguration CreateConfiguration(int eventId)
@@ -105,21 +111,30 @@ internal class DebugSessionMonitorV2 : SessionMonitorV2
             return new SessionContext(configuration, dbContextFactory);
         }
 
-        private static IDbContextFactory<TsContext> CreateDbContextFactory()
-        {
-            var databaseName = $"TestDatabase_{Guid.NewGuid()}";
-            var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
-            optionsBuilder.UseInMemoryDatabase(databaseName);
-            var options = optionsBuilder.Options;
-            return new TestDbContextFactory(options);
+            private static IDbContextFactory<TsContext> CreateDbContextFactory()
+            {
+                var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+                var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+                optionsBuilder.UseInMemoryDatabase(databaseName);
+                var options = optionsBuilder.Options;
+                return new TestDbContextFactory(options);
+            }
+
+            private static IConnectionMultiplexer CreateMockCacheMux()
+            {
+                var mockConnectionMultiplexer = new Mock<IConnectionMultiplexer>();
+                var mockDatabase = new Mock<IDatabase>();
+                mockConnectionMultiplexer.Setup(x => x.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
+                    .Returns(mockDatabase.Object);
+                return mockConnectionMultiplexer.Object;
+            }
         }
-    }
 
 // Create a debug-specific SessionMonitor that overrides database operations
 internal class DebugSessionMonitorInternal : SessionMonitor
 {
-    public DebugSessionMonitorInternal(int eventId, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory, SessionContext sessionContext) 
-        : base(eventId, tsContext, loggerFactory, sessionContext)
+    public DebugSessionMonitorInternal(int eventId, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory, SessionContext sessionContext, IConnectionMultiplexer? cacheMux = null) 
+        : base(eventId, tsContext, loggerFactory, sessionContext, cacheMux ?? CreateMockCacheMux())
     {
     }
 
@@ -138,5 +153,14 @@ internal class DebugSessionMonitorInternal : SessionMonitor
     {
         // No-op for test implementation - don't try to execute SQL
         await Task.CompletedTask;
+    }
+
+    private static IConnectionMultiplexer CreateMockCacheMux()
+    {
+        var mockConnectionMultiplexer = new Mock<IConnectionMultiplexer>();
+        var mockDatabase = new Mock<IDatabase>();
+        mockConnectionMultiplexer.Setup(x => x.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
+            .Returns(mockDatabase.Object);
+        return mockConnectionMultiplexer.Object;
     }
 }

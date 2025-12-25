@@ -11,4 +11,5 @@ public class SessionResult
     public DateTime Start { get; set; }
     public Payload? Payload { get; set; }
     public SessionState? SessionState { get; set; }
+    public List<ControlLogEntry> ControlLogs { get; set; } = [];
 }

@@ -1,9 +1,12 @@
 ﻿using BigMission.Shared.Utilities;
 using Microsoft.EntityFrameworkCore;
+using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.TimingCommon.Models;
+using StackExchange.Redis;
+using System.Text.Json;
 
 namespace RedMist.EventProcessor.EventStatus.SessionMonitoring;
 
@@ -21,6 +24,7 @@ public class SessionMonitor
     private readonly int eventId;
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly SessionContext sessionContext;
+    private readonly IConnectionMultiplexer cacheMux;
     private readonly static Flags[] activeSessionFlags = [Flags.White, Flags.Green, Flags.Yellow, Flags.Purple35];
     private readonly static Flags[] finishedSessionFlags = [Flags.Checkered];
     private DateTime? finishingStartedTimestamp;
@@ -32,11 +36,12 @@ public class SessionMonitor
 
 
     public SessionMonitor(int eventId, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory,
-        SessionContext sessionContext)
+        SessionContext sessionContext, IConnectionMultiplexer cacheMux)
     {
         this.eventId = eventId;
         this.tsContext = tsContext;
         this.sessionContext = sessionContext;
+        this.cacheMux = cacheMux;
         Logger = loggerFactory.CreateLogger(GetType().Name);
     }
 
@@ -104,10 +109,22 @@ public class SessionMonitor
                 else if (sessionContext.PreviousSessionState.SessionId == SessionId)
                     sessionState = sessionContext.PreviousSessionState;
 
+                // Get control logs for the session
+                var logCacheKey = string.Format(Consts.CONTROL_LOG, eventId);
+                var cache = cacheMux.GetDatabase();
+                var json = cache.StringGet(logCacheKey);
+                var controlLogs = new List<ControlLogEntry>();
+                if (!json.IsNullOrEmpty)
+                {
+                    var ccl = JsonSerializer.Deserialize<CarControlLogs>(json.ToString());
+                    controlLogs = ccl?.ControlLogEntries ?? [];
+                }
+
                 var existingResult = db.SessionResults.FirstOrDefault(r => r.EventId == eventId && r.SessionId == SessionId);
                 if (existingResult != null)
                 {
                     existingResult.SessionState = sessionState;
+                    existingResult.ControlLogs = controlLogs;
                 }
                 else
                 {
@@ -116,7 +133,8 @@ public class SessionMonitor
                         EventId = eventId,
                         SessionId = SessionId,
                         Start = session.StartTime,
-                        SessionState = sessionState
+                        SessionState = sessionState,
+                        ControlLogs = controlLogs
                     };
                     db.SessionResults.Add(result);
                 }
@@ -135,21 +153,18 @@ public class SessionMonitor
     protected virtual async Task SetSessionAsLiveAsync(int eventId, int sessionId)
     {
         using var db = tsContext.CreateDbContext();
-        
+
         // Set all sessions as not live for this event
         var sessionsToUpdate = await db.Sessions.Where(s => s.EventId == eventId).ToListAsync();
         foreach (var session in sessionsToUpdate)
         {
             session.IsLive = false;
         }
-        
+
         // Set the specific session as live
         var targetSession = sessionsToUpdate.FirstOrDefault(s => s.Id == sessionId);
-        if (targetSession != null)
-        {
-            targetSession.IsLive = true;
-        }
-        
+        targetSession?.IsLive = true;
+
         await db.SaveChangesAsync();
     }
 
