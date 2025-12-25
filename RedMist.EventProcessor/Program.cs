@@ -111,8 +111,8 @@ public class Program
         builder.Services.AddSingleton<ControlLogEnricher>();
         builder.Services.AddSingleton<DriverModeProcessor>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<ControlLogEnricher>());
-        builder.Services.AddSingleton<SessionMonitorV2>();
-        builder.Services.AddHostedService(provider => provider.GetRequiredService<SessionMonitorV2>());
+        builder.Services.AddSingleton<SessionMonitor>();
+        builder.Services.AddHostedService(provider => provider.GetRequiredService<SessionMonitor>());
         builder.Services.AddSingleton<SessionStateProcessingPipeline>();
         builder.Services.AddHostedService<EventAggregatorService>();
         builder.Services.AddHostedService<ConsistencyCheckService>();

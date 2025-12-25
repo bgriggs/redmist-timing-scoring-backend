@@ -4,7 +4,9 @@ using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
+using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
+using RedMist.TimingCommon.Models.Mappers;
 using StackExchange.Redis;
 using System.Text.Json;
 
@@ -13,9 +15,9 @@ namespace RedMist.EventProcessor.EventStatus.SessionMonitoring;
 /// <summary>
 /// Tracks the current session for an event, updating its last updated timestamp and finalizing it when it ends.
 /// This could be triggered by either a session change message or by detecting the end of a session at the end of an event
-/// where no new session is started.
+/// where no new session is started. Also runs as a background service to monitor for session finalization.
 /// </summary>
-public class SessionMonitor
+public class SessionMonitor : BackgroundService
 {
     public int SessionId { get; private set; }
     private ILogger Logger { get; }
@@ -32,17 +34,74 @@ public class SessionMonitor
     private readonly Dictionary<string, CarPosition> checkeredCarPositionsLookup = [];
     private int lastCheckeredChangedCount;
     private DateTime? lastCheckeredChangedCountTimestamp;
+    private Session? lastSession;
+    private SessionState? last = null;
     public event Action? FinalizedSession;
 
 
-    public SessionMonitor(int eventId, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory,
+    public SessionMonitor(IConfiguration configuration, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory,
         SessionContext sessionContext, IConnectionMultiplexer cacheMux)
     {
-        this.eventId = eventId;
+        Logger = loggerFactory.CreateLogger(GetType().Name);
+        eventId = configuration.GetValue("event_id", 0);
         this.tsContext = tsContext;
         this.sessionContext = sessionContext;
         this.cacheMux = cacheMux;
-        Logger = loggerFactory.CreateLogger(GetType().Name);
+    }
+
+
+    public async Task Process(TimingMessage tm)
+    {
+        if (tm.Type != Consts.EVENT_SESSION_CHANGED_TYPE)
+            return;
+
+        lastSession = JsonSerializer.Deserialize<Session>(tm.Data);
+        if (lastSession != null)
+        {
+            await ProcessAsync(lastSession.Id, sessionContext.CancellationToken);
+        }
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            sessionContext.SetSessionClassMetadata();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error setting session class metadata");
+        }
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                await RunCheckForFinished(stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error reading event status stream");
+            }
+        }
+    }
+
+    public async Task RunCheckForFinished(CancellationToken stoppingToken)
+    {
+        using (await sessionContext.SessionStateLock.AcquireReadLockAsync(stoppingToken))
+        {
+            if (last != null)
+            {
+                var pc = SessionStateMapper.ToPatch(sessionContext.SessionState);
+                pc.CarPositions = null; // Don't need to keep car positions
+                CheckForFinished(last, SessionStateMapper.PatchToEntity(pc));
+            }
+
+            var pl = SessionStateMapper.ToPatch(sessionContext.SessionState);
+            pl.CarPositions = null; // Don't need to keep car positions
+            last = SessionStateMapper.PatchToEntity(pl);
+        }
     }
 
 
@@ -237,8 +296,18 @@ public class SessionMonitor
         return changes;
     }
 
-    protected void FireFinalizedSession()
-    {
-        FinalizedSession?.Invoke();
+        protected void FireFinalizedSession()
+        {
+            FinalizedSession?.Invoke();
+
+            // Handle session finalization callback
+            if (lastSession != null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    await sessionContext.NewSession(lastSession.Id, lastSession.Name);
+                    sessionContext.SetSessionClassMetadata();
+                });
+            }
+        }
     }
-}

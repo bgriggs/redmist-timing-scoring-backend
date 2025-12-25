@@ -50,7 +50,7 @@ public class SessionStateProcessingPipelineTests
     private MultiloopProcessor _multiloopProcessor = null!;
     private PitProcessor _pitProcessor = null!;
     private FlagProcessorV2 _flagProcessor = null!;
-    private SessionMonitorV2 _sessionMonitor = null!;
+    private SessionMonitor _sessionMonitor = null!;
     private PositionDataEnricher _positionEnricher = null!;
     private ControlLogEnricher _controlLogEnricher = null!;
     private ResetProcessor _resetProcessor = null!;
@@ -181,7 +181,7 @@ public class SessionStateProcessingPipelineTests
         _pitProcessor = new PitProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _controlLogEnricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);
         _flagProcessor = new FlagProcessorV2(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
-        _sessionMonitor = new SessionMonitorV2(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext, _mockConnectionMultiplexer.Object);
+        _sessionMonitor = new SessionMonitor(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext, _mockConnectionMultiplexer.Object);
         _driverModeProcessor = new DriverModeProcessor(
             _mockHubContext.Object,
             _mockLoggerFactory.Object,
@@ -386,7 +386,7 @@ public class SessionStateProcessingPipelineTests
         var entriesData = new RMonitorTestDataHelper(FilePrefix + "TestSessionChanges.txt");
         await entriesData.LoadAsync();
         int finishedCount = 0;
-        _sessionMonitor.InnerSessionMonitor.FinalizedSession += () => finishedCount++;
+        _sessionMonitor.FinalizedSession += () => finishedCount++;
 
         // Act
         int i = 0;
