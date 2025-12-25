@@ -61,6 +61,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "utilities", "utilities", "{
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.MoveLogosToCdn", "RedMist.MoveLogosToCdn\RedMist.MoveLogosToCdn.csproj", "{AA946B3E-8C7E-4FFD-BF70-FDD844327880}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.TeamSample", "samples\RedMist.TeamSample\RedMist.TeamSample.csproj", "{1FA9DA03-DFA9-4880-AFCD-539100081C5C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -131,6 +133,10 @@ Global
 		{AA946B3E-8C7E-4FFD-BF70-FDD844327880}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AA946B3E-8C7E-4FFD-BF70-FDD844327880}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AA946B3E-8C7E-4FFD-BF70-FDD844327880}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1FA9DA03-DFA9-4880-AFCD-539100081C5C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1FA9DA03-DFA9-4880-AFCD-539100081C5C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1FA9DA03-DFA9-4880-AFCD-539100081C5C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1FA9DA03-DFA9-4880-AFCD-539100081C5C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -140,6 +146,7 @@ Global
 		{2C0D996B-F470-44D2-B045-3580249455B1} = {696EBD40-9305-47DD-9392-3AE967E93E09}
 		{8520E7F9-016A-85CF-272F-4E9F7365F45A} = {19FD202B-0205-4250-9FB9-9D728241FB5D}
 		{AA946B3E-8C7E-4FFD-BF70-FDD844327880} = {9A872EE1-4945-4299-8485-11425E9B25DC}
+		{1FA9DA03-DFA9-4880-AFCD-539100081C5C} = {19FD202B-0205-4250-9FB9-9D728241FB5D}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {BCE8ECC7-D522-49B0-B6FD-E0C57E6E5E3C}

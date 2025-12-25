@@ -22,6 +22,7 @@ internal class StatusSubscriptionClient : HubClientBase
     private readonly Debouncer debouncer = new(TimeSpan.FromMilliseconds(5));
     private int? subscribedEventId;
     private (int eventId, string car)? subscribedInCarDriverEventIdAndCar;
+    public event Action<CarPositionPatch[]?>? CarPatchesReceived;
 
 
     public StatusSubscriptionClient(ILoggerFactory loggerFactory, IConfiguration configuration) : base(loggerFactory, configuration)
@@ -195,6 +196,7 @@ internal class StatusSubscriptionClient : HubClientBase
         try
         {
             Logger.LogInformation("RX Car Patches: {Count}, Data: {CarPatches}", carPatches.Length, JsonSerializer.Serialize(carPatches));
+            CarPatchesReceived?.Invoke(carPatches);
         }
         catch (Exception ex)
         {
