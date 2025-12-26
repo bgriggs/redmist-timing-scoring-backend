@@ -11,6 +11,12 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <Compile Remove="ControlLogProcessor\Services\**" />
+	  <EmbeddedResource Remove="ControlLogProcessor\Services\**" />
+	  <None Remove="ControlLogProcessor\Services\**" />
+	</ItemGroup>
+
+	<ItemGroup>
 	  <Compile Remove="EventStatus\RMonitor\RMonitorProcessorTests.cs" />
 	</ItemGroup>
 
@@ -35,6 +41,7 @@
 		<ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
 		<ProjectReference Include="..\RedMist.EventProcessor\RedMist.EventProcessor.csproj" />
 		<ProjectReference Include="..\RedMist.ExternalDataCollection\RedMist.ExternalDataCollection.csproj" />
+		<ProjectReference Include="..\RedMist.EventOrchestration\RedMist.EventOrchestration.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -81,10 +88,6 @@
 		<None Update="EventStatus\ProcessingPipeline\TestStart.txt">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Folder Include="ControlLogProcessor\Services\" />
 	</ItemGroup>
 
 </Project>

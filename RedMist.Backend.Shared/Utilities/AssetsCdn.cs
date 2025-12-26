@@ -13,6 +13,7 @@ public class AssetsCdn
     private readonly ILoggerFactory loggerFactory;
     private ILogger Logger { get; }
 
+
     public AssetsCdn(IConfiguration configuration, ILoggerFactory loggerFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -23,6 +24,7 @@ public class AssetsCdn
         cdnId = configuration["Assets:CdnId"] ?? throw new ArgumentNullException(nameof(configuration));
         this.loggerFactory = loggerFactory;
     }
+
 
     public async Task<bool> SaveLogoAsync(int organizationId, byte[] data)
     {

@@ -34,6 +34,8 @@ public class Program
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 400, name: "Process Allocated Memory", tags: ["memory"]);
 
         builder.Services.AddSingleton<EventsChecker>();
+        builder.Services.AddTransient<IArchiveStorage, BunnyArchiveStorage>();
+        builder.Services.AddHostedService<EventArchiveService>();
         builder.Services.AddHostedService<OrchestrationService>();
 
         var app = builder.Build();

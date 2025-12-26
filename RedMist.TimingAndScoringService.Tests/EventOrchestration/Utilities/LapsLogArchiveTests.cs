@@ -1,0 +1,546 @@
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Moq;
+using RedMist.Backend.Shared.Utilities;
+using RedMist.Database;
+using RedMist.Database.Models;
+using RedMist.EventOrchestration.Utilities;
+using RedMist.EventProcessor.Tests.Utilities;
+using System.IO.Compression;
+using System.Text.Json;
+
+namespace RedMist.TimingAndScoringService.Tests.EventOrchestration.Utilities;
+
+[TestClass]
+public class LapsLogArchiveTests
+{
+    private LapsLogArchive _archive = null!;
+    private Mock<ILoggerFactory> _mockLoggerFactory = null!;
+    private Mock<ILogger> _mockLogger = null!;
+    private IDbContextFactory<TsContext> _dbContextFactory = null!;
+    private Mock<IArchiveStorage> _mockArchiveStorage = null!;
+    private string _testDatabaseName = null!;
+    private List<string> _loggedErrors = null!;
+
+    [TestInitialize]
+    public void Setup()
+    {
+        _loggedErrors = new List<string>();
+
+        _mockLoggerFactory = new Mock<ILoggerFactory>();
+        _mockLogger = new Mock<ILogger>();
+
+        // Capture error logs
+        _mockLogger.Setup(x => x.Log(
+            LogLevel.Error,
+            It.IsAny<EventId>(),
+            It.IsAny<It.IsAnyType>(),
+            It.IsAny<Exception>(),
+            It.IsAny<Func<It.IsAnyType, Exception?, string>>()))
+            .Callback(new InvocationAction(invocation =>
+            {
+                var exception = invocation.Arguments[3] as Exception;
+                var formatter = invocation.Arguments[4];
+                var message = formatter?.GetType().GetMethod("Invoke")?.Invoke(formatter, new[] { invocation.Arguments[2], exception })?.ToString() ?? "";
+                _loggedErrors.Add($"{exception?.Message ?? ""}  | {message}");
+            }));
+
+        _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
+
+        _testDatabaseName = $"TestDatabase_{Guid.NewGuid()}";
+        var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+        optionsBuilder.UseInMemoryDatabase(_testDatabaseName);
+        _dbContextFactory = new TestDbContextFactory(optionsBuilder.Options);
+
+        _mockArchiveStorage = new Mock<IArchiveStorage>();
+        _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<int>()))
+            .ReturnsAsync(true);
+        _mockArchiveStorage.Setup(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>()))
+            .ReturnsAsync(true);
+
+        _archive = new LapsLogArchive(_mockLoggerFactory.Object, _dbContextFactory, _mockArchiveStorage.Object);
+    }
+
+    [TestCleanup]
+    public void Cleanup()
+    {
+        // Clean up any remaining temp files
+        var tempPath = Path.GetTempPath();
+        var files = Directory.GetFiles(tempPath, "event-*-session-*-*-laps-*.json*");
+        foreach (var file in files)
+        {
+            try { File.Delete(file); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_NoLaps_ReturnsTrue()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
+
+        // Assert
+        Assert.IsTrue(result);
+        _mockArchiveStorage.Verify(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<int>()), Times.Never);
+        _mockArchiveStorage.Verify(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_WithLapsSingleCar_CreatesAndUploadsBothFiles()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        string carNumber = "42";
+        await SeedCarLapLogs(eventId, sessionId, carNumber, count: 10);
+
+        bool sessionUploadCalled = false;
+        bool carUploadCalled = false;
+        Exception? capturedException = null;
+
+        _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId))
+            .Callback<Stream, int, int>((stream, _, _) =>
+            {
+                sessionUploadCalled = true;
+                Assert.IsNotNull(stream);
+                Assert.IsTrue(stream.CanRead, "Stream should be readable");
+                Assert.IsGreaterThan(0, stream.Length, "Stream should have content");
+            })
+            .ReturnsAsync(true);
+
+        _mockArchiveStorage.Setup(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), eventId, sessionId, carNumber))
+            .Callback<Stream, int, int, string>((stream, _, _, _) =>
+            {
+                carUploadCalled = true;
+                Assert.IsNotNull(stream);
+                Assert.IsTrue(stream.CanRead, "Stream should be readable");
+                Assert.IsGreaterThan(0, stream.Length, "Stream should have content");
+            })
+            .ReturnsAsync(true);
+
+        // Act
+        var result = false;
+        try
+        {
+            result = await _archive.ArchiveLapsAsync(eventId, sessionId);
+        }
+        catch (Exception ex)
+        {
+            capturedException = ex;
+        }
+
+        // Assert
+        if (capturedException != null)
+        {
+            Assert.Fail($"Exception occurred: {capturedException.Message}\n{capturedException.StackTrace}");
+        }
+
+        if (_loggedErrors.Any())
+        {
+            Assert.Fail($"Errors were logged: {string.Join("; ", _loggedErrors)}");
+        }
+
+        Assert.IsTrue(result, "Archive operation should succeed");
+        Assert.IsTrue(sessionUploadCalled, "Session upload should have been called");
+        Assert.IsTrue(carUploadCalled, "Car upload should have been called");
+        _mockArchiveStorage.Verify(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId), Times.Once);
+        _mockArchiveStorage.Verify(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), eventId, sessionId, carNumber), Times.Once);
+
+        // Verify laps were deleted from database
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var remainingLaps = await dbContext.CarLapLogs.Where(l => l.EventId == eventId && l.SessionId == sessionId).CountAsync();
+        Assert.AreEqual(0, remainingLaps);
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_WithMultipleCars_CreatesMultipleCarFiles()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        await SeedCarLapLogs(eventId, sessionId, "42", count: 5);
+        await SeedCarLapLogs(eventId, sessionId, "99", count: 7);
+        await SeedCarLapLogs(eventId, sessionId, "12", count: 3);
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
+
+        // Assert
+        Assert.IsTrue(result);
+        _mockArchiveStorage.Verify(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId), Times.Once);
+        _mockArchiveStorage.Verify(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), eventId, sessionId, "42"), Times.Once);
+        _mockArchiveStorage.Verify(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), eventId, sessionId, "99"), Times.Once);
+        _mockArchiveStorage.Verify(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), eventId, sessionId, "12"), Times.Once);
+
+        // Verify laps were deleted from database
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var remainingLaps = await dbContext.CarLapLogs.Where(l => l.EventId == eventId && l.SessionId == sessionId).CountAsync();
+        Assert.AreEqual(0, remainingLaps);
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_LargeNumberOfLaps_ProcessesInChunks()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        await SeedCarLapLogs(eventId, sessionId, "42", count: 250); // More than 2 batches (batch size is 100)
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
+
+        // Assert
+        Assert.IsTrue(result);
+        _mockArchiveStorage.Verify(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId), Times.Once);
+        _mockArchiveStorage.Verify(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), eventId, sessionId, "42"), Times.Once);
+
+        // Verify all laps were deleted
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var remainingLaps = await dbContext.CarLapLogs.Where(l => l.EventId == eventId && l.SessionId == sessionId).CountAsync();
+        Assert.AreEqual(0, remainingLaps);
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_SessionUploadFails_ReturnsFalseAndDoesNotDeleteLaps()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        await SeedCarLapLogs(eventId, sessionId, "42", count: 5);
+        _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId))
+            .ReturnsAsync(false);
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
+
+        // Assert
+        Assert.IsFalse(result);
+
+        // Verify laps were NOT deleted from database
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var remainingLaps = await dbContext.CarLapLogs.Where(l => l.EventId == eventId && l.SessionId == sessionId).CountAsync();
+        Assert.AreEqual(5, remainingLaps);
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_CarUploadFails_ReturnsFalseAndDoesNotDeleteLaps()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        string carNumber = "42";
+        await SeedCarLapLogs(eventId, sessionId, carNumber, count: 5);
+        _mockArchiveStorage.Setup(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), eventId, sessionId, carNumber))
+            .ReturnsAsync(false);
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
+
+        // Assert
+        Assert.IsFalse(result);
+
+        // Verify laps were NOT deleted from database
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var remainingLaps = await dbContext.CarLapLogs.Where(l => l.EventId == eventId && l.SessionId == sessionId).CountAsync();
+        Assert.AreEqual(5, remainingLaps);
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_ValidatesFileFormat_SessionFile()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        await SeedCarLapLogs(eventId, sessionId, "42", count: 3);
+        Stream? capturedStream = null;
+
+        _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId))
+            .Callback<Stream, int, int>((stream, _, _) =>
+            {
+                capturedStream = new MemoryStream();
+                stream.CopyTo(capturedStream);
+                capturedStream.Position = 0;
+            })
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
+
+        // Assert
+        Assert.IsTrue(result);
+        Assert.IsNotNull(capturedStream);
+
+        // Decompress and validate JSON
+        using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
+        using var reader = new StreamReader(gzipStream);
+        var json = await reader.ReadToEndAsync();
+
+        var laps = JsonSerializer.Deserialize<List<CarLapLog>>(json);
+        Assert.IsNotNull(laps);
+        Assert.HasCount(3, laps);
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_ValidatesFileFormat_CarFile()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        string carNumber = "42";
+        await SeedCarLapLogs(eventId, sessionId, carNumber, count: 4);
+        Stream? capturedStream = null;
+
+        _mockArchiveStorage.Setup(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), eventId, sessionId, carNumber))
+            .Callback<Stream, int, int, string>((stream, _, _, _) =>
+            {
+                capturedStream = new MemoryStream();
+                stream.CopyTo(capturedStream);
+                capturedStream.Position = 0;
+            })
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
+
+        // Assert
+        Assert.IsTrue(result);
+        Assert.IsNotNull(capturedStream);
+
+        // Decompress and validate JSON
+        using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
+        using var reader = new StreamReader(gzipStream);
+        var json = await reader.ReadToEndAsync();
+
+        var laps = JsonSerializer.Deserialize<List<CarLapLog>>(json);
+        Assert.IsNotNull(laps);
+        Assert.HasCount(4, laps);
+        Assert.IsTrue(laps.All(l => l.CarNumber == carNumber));
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_MultipleSessions_OnlyArchivesRequestedSession()
+    {
+        // Arrange
+        await SeedCarLapLogs(eventId: 1, sessionId: 1, carNumber: "42", count: 5);
+        await SeedCarLapLogs(eventId: 1, sessionId: 2, carNumber: "42", count: 3);
+        await SeedCarLapLogs(eventId: 1, sessionId: 3, carNumber: "42", count: 7);
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId: 1, sessionId: 2);
+
+        // Assert
+        Assert.IsTrue(result);
+
+        // Verify only session 2 laps were deleted
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var session1Laps = await dbContext.CarLapLogs.Where(l => l.EventId == 1 && l.SessionId == 1).CountAsync();
+        var session2Laps = await dbContext.CarLapLogs.Where(l => l.EventId == 1 && l.SessionId == 2).CountAsync();
+        var session3Laps = await dbContext.CarLapLogs.Where(l => l.EventId == 1 && l.SessionId == 3).CountAsync();
+
+        Assert.AreEqual(5, session1Laps);
+        Assert.AreEqual(0, session2Laps);
+        Assert.AreEqual(7, session3Laps);
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_MultipleEvents_OnlyArchivesRequestedEvent()
+    {
+        // Arrange
+        await SeedCarLapLogs(eventId: 1, sessionId: 1, carNumber: "42", count: 5);
+        await SeedCarLapLogs(eventId: 2, sessionId: 1, carNumber: "42", count: 3);
+        await SeedCarLapLogs(eventId: 3, sessionId: 1, carNumber: "42", count: 7);
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId: 2, sessionId: 1);
+
+        // Assert
+        Assert.IsTrue(result);
+
+        // Verify only event 2 laps were deleted
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var event1Laps = await dbContext.CarLapLogs.Where(l => l.EventId == 1 && l.SessionId == 1).CountAsync();
+        var event2Laps = await dbContext.CarLapLogs.Where(l => l.EventId == 2 && l.SessionId == 1).CountAsync();
+        var event3Laps = await dbContext.CarLapLogs.Where(l => l.EventId == 3 && l.SessionId == 1).CountAsync();
+
+        Assert.AreEqual(5, event1Laps);
+        Assert.AreEqual(0, event2Laps);
+        Assert.AreEqual(7, event3Laps);
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_CancellationRequested_ReturnsFalse()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        await SeedCarLapLogs(eventId, sessionId, "42", count: 1000);
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act & Assert
+        var result = await _archive.ArchiveLapsAsync(eventId, sessionId, cts.Token);
+
+        // Since we catch all exceptions, it should return false
+        Assert.IsFalse(result);
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_TempFilesCleanedUp_OnSuccess()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        await SeedCarLapLogs(eventId, sessionId, "42", count: 5);
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
+
+        // Assert
+        Assert.IsTrue(result);
+
+        // Give a moment for cleanup
+        await Task.Delay(100);
+
+        // Verify no temp files remain for this event/session
+        var tempPath = Path.GetTempPath();
+        var remainingFiles = Directory.GetFiles(tempPath, $"event-{eventId}-session-{sessionId}-*-laps-*.json*");
+        Assert.IsEmpty(remainingFiles, "Temp files should be cleaned up");
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_TempFilesCleanedUp_OnFailure()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        await SeedCarLapLogs(eventId, sessionId, "42", count: 5);
+        _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId))
+            .ReturnsAsync(false);
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
+
+        // Assert
+        Assert.IsFalse(result);
+
+        // Give a moment for cleanup
+        await Task.Delay(100);
+
+        // Verify no temp files remain for this event/session
+        var tempPath = Path.GetTempPath();
+        var remainingFiles = Directory.GetFiles(tempPath, $"event-{eventId}-session-{sessionId}-*-laps-*.json*");
+        Assert.IsEmpty(remainingFiles, "Temp files should be cleaned up even on failure");
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_PreservesLapData_InSessionFile()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        var originalLaps = new List<CarLapLog>
+        {
+            new() { EventId = eventId, SessionId = sessionId, CarNumber = "42", LapNumber = 1, Flag = 1, LapData = "Data1", Timestamp = DateTime.UtcNow },
+            new() { EventId = eventId, SessionId = sessionId, CarNumber = "42", LapNumber = 2, Flag = 2, LapData = "Data2", Timestamp = DateTime.UtcNow.AddSeconds(1) }
+        };
+
+        await using (var dbContext = await _dbContextFactory.CreateDbContextAsync())
+        {
+            dbContext.CarLapLogs.AddRange(originalLaps);
+            await dbContext.SaveChangesAsync();
+        }
+
+        Stream? capturedStream = null;
+        _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId))
+            .Callback<Stream, int, int>((stream, _, _) =>
+            {
+                capturedStream = new MemoryStream();
+                stream.CopyTo(capturedStream);
+                capturedStream.Position = 0;
+            })
+            .ReturnsAsync(true);
+
+        // Act
+        await _archive.ArchiveLapsAsync(eventId, sessionId);
+
+        // Assert
+        Assert.IsNotNull(capturedStream);
+        using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
+        using var reader = new StreamReader(gzipStream);
+        var json = await reader.ReadToEndAsync();
+        var archivedLaps = JsonSerializer.Deserialize<List<CarLapLog>>(json);
+
+        Assert.IsNotNull(archivedLaps);
+        Assert.HasCount(2, archivedLaps);
+        Assert.AreEqual("42", archivedLaps[0].CarNumber);
+        Assert.AreEqual(1, archivedLaps[0].LapNumber);
+        Assert.AreEqual("Data1", archivedLaps[0].LapData);
+        Assert.AreEqual("42", archivedLaps[1].CarNumber);
+        Assert.AreEqual(2, archivedLaps[1].LapNumber);
+        Assert.AreEqual("Data2", archivedLaps[1].LapData);
+    }
+
+    [TestMethod]
+    public async Task ArchiveLapsAsync_SessionFileContainsAllCars()
+    {
+        // Arrange
+        int eventId = 1;
+        int sessionId = 1;
+        await SeedCarLapLogs(eventId, sessionId, "42", count: 3);
+        await SeedCarLapLogs(eventId, sessionId, "99", count: 2);
+        Stream? capturedStream = null;
+
+        _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId))
+            .Callback<Stream, int, int>((stream, _, _) =>
+            {
+                capturedStream = new MemoryStream();
+                stream.CopyTo(capturedStream);
+                capturedStream.Position = 0;
+            })
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
+
+        // Assert
+        Assert.IsTrue(result);
+        Assert.IsNotNull(capturedStream);
+
+        using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
+        using var reader = new StreamReader(gzipStream);
+        var json = await reader.ReadToEndAsync();
+        var laps = JsonSerializer.Deserialize<List<CarLapLog>>(json);
+
+        Assert.IsNotNull(laps);
+        Assert.HasCount(5, laps);
+        Assert.AreEqual(3, laps.Count(l => l.CarNumber == "42"));
+        Assert.AreEqual(2, laps.Count(l => l.CarNumber == "99"));
+    }
+
+    private async Task SeedCarLapLogs(int eventId, int sessionId, string carNumber, int count)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var laps = new List<CarLapLog>();
+
+        for (int i = 0; i < count; i++)
+        {
+            laps.Add(new CarLapLog
+            {
+                EventId = eventId,
+                SessionId = sessionId,
+                CarNumber = carNumber,
+                LapNumber = i + 1,
+                Flag = i % 3,
+                LapData = $"LapData_{carNumber}_{i}",
+                Timestamp = DateTime.UtcNow.AddSeconds(i)
+            });
+        }
+
+        dbContext.CarLapLogs.AddRange(laps);
+        await dbContext.SaveChangesAsync();
+    }
+}

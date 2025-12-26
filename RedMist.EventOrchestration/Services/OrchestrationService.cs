@@ -38,7 +38,7 @@ public class OrchestrationService : BackgroundService
         var version = GetAssemblyVersion();
         eventProcessorContainerDetails = new(
             "bigmission/redmist-event-processor", version, "{0}-evt-{1}-event-processor", true, 
-            "100m", "200Mi", "350m", "690Mi");
+            "100m", "200Mi", "350m", "750Mi");
         controlLogContainerDetails = new(
             "bigmission/redmist-control-log", version, "{0}-evt-{1}-control-log", false,
             "60m", "165Mi", "150m", "450Mi");
