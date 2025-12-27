@@ -81,7 +81,7 @@ public class GoogleSheetsControlLog : IControlLog
         }
 
         var googleCreds = GoogleCredential.FromJson(configJson);
-        var sheetsService = new SheetsService(new BaseClientService.Initializer()
+        using var sheetsService = new SheetsService(new BaseClientService.Initializer()
         {
             HttpClientInitializer = googleCreds,
             ApplicationName = "RedMist"
