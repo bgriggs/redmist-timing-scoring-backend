@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using RedMist.Database;
 using RedMist.TimingCommon.Models;
+using System.Text;
 
 namespace RedMist.ControlLogs.LuckyDogGoogleSheets;
 
@@ -80,10 +81,14 @@ public class GoogleSheetsControlLog : IControlLog
             lastWorksheetParameter = parameter;
         }
 
-        var googleCreds = GoogleCredential.FromJson(configJson);
+        ServiceAccountCredential credential;
+        using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(configJson)))
+        {
+            credential = ServiceAccountCredential.FromServiceAccountData(stream);
+        }
         using var sheetsService = new SheetsService(new BaseClientService.Initializer()
         {
-            HttpClientInitializer = googleCreds,
+            HttpClientInitializer = credential,
             ApplicationName = "RedMist"
         });
 
