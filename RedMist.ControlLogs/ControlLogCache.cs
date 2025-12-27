@@ -244,18 +244,18 @@ public partial class ControlLogCache
             int warnings = 0;
             foreach (var entry in car.Value)
             {
-                if (string.IsNullOrWhiteSpace(entry.PenalityAction))
+                if (string.IsNullOrWhiteSpace(entry.PenaltyAction))
                 {
                     continue;
                 }
 
-                var isWarning = warningRegex.IsMatch(entry.PenalityAction);
+                var isWarning = warningRegex.IsMatch(entry.PenaltyAction);
                 if (isWarning && ApplyToCar(car.Key, entry))
                 {
                     warnings++;
                     continue;
                 }
-                var lapPenalties = lapPenaltyRegex.Match(entry.PenalityAction);
+                var lapPenalties = lapPenaltyRegex.Match(entry.PenaltyAction);
                 if (lapPenalties.Success && ApplyToCar(car.Key, entry))
                 {
                     laps += int.Parse(lapPenalties.Groups[1].Value);

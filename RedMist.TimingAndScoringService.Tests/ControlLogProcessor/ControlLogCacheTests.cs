@@ -19,7 +19,7 @@ public class ControlLogCacheTests
     public void GetWarningsAndPenalties_Warning_Test()
     {
         var logs = new Dictionary<string, List<ControlLogEntry>>();
-        var log = new ControlLogEntry { Car1 = "1", PenalityAction = "waRniNg" };
+        var log = new ControlLogEntry { Car1 = "1", PenaltyAction = "waRniNg" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
         Assert.HasCount(1, results);
@@ -31,7 +31,7 @@ public class ControlLogCacheTests
     public void GetWarningsAndPenalties_Warning_Invalid_Test()
     {
         var logs = new Dictionary<string, List<ControlLogEntry>>();
-        var log = new ControlLogEntry { Car1 = "1", PenalityAction = "warns" };
+        var log = new ControlLogEntry { Car1 = "1", PenaltyAction = "warns" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
         Assert.HasCount(1, results);
@@ -42,7 +42,7 @@ public class ControlLogCacheTests
     public void GetWarningsAndPenalties_Lap_Test()
     {
         var logs = new Dictionary<string, List<ControlLogEntry>>();
-        var log = new ControlLogEntry { Car1 = "1", PenalityAction = "1 lap" };
+        var log = new ControlLogEntry { Car1 = "1", PenaltyAction = "1 lap" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
         Assert.HasCount(1, results);
@@ -54,7 +54,7 @@ public class ControlLogCacheTests
     public void GetWarningsAndPenalties_Lap_Invalid_Test()
     {
         var logs = new Dictionary<string, List<ControlLogEntry>>();
-        var log = new ControlLogEntry { Car1 = "1", PenalityAction = "1 loop" };
+        var log = new ControlLogEntry { Car1 = "1", PenaltyAction = "1 loop" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
         Assert.HasCount(1, results);
@@ -66,7 +66,7 @@ public class ControlLogCacheTests
     public void GetWarningsAndPenalties_Laps_Test()
     {
         var logs = new Dictionary<string, List<ControlLogEntry>>();
-        var log = new ControlLogEntry { Car1 = "1", PenalityAction = "10 laps" };
+        var log = new ControlLogEntry { Car1 = "1", PenaltyAction = "10 laps" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
         Assert.HasCount(1, results);
@@ -78,7 +78,7 @@ public class ControlLogCacheTests
     public void GetWarningsAndPenalties_Laps_Multicar_NoCarSelected_DefaultsToCar1_Test()
     {
         var logs = new Dictionary<string, List<ControlLogEntry>>();
-        var log = new ControlLogEntry { Car1 = "1", Car2 = "2", PenalityAction = "10 laps" };
+        var log = new ControlLogEntry { Car1 = "1", Car2 = "2", PenaltyAction = "10 laps" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
         Assert.HasCount(1, results  );
@@ -91,7 +91,7 @@ public class ControlLogCacheTests
     public void GetWarningsAndPenalties_Laps_Multicar_FirstCarSelected_Test()
     {
         var logs = new Dictionary<string, List<ControlLogEntry>>();
-        var log = new ControlLogEntry { Car1 = "1", Car2 = "2", PenalityAction = "10 laps", IsCar1Highlighted = true };
+        var log = new ControlLogEntry { Car1 = "1", Car2 = "2", PenaltyAction = "10 laps", IsCar1Highlighted = true };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
         Assert.HasCount(1, results);
@@ -103,7 +103,7 @@ public class ControlLogCacheTests
     public void GetWarningsAndPenalties_Laps_Multicar_SecondCarSelected_Test()
     {
         var logs = new Dictionary<string, List<ControlLogEntry>>();
-        var log = new ControlLogEntry { Car1 = "1", Car2 = "2", PenalityAction = "10 laps", IsCar2Highlighted = true };
+        var log = new ControlLogEntry { Car1 = "1", Car2 = "2", PenaltyAction = "10 laps", IsCar2Highlighted = true };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
         Assert.HasCount(1, results);
@@ -116,7 +116,7 @@ public class ControlLogCacheTests
     public void GetWarningsAndPenalties_Laps_Multicar_SecondCarSelected_UseSecond_Test()
     {
         var logs = new Dictionary<string, List<ControlLogEntry>>();
-        var log = new ControlLogEntry { Car1 = "1", Car2 = "2", PenalityAction = "10 laps", IsCar2Highlighted = true };
+        var log = new ControlLogEntry { Car1 = "1", Car2 = "2", PenaltyAction = "10 laps", IsCar2Highlighted = true };
         logs["1"] = [log];
         logs["2"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
@@ -129,7 +129,7 @@ public class ControlLogCacheTests
     public void GetWarningsAndPenalties_Laps_Invalid_Test()
     {
         var logs = new Dictionary<string, List<ControlLogEntry>>();
-        var log = new ControlLogEntry { Car1 = "1", PenalityAction = "xx Laps" };
+        var log = new ControlLogEntry { Car1 = "1", PenaltyAction = "xx Laps" };
         logs["1"] = [log];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
         Assert.HasCount(1, results);
@@ -141,8 +141,8 @@ public class ControlLogCacheTests
     public void GetWarningsAndPenalties_Warnings_And_Laps_Test()
     {
         var logs = new Dictionary<string, List<ControlLogEntry>>();
-        var log1 = new ControlLogEntry { Car1 = "1", PenalityAction = "2 Laps" };
-        var log2 = new ControlLogEntry { Car1 = "1", PenalityAction = "Warning" };
+        var log1 = new ControlLogEntry { Car1 = "1", PenaltyAction = "2 Laps" };
+        var log2 = new ControlLogEntry { Car1 = "1", PenaltyAction = "Warning" };
         logs["1"] = [log1, log2];
         var results = ControlLogCache.GetWarningsAndPenalties(logs);
         Assert.HasCount(1, results);
@@ -175,7 +175,7 @@ public class ControlLogCacheTests
                 Corner = "T1", 
                 Note = "Off track", 
                 Status = "Observed", 
-                PenalityAction = "Warning", 
+                PenaltyAction = "Warning", 
                 OtherNotes = "Car went wide in turn 1",
                 Timestamp = new DateTime(2025, 1, 15, 14, 30, 0),
                 OrderId = 1
@@ -185,8 +185,8 @@ public class ControlLogCacheTests
                 Car1 = "23", 
                 Corner = "T3", 
                 Note = "Contact with barriers", 
-                Status = "Incident", 
-                PenalityAction = "1 Lap", 
+                Status = "Incident",
+                PenaltyAction = "1 Lap", 
                 OtherNotes = "Hit outside wall",
                 Timestamp = new DateTime(2025, 1, 15, 14, 35, 0),
                 OrderId = 2
@@ -214,8 +214,8 @@ public class ControlLogCacheTests
                 Car1 = "88", 
                 Corner = "Pit Lane", 
                 Note = "Speeding in pits", 
-                Status = "Penalty", 
-                PenalityAction = "2 Laps", 
+                Status = "Penalty",
+                PenaltyAction = "2 Laps", 
                 OtherNotes = "Exceeded pit speed limit by 5mph",
                 Timestamp = new DateTime(2025, 1, 15, 15, 0, 0),
                 OrderId = 1
@@ -226,8 +226,8 @@ public class ControlLogCacheTests
                 Car2 = "33", 
                 Corner = "T4", 
                 Note = "Blocking", 
-                Status = "Incident", 
-                PenalityAction = "Warning", 
+                Status = "Incident",
+                PenaltyAction = "Warning", 
                 OtherNotes = "Impeding during qualifying", 
                 IsCar2Highlighted = true,  // Car 33 gets the penalty
                 Timestamp = new DateTime(2025, 1, 15, 15, 5, 0),
@@ -238,8 +238,8 @@ public class ControlLogCacheTests
                 Car1 = "99", 
                 Corner = "Start/Finish", 
                 Note = "Jump start", 
-                Status = "Penalty", 
-                PenalityAction = "Drive through", 
+                Status = "Penalty",
+                PenaltyAction = "Drive through", 
                 OtherNotes = "Left grid position before green flag",
                 Timestamp = new DateTime(2025, 1, 15, 15, 10, 0),
                 OrderId = 3
@@ -305,8 +305,8 @@ public class ControlLogCacheTests
             ["15"] = [new ControlLogEntry 
             { 
                 Car1 = "15", 
-                Car2 = "23", 
-                PenalityAction = "Warning", 
+                Car2 = "23",
+                PenaltyAction = "Warning", 
                 IsCar1Highlighted = true 
             }],
             
@@ -314,8 +314,8 @@ public class ControlLogCacheTests
             ["42"] = [new ControlLogEntry 
             { 
                 Car1 = "7", 
-                Car2 = "42", 
-                PenalityAction = "1 Lap", 
+                Car2 = "42",
+                PenaltyAction = "1 Lap", 
                 IsCar2Highlighted = true 
             }],
             
@@ -323,15 +323,15 @@ public class ControlLogCacheTests
             ["88"] = [new ControlLogEntry 
             { 
                 Car1 = "88", 
-                Car2 = "99", 
-                PenalityAction = "2 Laps" 
+                Car2 = "99",
+                PenaltyAction = "2 Laps" 
             }],
             
             // Single car - always gets the penalty
             ["12"] = [new ControlLogEntry 
             { 
-                Car1 = "12", 
-                PenalityAction = "Warning" 
+                Car1 = "12",
+                PenaltyAction = "Warning" 
             }]
         };
 

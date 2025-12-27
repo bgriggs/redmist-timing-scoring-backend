@@ -87,7 +87,7 @@ public class Program
             c.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
             {
                 {
-                      new OpenApiSecuritySchemeReference("Bearer"), []
+                    new OpenApiSecuritySchemeReference("Bearer"), []
                 }
             });
         });
@@ -102,7 +102,7 @@ public class Program
         builder.Services.AddHealthChecks()
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
             .AddRedis(redisConn, tags: ["cache", "redis"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 400, name: "Process Allocated Memory", tags: new[] { "memory" });
+            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 400, name: "Process Allocated Memory", tags: ["memory"]);
 
         builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
         builder.Services.AddTransient<AssetsCdn>();
