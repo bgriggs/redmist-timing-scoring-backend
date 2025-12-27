@@ -42,7 +42,7 @@ public class EventArchiveService : BackgroundService
                     var delayUntilMidnight = nextMidnight - now;
                     if (delayUntilMidnight.TotalMilliseconds > 0)
                     {
-                        Logger.LogInformation("Waiting until midnight Mountain Time ({nextMidnight}) to run archive process. Current time: {now}", 
+                        Logger.LogInformation("Waiting until midnight Mountain Time ({nextMidnight}) to run archive process. Current time: {now}",
                             nextMidnight, now);
                         await Task.Delay(delayUntilMidnight, stoppingToken);
                         continue;

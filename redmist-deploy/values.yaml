@@ -8,7 +8,13 @@ global:
     "Keycloak__AuthServerUrl": "https://auth.redmist.racing"
     "SentinelApiUrl": "https://svs-api.sentinel.racing/api/"
     "Server__ExtTelemUrl": "https://api.redmist.racing/status/v1/ExternalTelemetry"
-    
+    "Assets__StorageZoneName": "redmist-assets"
+    "Assets__MainReplicationRegion": "de"
+    "Assets__CdnId": "5008374"
+    "Archive__StorageZoneName": "redmist-archive"
+    "Archive__MainReplicationRegion": "ny"
+    "Archive__CdnId": "5058723"
+
   secrets:
     - env: "REDIS_PW"
       name: "rmkeys"
@@ -19,6 +25,18 @@ global:
     - env: "Keycloak__ClientSecret"
       name: "rmkeys"
       key: "usermansecret"
+    - env: "Assets__ApiAccessKey"
+      name: "rmkeys"
+      key: "assetsapiaccesskey"
+    - env: "Assets__StorageAccessKey"
+      name: "rmkeys"
+      key: "assetsstorageaccesskey"
+    - env: "Archive__ApiAccessKey"
+      name: "rmkeys"
+      key: "archiveapiaccesskey"
+    - env: "Archive__StorageAccessKey"
+      name: "rmkeys"
+      key: "archivestorageaccesskey"
 
 # Redis Operator configuration
 redis-operator:

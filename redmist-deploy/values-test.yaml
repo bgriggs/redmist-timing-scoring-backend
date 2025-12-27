@@ -1,4 +1,4 @@
-# Test Environment Configuration with Cloudflare TLS
+# Test Environment Configuration
 global:
   env:
     "ASPNETCORE_ENVIRONMENT": "Production"
@@ -9,6 +9,12 @@ global:
     "Keycloak__AuthServerUrl": "https://auth.redmist.racing"
     "SentinelApiUrl": "https://svs-api.sentinel.racing/api/"
     "Server__ExtTelemUrl": "https://api-test.redmist.racing/status/v1/ExternalTelemetry"
+    "Assets__StorageZoneName": "redmist-assets-test"
+    "Assets__MainReplicationRegion": "ny"
+    "Assets__CdnId": "5008778"
+    "Archive__StorageZoneName": "redmist-archive-test"
+    "Archive__MainReplicationRegion": "ny"
+    "Archive__CdnId": "5062899"
 
   secrets:
     - env: "REDIS_PW"
@@ -20,9 +26,20 @@ global:
     - env: "Keycloak__ClientSecret"
       name: "rmkeys-test"
       key: "usermansecret"
+    - env: "Assets__ApiAccessKey"
+      name: "rmkeys-test"
+      key: "assetsapiaccesskey"
+    - env: "Assets__StorageAccessKey"
+      name: "rmkeys-test"
+      key: "assetsstorageaccesskey"
+    - env: "Archive__ApiAccessKey"
+      name: "rmkeys-test"
+      key: "archiveapiaccesskey"
+    - env: "Archive__StorageAccessKey"
+      name: "rmkeys-test"
+      key: "archivestorageaccesskey"
 
 # Override for all subcharts - disable TLS since Cloudflare handles it
-
 redmist-status-api:
   environment: test
   ingress:

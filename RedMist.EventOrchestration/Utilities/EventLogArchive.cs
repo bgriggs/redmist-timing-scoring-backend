@@ -68,7 +68,7 @@ public class EventLogArchive
     private async Task<long> WriteLogsToFilesAsync(int eventId, string tempFilePath, Dictionary<int, SessionFileWriters> sessionFiles, CancellationToken cancellationToken)
     {
         long totalLogs = 0;
-        const int batchSize = 250;
+        const int batchSize = 500;
         bool isFirstBatch = true;
 
         await using var eventFileStream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, useAsync: true);
