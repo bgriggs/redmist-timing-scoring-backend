@@ -64,13 +64,8 @@ public class LapsLogArchiveTests
     [TestCleanup]
     public void Cleanup()
     {
-        // Clean up any remaining temp files
-        var tempPath = Path.GetTempPath();
-        var files = Directory.GetFiles(tempPath, "event-*-session-*-*-laps-*.json*");
-        foreach (var file in files)
-        {
-            try { File.Delete(file); } catch { }
-        }
+        // The production code already cleans up temp files in its finally block
+        // Cleaning up here can interfere with parallel test execution
     }
 
     [TestMethod]
@@ -170,7 +165,12 @@ public class LapsLogArchiveTests
         var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
 
         // Assert
-        Assert.IsTrue(result);
+        if (_loggedErrors.Any())
+        {
+            Assert.Fail($"Errors were logged: {string.Join("; ", _loggedErrors)}");
+        }
+
+        Assert.IsTrue(result, "Archive operation should succeed");
         _mockArchiveStorage.Verify(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId), Times.Once);
         _mockArchiveStorage.Verify(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), eventId, sessionId, "42"), Times.Once);
         _mockArchiveStorage.Verify(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), eventId, sessionId, "99"), Times.Once);
@@ -257,13 +257,27 @@ public class LapsLogArchiveTests
         int sessionId = 1;
         await SeedCarLapLogs(eventId, sessionId, "42", count: 3);
         Stream? capturedStream = null;
+        Exception? capturedException = null;
 
         _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId))
             .Callback<Stream, int, int>((stream, _, _) =>
             {
-                capturedStream = new MemoryStream();
-                stream.CopyTo(capturedStream);
-                capturedStream.Position = 0;
+                try
+                {
+                    var memStream = new MemoryStream();
+                    if (stream.CanSeek && stream.Position != 0)
+                    {
+                        stream.Position = 0;
+                    }
+                    stream.CopyTo(memStream);
+                    memStream.Position = 0;
+                    capturedStream = memStream;
+                }
+                catch (Exception ex)
+                {
+                    capturedException = ex;
+                    throw;
+                }
             })
             .ReturnsAsync(true);
 
@@ -271,8 +285,18 @@ public class LapsLogArchiveTests
         var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
 
         // Assert
-        Assert.IsTrue(result);
-        Assert.IsNotNull(capturedStream);
+        if (capturedException != null)
+        {
+            Assert.Fail($"Exception during stream capture: {capturedException.Message}\n{capturedException.StackTrace}");
+        }
+
+        if (_loggedErrors.Any())
+        {
+            Assert.Fail($"Errors were logged: {string.Join("; ", _loggedErrors)}");
+        }
+
+        Assert.IsTrue(result, "Archive operation should succeed");
+        Assert.IsNotNull(capturedStream, "Stream should have been captured");
 
         // Decompress and validate JSON
         using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
@@ -293,13 +317,27 @@ public class LapsLogArchiveTests
         string carNumber = "42";
         await SeedCarLapLogs(eventId, sessionId, carNumber, count: 4);
         Stream? capturedStream = null;
+        Exception? capturedException = null;
 
         _mockArchiveStorage.Setup(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), eventId, sessionId, carNumber))
             .Callback<Stream, int, int, string>((stream, _, _, _) =>
             {
-                capturedStream = new MemoryStream();
-                stream.CopyTo(capturedStream);
-                capturedStream.Position = 0;
+                try
+                {
+                    var memStream = new MemoryStream();
+                    if (stream.CanSeek && stream.Position != 0)
+                    {
+                        stream.Position = 0;
+                    }
+                    stream.CopyTo(memStream);
+                    memStream.Position = 0;
+                    capturedStream = memStream;
+                }
+                catch (Exception ex)
+                {
+                    capturedException = ex;
+                    throw;
+                }
             })
             .ReturnsAsync(true);
 
@@ -307,8 +345,18 @@ public class LapsLogArchiveTests
         var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
 
         // Assert
-        Assert.IsTrue(result);
-        Assert.IsNotNull(capturedStream);
+        if (capturedException != null)
+        {
+            Assert.Fail($"Exception during stream capture: {capturedException.Message}\n{capturedException.StackTrace}");
+        }
+
+        if (_loggedErrors.Any())
+        {
+            Assert.Fail($"Errors were logged: {string.Join("; ", _loggedErrors)}");
+        }
+
+        Assert.IsTrue(result, "Archive operation should succeed");
+        Assert.IsNotNull(capturedStream, "Stream should have been captured");
 
         // Decompress and validate JSON
         using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
@@ -493,13 +541,27 @@ public class LapsLogArchiveTests
         await SeedCarLapLogs(eventId, sessionId, "42", count: 3);
         await SeedCarLapLogs(eventId, sessionId, "99", count: 2);
         Stream? capturedStream = null;
+        Exception? capturedException = null;
 
         _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId))
             .Callback<Stream, int, int>((stream, _, _) =>
             {
-                capturedStream = new MemoryStream();
-                stream.CopyTo(capturedStream);
-                capturedStream.Position = 0;
+                try
+                {
+                    var memStream = new MemoryStream();
+                    if (stream.CanSeek && stream.Position != 0)
+                    {
+                        stream.Position = 0;
+                    }
+                    stream.CopyTo(memStream);
+                    memStream.Position = 0;
+                    capturedStream = memStream;
+                }
+                catch (Exception ex)
+                {
+                    capturedException = ex;
+                    throw;
+                }
             })
             .ReturnsAsync(true);
 
@@ -507,8 +569,18 @@ public class LapsLogArchiveTests
         var result = await _archive.ArchiveLapsAsync(eventId, sessionId);
 
         // Assert
-        Assert.IsTrue(result);
-        Assert.IsNotNull(capturedStream);
+        if (capturedException != null)
+        {
+            Assert.Fail($"Exception during stream capture: {capturedException.Message}\n{capturedException.StackTrace}");
+        }
+
+        if (_loggedErrors.Any())
+        {
+            Assert.Fail($"Errors were logged: {string.Join("; ", _loggedErrors)}");
+        }
+
+        Assert.IsTrue(result, "Archive operation should succeed");
+        Assert.IsNotNull(capturedStream, "Stream should have been captured");
 
         using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
         using var reader = new StreamReader(gzipStream);

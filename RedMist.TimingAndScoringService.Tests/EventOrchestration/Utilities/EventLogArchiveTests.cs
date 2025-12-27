@@ -64,13 +64,8 @@ public class EventLogArchiveTests
     [TestCleanup]
     public void Cleanup()
     {
-        // Clean up any remaining temp files
-        var tempPath = Path.GetTempPath();
-        var files = Directory.GetFiles(tempPath, "event-*-logs-*.json*");
-        foreach (var file in files)
-        {
-            try { File.Delete(file); } catch { }
-        }
+        // The production code already cleans up temp files in its finally block
+        // Cleaning up here can interfere with parallel test execution
     }
 
     [TestMethod]
@@ -153,7 +148,12 @@ public class EventLogArchiveTests
         var result = await _archive.ArchiveEventLogsAsync(eventId);
 
         // Assert
-        Assert.IsTrue(result);
+        if (_loggedErrors.Any())
+        {
+            Assert.Fail($"Errors were logged: {string.Join("; ", _loggedErrors)}");
+        }
+
+        Assert.IsTrue(result, "Archive operation should succeed");
         _mockArchiveStorage.Verify(x => x.UploadEventLogsAsync(It.IsAny<Stream>(), eventId), Times.Once);
         _mockArchiveStorage.Verify(x => x.UploadSessionLogsAsync(It.IsAny<Stream>(), eventId, 1), Times.Once);
         _mockArchiveStorage.Verify(x => x.UploadSessionLogsAsync(It.IsAny<Stream>(), eventId, 2), Times.Once);
@@ -255,13 +255,27 @@ public class EventLogArchiveTests
         int eventId = 1;
         await SeedEventLogs(eventId, sessionId: 0, count: 3);
         Stream? capturedStream = null;
+        Exception? capturedException = null;
 
         _mockArchiveStorage.Setup(x => x.UploadEventLogsAsync(It.IsAny<Stream>(), eventId))
             .Callback<Stream, int>((stream, _) =>
             {
-                capturedStream = new MemoryStream();
-                stream.CopyTo(capturedStream);
-                capturedStream.Position = 0;
+                try
+                {
+                    var memStream = new MemoryStream();
+                    if (stream.CanSeek && stream.Position != 0)
+                    {
+                        stream.Position = 0;
+                    }
+                    stream.CopyTo(memStream);
+                    memStream.Position = 0;
+                    capturedStream = memStream;
+                }
+                catch (Exception ex)
+                {
+                    capturedException = ex;
+                    throw;
+                }
             })
             .ReturnsAsync(true);
 
@@ -269,8 +283,18 @@ public class EventLogArchiveTests
         var result = await _archive.ArchiveEventLogsAsync(eventId);
 
         // Assert
-        Assert.IsTrue(result);
-        Assert.IsNotNull(capturedStream);
+        if (capturedException != null)
+        {
+            Assert.Fail($"Exception during stream capture: {capturedException.Message}\n{capturedException.StackTrace}");
+        }
+
+        if (_loggedErrors.Any())
+        {
+            Assert.Fail($"Errors were logged: {string.Join("; ", _loggedErrors)}");
+        }
+
+        Assert.IsTrue(result, "Archive operation should succeed");
+        Assert.IsNotNull(capturedStream, "Stream should have been captured");
 
         // Decompress and validate JSON
         using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
@@ -290,13 +314,38 @@ public class EventLogArchiveTests
         int sessionId = 5;
         await SeedEventLogs(eventId, sessionId, count: 4);
         Stream? capturedStream = null;
+        Exception? capturedException = null;
+        bool eventLogUploadCalled = false;
+        bool sessionLogUploadCalled = false;
+
+        // Ensure event logs upload is properly mocked
+        _mockArchiveStorage.Setup(x => x.UploadEventLogsAsync(It.IsAny<Stream>(), eventId))
+            .Callback<Stream, int>((stream, _) =>
+            {
+                eventLogUploadCalled = true;
+            })
+            .ReturnsAsync(true);
 
         _mockArchiveStorage.Setup(x => x.UploadSessionLogsAsync(It.IsAny<Stream>(), eventId, sessionId))
             .Callback<Stream, int, int>((stream, _, _) =>
             {
-                capturedStream = new MemoryStream();
-                stream.CopyTo(capturedStream);
-                capturedStream.Position = 0;
+                sessionLogUploadCalled = true;
+                try
+                {
+                    var memStream = new MemoryStream();
+                    if (stream.CanSeek && stream.Position != 0)
+                    {
+                        stream.Position = 0;
+                    }
+                    stream.CopyTo(memStream);
+                    memStream.Position = 0;
+                    capturedStream = memStream;
+                }
+                catch (Exception ex)
+                {
+                    capturedException = ex;
+                    throw;
+                }
             })
             .ReturnsAsync(true);
 
@@ -304,8 +353,20 @@ public class EventLogArchiveTests
         var result = await _archive.ArchiveEventLogsAsync(eventId);
 
         // Assert
-        Assert.IsTrue(result);
-        Assert.IsNotNull(capturedStream);
+        if (capturedException != null)
+        {
+            Assert.Fail($"Exception during stream capture: {capturedException.Message}\n{capturedException.StackTrace}");
+        }
+
+        if (_loggedErrors.Any())
+        {
+            Assert.Fail($"Errors were logged: {string.Join("; ", _loggedErrors)}");
+        }
+
+        Assert.IsTrue(result, $"Archive operation should succeed. EventLogUploadCalled: {eventLogUploadCalled}, SessionLogUploadCalled: {sessionLogUploadCalled}");
+        Assert.IsTrue(eventLogUploadCalled, "Event log upload should have been called");
+        Assert.IsTrue(sessionLogUploadCalled, "Session log upload should have been called");
+        Assert.IsNotNull(capturedStream, "Stream should have been captured");
 
         // Decompress and validate JSON
         using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);

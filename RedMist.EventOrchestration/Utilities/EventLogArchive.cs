@@ -71,51 +71,61 @@ public class EventLogArchive
         const int batchSize = 500;
         bool isFirstBatch = true;
 
-        await using var eventFileStream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, useAsync: true);
-        await using var eventWriter = new StreamWriter(eventFileStream);
+        var eventFileStream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, useAsync: true);
+        var eventWriter = new StreamWriter(eventFileStream);
 
-        await eventWriter.WriteLineAsync("[");
-
-        while (true)
+        try
         {
-            await using var dbContext = await tsContext.CreateDbContextAsync(cancellationToken);
+            await eventWriter.WriteLineAsync("[");
 
-            var logBatch = await dbContext.EventStatusLogs
-                .Where(e => e.EventId == eventId)
-                .OrderBy(e => e.Id)
-                .Skip((int)totalLogs)
-                .Take(batchSize)
-                .ToListAsync(cancellationToken);
-
-            if (logBatch.Count == 0)
-                break;
-
-            foreach (var log in logBatch)
+            while (true)
             {
-                if (!isFirstBatch)
-                    await eventWriter.WriteLineAsync(",");
+                await using var dbContext = await tsContext.CreateDbContextAsync(cancellationToken);
 
-                var logJson = System.Text.Json.JsonSerializer.Serialize(log);
-                await eventWriter.WriteAsync(logJson);
-                isFirstBatch = false;
+                var logBatch = await dbContext.EventStatusLogs
+                    .Where(e => e.EventId == eventId)
+                    .OrderBy(e => e.Id)
+                    .Skip((int)totalLogs)
+                    .Take(batchSize)
+                    .ToListAsync(cancellationToken);
 
-                if (log.SessionId > 0)
+                if (logBatch.Count == 0)
+                    break;
+
+                foreach (var log in logBatch)
                 {
-                    await WriteLogToSessionFileAsync(eventId, log, sessionFiles);
+                    if (!isFirstBatch)
+                        await eventWriter.WriteLineAsync(",");
+
+                    var logJson = System.Text.Json.JsonSerializer.Serialize(log);
+                    await eventWriter.WriteAsync(logJson);
+                    isFirstBatch = false;
+
+                    if (log.SessionId > 0)
+                    {
+                        await WriteLogToSessionFileAsync(eventId, log, sessionFiles);
+                    }
                 }
+
+                totalLogs += logBatch.Count;
+                Logger.LogDebug("Archived {count} logs for event {eventId} (total: {totalLogs})", logBatch.Count, eventId, totalLogs);
+
+                if (logBatch.Count < batchSize)
+                    break;
             }
 
-            totalLogs += logBatch.Count;
-            Logger.LogDebug("Archived {count} logs for event {eventId} (total: {totalLogs})", logBatch.Count, eventId, totalLogs);
+            await eventWriter.WriteLineAsync();
+            await eventWriter.WriteLineAsync("]");
+            await eventWriter.FlushAsync(cancellationToken);
+            await eventFileStream.FlushAsync(cancellationToken);
 
-            if (logBatch.Count < batchSize)
-                break;
+            await FinalizeSessionFilesAsync(sessionFiles);
         }
-
-        await eventWriter.WriteLineAsync();
-        await eventWriter.WriteLineAsync("]");
-
-        await FinalizeSessionFilesAsync(sessionFiles);
+        finally
+        {
+            await eventWriter.DisposeAsync();
+            await eventFileStream.DisposeAsync();
+        }
 
         return totalLogs;
     }
@@ -152,6 +162,8 @@ public class EventLogArchive
         {
             await writers.Writer.WriteLineAsync();
             await writers.Writer.WriteLineAsync("]");
+            await writers.Writer.FlushAsync();
+            await writers.Stream.FlushAsync();
             await writers.Writer.DisposeAsync();
             await writers.Stream.DisposeAsync();
         }

@@ -71,49 +71,59 @@ public class LapsLogArchive
         const int batchSize = 100;
         bool isFirstBatch = true;
 
-        await using var sessionFileStream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, useAsync: true);
-        await using var sessionWriter = new StreamWriter(sessionFileStream);
+        var sessionFileStream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, useAsync: true);
+        var sessionWriter = new StreamWriter(sessionFileStream);
 
-        await sessionWriter.WriteLineAsync("[");
-
-        while (true)
+        try
         {
-            await using var dbContext = await tsContext.CreateDbContextAsync(cancellationToken);
+            await sessionWriter.WriteLineAsync("[");
 
-            var lapBatch = await dbContext.CarLapLogs
-                .Where(l => l.EventId == eventId && l.SessionId == sessionId)
-                .OrderBy(l => l.Id)
-                .Skip((int)totalLaps)
-                .Take(batchSize)
-                .ToListAsync(cancellationToken);
-
-            if (lapBatch.Count == 0)
-                break;
-
-            foreach (var lap in lapBatch)
+            while (true)
             {
-                if (!isFirstBatch)
-                    await sessionWriter.WriteLineAsync(",");
+                await using var dbContext = await tsContext.CreateDbContextAsync(cancellationToken);
 
-                var lapJson = System.Text.Json.JsonSerializer.Serialize(lap);
-                await sessionWriter.WriteAsync(lapJson);
-                isFirstBatch = false;
+                var lapBatch = await dbContext.CarLapLogs
+                    .Where(l => l.EventId == eventId && l.SessionId == sessionId)
+                    .OrderBy(l => l.Id)
+                    .Skip((int)totalLaps)
+                    .Take(batchSize)
+                    .ToListAsync(cancellationToken);
 
-                // Write to car-specific file
-                await WriteLapToCarFileAsync(eventId, sessionId, lap, carFiles);
+                if (lapBatch.Count == 0)
+                    break;
+
+                foreach (var lap in lapBatch)
+                {
+                    if (!isFirstBatch)
+                        await sessionWriter.WriteLineAsync(",");
+
+                    var lapJson = System.Text.Json.JsonSerializer.Serialize(lap);
+                    await sessionWriter.WriteAsync(lapJson);
+                    isFirstBatch = false;
+
+                    // Write to car-specific file
+                    await WriteLapToCarFileAsync(eventId, sessionId, lap, carFiles);
+                }
+
+                totalLaps += lapBatch.Count;
+                Logger.LogDebug("Archived {count} laps for event {eventId}, session {sessionId} (total: {totalLaps})", lapBatch.Count, eventId, sessionId, totalLaps);
+
+                if (lapBatch.Count < batchSize)
+                    break;
             }
 
-            totalLaps += lapBatch.Count;
-            Logger.LogDebug("Archived {count} laps for event {eventId}, session {sessionId} (total: {totalLaps})", lapBatch.Count, eventId, sessionId, totalLaps);
+            await sessionWriter.WriteLineAsync();
+            await sessionWriter.WriteLineAsync("]");
+            await sessionWriter.FlushAsync(cancellationToken);
+            await sessionFileStream.FlushAsync(cancellationToken);
 
-            if (lapBatch.Count < batchSize)
-                break;
+            await FinalizeCarFilesAsync(carFiles);
         }
-
-        await sessionWriter.WriteLineAsync();
-        await sessionWriter.WriteLineAsync("]");
-
-        await FinalizeCarFilesAsync(carFiles);
+        finally
+        {
+            await sessionWriter.DisposeAsync();
+            await sessionFileStream.DisposeAsync();
+        }
 
         return totalLaps;
     }
@@ -152,6 +162,8 @@ public class LapsLogArchive
         {
             await writers.Writer.WriteLineAsync();
             await writers.Writer.WriteLineAsync("]");
+            await writers.Writer.FlushAsync();
+            await writers.Stream.FlushAsync();
             await writers.Writer.DisposeAsync();
             await writers.Stream.DisposeAsync();
         }
