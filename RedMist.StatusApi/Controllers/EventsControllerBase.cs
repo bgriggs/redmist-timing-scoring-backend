@@ -69,50 +69,67 @@ public abstract class EventsControllerBase : ControllerBase
     /// <response code="200">Returns the array of events.</response>
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
-    [ProducesResponseType<Event[]>(StatusCodes.Status200OK)]
-    public virtual async Task<Event[]> LoadEvents(DateTime startDateUtc)
+    [ProducesResponseType<List<Event>>(StatusCodes.Status200OK)]
+    public virtual async Task<ActionResult<List<Event>>> LoadEvents(DateTime startDateUtc)
     {
         Logger.LogTrace("{m} for {d}", nameof(LoadEvents), startDateUtc);
 
+        var duration = DateTime.UtcNow - startDateUtc;
+        if (duration > TimeSpan.FromDays(30))
+        {
+            Logger.LogWarning("LoadEvents called with startDateUtc {d} exceeding 30 days", startDateUtc);
+            return BadRequest("startDateUtc exceeds maximum range of 30 days");
+        }
+
         using var context = await tsContext.CreateDbContextAsync();
-        var dbEvents = await context.Events
-            .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
-            .Where(x => x.e.StartDate >= startDateUtc && !x.e.IsDeleted).ToArrayAsync();
-
-        var noLogo = dbEvents.Any(x => x.o.Logo == null);
-        byte[] defaultLogo = [];
-        if (noLogo)
-        {
-            defaultLogo = context.DefaultOrgImages.FirstOrDefault()?.ImageData ?? [];
-        }
-
-        // Map to Event model
-        List<Event> eventDtos = [];
-        foreach (var dbEvent in dbEvents)
-        {
-            var sessions = await context.Sessions.Where(x => x.EventId == dbEvent.e.Id).ToArrayAsync();
-            var eventDto = new Event
+        
+        // Load events with sessions in a single query
+        var results = await (
+            from e in context.Events
+            join o in context.Organizations on e.OrganizationId equals o.Id
+            where e.StartDate >= startDateUtc && !e.IsDeleted
+            select new
             {
-                EventId = dbEvent.e.Id,
-                EventName = dbEvent.e.Name,
-                EventDate = dbEvent.e.StartDate.ToString(),
-                EventUrl = dbEvent.e.EventUrl,
-                Sessions = sessions,
-                OrganizationName = dbEvent.o.Name,
-                OrganizationWebsite = dbEvent.o.Website,
-                OrganizationLogo = dbEvent.o.Logo ?? defaultLogo,
-                TrackName = dbEvent.e.TrackName,
-                CourseConfiguration = dbEvent.e.CourseConfiguration,
-                Distance = dbEvent.e.Distance,
-                Broadcast = dbEvent.e.Broadcast,
-                Schedule = dbEvent.e.Schedule,
-                HasControlLog = !string.IsNullOrEmpty(dbEvent.o.ControlLogType),
-                IsLive = dbEvent.e.IsLive,
-            };
-            eventDtos.Add(eventDto);
-        }
+                e.Id,
+                e.Name,
+                e.StartDate,
+                e.EventUrl,
+                e.TrackName,
+                e.CourseConfiguration,
+                e.Distance,
+                e.Broadcast,
+                e.Schedule,
+                e.IsLive,
+                e.IsArchived,
+                e.IsSimulation,
+                OrganizationName = o.Name,
+                OrganizationWebsite = o.Website,
+                o.ControlLogType,
+                Sessions = context.Sessions.Where(s => s.EventId == e.Id).ToArray()
+            }).ToListAsync();
 
-        return [.. eventDtos];
+        // Map to Event DTOs
+        var eventDtos = results.Select(result => new Event
+        {
+            EventId = result.Id,
+            EventName = result.Name,
+            EventDate = result.StartDate.ToString(),
+            EventUrl = result.EventUrl,
+            Sessions = result.Sessions,
+            OrganizationName = result.OrganizationName,
+            OrganizationWebsite = result.OrganizationWebsite,
+            TrackName = result.TrackName,
+            CourseConfiguration = result.CourseConfiguration,
+            Distance = result.Distance,
+            Broadcast = result.Broadcast,
+            Schedule = result.Schedule,
+            HasControlLog = !string.IsNullOrEmpty(result.ControlLogType),
+            IsLive = result.IsLive,
+            IsArchived = result.IsArchived,
+            IsSimulation = result.IsSimulation,
+        }).ToList();
+
+        return Ok(eventDtos);
     }
 
     /// <summary>
@@ -129,7 +146,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
     public virtual async Task<List<EventListSummary>> LoadLiveEvents()
     {
-        Logger.LogTrace("LoadLiveEvents");
+        Logger.LogTrace(nameof(LoadLiveEvents));
 
         var cacheKey = "live-events";
         return await hcache.GetOrCreateAsync(cacheKey,
@@ -152,11 +169,13 @@ public abstract class EventsControllerBase : ControllerBase
                {
                    e.Id,
                    e.OrganizationId,
+                   e.IsArchived,
+                   e.IsSimulation,
                    OrganizationName = o.Name,
                    EventName = e.Name,
                    EventDate = e.StartDate,
                    TrackName = e.TrackName,
-                   Schedule = e.Schedule
+                   Schedule = e.Schedule,
                } into g
                select new EventListSummary
                {
@@ -167,7 +186,9 @@ public abstract class EventsControllerBase : ControllerBase
                    EventDate = g.Key.EventDate.ToString("yyyy-MM-dd"),
                    IsLive = true,
                    TrackName = g.Key.TrackName,
-                   Schedule = g.Key.Schedule
+                   Schedule = g.Key.Schedule,
+                   IsArchived = g.Key.IsArchived,
+                   IsSimulation = g.Key.IsSimulation,
                }).ToListAsync();
 
         return summaries;
@@ -194,7 +215,7 @@ public abstract class EventsControllerBase : ControllerBase
         var recentEvents = await (
             from e in db1.Events
             join o in db1.Organizations on e.OrganizationId equals o.Id
-            where !e.IsDeleted && !e.IsLive
+            where !e.IsDeleted && !e.IsLive && !e.IsArchived
             orderby e.StartDate descending
             select new EventListSummary
             {
@@ -204,13 +225,48 @@ public abstract class EventsControllerBase : ControllerBase
                 EventName = e.Name,
                 EventDate = e.StartDate.ToString("yyyy-MM-dd"),
                 IsLive = false,
+                IsSimulation = e.IsSimulation,
                 TrackName = e.TrackName,
             })
-            .Take(100)
+            .Take(25)
             .ToListAsync();
         var liveEvents = await LoadLiveEvents();
 
         return [.. liveEvents, .. recentEvents];
+    }
+
+    [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
+    [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public virtual async Task<ActionResult<List<EventListSummary>>> LoadArchivedEventsAsync(int offset, int take)
+    {
+        Logger.LogTrace(nameof(LoadArchivedEventsAsync));
+        if (take > 100)
+            return BadRequest("Take parameter exceeds maximum of 100");
+
+        using var db = await tsContext.CreateDbContextAsync();
+        var archivedEvents = await (
+            from e in db.Events
+            join o in db.Organizations on e.OrganizationId equals o.Id
+            where !e.IsDeleted && e.IsArchived
+            orderby e.StartDate descending
+            select new EventListSummary
+            {
+                Id = e.Id,
+                OrganizationId = e.OrganizationId,
+                OrganizationName = o.Name,
+                EventName = e.Name,
+                EventDate = e.StartDate.ToString("yyyy-MM-dd"),
+                IsLive = e.IsLive,
+                IsSimulation = e.IsSimulation,
+                IsArchived = e.IsArchived,
+                TrackName = e.TrackName,
+            })
+            .Skip(offset)
+            .Take(take)
+            .ToListAsync();
+        return Ok(archivedEvents);
     }
 
     /// <summary>
@@ -229,37 +285,51 @@ public abstract class EventsControllerBase : ControllerBase
         Logger.LogTrace("{m} for {id}", nameof(LoadEvent), eventId);
 
         using var context = await tsContext.CreateDbContextAsync();
-        var dbEvent = await context.Events
-            .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
-            .Where(x => x.e.Id == eventId && !x.e.IsDeleted).FirstOrDefaultAsync();
+        var result = await (
+            from e in context.Events
+            join o in context.Organizations on e.OrganizationId equals o.Id
+            where e.Id == eventId && !e.IsDeleted
+            select new
+            {
+                e.Id,
+                e.Name,
+                e.StartDate,
+                e.EventUrl,
+                e.TrackName,
+                e.CourseConfiguration,
+                e.Distance,
+                e.Broadcast,
+                e.Schedule,
+                e.IsLive,
+                e.IsArchived,
+                e.IsSimulation,
+                OrganizationName = o.Name,
+                OrganizationWebsite = o.Website,
+                o.ControlLogType,
+                Sessions = context.Sessions.Where(s => s.EventId == e.Id).ToArray()
+            }).FirstOrDefaultAsync();
 
-        if (dbEvent == null)
+        if (result == null)
             return NotFound("event");
 
-        byte[] defaultLogo = [];
-        if (dbEvent.o.Logo == null)
-        {
-            defaultLogo = context.DefaultOrgImages.FirstOrDefault()?.ImageData ?? [];
-        }
-
-        var sessions = await context.Sessions.Where(x => x.EventId == dbEvent.e.Id).ToArrayAsync();
         return new Event
         {
-            EventId = dbEvent.e.Id,
-            EventName = dbEvent.e.Name,
-            EventDate = dbEvent.e.StartDate.ToString(),
-            EventUrl = dbEvent.e.EventUrl,
-            Sessions = sessions,
-            OrganizationName = dbEvent.o.Name,
-            OrganizationWebsite = dbEvent.o.Website,
-            OrganizationLogo = dbEvent.o.Logo ?? defaultLogo,
-            TrackName = dbEvent.e.TrackName,
-            CourseConfiguration = dbEvent.e.CourseConfiguration,
-            Distance = dbEvent.e.Distance,
-            Broadcast = dbEvent.e.Broadcast,
-            Schedule = dbEvent.e.Schedule,
-            HasControlLog = !string.IsNullOrEmpty(dbEvent.o.ControlLogType),
-            IsLive = dbEvent.e.IsLive,
+            EventId = result.Id,
+            EventName = result.Name,
+            EventDate = result.StartDate.ToString(),
+            EventUrl = result.EventUrl,
+            Sessions = result.Sessions,
+            OrganizationName = result.OrganizationName,
+            OrganizationWebsite = result.OrganizationWebsite,
+            TrackName = result.TrackName,
+            CourseConfiguration = result.CourseConfiguration,
+            Distance = result.Distance,
+            Broadcast = result.Broadcast,
+            Schedule = result.Schedule,
+            HasControlLog = !string.IsNullOrEmpty(result.ControlLogType),
+            IsLive = result.IsLive,
+            IsArchived = result.IsArchived,
+            IsSimulation = result.IsSimulation,
         };
     }
 
@@ -278,18 +348,29 @@ public abstract class EventsControllerBase : ControllerBase
     {
         Logger.LogTrace("{m} for event {eventId}", nameof(LoadCarLaps), eventId);
         using var context = tsContext.CreateDbContext();
-        var laps = await context.CarLapLogs
-            .Where(c => c.EventId == eventId && c.SessionId == sessionId && c.CarNumber == carNumber && c.LapNumber > 0 && c.Timestamp == context.CarLapLogs
-                .Where(r => r.Id == c.Id)
-                .Max(r => r.Timestamp))
-            .ToListAsync();
 
-        var carPositions = new List<CarPosition>();
-        foreach (var lap in laps)
+        var lapsData = await (
+            from lap in context.CarLapLogs
+            where lap.EventId == eventId
+                && lap.SessionId == sessionId
+                && lap.CarNumber == carNumber
+                && lap.LapNumber > 0
+            group lap by lap.Id into g
+            let maxTimestamp = g.Max(x => x.Timestamp)
+            select g.FirstOrDefault(x => x.Timestamp == maxTimestamp) != null
+                ? g.FirstOrDefault(x => x.Timestamp == maxTimestamp)!.LapData
+                : null
+        ).ToListAsync();
+
+        var carPositions = new List<CarPosition>(lapsData.Count);
+        foreach (var lapData in lapsData)
         {
+            if (string.IsNullOrEmpty(lapData))
+                continue;
+
             try
             {
-                var cp = JsonSerializer.Deserialize<CarPosition>(lap.LapData);
+                var cp = JsonSerializer.Deserialize<CarPosition>(lapData);
                 if (cp != null)
                 {
                     carPositions.Add(cp);
@@ -565,18 +646,16 @@ public abstract class EventsControllerBase : ControllerBase
     {
         Logger.LogTrace("{m} for event {eventId}, session {sessionId}", nameof(LoadFlags), eventId, sessionId);
         using var context = await tsContext.CreateDbContextAsync();
-        var flagLogs = await context.FlagLog
+
+        return await context.FlagLog
             .Where(f => f.EventId == eventId && f.SessionId == sessionId)
+            .Select(f => new FlagDuration
+            {
+                Flag = f.Flag,
+                StartTime = f.StartTime,
+                EndTime = f.EndTime,
+            })
             .ToListAsync();
-
-        var flagDurations = flagLogs.Select(f => new FlagDuration
-        {
-            Flag = f.Flag,
-            StartTime = f.StartTime,
-            EndTime = f.EndTime,
-        }).ToList();
-
-        return flagDurations;
     }
 
     #endregion
