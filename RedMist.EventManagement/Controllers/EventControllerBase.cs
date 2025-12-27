@@ -63,7 +63,7 @@ public abstract class EventControllerBase : ControllerBase
             .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
             .Where(s => s.o.ClientId == clientId && !s.e.IsDeleted)
             .OrderByDescending(s => s.e.StartDate)
-            .Select(s => new EventSummary { Id = s.e.Id, Name = s.e.Name, StartDate = s.e.StartDate, IsActive = s.e.IsActive })
+            .Select(s => new EventSummary { Id = s.e.Id, Name = s.e.Name, StartDate = s.e.StartDate, IsActive = s.e.IsActive, IsSimulation = s.e.IsSimulation, IsArchived = s.e.IsArchived })
             .ToListAsync();
 
         return dbEvents;
@@ -173,6 +173,8 @@ public abstract class EventControllerBase : ControllerBase
             dbEvent.Distance = @event.Distance;
             dbEvent.Broadcast = @event.Broadcast;
             dbEvent.LoopsMetadata = @event.LoopsMetadata;
+            dbEvent.IsSimulation = @event.IsSimulation;
+            dbEvent.IsArchived = @event.IsArchived;
             await context.SaveChangesAsync();
 
             // Publish event configuration change notification
