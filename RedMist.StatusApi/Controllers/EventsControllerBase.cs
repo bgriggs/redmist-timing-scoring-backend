@@ -10,6 +10,7 @@ using RedMist.TimingCommon.Models.InCarDriverMode;
 using StackExchange.Redis;
 using System.Diagnostics;
 using System.Text.Json;
+using RedMist.TimingCommon.Extensions;
 
 namespace RedMist.StatusApi.Controllers;
 
@@ -484,6 +485,98 @@ public abstract class EventsControllerBase : ControllerBase
             Logger.LogError(ex, "Error retrieving service endpoint for event {eventId}", eventId);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Gets the current real-time session state as JSON from the event processor service.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>The current session state as a SessionState JSON object.</returns>
+    /// <response code="200">Returns the SessionState object as JSON.</response>
+    /// <response code="404">Event processor endpoint not found or session state unavailable.</response>
+    /// <response code="408">Request timeout.</response>
+    /// <response code="500">Internal server error.</response>
+    /// <remarks>
+    /// This endpoint retrieves the current SessionState from the event processor service
+    /// and returns it as JSON for easy consumption by web clients.
+    /// </remarks>
+    [HttpGet]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(SessionState), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status408RequestTimeout)]
+    public virtual async Task<IActionResult> GetCurrentSessionStateJson(int eventId)
+    {
+        var result = await GetCurrentSessionState(eventId);
+
+        if (result is FileStreamResult fileResult)
+        {
+            try
+            {
+                var sessionState = await MessagePack.MessagePackSerializer.DeserializeAsync<SessionState>(fileResult.FileStream);
+
+                if (sessionState == null)
+                {
+                    Logger.LogWarning("Failed to deserialize SessionState for event {eventId}", eventId);
+                    return NotFound();
+                }
+
+                return Ok(sessionState);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error processing session state for event {eventId}", eventId);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Gets the current session state in legacy Payload format from the event processor service.
+    /// This method will eventually be removed.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>The current session state as a legacy Payload object.</returns>
+    /// <response code="200">Returns the legacy Payload object.</response>
+    /// <response code="404">Event processor endpoint not found or session state unavailable.</response>
+    /// <response code="500">Internal server error.</response>
+    /// <remarks>
+    /// This endpoint retrieves the current SessionState from the event processor service
+    /// and converts it to the legacy Payload format for backward compatibility.
+    /// </remarks>
+    [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
+    [ProducesResponseType(typeof(Payload), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<IActionResult> GetCurrentLegacySessionPayload(int eventId)
+    {
+        var result = await GetCurrentSessionState(eventId);
+
+        if (result is FileStreamResult fileResult)
+        {
+            try
+            {
+                var sessionState = await MessagePack.MessagePackSerializer.DeserializeAsync<SessionState>(fileResult.FileStream);
+
+                if (sessionState == null)
+                {
+                    Logger.LogWarning("Failed to deserialize SessionState for event {eventId}", eventId);
+                    return NotFound();
+                }
+
+                var payload = sessionState.ToPayload();
+                return Ok(payload);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error processing session state for event {eventId}", eventId);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        return result;
     }
 
     #endregion
