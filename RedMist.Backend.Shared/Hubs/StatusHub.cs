@@ -133,15 +133,6 @@ public class StatusHub : Hub
     /// </summary>
     /// <param name="eventId">The unique identifier of the event to subscribe to.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    /// <remarks>
-    /// <para>Version: V1 (Legacy)</para>
-    /// <para>Upon subscription, the client will receive:</para>
-    /// <list type="bullet">
-    /// <item>An immediate full status update with all current event data</item>
-    /// <item>Incremental updates as the event progresses</item>
-    /// <item>Updates every ~5 seconds with compressed full payload</item>
-    /// </list>
-    /// </remarks>
     /// <example>
     /// JavaScript:
     /// <code>
@@ -154,23 +145,7 @@ public class StatusHub : Hub
     /// </example>
     public async Task SubscribeToEvent(int eventId)
     {
-        var connectionId = Context.ConnectionId;
-        await Groups.AddToGroupAsync(connectionId, eventId.ToString());
-        if (eventId > 0)
-        {
-            // Send a full status update to the client
-            var sub = cacheMux.GetSubscriber();
-            var cmd = new SendStatusCommand { EventId = eventId, ConnectionId = connectionId };
-            var json = JsonSerializer.Serialize(cmd);
-
-            // Tell the service responsible for this event to send a full status update
-            await sub.PublishAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal), json, CommandFlags.FireAndForget);
-
-            // Update connection tracking for this event
-            await AddOrUpdateConnectionTracking(connectionId, eventId, inCarDriverConnection: null);
-        }
-
-        Logger.LogInformation("Client {connectionId} subscribed to event {eventId}", connectionId, eventId);
+        await SubscribeToEventV2(eventId);
     }
 
     /// <summary>
@@ -178,9 +153,6 @@ public class StatusHub : Hub
     /// </summary>
     /// <param name="eventId">The unique identifier of the event to unsubscribe from.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    /// <remarks>
-    /// Version: V1 (Legacy)
-    /// </remarks>
     /// <example>
     /// JavaScript:
     /// <code>
@@ -189,21 +161,7 @@ public class StatusHub : Hub
     /// </example>
     public async Task UnsubscribeFromEvent(int eventId)
     {
-        var connectionId = Context.ConnectionId;
-        await Groups.RemoveFromGroupAsync(connectionId, eventId.ToString());
-
-        try
-        {
-            var cache = cacheMux.GetDatabase();
-            var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId);
-            await cache.HashDeleteAsync(connKey, connectionId, CommandFlags.FireAndForget);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error removing connectionId {connectionId} from event {eventId}", connectionId, eventId);
-        }
-
-        Logger.LogInformation("Client {connectionId} unsubscribed from event {eventId}", connectionId, eventId);
+        await UnsubscribeFromEventV2(eventId);
     }
 
     /// <summary>

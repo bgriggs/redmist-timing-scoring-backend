@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 using Prometheus;
-using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
@@ -59,7 +58,6 @@ public class SentinelStatusService : BackgroundService
             try
             {
                 var cache = cacheMux.GetDatabase();
-                await EnsureCacheSubscriptionsAsync(stoppingToken);
 
                 var currentEvents = await eventsChecker.GetCurrentEventsAsync();
                 Logger.LogInformation("Found {e} current events", currentEvents.Count);
@@ -88,7 +86,6 @@ public class SentinelStatusService : BackgroundService
 
                     if (!stream.DriverName.StartsWith("PROD"))
                     {
-                        metadata.DriverName = stream.DriverName;
                         var di = new DriverInfo { DriverName = stream.DriverName, TransponderId = stream.TransponderId };
                         driverInfo.Add(di);
                     }
@@ -121,7 +118,6 @@ public class SentinelStatusService : BackgroundService
                 }
 
                 var eventIds = currentEvents.Select(e => e.EventId).Distinct().ToList();
-                await SendVideoMetadataAsync(videoMetadata, eventIds, stoppingToken);
                 await SendVideoMetadataAsync(videoMetadata, stoppingToken);
                 await SendDriverInfoAsync(driverInfo, stoppingToken);
 
@@ -180,42 +176,6 @@ public class SentinelStatusService : BackgroundService
 
         Logger.LogDebug("Sending {v} video streams, removed {r}", metadata.Count, removedStreams.Count);
         await externalTelemetryClient.UpdateCarVideosAsync([.. metadata, .. removedStreams], stoppingToken);
-    }
-
-    private async Task EnsureCacheSubscriptionsAsync(CancellationToken stoppingToken = default)
-    {
-        await subscriptionCheckLock.WaitAsync(stoppingToken);
-        try
-        {
-            var sub = cacheMux.GetSubscriber();
-            await sub.UnsubscribeAllAsync();
-
-            // Subscribe for status requests such as when a new UI connects
-            await sub.SubscribeAsync(new RedisChannel(Consts.SEND_FULL_STATUS, RedisChannel.PatternMode.Literal),
-                async (channel, value) => await ProcessUiStatusRequestAsync(value.ToString()), CommandFlags.FireAndForget);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error ensuring subscriptions");
-        }
-        finally
-        {
-            subscriptionCheckLock.Release();
-        }
-    }
-
-    [Obsolete("This will be removed in the future. Use other SendVideoMetadataAsync.")]
-    private async Task SendVideoMetadataAsync(List<VideoMetadata> metadata, List<int> currentEvents, CancellationToken stoppingToken = default)
-    {
-        Logger.LogInformation("Sending video metadata for {Count} entries", metadata.Count);
-        foreach (var evtId in currentEvents)
-        {
-            var subKey = string.Format(Consts.EVENT_SUB_V2, evtId);
-            await hubContext.Clients.Group(subKey).SendAsync("ReceiveInCarVideoMetadata", metadata, stoppingToken);
-
-            // Legacy
-            await hubContext.Clients.Group(evtId.ToString()).SendAsync("ReceiveInCarVideoMetadata", metadata, stoppingToken);
-        }
     }
 
     private async Task ProcessUiStatusRequestAsync(string cmdJson)

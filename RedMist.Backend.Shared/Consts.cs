@@ -6,8 +6,8 @@ public class Consts
     public const string STATUS_CHANNEL_PREFIX = "event-status";
     public const string EVENT_STATUS_STREAM_KEY = "evt-st-{0}";
     public const string EVENT_PROCESSOR_LOGGING_STREAM_KEY = "evt-proc-log-{0}";
-    public const string SEND_FULL_STATUS = "fullstatus";
-    public const string SEND_COMPETITOR_METADATA = "competitor-metadata";
+    //public const string SEND_FULL_STATUS = "fullstatus";
+    //public const string SEND_COMPETITOR_METADATA = "competitor-metadata";
     public const string RELAY_EVENT_CONNECTIONS = "relay-evt-conns";
     public const string STATUS_EVENT_CONNECTIONS = "st-evt-{0}-conns";
     public const string STATUS_CONNECTIONS = "st-conns";

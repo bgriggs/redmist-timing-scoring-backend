@@ -6,3 +6,5 @@
   href: authentication.md
 - name: SignalR Hubs
   href: signalr-hubs.md
+- name: Upgrading to API Version 2
+  href: upgrading-to-version2-api.md
