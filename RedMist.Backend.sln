@@ -48,7 +48,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "articles", "articles", "{2C
 		articles\getting-started.md = articles\getting-started.md
 		articles\signalr-hubs.md = articles\signalr-hubs.md
 		articles\toc.yml = articles\toc.yml
-		upgrading-to-version2-api.md = upgrading-to-version2-api.md
 		articles\upgrading-to-version2-api.md = articles\upgrading-to-version2-api.md
 	EndProjectSection
 EndProject
