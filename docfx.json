@@ -5,11 +5,12 @@
         {
           "files": [
             "RedMist.StatusApi/**/*.csproj",
-            "RedMist.EventManagement/**/*.csproj",
-            "RedMist.UserManagement/**/*.csproj",
-            "RedMist.Backend.Shared/**/*.csproj",
-            "RedMist.Database/**/*.csproj",
-            "RedMist.ControlLogs/**/*.csproj"
+            //"RedMist.EventManagement/**/*.csproj",
+            //"RedMist.UserManagement/**/*.csproj",
+            //"RedMist.Backend.Shared/**/*.csproj",
+            //"RedMist.Database/**/*.csproj",
+            //"RedMist.ControlLogs/**/*.csproj",
+            "external/RedMist.TimingCommon/**/*.csproj"
           ],
           "exclude": [
             "**/bin/**",

@@ -27,7 +27,13 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-      
+
+    - name: Checkout RedMist.TimingCommon
+      uses: actions/checkout@v4
+      with:
+        repository: bgriggs/redmist-timing-common
+        path: external/RedMist.TimingCommon
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
