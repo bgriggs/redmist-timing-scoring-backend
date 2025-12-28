@@ -10,13 +10,13 @@ These service make up the backend of the Red Mist system. They are responsible f
 # Documentation
 Please visit https://docs.redmist.racing/ for the full documentation.
 
-## Quick Reference
+## API Quick Reference
 - Status API OpenAPI Spec: [Swagger UI](https://api.redmist.racing/status/swagger/index.html) | [swagger.json](https://api.redmist.racing/status/swagger/v1/swagger.json)
 - Complete API documentation: [API Reference](https://docs.redmist.racing/api/index.html)
 - Event Status Model [SessionState](https://docs.redmist.racing/api/RedMist.TimingCommon.Models.SessionState.html). This is the data included for a real-time event/session.
 - Car Status Model [CarPosition](https://docs.redmist.racing/api/RedMist.TimingCommon.Models.CarPosition.html). This is the data available for a car in an event/session.
 
-# Sample Projects
+# Sample Projects Using the API
 Sample projects demonstrating how to interact with the Red Mist backend services can be found in [samples](https://github.com/bgriggs/redmist-timing-scoring-backend/tree/main/samples).
 
 # Upgrading to V2 API
