@@ -208,18 +208,11 @@ await connection.invoke("SubscribeToCarControlLogs", 123, "42");
 
 ### In-Car Driver Mode
 
-#### SubscribeToInCarDriverEvent (V1)
+#### SubscribeToInCarDriverEvent
 Subscribe to in-car driver display data.
 
 ```javascript
 await connection.invoke("SubscribeToInCarDriverEvent", eventId, carNumber);
-```
-
-#### SubscribeToInCarDriverEventV2 (V2)
-Enhanced in-car data with better update frequency.
-
-```javascript
-await connection.invoke("SubscribeToInCarDriverEventV2", eventId, carNumber);
 ```
 
 **Data Included:**

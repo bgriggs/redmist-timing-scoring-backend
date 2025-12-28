@@ -6,3 +6,5 @@
   homepage: articles/getting-started.md
 - name: GitHub
   href: https://github.com/bgriggs/redmist-timing-scoring-backend
+- name: Model Library GitHub
+  href: https://github.com/bgriggs/redmist-timing-common

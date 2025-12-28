@@ -261,10 +261,8 @@ This endpoint is ideal when you need a complete snapshot of the current race sta
 ## Next Steps
 
 - [Authentication Guide](authentication.md) - Deep dive into authentication
-- [REST API Guide](rest-api-guide.md) - Complete REST API documentation
 - [SignalR Hubs](signalr-hubs.md) - Real-time communication details
-- [Code Examples](code-examples.md) - More code samples
-- [Data Models](data-models.md) - Understanding the data structures
+- [Code Examples](https://github.com/bgriggs/redmist-timing-scoring-backend/tree/main/samples) - C# and Python projects samples
 
 ## Common Issues
 

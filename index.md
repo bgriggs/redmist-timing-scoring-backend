@@ -5,36 +5,14 @@ Welcome to the Red Mist Timing & Scoring documentation - a cloud-based, real-tim
 ## Quick Start
 
 - **[Getting Started](articles/getting-started.md)** - Quick start guide
-- **[API Reference](api/index.md)** - Complete API documentation
 - **[Authentication](articles/authentication.md)** - Authentication and authorization guide
 - **[Architecture](articles/architecture.md)** - System architecture overview
-
-## Documentation Sections
-
-### For Developers
-- [API Documentation](api/index.md) - Full API reference for public-facing services
-- [SignalR Hubs](articles/signalr-hubs.md) - Real-time communication
-- [Architecture](articles/architecture.md) - System design
-
-> **Note:** API documentation covers public-facing services (Status API, Event Management, User Management) and shared libraries. Internal processing services are not included in the API reference but are described in the architecture documentation.
-
-## Quick Links
-
-- [GitHub Repository](https://github.com/bgriggs/redmist-timing-scoring-backend)
-- [Report Issues](https://github.com/bgriggs/redmist-timing-scoring-backend/issues)
 
 ## Services Overview
 
 ### Status API
 Real-time event status, timing data, and race information.
 - [Swagger UI](https://api.redmist.racing/status/swagger)
-
-### Event Management API
-Event configuration and organization management.
-- [Swagger UI](https://api.redmist.racing/event-management/swagger)
-
-### Timing & Scoring Service
-Internal real-time event processing.
 
 ## What's New
 
