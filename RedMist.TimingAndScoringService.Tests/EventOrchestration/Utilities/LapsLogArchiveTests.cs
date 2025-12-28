@@ -6,6 +6,7 @@ using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.EventOrchestration.Utilities;
 using RedMist.EventProcessor.Tests.Utilities;
+using RedMist.TimingCommon.Models;
 using System.IO.Compression;
 using System.Text.Json;
 
@@ -298,15 +299,15 @@ public class LapsLogArchiveTests
         Assert.IsTrue(result, "Archive operation should succeed");
         Assert.IsNotNull(capturedStream, "Stream should have been captured");
 
-        // Decompress and validate JSON
-        using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
-        using var reader = new StreamReader(gzipStream);
-        var json = await reader.ReadToEndAsync();
+            // Decompress and validate JSON
+            using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
+            using var reader = new StreamReader(gzipStream);
+            var json = await reader.ReadToEndAsync();
 
-        var laps = JsonSerializer.Deserialize<List<CarLapLog>>(json);
-        Assert.IsNotNull(laps);
-        Assert.HasCount(3, laps);
-    }
+            var carPositions = JsonSerializer.Deserialize<List<CarPosition>>(json);
+            Assert.IsNotNull(carPositions);
+            Assert.HasCount(3, carPositions);
+        }
 
     [TestMethod]
     public async Task ArchiveLapsAsync_ValidatesFileFormat_CarFile()
@@ -358,16 +359,16 @@ public class LapsLogArchiveTests
         Assert.IsTrue(result, "Archive operation should succeed");
         Assert.IsNotNull(capturedStream, "Stream should have been captured");
 
-        // Decompress and validate JSON
-        using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
-        using var reader = new StreamReader(gzipStream);
-        var json = await reader.ReadToEndAsync();
+            // Decompress and validate JSON
+            using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
+            using var reader = new StreamReader(gzipStream);
+            var json = await reader.ReadToEndAsync();
 
-        var laps = JsonSerializer.Deserialize<List<CarLapLog>>(json);
-        Assert.IsNotNull(laps);
-        Assert.HasCount(4, laps);
-        Assert.IsTrue(laps.All(l => l.CarNumber == carNumber));
-    }
+            var carPositions = JsonSerializer.Deserialize<List<CarPosition>>(json);
+            Assert.IsNotNull(carPositions);
+            Assert.HasCount(4, carPositions);
+            Assert.IsTrue(carPositions.All(cp => cp.Number == carNumber));
+        }
 
     [TestMethod]
     public async Task ArchiveLapsAsync_MultipleSessions_OnlyArchivesRequestedSession()
@@ -490,10 +491,14 @@ public class LapsLogArchiveTests
         // Arrange
         int eventId = 1;
         int sessionId = 1;
+
+        var carPosition1 = CreateTestCarPosition("42", "A", 1, 1);
+        var carPosition2 = CreateTestCarPosition("42", "A", 1, 2);
+
         var originalLaps = new List<CarLapLog>
         {
-            new() { EventId = eventId, SessionId = sessionId, CarNumber = "42", LapNumber = 1, Flag = 1, LapData = "Data1", Timestamp = DateTime.UtcNow },
-            new() { EventId = eventId, SessionId = sessionId, CarNumber = "42", LapNumber = 2, Flag = 2, LapData = "Data2", Timestamp = DateTime.UtcNow.AddSeconds(1) }
+            new() { EventId = eventId, SessionId = sessionId, CarNumber = "42", LapNumber = 1, Flag = 1, LapData = JsonSerializer.Serialize(carPosition1), Timestamp = DateTime.UtcNow },
+            new() { EventId = eventId, SessionId = sessionId, CarNumber = "42", LapNumber = 2, Flag = 2, LapData = JsonSerializer.Serialize(carPosition2), Timestamp = DateTime.UtcNow.AddSeconds(1) }
         };
 
         await using (var dbContext = await _dbContextFactory.CreateDbContextAsync())
@@ -520,16 +525,14 @@ public class LapsLogArchiveTests
         using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
         using var reader = new StreamReader(gzipStream);
         var json = await reader.ReadToEndAsync();
-        var archivedLaps = JsonSerializer.Deserialize<List<CarLapLog>>(json);
+        var archivedCarPositions = JsonSerializer.Deserialize<List<CarPosition>>(json);
 
-        Assert.IsNotNull(archivedLaps);
-        Assert.HasCount(2, archivedLaps);
-        Assert.AreEqual("42", archivedLaps[0].CarNumber);
-        Assert.AreEqual(1, archivedLaps[0].LapNumber);
-        Assert.AreEqual("Data1", archivedLaps[0].LapData);
-        Assert.AreEqual("42", archivedLaps[1].CarNumber);
-        Assert.AreEqual(2, archivedLaps[1].LapNumber);
-        Assert.AreEqual("Data2", archivedLaps[1].LapData);
+        Assert.IsNotNull(archivedCarPositions);
+        Assert.HasCount(2, archivedCarPositions);
+        Assert.AreEqual("42", archivedCarPositions[0].Number);
+        Assert.AreEqual(1, archivedCarPositions[0].LastLapCompleted);
+        Assert.AreEqual("42", archivedCarPositions[1].Number);
+        Assert.AreEqual(2, archivedCarPositions[1].LastLapCompleted);
     }
 
     [TestMethod]
@@ -582,37 +585,83 @@ public class LapsLogArchiveTests
         Assert.IsTrue(result, "Archive operation should succeed");
         Assert.IsNotNull(capturedStream, "Stream should have been captured");
 
-        using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
-        using var reader = new StreamReader(gzipStream);
-        var json = await reader.ReadToEndAsync();
-        var laps = JsonSerializer.Deserialize<List<CarLapLog>>(json);
+            using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
+            using var reader = new StreamReader(gzipStream);
+            var json = await reader.ReadToEndAsync();
+            var carPositions = JsonSerializer.Deserialize<List<CarPosition>>(json);
 
-        Assert.IsNotNull(laps);
-        Assert.HasCount(5, laps);
-        Assert.AreEqual(3, laps.Count(l => l.CarNumber == "42"));
-        Assert.AreEqual(2, laps.Count(l => l.CarNumber == "99"));
-    }
-
-    private async Task SeedCarLapLogs(int eventId, int sessionId, string carNumber, int count)
-    {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        var laps = new List<CarLapLog>();
-
-        for (int i = 0; i < count; i++)
-        {
-            laps.Add(new CarLapLog
-            {
-                EventId = eventId,
-                SessionId = sessionId,
-                CarNumber = carNumber,
-                LapNumber = i + 1,
-                Flag = i % 3,
-                LapData = $"LapData_{carNumber}_{i}",
-                Timestamp = DateTime.UtcNow.AddSeconds(i)
-            });
+            Assert.IsNotNull(carPositions);
+            Assert.HasCount(5, carPositions);
+            Assert.AreEqual(3, carPositions.Count(cp => cp.Number == "42"));
+            Assert.AreEqual(2, carPositions.Count(cp => cp.Number == "99"));
         }
 
-        dbContext.CarLapLogs.AddRange(laps);
-        await dbContext.SaveChangesAsync();
-    }
-}
+            private async Task SeedCarLapLogs(int eventId, int sessionId, string carNumber, int count)
+            {
+                await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+                var laps = new List<CarLapLog>();
+
+                for (int i = 0; i < count; i++)
+                {
+                    var carPosition = CreateTestCarPosition(carNumber, "A", i + 1, i + 1);
+                    var lapData = JsonSerializer.Serialize(carPosition);
+
+                    laps.Add(new CarLapLog
+                    {
+                        EventId = eventId,
+                        SessionId = sessionId,
+                        CarNumber = carNumber,
+                        LapNumber = i + 1,
+                        Flag = i % 3,
+                        LapData = lapData,
+                        Timestamp = DateTime.UtcNow.AddSeconds(i)
+                    });
+                }
+
+                dbContext.CarLapLogs.AddRange(laps);
+                await dbContext.SaveChangesAsync();
+            }
+
+            private static CarPosition CreateTestCarPosition(string number, string carClass, int overallPosition, int lapNumber)
+            {
+                return new CarPosition
+                {
+                    Number = number,
+                    Class = carClass,
+                    OverallPosition = overallPosition,
+                    TransponderId = 12345,
+                    EventId = "1",
+                    SessionId = "1",
+                    BestLap = 0,
+                    LastLapCompleted = lapNumber,
+                    OverallStartingPosition = overallPosition,
+                    InClassStartingPosition = 1,
+                    OverallPositionsGained = CarPosition.InvalidPosition,
+                    InClassPositionsGained = CarPosition.InvalidPosition,
+                    ClassPosition = 1,
+                    PenalityLaps = 0,
+                    PenalityWarnings = 0,
+                    BlackFlags = 0,
+                    IsEnteredPit = false,
+                    IsPitStartFinish = false,
+                    IsExitedPit = false,
+                    IsInPit = false,
+                    LapIncludedPit = false,
+                    LastLoopName = string.Empty,
+                    IsStale = false,
+                    TrackFlag = Flags.Green,
+                    LocalFlag = Flags.Green,
+                    CompletedSections = [],
+                    ProjectedLapTimeMs = 0,
+                    LapStartTime = TimeOnly.MinValue,
+                    DriverName = string.Empty,
+                    DriverId = string.Empty,
+                    CurrentStatus = "Active",
+                    ImpactWarning = false,
+                    IsBestTime = false,
+                    IsBestTimeClass = false,
+                    IsOverallMostPositionsGained = false,
+                    IsClassMostPositionsGained = false
+                };
+            }
+        }

@@ -105,4 +105,38 @@ public class EventsController : EventsControllerBase
             },
             options, cancellationToken: default);
     }
+
+    [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
+    [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public virtual async Task<ActionResult<List<EventListSummary>>> LoadArchivedEventsAsync(int offset, int take)
+    {
+        Logger.LogTrace(nameof(LoadArchivedEventsAsync));
+        if (take > 100)
+            return BadRequest("Take parameter exceeds maximum of 100");
+
+        using var db = await tsContext.CreateDbContextAsync();
+        var archivedEvents = await (
+            from e in db.Events
+            join o in db.Organizations on e.OrganizationId equals o.Id
+            where !e.IsDeleted && e.IsArchived
+            orderby e.StartDate descending
+            select new EventListSummary
+            {
+                Id = e.Id,
+                OrganizationId = e.OrganizationId,
+                OrganizationName = o.Name,
+                EventName = e.Name,
+                EventDate = e.StartDate.ToString("yyyy-MM-dd"),
+                IsLive = false,
+                IsSimulation = e.IsSimulation,
+                IsArchived = e.IsArchived,
+                TrackName = e.TrackName,
+            })
+            .Skip(offset)
+            .Take(take)
+            .ToListAsync();
+        return Ok(archivedEvents);
+    }
 }

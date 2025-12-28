@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.TimingCommon.Models;
+using System.Text.Json;
 
 namespace RedMist.EventOrchestration.Utilities;
 
@@ -97,12 +99,28 @@ public class LapsLogArchive
                     if (!isFirstBatch)
                         await sessionWriter.WriteLineAsync(",");
 
-                    var lapJson = System.Text.Json.JsonSerializer.Serialize(lap);
-                    await sessionWriter.WriteAsync(lapJson);
-                    isFirstBatch = false;
+                    // Deserialize LapData as CarPosition and write it to the file
+                    try
+                    {
+                        var carPosition = JsonSerializer.Deserialize<CarPosition>(lap.LapData);
+                        if (carPosition != null)
+                        {
+                            var carPositionJson = JsonSerializer.Serialize(carPosition);
+                            await sessionWriter.WriteAsync(carPositionJson);
+                            isFirstBatch = false;
 
-                    // Write to car-specific file
-                    await WriteLapToCarFileAsync(eventId, sessionId, lap, carFiles);
+                            // Write to car-specific file
+                            await WriteLapToCarFileAsync(eventId, sessionId, carPosition, carFiles);
+                        }
+                        else
+                        {
+                            Logger.LogWarning("Failed to deserialize LapData for lap {lapId} in event {eventId}, session {sessionId}", lap.Id, eventId, sessionId);
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        Logger.LogError(ex, "Error deserializing LapData for lap {lapId} in event {eventId}, session {sessionId}", lap.Id, eventId, sessionId);
+                    }
                 }
 
                 totalLaps += lapBatch.Count;
@@ -128,9 +146,9 @@ public class LapsLogArchive
         return totalLaps;
     }
 
-    private static async Task WriteLapToCarFileAsync(int eventId, int sessionId, Database.Models.CarLapLog lap, Dictionary<string, CarFileWriters> carFiles)
+    private static async Task WriteLapToCarFileAsync(int eventId, int sessionId, CarPosition carPosition, Dictionary<string, CarFileWriters> carFiles)
     {
-        var carNumber = lap.CarNumber;
+        var carNumber = carPosition.Number;
 
         if (!carFiles.TryGetValue(carNumber, out CarFileWriters? writers))
         {
@@ -152,8 +170,8 @@ public class LapsLogArchive
             await writers.Writer.WriteLineAsync(",");
         }
 
-        var lapJson = System.Text.Json.JsonSerializer.Serialize(lap);
-        await writers.Writer.WriteAsync(lapJson);
+        var carPositionJson = JsonSerializer.Serialize(carPosition);
+        await writers.Writer.WriteAsync(carPositionJson);
     }
 
     private static async Task FinalizeCarFilesAsync(Dictionary<string, CarFileWriters> carFiles)

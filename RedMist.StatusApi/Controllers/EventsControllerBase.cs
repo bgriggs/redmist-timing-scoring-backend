@@ -236,40 +236,6 @@ public abstract class EventsControllerBase : ControllerBase
         return [.. liveEvents, .. recentEvents];
     }
 
-    [HttpGet]
-    [Produces("application/json", "application/x-msgpack")]
-    [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public virtual async Task<ActionResult<List<EventListSummary>>> LoadArchivedEventsAsync(int offset, int take)
-    {
-        Logger.LogTrace(nameof(LoadArchivedEventsAsync));
-        if (take > 100)
-            return BadRequest("Take parameter exceeds maximum of 100");
-
-        using var db = await tsContext.CreateDbContextAsync();
-        var archivedEvents = await (
-            from e in db.Events
-            join o in db.Organizations on e.OrganizationId equals o.Id
-            where !e.IsDeleted && e.IsArchived
-            orderby e.StartDate descending
-            select new EventListSummary
-            {
-                Id = e.Id,
-                OrganizationId = e.OrganizationId,
-                OrganizationName = o.Name,
-                EventName = e.Name,
-                EventDate = e.StartDate.ToString("yyyy-MM-dd"),
-                IsLive = e.IsLive,
-                IsSimulation = e.IsSimulation,
-                IsArchived = e.IsArchived,
-                TrackName = e.TrackName,
-            })
-            .Skip(offset)
-            .Take(take)
-            .ToListAsync();
-        return Ok(archivedEvents);
-    }
-
     /// <summary>
     /// Loads detailed information for a specific event.
     /// </summary>
@@ -350,18 +316,15 @@ public abstract class EventsControllerBase : ControllerBase
         Logger.LogTrace("{m} for event {eventId}", nameof(LoadCarLaps), eventId);
         using var context = tsContext.CreateDbContext();
 
-        var lapsData = await (
-            from lap in context.CarLapLogs
-            where lap.EventId == eventId
+        // Get the latest lap data for each unique lap ID
+        var lapsData = await context.CarLapLogs
+            .Where(lap => lap.EventId == eventId
                 && lap.SessionId == sessionId
                 && lap.CarNumber == carNumber
-                && lap.LapNumber > 0
-            group lap by lap.Id into g
-            let maxTimestamp = g.Max(x => x.Timestamp)
-            select g.FirstOrDefault(x => x.Timestamp == maxTimestamp) != null
-                ? g.FirstOrDefault(x => x.Timestamp == maxTimestamp)!.LapData
-                : null
-        ).ToListAsync();
+                && lap.LapNumber > 0)
+            .GroupBy(lap => lap.Id)
+            .Select(g => g.OrderByDescending(x => x.Timestamp).First().LapData)
+            .ToListAsync();
 
         var carPositions = new List<CarPosition>(lapsData.Count);
         foreach (var lapData in lapsData)

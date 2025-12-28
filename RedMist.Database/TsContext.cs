@@ -115,7 +115,9 @@ public class TsContext : DbContext
             v => JsonSerializer.Deserialize<SessionState>(v, (JsonSerializerOptions?)null) ?? new SessionState());
         var controlLogConverter = new ValueConverter<List<ControlLogEntry>, string>(
             v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-            v => JsonSerializer.Deserialize<List<ControlLogEntry>>(v, (JsonSerializerOptions?)null) ?? new List<ControlLogEntry>());
+            v => string.IsNullOrWhiteSpace(v) || v == "{}" 
+                ? new List<ControlLogEntry>() 
+                : JsonSerializer.Deserialize<List<ControlLogEntry>>(v, (JsonSerializerOptions?)null) ?? new List<ControlLogEntry>());
 
         var payloadProperty = modelBuilder.Entity<SessionResult>().Property(o => o.Payload);
         payloadProperty.HasConversion(payloadConverter!);
