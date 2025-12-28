@@ -10,13 +10,14 @@
             //"RedMist.Backend.Shared/**/*.csproj",
             //"RedMist.Database/**/*.csproj",
             //"RedMist.ControlLogs/**/*.csproj",
-            "external/RedMist.TimingCommon/**/*.csproj"
+            "external/RedMist.TimingCommon/RedMist.TimingCommon/*.csproj"
           ],
           "exclude": [
             "**/bin/**",
             "**/obj/**",
             "**/wwwroot/**",
-            "**/*.Tests/**"
+            "**/*.Tests/**",
+            "**/RedMist.PatchGenerator/**"
           ]
         }
       ],

@@ -41,9 +41,12 @@ jobs:
     
     - name: Setup Pages
       uses: actions/configure-pages@v4
-    
+
     - name: Install DocFX
       run: dotnet tool install -g docfx
+
+    - name: Build RedMist.TimingCommon
+      run: dotnet build external/RedMist.TimingCommon/RedMist.TimingCommon/RedMist.TimingCommon.csproj --configuration Release
 
     - name: Build Solution
       run: dotnet build --configuration Release --no-incremental
