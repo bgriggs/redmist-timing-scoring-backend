@@ -1,4 +1,5 @@
 ﻿using BigMission.Shared.Utilities;
+using MessagePack;
 using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared;
 using RedMist.Database;
@@ -94,12 +95,10 @@ public class SessionMonitor : BackgroundService
             if (last != null)
             {
                 var pc = SessionStateMapper.ToPatch(sessionContext.SessionState);
-                pc.CarPositions = null; // Don't need to keep car positions
                 CheckForFinished(last, SessionStateMapper.PatchToEntity(pc));
             }
 
             var pl = SessionStateMapper.ToPatch(sessionContext.SessionState);
-            pl.CarPositions = null; // Don't need to keep car positions
             last = SessionStateMapper.PatchToEntity(pl);
         }
     }
@@ -149,6 +148,99 @@ public class SessionMonitor : BackgroundService
         }
     }
 
+
+    protected virtual async Task SetSessionAsLiveAsync(int eventId, int sessionId)
+    {
+        using var db = tsContext.CreateDbContext();
+
+        // Set all sessions as not live for this event
+        var sessionsToUpdate = await db.Sessions.Where(s => s.EventId == eventId).ToListAsync();
+        foreach (var session in sessionsToUpdate)
+        {
+            session.IsLive = false;
+        }
+
+        // Set the specific session as live
+        var targetSession = sessionsToUpdate.FirstOrDefault(s => s.Id == sessionId);
+        targetSession?.IsLive = true;
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Looks at the last and current status to for flag status changes and subsequent car finishing or event status stopping.
+    /// </summary>
+    public void CheckForFinished(SessionState last, SessionState current)
+    {
+        // See if the event is in the process of finishing, i.e. last lap during checkered flag
+        if (finishingStartedTimestamp is not null)
+        {
+            var eventTime = PositionMetadataProcessor.ParseRMTime(current.LocalTimeOfDay);
+            var changes = GetCarCheckeredLapChangedCount(current.CarPositions);
+            //Trace.WriteLine($"Session {SessionId} finishing in progress: {changes} cars completed checkered lap (last change count {lastCheckeredChangedCount})");
+
+            // As cars continue to complete their final lap, update the checkered lap count/timestamp
+            if (lastCheckeredChangedCount != changes)
+            {
+                lastCheckeredChangedCount = changes;
+                lastCheckeredChangedCountTimestamp = eventTime;
+            }
+            // Check for finishing conditions: 60 seconds have passed since the last car's checkered lap change
+            else if (lastCheckeredChangedCountTimestamp is not null &&
+                eventTime - lastCheckeredChangedCountTimestamp > TimeSpan.FromSeconds(60))
+            {
+                Logger.LogInformation("Session {sessionId} finishing completed 60 seconds interval", SessionId);
+                FinalizeSession();
+            }
+            // When event time stops changing, finalize the session
+            else if (finishingEventLastTimestamp is not null && finishingEventLastTimestamp == eventTime)
+            {
+                Logger.LogInformation("Session {sessionId} finishing completed with event time stop", SessionId);
+                FinalizeSession();
+            }
+
+            finishingEventLastTimestamp = eventTime;
+        }
+        // See if event status changed from active to finished
+        else if (activeSessionFlags.Contains(last.CurrentFlag) &&
+            finishedSessionFlags.Contains(current.CurrentFlag))
+        {
+            Logger.LogInformation("Session {sessionId} finishing started", SessionId);
+
+            foreach (var carPosition in current.CarPositions)
+            {
+                if (carPosition.Number != null)
+                {
+                    // Make deep copy of car so that we can track changes
+                    var mp = MessagePackSerializer.Serialize(carPosition);
+                    var copy = MessagePackSerializer.Deserialize<CarPosition>(mp);
+                    checkeredCarPositionsLookup[carPosition.Number] = copy;
+                }
+            }
+
+            finishingStartedTimestamp = PositionMetadataProcessor.ParseRMTime(current.LocalTimeOfDay);
+        }
+    }
+
+    /// <summary>
+    /// Get number of cars that finished checkered lap since the checkered flag was thrown.
+    /// </summary>
+    private int GetCarCheckeredLapChangedCount(List<CarPosition> currentPositions)
+    {
+        int changes = 0;
+        foreach (var carPosition in currentPositions)
+        {
+            if (carPosition.Number != null &&
+                checkeredCarPositionsLookup.TryGetValue(carPosition.Number, out var checkeredPos) &&
+                carPosition.LastLapCompleted != checkeredPos.LastLapCompleted)
+            {
+                changes++;
+            }
+        }
+
+        return changes;
+    }
+
     protected virtual void FinalizeSession()
     {
         Logger.LogInformation("Finalizing session {sessionId}...", SessionId);
@@ -182,8 +274,33 @@ public class SessionMonitor : BackgroundService
                 var existingResult = db.SessionResults.FirstOrDefault(r => r.EventId == eventId && r.SessionId == SessionId);
                 if (existingResult != null)
                 {
-                    existingResult.SessionState = sessionState;
-                    existingResult.ControlLogs = controlLogs;
+                    Logger.LogWarning("Session was already finalized for session {sessionId}. Checking for inconsistencies...", SessionId);
+
+                    // We do not want to overwrite existing data with empty data. Check to see if there is more data to save on
+                    // the latest dataset. This should typically allow for replacing partial session states with more complete ones,
+                    // However it is possible that the finishing car positions are not as accurate if there are additional laps in the
+                    // newer data. This is a trade-off best effort to ensure we do not lose data.
+                    if (sessionState.EventEntries.Count >= existingResult.SessionState?.EventEntries.Count
+                        && sessionState.CarPositions.Count >= existingResult.SessionState?.CarPositions.Count
+                        && sessionState.FlagDurations.Count >= existingResult.SessionState?.FlagDurations.Count)
+                    {
+                        Logger.LogInformation("Updating session state for session {sessionId} with more data", SessionId);
+                        existingResult.SessionState = sessionState;
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Saved session state has more data than current for session {sessionId}. Not updating session state.", SessionId);
+                    }
+
+                    if (controlLogs.Count > existingResult.ControlLogs.Count)
+                    {
+                        Logger.LogInformation("Updating control logs for session {sessionId} with more entries", SessionId);
+                        existingResult.ControlLogs = controlLogs;
+                    }
+                    else
+                    {
+                        Logger.LogInformation("Saved control logs have more entries than current for session {sessionId}. Not updating control logs.", SessionId);
+                    }
                 }
                 else
                 {
@@ -209,105 +326,18 @@ public class SessionMonitor : BackgroundService
         }
     }
 
-    protected virtual async Task SetSessionAsLiveAsync(int eventId, int sessionId)
+    protected void FireFinalizedSession()
     {
-        using var db = tsContext.CreateDbContext();
+        FinalizedSession?.Invoke();
 
-        // Set all sessions as not live for this event
-        var sessionsToUpdate = await db.Sessions.Where(s => s.EventId == eventId).ToListAsync();
-        foreach (var session in sessionsToUpdate)
+        // Handle session finalization callback
+        if (lastSession != null)
         {
-            session.IsLive = false;
-        }
-
-        // Set the specific session as live
-        var targetSession = sessionsToUpdate.FirstOrDefault(s => s.Id == sessionId);
-        targetSession?.IsLive = true;
-
-        await db.SaveChangesAsync();
-    }
-
-    /// <summary>
-    /// Looks at the last and current status to for flag status changes and subsequent car finishing or event status stopping.
-    /// </summary>
-    public void CheckForFinished(SessionState last, SessionState current)
-    {
-        // See if the event is in the process of finishing, i.e. last lap during checkered flag
-        if (finishingStartedTimestamp is not null)
-        {
-            var eventTime = PositionMetadataProcessor.ParseRMTime(current.LocalTimeOfDay);
-            var changes = GetCarCheckeredLapChangedCount(current.CarPositions);
-
-            // As cars continue to complete their final lap, update the checkered lap count/timestamp
-            if (lastCheckeredChangedCount != changes)
+            _ = Task.Run(async () =>
             {
-                lastCheckeredChangedCount = changes;
-                lastCheckeredChangedCountTimestamp = eventTime;
-            }
-            // Check for finishing conditions: 60 seconds have passed since the last car's checkered lap change
-            else if (lastCheckeredChangedCountTimestamp is not null &&
-                eventTime - lastCheckeredChangedCountTimestamp > TimeSpan.FromSeconds(60))
-            {
-                Logger.LogInformation("Session {sessionId} finishing completed 60 seconds interval", SessionId);
-                FinalizeSession();
-            }
-            // When event time stops changing, finalize the session
-            else if (finishingEventLastTimestamp is not null && finishingEventLastTimestamp == eventTime)
-            {
-                Logger.LogInformation("Session {sessionId} finishing completed with event time stop", SessionId);
-                FinalizeSession();
-            }
-
-            finishingEventLastTimestamp = eventTime;
-        }
-        // See if event status changed from active to finished
-        else if (activeSessionFlags.Contains(last.CurrentFlag) &&
-            finishedSessionFlags.Contains(current.CurrentFlag))
-        {
-            Logger.LogInformation("Session {sessionId} finishing started", SessionId);
-            foreach (var carPosition in current.CarPositions)
-            {
-                if (carPosition.Number != null)
-                {
-                    checkeredCarPositionsLookup[carPosition.Number] = carPosition;
-                }
-            }
-
-            finishingStartedTimestamp = PositionMetadataProcessor.ParseRMTime(current.LocalTimeOfDay);
+                await sessionContext.NewSession(lastSession.Id, lastSession.Name);
+                sessionContext.SetSessionClassMetadata();
+            });
         }
     }
-
-    /// <summary>
-    /// Get number of cars that finished checkered lap since the checkered flag was thrown.
-    /// </summary>
-    private int GetCarCheckeredLapChangedCount(List<CarPosition> currentPositions)
-    {
-        int changes = 0;
-        foreach (var carPosition in currentPositions)
-        {
-            if (carPosition.Number != null &&
-                checkeredCarPositionsLookup.TryGetValue(carPosition.Number, out var checkeredPos) &&
-                carPosition.LastLapCompleted != checkeredPos.LastLapCompleted)
-            {
-                changes++;
-            }
-        }
-
-        return changes;
-    }
-
-        protected void FireFinalizedSession()
-        {
-            FinalizedSession?.Invoke();
-
-            // Handle session finalization callback
-            if (lastSession != null)
-            {
-                _ = Task.Run(async () =>
-                {
-                    await sessionContext.NewSession(lastSession.Id, lastSession.Name);
-                    sessionContext.SetSessionClassMetadata();
-                });
-            }
-        }
-    }
+}

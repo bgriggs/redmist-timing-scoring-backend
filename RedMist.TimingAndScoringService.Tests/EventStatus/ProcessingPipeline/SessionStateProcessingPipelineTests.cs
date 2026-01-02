@@ -444,7 +444,8 @@ public class SessionStateProcessingPipelineTests
         }
 
         // Assert
-        Assert.AreEqual(11, finishedCount); // There are 11 session changes in the test data
+        // There are 11 direct session changes in the test data. However, there are 4 sessions being completed with Checkered/Finish flag logic.
+        Assert.AreEqual(15, finishedCount); 
     }
 
 
@@ -754,8 +755,7 @@ public class SessionStateProcessingPipelineTests
                         {
                             // Find the class car ahead to verify they're on the same lap
                             var classCarAhead = _sessionContext.SessionState.CarPositions
-                                .Where(c => c.Class == car.Class && c.ClassPosition == car.ClassPosition - 1)
-                                .FirstOrDefault();
+                                .FirstOrDefault(c => c.Class == car.Class && c.ClassPosition == car.ClassPosition - 1);
                             if (classCarAhead != null && classCarAhead.LastLapCompleted == car.LastLapCompleted)
                             {
                                 issuesFound.Add($"Car {car.Number} (ClassPos {car.ClassPosition}) has in-class gap of {car.InClassGap} to car {classCarAhead.Number} (ClassPos {classCarAhead.ClassPosition}) (both on lap {car.LastLapCompleted}) at RaceTime={_sessionContext.SessionState.RunningRaceTime}");
@@ -771,8 +771,7 @@ public class SessionStateProcessingPipelineTests
                         {
                             // Find the class leader to verify they're on the same lap
                             var classLeader = _sessionContext.SessionState.CarPositions
-                                .Where(c => c.Class == car.Class && c.ClassPosition == 1)
-                                .FirstOrDefault();
+                                .FirstOrDefault(c => c.Class == car.Class && c.ClassPosition == 1);
                             if (classLeader != null && classLeader.LastLapCompleted == car.LastLapCompleted)
                             {
                                 issuesFound.Add($"Car {car.Number} (ClassPos {car.ClassPosition}) has in-class diff of {car.InClassDifference} to class leader {classLeader.Number} (both on lap {car.LastLapCompleted}) at RaceTime={_sessionContext.SessionState.RunningRaceTime}");
@@ -793,6 +792,54 @@ public class SessionStateProcessingPipelineTests
             Assert.Fail($"Found {issuesFound.Count} gap/diff issues exceeding 5 minutes on same lap:{Environment.NewLine}{issueReport}");
         }
     }
+
+    [TestMethod]
+    public async Task SessionFinialization_EndOfEvent_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "TestEventEndSessionFinialization.txt");
+        await entriesData.LoadAsync();
+
+        // Act
+        var s = new Session { EventId = 104, Id = 70, Name = "The Sebring 14hr Enduro" };
+        var sJson = JsonSerializer.Serialize(s);
+        var sessionChangeTm = new TimingMessage(Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE, sJson, s.Id, DateTime.Now);
+        await _pipeline.PostAsync(sessionChangeTm);
+
+        bool finalizedCalled = false;
+        _sessionMonitor.FinalizedSession += () => finalizedCalled = true;
+
+        int count = 0;
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                count++;
+
+                // Advance time to simulate passage between records
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+
+                if (count % 5 == 0) // Run session monitor periodically similar to task wait 5 seconds
+                {
+                    await _sessionMonitor.RunCheckForFinished(_sessionContext.CancellationToken);
+                }
+            }
+            else if (d.data.Trim().StartsWith("$G"))
+            {
+                var parts = d.data.Split(",");
+                if (parts[2] == "\"74\"" && parts[3] == "241")
+                {
+                }
+            }
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            await _pipeline.PostAsync(tm);
+        }
+
+        // Assert
+        Assert.IsTrue(finalizedCalled, "FinalizedSession event should have been called at end of event.");
+    }
+
 
     /// <summary>
     /// Parse time strings in various formats (m:ss.fff, mm:ss.fff, HH:mm:ss.fff, s.fff)
