@@ -30,8 +30,7 @@ public class Program
 
         builder.Services.AddHealthChecks()
             .AddRedis(redisConn, tags: ["cache", "redis"])
-            .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 400, name: "Process Allocated Memory", tags: ["memory"]);
+            .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"]);
 
         builder.Services.AddSingleton<EventsChecker>();
         builder.Services.AddTransient<IArchiveStorage, BunnyArchiveStorage>();

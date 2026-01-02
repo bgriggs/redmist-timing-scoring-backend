@@ -1,6 +1,7 @@
 ﻿using k8s;
 using k8s.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
@@ -147,6 +148,19 @@ public class OrchestrationService : BackgroundService
                     {
                         Logger.LogInformation("Event {eventId} has expired, cleaning up.", expired.EventId);
                         await DisposeEventAsync(expired, client, currentNamespace, currentJobs, stoppingToken);
+                    }
+
+                    // Wait 15 seconds to allow jobs to stop
+                    Logger.LogInformation("Waiting 15 seconds for event processor jobs to shut down");
+                    await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+
+                    // Remove expired redis streams
+                    var cache = cacheMux.GetDatabase();
+                    foreach (var expired in expiredEvents)
+                    {
+                        Logger.LogInformation("Cleanup redis streams for expired event {eventId}", expired.EventId);
+                        var streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, expired.EventId);
+                        await cache.KeyDeleteAsync(streamKey);
                     }
                 }
                 // Check for orphaned jobs

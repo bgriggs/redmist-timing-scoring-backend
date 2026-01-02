@@ -24,8 +24,6 @@ public class EventAggregatorService : BackgroundService
     private readonly SemaphoreSlim streamCheckLock = new(1);
     private readonly SemaphoreSlim subscriptionCheckLock = new(1);
     private readonly SemaphoreSlim payloadSerializationLock = new(1);
-    private string? lastFullStatusData;
-
     private readonly SessionStateProcessingPipeline processingPipeline;
     private readonly SessionContext sessionContext;
     private readonly PitProcessor pitProcessorV2;
