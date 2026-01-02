@@ -50,104 +50,14 @@ public class EventArchiveService : BackgroundService
                 }
 
                 // Run archive process with retry logic
-                var retryCount = 0;
-                var archiveSuccessful = false;
-
-                while (retryCount < maxRetriesPerDay && !archiveSuccessful && !stoppingToken.IsCancellationRequested)
-                {
-                    retryCount++;
-                    Logger.LogInformation("Starting archive process, attempt {retryCount} of {maxRetries}", retryCount, maxRetriesPerDay);
-
-                    var allEventsSuccessful = true;
-                    try
-                    {
-                        var eventsToArchive = await LoadEventsToArchiveAsync();
-                        Logger.LogInformation("Found {count} events to archive.", eventsToArchive.Count);
-
-                        if (eventsToArchive.Count == 0)
-                        {
-                            Logger.LogInformation("No events to archive.");
-                            archiveSuccessful = true;
-                            break;
-                        }
-
-                        foreach (var eventId in eventsToArchive)
-                        {
-                            Logger.LogInformation("Archiving logs for event {eventId}...", eventId);
-                            var eventArchive = new EventLogArchive(loggerFactory, tsContext, archiveStorage);
-                            var eventLogArchived = await eventArchive.ArchiveEventLogsAsync(eventId, stoppingToken);
-                            if (eventLogArchived)
-                            {
-                                // Archive laps for all sessions in this event
-                                Logger.LogInformation("Archiving laps for event {eventId}...", eventId);
-                                var lapsArchived = await ArchiveEventLapsAsync(eventId, stoppingToken);
-                                if (lapsArchived)
-                                {
-                                    await using var dbContext = await tsContext.CreateDbContextAsync(stoppingToken);
-                                    var ev = await dbContext.Events.FirstOrDefaultAsync(e => e.Id == eventId, cancellationToken: stoppingToken);
-                                    if (ev != null)
-                                    {
-                                        ev.IsArchived = true;
-                                        await dbContext.SaveChangesAsync(stoppingToken);
-                                        Logger.LogInformation("Event {eventId} archived successfully.", eventId);
-                                    }
-                                    else
-                                    {
-                                        Logger.LogWarning("Event {eventId} not found in database after archiving logs.", eventId);
-                                        allEventsSuccessful = false;
-                                    }
-                                }
-                                else
-                                {
-                                    Logger.LogWarning("Failed to archive laps for event {eventId}.", eventId);
-                                    allEventsSuccessful = false;
-                                }
-                            }
-                            else
-                            {
-                                Logger.LogWarning("Failed to archive logs for event {eventId}.", eventId);
-                                allEventsSuccessful = false;
-                            }
-                        }
-
-                        archiveSuccessful = allEventsSuccessful;
-
-                        if (archiveSuccessful)
-                        {
-                            Logger.LogInformation("Archive process completed successfully on attempt {retryCount}", retryCount);
-                        }
-                        else
-                        {
-                            Logger.LogWarning("Archive process completed with some failures on attempt {retryCount}", retryCount);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogError(ex, "An error occurred during archive attempt {retryCount} of {maxRetries}", retryCount, maxRetriesPerDay);
-                        archiveSuccessful = false;
-                    }
-
-                    // If not successful and retries remain, wait before retrying
-                    if (!archiveSuccessful && retryCount < maxRetriesPerDay)
-                    {
-                        var retryDelay = TimeSpan.FromMinutes(5);
-                        Logger.LogInformation("Waiting {retryDelay} minutes before retry {nextRetry} of {maxRetries}", 
-                            retryDelay.TotalMinutes, retryCount + 1, maxRetriesPerDay);
-                        await Task.Delay(retryDelay, stoppingToken);
-                    }
-                }
-
-                if (!archiveSuccessful)
-                {
-                    Logger.LogWarning("Archive process failed after {maxRetries} attempts. Will retry tomorrow after midnight.", maxRetriesPerDay);
-                }
+                await RunArchiveProcessWithRetriesAsync(maxRetriesPerDay, stoppingToken);
 
                 // Wait until next midnight Mountain Time
                 var currentTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, mountainTimeZone);
                 var tomorrowMidnight = currentTime.Date.AddDays(1);
                 var delayUntilNextRun = tomorrowMidnight - currentTime;
 
-                Logger.LogInformation("Waiting until next midnight Mountain Time ({tomorrowMidnight}) to run archive process again. Delay: {delay}", 
+                Logger.LogInformation("Waiting until next midnight Mountain Time ({tomorrowMidnight}) to run archive process again. Delay: {delay}",
                     tomorrowMidnight, delayUntilNextRun);
                 await Task.Delay(delayUntilNextRun, stoppingToken);
             }
@@ -157,6 +67,122 @@ public class EventArchiveService : BackgroundService
                 // Wait 1 hour before trying again if there's an unexpected error
                 await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
             }
+        }
+    }
+
+    private async Task RunArchiveProcessWithRetriesAsync(int maxRetriesPerDay, CancellationToken stoppingToken)
+    {
+        var retryCount = 0;
+        var archiveSuccessful = false;
+
+        while (retryCount < maxRetriesPerDay && !archiveSuccessful && !stoppingToken.IsCancellationRequested)
+        {
+            retryCount++;
+            Logger.LogInformation("Starting archive process, attempt {retryCount} of {maxRetries}", retryCount, maxRetriesPerDay);
+
+            var allEventsSuccessful = true;
+            try
+            {
+                var eventsToArchive = await LoadEventsToArchiveAsync();
+                Logger.LogInformation("Found {count} events to archive.", eventsToArchive.Count);
+
+                if (eventsToArchive.Count == 0)
+                {
+                    Logger.LogInformation("No events to archive.");
+                    archiveSuccessful = true;
+                    break;
+                }
+
+                foreach (var eventId in eventsToArchive)
+                {
+                    var eventArchived = await ArchiveSingleEventAsync(eventId, stoppingToken);
+                    if (!eventArchived)
+                    {
+                        allEventsSuccessful = false;
+                    }
+                }
+
+                archiveSuccessful = allEventsSuccessful;
+
+                if (archiveSuccessful)
+                {
+                    Logger.LogInformation("Archive process completed successfully on attempt {retryCount}", retryCount);
+                }
+                else
+                {
+                    Logger.LogWarning("Archive process completed with some failures on attempt {retryCount}", retryCount);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "An error occurred during archive attempt {retryCount} of {maxRetries}", retryCount, maxRetriesPerDay);
+                archiveSuccessful = false;
+            }
+
+            // If not successful and retries remain, wait before retrying
+            if (!archiveSuccessful && retryCount < maxRetriesPerDay)
+            {
+                var retryDelay = TimeSpan.FromMinutes(5);
+                Logger.LogInformation("Waiting {retryDelay} minutes before retry {nextRetry} of {maxRetries}",
+                    retryDelay.TotalMinutes, retryCount + 1, maxRetriesPerDay);
+                await Task.Delay(retryDelay, stoppingToken);
+            }
+        }
+
+        if (!archiveSuccessful)
+        {
+            Logger.LogWarning("Archive process failed after {maxRetries} attempts. Will retry tomorrow after midnight.", maxRetriesPerDay);
+        }
+    }
+
+    private async Task<bool> ArchiveSingleEventAsync(int eventId, CancellationToken stoppingToken)
+    {
+        Logger.LogInformation("Archiving logs for event {eventId}...", eventId);
+        var eventArchive = new EventLogArchive(loggerFactory, tsContext, archiveStorage);
+        var eventLogArchived = await eventArchive.ArchiveEventLogsAsync(eventId, stoppingToken);
+
+        if (!eventLogArchived)
+        {
+            Logger.LogWarning("Failed to archive logs for event {eventId}.", eventId);
+            return false;
+        }
+
+        // Archive laps for all sessions in this event
+        Logger.LogInformation("Archiving laps for event {eventId}...", eventId);
+        var lapsArchived = await ArchiveEventLapsAsync(eventId, stoppingToken);
+
+        if (!lapsArchived)
+        {
+            Logger.LogWarning("Failed to archive laps for event {eventId}.", eventId);
+            return false;
+        }
+
+        // Mark event as archived
+        await using var dbContext = await tsContext.CreateDbContextAsync(stoppingToken);
+        var ev = await dbContext.Events.FirstOrDefaultAsync(e => e.Id == eventId, cancellationToken: stoppingToken);
+
+        if (ev != null)
+        {
+            ev.IsArchived = true;
+            await dbContext.SaveChangesAsync(stoppingToken);
+            Logger.LogInformation("Event {eventId} archived successfully.", eventId);
+
+            // Cleanup CarLastLaps for this event
+            Logger.LogInformation("Cleaning up CarLastLaps for event {eventId}...", eventId);
+            var lastLapsCleanedUp = await CleanupCarLastLapsAsync(eventId, stoppingToken);
+
+            if (!lastLapsCleanedUp)
+            {
+                Logger.LogWarning("Failed to cleanup CarLastLaps for event {eventId}.", eventId);
+                return false;
+            }
+
+            return true;
+        }
+        else
+        {
+            Logger.LogWarning("Event {eventId} not found in database after archiving logs.", eventId);
+            return false;
         }
     }
 
@@ -210,6 +236,26 @@ public class EventArchiveService : BackgroundService
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error archiving laps for event {eventId}", eventId);
+            return false;
+        }
+    }
+
+    private async Task<bool> CleanupCarLastLapsAsync(int eventId, CancellationToken stoppingToken)
+    {
+        try
+        {
+            await using var dbContext = await tsContext.CreateDbContextAsync(stoppingToken);
+
+            var deletedCount = await dbContext.CarLastLaps
+                .Where(l => l.EventId == eventId)
+                .ExecuteDeleteAsync(stoppingToken);
+
+            Logger.LogInformation("Deleted {deletedCount} CarLastLaps records for event {eventId}", deletedCount, eventId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cleaning up CarLastLaps for event {eventId}", eventId);
             return false;
         }
     }
