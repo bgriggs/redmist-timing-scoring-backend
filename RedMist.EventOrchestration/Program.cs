@@ -37,6 +37,7 @@ public class Program
         builder.Services.AddTransient<IArchiveStorage, BunnyArchiveStorage>();
         builder.Services.AddHostedService<EventArchiveService>();
         builder.Services.AddHostedService<OrchestrationService>();
+        builder.Services.AddHostedService<RelayLogCleanupService>();
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();

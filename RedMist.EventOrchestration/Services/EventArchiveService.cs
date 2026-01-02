@@ -26,7 +26,7 @@ public class EventArchiveService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         const int maxRetriesPerDay = 3;
-        var mountainTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Mountain Standard Time");
+        var mountainTimeZone = TimeZoneHelper.GetMountainTimeZone();
 
         while (!stoppingToken.IsCancellationRequested)
         {
