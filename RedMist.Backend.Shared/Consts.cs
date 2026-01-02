@@ -6,8 +6,6 @@ public class Consts
     public const string STATUS_CHANNEL_PREFIX = "event-status";
     public const string EVENT_STATUS_STREAM_KEY = "evt-st-{0}";
     public const string EVENT_PROCESSOR_LOGGING_STREAM_KEY = "evt-proc-log-{0}";
-    //public const string SEND_FULL_STATUS = "fullstatus";
-    //public const string SEND_COMPETITOR_METADATA = "competitor-metadata";
     public const string RELAY_EVENT_CONNECTIONS = "relay-evt-conns";
     public const string STATUS_EVENT_CONNECTIONS = "st-evt-{0}-conns";
     public const string STATUS_CONNECTIONS = "st-conns";
@@ -32,6 +30,7 @@ public class Consts
     public const string IN_CAR_DATA = "in-car-data-{0}-{1}";
     public const string EVENT_CONFIGURATION_CHANGED = "evtconfchanged";
     public const string EVENT_SERVICE_ENDPOINT = "evt-{0}-processor-endpoint";
+    public const string EVENT_SHUTDOWN_SIGNAL = "evt-shutdown-signal";
 
     #region External Metadata
     public const string EVENT_DRIVER_CHANGE_STREAM_FIELD = "drevt-{0}-999999";

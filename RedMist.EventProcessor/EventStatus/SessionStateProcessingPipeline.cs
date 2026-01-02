@@ -233,7 +233,7 @@ public class SessionStateProcessingPipeline
                     }
                     else if (message.Type == Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE)
                     {
-                        await _sessionMonitorMetrics.TrackAsync(() => sessionMonitor.Process(message));
+                        await _sessionMonitorMetrics.TrackAsync(() => sessionMonitor.ProcessAsync(message));
                     }
                     else if (message.Type == Backend.Shared.Consts.DRIVER_EVENT_TYPE)
                     {

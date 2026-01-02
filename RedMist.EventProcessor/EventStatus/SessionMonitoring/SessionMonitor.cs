@@ -48,10 +48,11 @@ public class SessionMonitor : BackgroundService
         this.tsContext = tsContext;
         this.sessionContext = sessionContext;
         this.cacheMux = cacheMux;
+        cacheMux.ConnectionRestored += CacheMux_ConnectionRestoredAsync;
     }
 
 
-    public async Task Process(TimingMessage tm)
+    public async Task ProcessAsync(TimingMessage tm)
     {
         if (tm.Type != Consts.EVENT_SESSION_CHANGED_TYPE)
             return;
@@ -74,12 +75,14 @@ public class SessionMonitor : BackgroundService
             Logger.LogError(ex, "Error setting session class metadata");
         }
 
+        await EnsureEventShutdownSubscriptionAsync();
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-                await RunCheckForFinished(stoppingToken);
+                await RunCheckForFinishedAsync(stoppingToken);
             }
             catch (Exception ex)
             {
@@ -88,7 +91,7 @@ public class SessionMonitor : BackgroundService
         }
     }
 
-    public async Task RunCheckForFinished(CancellationToken stoppingToken)
+    public async Task RunCheckForFinishedAsync(CancellationToken stoppingToken)
     {
         using (await sessionContext.SessionStateLock.AcquireReadLockAsync(stoppingToken))
         {
@@ -103,6 +106,25 @@ public class SessionMonitor : BackgroundService
         }
     }
 
+    private async void CacheMux_ConnectionRestoredAsync(object? sender, ConnectionFailedEventArgs e)
+    {
+        await EnsureEventShutdownSubscriptionAsync();
+    }
+
+    private async Task EnsureEventShutdownSubscriptionAsync()
+    {
+        try
+        {
+            var sub = cacheMux.GetSubscriber();
+            await sub.UnsubscribeAsync(new RedisChannel(Consts.EVENT_SHUTDOWN_SIGNAL, RedisChannel.PatternMode.Literal));
+            var ch = await sub.SubscribeAsync(new RedisChannel(Consts.EVENT_SHUTDOWN_SIGNAL, RedisChannel.PatternMode.Literal));
+            ch.OnMessage(HandleEventShutdown);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error ensuring event shutdown subscription");
+        }
+    }
 
     public async Task ProcessAsync(int sessionId, CancellationToken stoppingToken = default)
     {
@@ -338,6 +360,27 @@ public class SessionMonitor : BackgroundService
                 await sessionContext.NewSession(lastSession.Id, lastSession.Name);
                 sessionContext.SetSessionClassMetadata();
             });
+        }
+    }
+
+    /// <summary>
+    /// Prior to the service being shutdown, ensure any active session is persisted.
+    /// </summary>
+    /// <param name="msg">event IDs being shutdown</param>
+    private void HandleEventShutdown(ChannelMessage msg)
+    {
+        try
+        {
+            var eventIds = JsonSerializer.Deserialize<List<int>>(msg.Message.ToString());
+            if (eventIds?.Contains(eventId) ?? false)
+            {
+                Logger.LogInformation("Received shutdown signal for event {eventId}", eventId);
+                FinalizeSession();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing shutdown signal");
         }
     }
 }

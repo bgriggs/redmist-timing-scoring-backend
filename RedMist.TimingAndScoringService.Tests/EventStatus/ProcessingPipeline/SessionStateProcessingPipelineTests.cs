@@ -439,7 +439,7 @@ public class SessionStateProcessingPipelineTests
             i++;
             if (i % 10 == 0) // Run session monitor periodically similar to task wait 5 seconds
             {
-                await _sessionMonitor.RunCheckForFinished(_sessionContext.CancellationToken);
+                await _sessionMonitor.RunCheckForFinishedAsync(_sessionContext.CancellationToken);
             }
         }
 
@@ -822,7 +822,7 @@ public class SessionStateProcessingPipelineTests
 
                 if (count % 5 == 0) // Run session monitor periodically similar to task wait 5 seconds
                 {
-                    await _sessionMonitor.RunCheckForFinished(_sessionContext.CancellationToken);
+                    await _sessionMonitor.RunCheckForFinishedAsync(_sessionContext.CancellationToken);
                 }
             }
             else if (d.data.Trim().StartsWith("$G"))

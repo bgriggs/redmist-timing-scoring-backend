@@ -1,6 +1,7 @@
 ﻿using k8s;
 using k8s.Models;
 using Microsoft.EntityFrameworkCore;
+using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
@@ -26,7 +27,7 @@ public class OrchestrationService : BackgroundService
     private readonly ContainerDetails loggerContainerDetails;
 
 
-    public OrchestrationService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, 
+    public OrchestrationService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux,
         IDbContextFactory<TsContext> tsContext, EventsChecker eventsChecker)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -37,13 +38,13 @@ public class OrchestrationService : BackgroundService
         // Get the current assembly version for container tags
         var version = GetAssemblyVersion();
         eventProcessorContainerDetails = new(
-            "bigmission/redmist-event-processor", version, "{0}-evt-{1}-event-processor", true, 
+            "bigmission/redmist-event-processor", version, "{0}-evt-{1}-event-processor", true,
             "100m", "200Mi", "350m", "750Mi");
         controlLogContainerDetails = new(
             "bigmission/redmist-control-log", version, "{0}-evt-{1}-control-log", false,
             "60m", "165Mi", "150m", "450Mi");
         loggerContainerDetails = new(
-            "bigmission/redmist-event-logger", version, "{0}-evt-{1}-logger", false, 
+            "bigmission/redmist-event-logger", version, "{0}-evt-{1}-logger", false,
             "55m", "90Mi", "400m", "550Mi");
 
         Logger.LogInformation("OrchestrationService initialized with version {version}", version);
@@ -129,12 +130,25 @@ public class OrchestrationService : BackgroundService
 
                 // Check for expired events
                 var expiredEvents = currentEvents.Where(e => e.Timestamp < DateTime.UtcNow - eventTimeout).ToList();
-                foreach (var expired in expiredEvents)
+                if (expiredEvents.Count > 0)
                 {
-                    Logger.LogInformation("Event {eventId} has expired, cleaning up.", expired.EventId);
-                    await DisposeEventAsync(expired, client, currentNamespace, currentJobs, stoppingToken);
-                }
+                    Logger.LogInformation("Found {expiredCount} expired events", expiredEvents.Count);
 
+                    // Send pre-shutdown notification to event processors to allow graceful shutdown
+                    Logger.LogInformation("Sending pre-shutdown notification for expired events");
+                    await SendPreshutdownNotification([.. expiredEvents.Select(e => e.EventId)]);
+
+                    // Wait 15 seconds to allow any in-flight operations to complete, such as session finalization
+                    Logger.LogInformation("Waiting 15 seconds for event processors to shut down gracefully");
+                    await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+
+                    Logger.LogInformation("Disposing expired events and cleaning up resources...");
+                    foreach (var expired in expiredEvents)
+                    {
+                        Logger.LogInformation("Event {eventId} has expired, cleaning up.", expired.EventId);
+                        await DisposeEventAsync(expired, client, currentNamespace, currentJobs, stoppingToken);
+                    }
+                }
                 // Check for orphaned jobs
                 var eventIds = currentEvents.Select(e => e.EventId).ToArray();
                 var jobsToDelete = currentJobs.Items.Where(job => !eventIds.Any(id => job.Metadata.Name.Contains($"evt-{id}"))).ToList();
@@ -228,13 +242,31 @@ public class OrchestrationService : BackgroundService
     }
 
     /// <summary>
+    /// Sends notification to event processors that the event is shutting down.
+    /// </summary>
+    /// <param name="eventIds">List of event IDs that are shutting down.</param>
+    private async Task SendPreshutdownNotification(List<int> eventIds)
+    {
+        try
+        {
+            var sub = cacheMux.GetSubscriber();
+            var message = JsonSerializer.Serialize(eventIds);
+            await sub.PublishAsync(new RedisChannel(Consts.EVENT_SHUTDOWN_SIGNAL, RedisChannel.PatternMode.Literal), message);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to send pre-shutdown notification for events {eventIds}", string.Join(", ", eventIds));
+        }
+    }
+
+    /// <summary>
     /// Cleans up expired events and their associated jobs.
     /// </summary>
     private async Task DisposeEventAsync(RelayConnectionEventEntry eventEntry, Kubernetes client, string ns, V1JobList jobs, CancellationToken stoppingToken)
     {
         var cache = cacheMux.GetDatabase();
-        var hashKey = new RedisKey(Backend.Shared.Consts.RELAY_EVENT_CONNECTIONS);
-        var entryKey = string.Format(Backend.Shared.Consts.RELAY_HEARTBEAT, eventEntry.EventId);
+        var hashKey = new RedisKey(Consts.RELAY_EVENT_CONNECTIONS);
+        var entryKey = string.Format(Consts.RELAY_HEARTBEAT, eventEntry.EventId);
 
         // Remove the event entry from the cache
         await cache.HashDeleteAsync(hashKey, entryKey);
