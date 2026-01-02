@@ -9,6 +9,7 @@ using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
 using StackExchange.Redis;
 using System.Diagnostics;
+using System.Security.Claims;
 using System.Text.Json;
 using RedMist.TimingCommon.Extensions;
 
@@ -26,6 +27,7 @@ namespace RedMist.StatusApi.Controllers;
 [Authorize]
 public abstract class EventsControllerBase : ControllerBase
 {
+    private const string LIVE_EVENTS_KEY = "live-events";
     protected readonly IDbContextFactory<TsContext> tsContext;
     protected readonly HybridCache hcache;
     protected readonly IConnectionMultiplexer cacheMux;
@@ -73,7 +75,8 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<Event>>(StatusCodes.Status200OK)]
     public virtual async Task<ActionResult<List<Event>>> LoadEvents(DateTime startDateUtc)
     {
-        Logger.LogTrace("{m} for {d}", nameof(LoadEvents), startDateUtc);
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for {d}, clientId {clientId}", nameof(LoadEvents), startDateUtc, clientId);
 
         var duration = DateTime.UtcNow - startDateUtc;
         if (duration > TimeSpan.FromDays(30))
@@ -147,10 +150,10 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
     public virtual async Task<List<EventListSummary>> LoadLiveEvents()
     {
-        Logger.LogTrace(nameof(LoadLiveEvents));
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{method} for clientId {clientId}", nameof(LoadLiveEvents), clientId);
 
-        var cacheKey = "live-events";
-        return await hcache.GetOrCreateAsync(cacheKey,
+        return await hcache.GetOrCreateAsync(LIVE_EVENTS_KEY,
             async cancel => await LoadLiveEventsFromDbAsync(),
             liveEventsCacheOptions);
     }
@@ -175,8 +178,8 @@ public abstract class EventsControllerBase : ControllerBase
                    OrganizationName = o.Name,
                    EventName = e.Name,
                    EventDate = e.StartDate,
-                   TrackName = e.TrackName,
-                   Schedule = e.Schedule,
+                   e.TrackName,
+                   e.Schedule,
                } into g
                select new EventListSummary
                {
@@ -210,7 +213,8 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
     public virtual async Task<List<EventListSummary>> LoadLiveAndRecentEvents()
     {
-        Logger.LogTrace(nameof(LoadLiveAndRecentEvents));
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{method} for clientId {clientId}", nameof(LoadLiveAndRecentEvents), clientId);
 
         using var db1 = await tsContext.CreateDbContextAsync();
         var recentEvents = await (
@@ -249,7 +253,8 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public virtual async Task<ActionResult<Event>> LoadEvent(int eventId)
     {
-        Logger.LogTrace("{m} for {id}", nameof(LoadEvent), eventId);
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for {id}, clientId {clientId}", nameof(LoadEvent), eventId, clientId);
 
         using var context = await tsContext.CreateDbContextAsync();
         var result = await (
@@ -313,8 +318,9 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<CarPosition>>(StatusCodes.Status200OK)]
     public virtual async Task<List<CarPosition>> LoadCarLaps(int eventId, int sessionId, string carNumber)
     {
-        Logger.LogTrace("{m} for event {eventId}", nameof(LoadCarLaps), eventId);
-        using var context = tsContext.CreateDbContext();
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for event {eventId}, clientId {clientId}", nameof(LoadCarLaps), eventId, clientId);
+        using var context = await tsContext.CreateDbContextAsync();
 
         // Get the latest lap data for each unique lap ID
         var lapsData = await context.CarLapLogs
@@ -362,7 +368,8 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<Session>>(StatusCodes.Status200OK)]
     public virtual async Task<List<Session>> LoadSessions(int eventId)
     {
-        Logger.LogTrace("{m} for event {eventId}", nameof(LoadSessions), eventId);
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for event {eventId}, clientId {clientId}", nameof(LoadSessions), eventId, clientId);
         using var context = await tsContext.CreateDbContextAsync();
         return await context.Sessions.Where(s => s.EventId == eventId).ToListAsync();
     }
@@ -470,8 +477,10 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType(StatusCodes.Status408RequestTimeout)]
     public virtual async Task<IActionResult> GetCurrentSessionStateJson(int eventId)
     {
-        var result = await GetCurrentSessionState(eventId);
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for event {eventId}, clientId {clientId}", nameof(GetCurrentSessionStateJson), eventId, clientId);
 
+        var result = await GetCurrentSessionState(eventId);
         if (result is FileStreamResult fileResult)
         {
             try
@@ -515,8 +524,10 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public virtual async Task<IActionResult> GetCurrentLegacySessionPayload(int eventId)
     {
-        var result = await GetCurrentSessionState(eventId);
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for event {eventId}, clientId {clientId}", nameof(GetCurrentLegacySessionPayload), eventId, clientId);
 
+        var result = await GetCurrentSessionState(eventId);
         if (result is FileStreamResult fileResult)
         {
             try
@@ -561,7 +572,8 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<CompetitorMetadata>(StatusCodes.Status200OK)]
     public virtual async Task<CompetitorMetadata?> LoadCompetitorMetadata(int eventId, string car)
     {
-        Logger.LogTrace("{m} for event {eventId}, car {car}", nameof(LoadCompetitorMetadata), eventId, car);
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for event {eventId}, car {car}, clientId {clientId}", nameof(LoadCompetitorMetadata), eventId, car, clientId);
         return await GetCompetitorMetadata(eventId, car);
     }
 
@@ -609,7 +621,9 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<ControlLogEntry>>(StatusCodes.Status200OK)]
     public virtual async Task<List<ControlLogEntry>> LoadControlLog(int eventId)
     {
-        Logger.LogTrace("{m} for event {eventId}", nameof(LoadControlLog), eventId);
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for event {eventId}, clientId {clientId}", nameof(LoadControlLog), eventId, clientId);
+
         var logCacheKey = string.Format(Consts.CONTROL_LOG, eventId);
         var cache = cacheMux.GetDatabase();
         var json = await cache.StringGetAsync(logCacheKey);
@@ -637,7 +651,9 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<CarControlLogs>(StatusCodes.Status200OK)]
     public virtual async Task<CarControlLogs?> LoadCarControlLogs(int eventId, string car)
     {
-        Logger.LogTrace("{m} for event {eventId} car {c}", nameof(LoadCarControlLogs), eventId, car);
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for event {eventId} car {c}, clientId {clientId}", nameof(LoadCarControlLogs), eventId, car, clientId);
+
         var carLogEntryKey = string.Format(Consts.CONTROL_LOG_CAR, eventId, car);
         var cache = cacheMux.GetDatabase();
         var json = await cache.StringGetAsync(carLogEntryKey);
@@ -669,7 +685,8 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<InCarPayload>(StatusCodes.Status200OK)]
     public virtual async Task<InCarPayload?> LoadInCarPayload(int eventId, string car)
     {
-        Logger.LogTrace("{m} for event {eventId}, car {car}", nameof(LoadInCarPayload), eventId, car);
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for event {eventId}, car {car}, clientId {clientId}", nameof(LoadInCarPayload), eventId, car, clientId);
         var cache = cacheMux.GetDatabase();
         var cacheKey = string.Format(Consts.IN_CAR_DATA, eventId, car);
         var json = await cache.StringGetAsync(cacheKey);
@@ -700,7 +717,8 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<FlagDuration>>(StatusCodes.Status200OK)]
     public virtual async Task<List<FlagDuration>> LoadFlags(int eventId, int sessionId)
     {
-        Logger.LogTrace("{m} for event {eventId}, session {sessionId}", nameof(LoadFlags), eventId, sessionId);
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for event {eventId}, session {sessionId}, clientId {clientId}", nameof(LoadFlags), eventId, sessionId, clientId);
         using var context = await tsContext.CreateDbContextAsync();
 
         return await context.FlagLog
