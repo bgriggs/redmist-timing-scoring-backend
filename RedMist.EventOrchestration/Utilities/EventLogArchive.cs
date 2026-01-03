@@ -8,14 +8,16 @@ public class EventLogArchive
 {
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly IArchiveStorage archiveStorage;
+    private readonly PurgeUtilities purgeUtilities;
     private ILogger Logger { get; }
 
 
-    public EventLogArchive(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IArchiveStorage archiveStorage)
+    public EventLogArchive(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IArchiveStorage archiveStorage, PurgeUtilities purgeUtilities)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.archiveStorage = archiveStorage;
+        this.purgeUtilities = purgeUtilities;
     }
 
 
@@ -48,7 +50,7 @@ public class EventLogArchive
             if (!uploadSuccess)
                 return false;
 
-            await DeleteLogsFromDatabaseAsync(eventId, totalLogs, cancellationToken);
+            await purgeUtilities.DeleteEventStatusLogsFromDatabaseAsync(eventId, totalLogs, cancellationToken);
 
             Logger.LogInformation("Successfully archived and deleted {count} logs for event {eventId}", totalLogs, eventId);
             return true;
@@ -221,29 +223,6 @@ public class EventLogArchive
         }
 
         return true;
-    }
-
-    private async Task DeleteLogsFromDatabaseAsync(int eventId, long totalLogs, CancellationToken cancellationToken)
-    {
-        Logger.LogInformation("Deleting {count} logs from database for event {eventId}", totalLogs, eventId);
-        await using var dbContext = await tsContext.CreateDbContextAsync(cancellationToken);
-
-        // ExecuteDeleteAsync is not supported by InMemory database, so we need to handle both approaches
-        try
-        {
-            await dbContext.EventStatusLogs
-                .Where(e => e.EventId == eventId)
-                .ExecuteDeleteAsync(cancellationToken);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("ExecuteDelete"))
-        {
-            // Fallback for InMemory database
-            var logsToDelete = await dbContext.EventStatusLogs
-                .Where(e => e.EventId == eventId)
-                .ToListAsync(cancellationToken);
-            dbContext.EventStatusLogs.RemoveRange(logsToDelete);
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
     }
 
     private async Task CleanupSessionFilesAsync(Dictionary<int, SessionFileWriters> sessionFiles)

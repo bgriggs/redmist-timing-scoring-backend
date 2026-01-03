@@ -53,14 +53,15 @@ public class LapsLogArchiveTests
         optionsBuilder.UseInMemoryDatabase(_testDatabaseName);
         _dbContextFactory = new TestDbContextFactory(optionsBuilder.Options);
 
-        _mockArchiveStorage = new Mock<IArchiveStorage>();
-        _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<int>()))
-            .ReturnsAsync(true);
-        _mockArchiveStorage.Setup(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>()))
-            .ReturnsAsync(true);
+            _mockArchiveStorage = new Mock<IArchiveStorage>();
+            _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<int>()))
+                .ReturnsAsync(true);
+            _mockArchiveStorage.Setup(x => x.UploadSessionCarLapsAsync(It.IsAny<Stream>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
 
-        _archive = new LapsLogArchive(_mockLoggerFactory.Object, _dbContextFactory, _mockArchiveStorage.Object);
-    }
+            var purgeUtilities = new PurgeUtilities(_mockLoggerFactory.Object, _dbContextFactory);
+            _archive = new LapsLogArchive(_mockLoggerFactory.Object, _dbContextFactory, _mockArchiveStorage.Object, purgeUtilities);
+        }
 
     [TestCleanup]
     public void Cleanup()

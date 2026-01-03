@@ -10,14 +10,17 @@ public class LapsLogArchive
 {
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly IArchiveStorage archiveStorage;
+    private readonly PurgeUtilities purgeUtilities;
+
     private ILogger Logger { get; }
 
 
-    public LapsLogArchive(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IArchiveStorage archiveStorage)
+    public LapsLogArchive(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IArchiveStorage archiveStorage, PurgeUtilities purgeUtilities)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.archiveStorage = archiveStorage;
+        this.purgeUtilities = purgeUtilities;
     }
 
 
@@ -50,7 +53,7 @@ public class LapsLogArchive
             if (!uploadSuccess)
                 return false;
 
-            await DeleteLapsFromDatabaseAsync(eventId, sessionId, totalLaps, cancellationToken);
+            await purgeUtilities.DeleteLapsFromDatabaseAsync(eventId, sessionId, totalLaps, cancellationToken);
 
             Logger.LogInformation("Successfully archived and deleted {count} laps for event {eventId}, session {sessionId}", totalLaps, eventId, sessionId);
             return true;
@@ -148,7 +151,7 @@ public class LapsLogArchive
 
     private static async Task WriteLapToCarFileAsync(int eventId, int sessionId, CarPosition carPosition, Dictionary<string, CarFileWriters> carFiles)
     {
-        var carNumber = carPosition.Number;
+        var carNumber = carPosition.Number ?? string.Empty;
 
         if (!carFiles.TryGetValue(carNumber, out CarFileWriters? writers))
         {
@@ -239,29 +242,6 @@ public class LapsLogArchive
         }
 
         return true;
-    }
-
-    private async Task DeleteLapsFromDatabaseAsync(int eventId, int sessionId, long totalLaps, CancellationToken cancellationToken)
-    {
-        Logger.LogInformation("Deleting {count} laps from database for event {eventId}, session {sessionId}", totalLaps, eventId, sessionId);
-        await using var dbContext = await tsContext.CreateDbContextAsync(cancellationToken);
-
-        // ExecuteDeleteAsync is not supported by InMemory database, so we need to handle both approaches
-        try
-        {
-            await dbContext.CarLapLogs
-                .Where(l => l.EventId == eventId && l.SessionId == sessionId)
-                .ExecuteDeleteAsync(cancellationToken);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("ExecuteDelete"))
-        {
-            // Fallback for InMemory database
-            var lapsToDelete = await dbContext.CarLapLogs
-                .Where(l => l.EventId == eventId && l.SessionId == sessionId)
-                .ToListAsync(cancellationToken);
-            dbContext.CarLapLogs.RemoveRange(lapsToDelete);
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
     }
 
     private async Task CleanupCarFilesAsync(Dictionary<string, CarFileWriters> carFiles)

@@ -52,6 +52,9 @@ public class EventArchiveService : BackgroundService
                 // Run archive process with retry logic
                 await RunArchiveProcessWithRetriesAsync(maxRetriesPerDay, stoppingToken);
 
+                // Run simulated event purge
+                await RunSimulatedEventPurgeAsync(stoppingToken);
+
                 // Wait until next midnight Mountain Time
                 var currentTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, mountainTimeZone);
                 var tomorrowMidnight = currentTime.Date.AddDays(1);
@@ -138,7 +141,8 @@ public class EventArchiveService : BackgroundService
     private async Task<bool> ArchiveSingleEventAsync(int eventId, CancellationToken stoppingToken)
     {
         Logger.LogInformation("Archiving logs for event {eventId}...", eventId);
-        var eventArchive = new EventLogArchive(loggerFactory, tsContext, archiveStorage);
+        var purgeUtilities = new PurgeUtilities(loggerFactory, tsContext);
+        var eventArchive = new EventLogArchive(loggerFactory, tsContext, archiveStorage, purgeUtilities);
         var eventLogArchived = await eventArchive.ArchiveEventLogsAsync(eventId, stoppingToken);
 
         if (!eventLogArchived)
@@ -154,6 +158,16 @@ public class EventArchiveService : BackgroundService
         if (!lapsArchived)
         {
             Logger.LogWarning("Failed to archive laps for event {eventId}.", eventId);
+            return false;
+        }
+
+        // Archive X2 data
+        Logger.LogInformation("Archiving X2 data for event {eventId}...", eventId);
+        var x2Archiver = new X2LogArchive(loggerFactory, tsContext, archiveStorage, purgeUtilities);
+        var x2Result = await x2Archiver.ArchiveX2DataAsync(eventId, stoppingToken);
+        if (!x2Result)
+        {
+            Logger.LogWarning("Failed to archive X2 data for event {eventId}.", eventId);
             return false;
         }
 
@@ -220,7 +234,8 @@ public class EventArchiveService : BackgroundService
             foreach (var sessionId in sessionIds)
             {
                 Logger.LogInformation("Archiving laps for event {eventId}, session {sessionId}...", eventId, sessionId);
-                var lapsArchive = new LapsLogArchive(loggerFactory, tsContext, archiveStorage);
+                var purgeUtilities = new PurgeUtilities(loggerFactory, tsContext);
+                var lapsArchive = new LapsLogArchive(loggerFactory, tsContext, archiveStorage, purgeUtilities);
                 var success = await lapsArchive.ArchiveLapsAsync(eventId, sessionId, stoppingToken);
 
                 if (!success)
@@ -260,4 +275,27 @@ public class EventArchiveService : BackgroundService
         }
     }
 
+    private async Task RunSimulatedEventPurgeAsync(CancellationToken stoppingToken)
+    {
+        Logger.LogInformation("Starting simulated event purge process...");
+        try
+        {
+            await using var dbContext = await tsContext.CreateDbContextAsync(stoppingToken);
+            var simulatedEvents = await dbContext.Events
+                .Where(e => e.IsSimulation && e.EndDate < DateTime.UtcNow.AddDays(-1))
+                .ToListAsync(stoppingToken);
+            var purgeUtilities = new PurgeUtilities(loggerFactory, tsContext);
+            foreach (var simEvent in simulatedEvents)
+            {
+                Logger.LogInformation("Purging simulated event {eventId}...", simEvent.Id);
+                await purgeUtilities.DeleteAllEventDataAsync(simEvent.Id, stoppingToken);
+            }
+            await dbContext.SaveChangesAsync(stoppingToken);
+            Logger.LogInformation("Simulated event purge process completed successfully.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during simulated event purge process.");
+        }
+    }
 }

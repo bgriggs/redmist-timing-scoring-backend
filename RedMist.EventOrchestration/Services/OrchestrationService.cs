@@ -330,7 +330,7 @@ public class OrchestrationService : BackgroundService
         try
         {
             var cache = cacheMux.GetDatabase();
-            var entryKey = string.Format(Backend.Shared.Consts.STATUS_EVENT_CONNECTIONS, eventEntry.EventId);
+            var entryKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventEntry.EventId);
 
             // Remove the event entry from the cache
             await cache.KeyDeleteAsync(entryKey, CommandFlags.FireAndForget);

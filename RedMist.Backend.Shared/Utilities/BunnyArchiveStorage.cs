@@ -74,4 +74,28 @@ public class BunnyArchiveStorage : IArchiveStorage
         }
         return result;
     }
+
+    public async Task<bool> UploadEventX2PassingsAsync(Stream stream, int eventId)
+    {
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        Logger.LogInformation("Uploading event X2 passings for event {EventId} to CDN...", eventId);
+        var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-passings/event-{eventId}-passings.gz");
+        if (!result)
+        {
+            Logger.LogError("Failed to upload event X2 passings to CDN for event {EventId}", eventId);
+        }
+        return result;
+    }
+
+    public async Task<bool> UploadEventX2LoopsAsync(Stream stream, int eventId)
+    {
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        Logger.LogInformation("Uploading event X2 loops for event {EventId} to CDN...", eventId);
+        var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-loops/event-{eventId}-loops.gz");
+        if (!result)
+        {
+            Logger.LogError("Failed to upload event X2 loops to CDN for event {EventId}", eventId);
+        }
+        return result;
+    }
 }
