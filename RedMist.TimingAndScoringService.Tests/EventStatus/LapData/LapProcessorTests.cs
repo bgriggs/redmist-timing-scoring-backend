@@ -296,6 +296,10 @@ public class LapProcessorTests
         };
 
         await Task.WhenAll(tasks);
+
+        // Give a moment for all internal queue operations to complete
+        await Task.Delay(50);
+
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert - All laps should be logged exactly once (may be across multiple stream adds if background task processed some)
