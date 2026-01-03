@@ -37,7 +37,7 @@ public abstract class OrganizationControllerBase : Controller
     /// <param name="tsContext">Database context factory for timing and scoring data.</param>
     /// <param name="controlLogFactory">Factory to create control log providers.</param>
     /// <param name="assetsCdn"></param>
-    protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, 
+    protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
         IControlLogFactory controlLogFactory, AssetsCdn assetsCdn)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -161,9 +161,97 @@ public abstract class OrganizationControllerBase : Controller
             var logEntries = await cl.LoadControlLogAsync(organization.ControlLogParams);
             cls.IsConnected = logEntries.success;
             cls.TotalEntries = logEntries.logs.Count();
+            var isStale = await DetermineControlLogStaleAsync(organization.Id, logEntries.logs);
+            cls.IsStaleWarning = isStale;
         }
 
         return cls;
+    }
+
+    private async Task<bool> DetermineControlLogStaleAsync(int orgId, IEnumerable<ControlLogEntry> currentControlLog)
+    {
+        if (!currentControlLog.Any())
+            return false;
+
+        using var db = await tsContext.CreateDbContextAsync();
+        var sessions = await db.SessionResults
+            .Where(s => db.Events.Any(e => e.Id == s.EventId && e.OrganizationId == orgId) && s.ControlLogs.Count > 0)
+            .OrderByDescending(s => s.Start)
+            .Take(3)
+            .ToListAsync();
+
+        foreach (var session in sessions)
+        {
+            var similarityPercent = AnalyzeControlLogSimilarity(currentControlLog, session.ControlLogs);
+            if (similarityPercent >= 50)
+            {
+                Logger.LogInformation("Control log for org {orgId} is similar to historic log from event {eventId} session {sessionId} with {percent}% similarity",
+                    orgId, session.EventId, session.SessionId, similarityPercent);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Compares two control log sets and calculates the percentage of matching entries.
+    /// </summary>
+    /// <param name="logA">First control log set to compare.</param>
+    /// <param name="logB">Second control log set to compare.</param>
+    /// <returns>Percentage of similar entries (0-100).</returns>
+    private static int AnalyzeControlLogSimilarity(IEnumerable<ControlLogEntry> logA, IEnumerable<ControlLogEntry> logB)
+    {
+        if (logA == null || logB == null)
+            return 0;
+
+        var orderedLogA = logA.OrderBy(x => x.Timestamp).ToList();
+        var orderedLogB = logB.OrderBy(x => x.Timestamp).ToList();
+
+        if (orderedLogA.Count == 0 || orderedLogB.Count == 0)
+            return 0;
+
+        // Compare the smaller count to avoid index out of range
+        var minCount = Math.Min(orderedLogA.Count, orderedLogB.Count);
+        var matchCount = 0;
+
+        for (int i = 0; i < minCount; i++)
+        {
+            if (CompareControlLogEntries(orderedLogA[i], orderedLogB[i]))
+            {
+                matchCount++;
+            }
+        }
+
+        // Calculate percentage based on the smaller log set
+        var percentSimilar = (int)Math.Round((double)matchCount / minCount * 100);
+        return percentSimilar;
+    }
+
+    /// <summary>
+    /// Compares two control log entries for equality.
+    /// </summary>
+    /// <param name="entryA">First control log entry.</param>
+    /// <param name="entryB">Second control log entry.</param>
+    /// <returns>True if entries match, false otherwise.</returns>
+    private static bool CompareControlLogEntries(ControlLogEntry entryA, ControlLogEntry entryB)
+    {
+        if (entryA.OrderId != entryB.OrderId)
+            return false;
+        if (entryA.Car1 != entryB.Car1)
+            return false;
+        if (entryA.Car2 != entryB.Car2)
+            return false;
+        if (entryA.Timestamp != entryB.Timestamp)
+            return false;
+        if (entryA.Status != entryB.Status)
+            return false;
+        if (entryA.Corner != entryB.Corner)
+            return false;
+        if (entryA.Note != entryB.Note)
+            return false;
+        if (entryA.OtherNotes != entryB.OtherNotes)
+            return false;
+        return true;
     }
 
     /// <summary>
