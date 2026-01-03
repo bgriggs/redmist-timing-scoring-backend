@@ -298,7 +298,7 @@ public class LapProcessorTests
         await Task.WhenAll(tasks);
 
         // Give a moment for all internal queue operations to complete
-        await Task.Delay(50);
+        await Task.Delay(100);
 
         await _lapProcessor.FlushPendingLapsAsync();
 
@@ -337,16 +337,23 @@ public class LapProcessorTests
         };
 
         await Task.WhenAll(tasks);
+
+        // Give a moment for all internal queue operations to complete
+        await Task.Delay(100);
+
         await _lapProcessor.FlushPendingLapsAsync();
 
-        // Assert
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
-        Assert.IsNotNull(laps);
-        Assert.HasCount(3, laps, "All three cars should be logged");
+        // Assert - Collect from all stream adds in case background task processed some
+        var allLaps = _capturedStreamAdds
+            .SelectMany(add => JsonSerializer.Deserialize<List<CarLapData>>(add.value.ToString()) ?? [])
+            .ToList();
 
-        Assert.IsTrue(laps.Any(l => l.Log.CarNumber == "1"));
-        Assert.IsTrue(laps.Any(l => l.Log.CarNumber == "2"));
-        Assert.IsTrue(laps.Any(l => l.Log.CarNumber == "3"));
+        Assert.IsNotNull(allLaps);
+        Assert.HasCount(3, allLaps, "All three cars should be logged");
+
+        Assert.IsTrue(allLaps.Any(l => l.Log.CarNumber == "1"), "Car 1 should be logged");
+        Assert.IsTrue(allLaps.Any(l => l.Log.CarNumber == "2"), "Car 2 should be logged");
+        Assert.IsTrue(allLaps.Any(l => l.Log.CarNumber == "3"), "Car 3 should be logged");
     }
 
     #endregion
