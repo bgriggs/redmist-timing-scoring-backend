@@ -489,9 +489,44 @@ public class RelayHub : Hub
         using var db = await tsContext.CreateDbContextAsync();
         db.RelayLogs.Add(logEntry);
         await db.SaveChangesAsync();
+
+        // Track batch for email reporting
+        await TrackRelayLogBatchAsync(clientId, orgId, level);
     }
 
     #endregion
+
+    private async Task TrackRelayLogBatchAsync(string clientId, int orgId, string level)
+    {
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            var batchKey = string.Format(Consts.RELAY_LOG_BATCH, clientId);
+
+            // Increment the count for this batch
+            await cache.HashIncrementAsync(batchKey, "count");
+
+            // Store client and org info
+            await cache.HashSetAsync(batchKey, "clientId", clientId);
+            await cache.HashSetAsync(batchKey, "orgId", orgId.ToString());
+
+            // Update last log timestamp
+            await cache.HashSetAsync(batchKey, "lastLogTimestamp", DateTime.UtcNow.Ticks.ToString());
+
+            // Increment level-specific counter
+            await cache.HashIncrementAsync(batchKey, $"level_{level}");
+
+            // Set expiration to 10 minutes (cleanup in case email service is down)
+            await cache.KeyExpireAsync(batchKey, TimeSpan.FromMinutes(10));
+
+            // Add to tracking set
+            await cache.SetAddAsync(Consts.RELAY_LOG_BATCH_TRACKING, clientId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error tracking relay log batch for client {ClientId}", clientId);
+        }
+    }
 
     public async Task<int> GetOrganizationId(string clientId)
     {

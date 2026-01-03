@@ -11,6 +11,7 @@ using RedMist.Backend.Shared.Extensions;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.RelayApi.Services;
 using StackExchange.Redis;
 
 namespace RedMist.RelayApi;
@@ -64,6 +65,9 @@ public class Program
             .AddRedis(redisConn, tags: ["cache", "redis"])
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 512, name: "Process Allocated Memory", tags: ["memory"]);
+
+        builder.Services.AddTransient<EmailHelper>();
+        builder.Services.AddHostedService<RelayLogBatchEmailService>();
 
         builder.Services.AddRedMistSignalR(redisConn);
 

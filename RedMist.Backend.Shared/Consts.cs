@@ -31,6 +31,8 @@ public class Consts
     public const string EVENT_CONFIGURATION_CHANGED = "evtconfchanged";
     public const string EVENT_SERVICE_ENDPOINT = "evt-{0}-processor-endpoint";
     public const string EVENT_SHUTDOWN_SIGNAL = "evt-shutdown-signal";
+    public const string RELAY_LOG_BATCH = "relay-log-batch-{0}";
+    public const string RELAY_LOG_BATCH_TRACKING = "relay-log-batch-tracking";
 
     #region External Metadata
     public const string EVENT_DRIVER_CHANGE_STREAM_FIELD = "drevt-{0}-999999";
