@@ -114,7 +114,7 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert
-        Assert.AreEqual(1, _capturedStreamAdds.Count, "Lap 0 should be logged");
+        Assert.HasCount(1, _capturedStreamAdds, "Lap 0 should be logged");
 
         var capturedData = _capturedStreamAdds[0];
         Assert.AreEqual("laps", capturedData.field.ToString());

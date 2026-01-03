@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.Database.Models;
-using RedMist.TimingCommon.Models.Configuration;
+using RedMist.TimingCommon.Models;
 using RedMist.UserManagement.Models;
 
 namespace RedMist.UserManagement.Controllers;

@@ -12,4 +12,6 @@ public class RelayConnectionEventEntry
     public int OrganizationId { get; set; }
     [JsonPropertyName("t")]
     public DateTime Timestamp { get; set; }
+    [JsonPropertyName("rv")]
+    public string RelayVersion { get; set; } = string.Empty;
 }

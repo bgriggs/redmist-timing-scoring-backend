@@ -1,3 +1,3 @@
 ﻿Default Project: RedMist.Database (Package Manager Console)
 Startup Project: RedMist.EventManagement
-Add-Migration ClassMetadata -Context TsContext
+Add-Migration RelayConnection -Context TsContext

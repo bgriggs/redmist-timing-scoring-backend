@@ -159,8 +159,10 @@ public class OrchestrationService : BackgroundService
                     foreach (var expired in expiredEvents)
                     {
                         Logger.LogInformation("Cleanup redis streams for expired event {eventId}", expired.EventId);
-                        var streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, expired.EventId);
-                        await cache.KeyDeleteAsync(streamKey);
+                        var eventStatusStreamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, expired.EventId);
+                        await cache.KeyDeleteAsync(eventStatusStreamKey);
+                        var eventLogsStreamKey = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, expired.EventId);
+                        await cache.KeyDeleteAsync(eventLogsStreamKey);
                     }
                 }
                 // Check for orphaned jobs

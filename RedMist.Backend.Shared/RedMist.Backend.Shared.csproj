@@ -23,7 +23,7 @@
 		<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.1" />
 		<PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.1" />
 		<PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.4" />
-		<PackageReference Include="MailKit" Version="4.9.0" />
+		<PackageReference Include="MailKit" Version="4.14.1" />
 	</ItemGroup>
 
 	<ItemGroup>

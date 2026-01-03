@@ -64,5 +64,8 @@ public class Consts
 
     public const string EVENT_SESSION_CHANGED_TYPE = "evtsessionchanged";
     public const string EVENT_SESSION_CHANGED = EVENT_SESSION_CHANGED_TYPE + "-{0}-{1}";
+    public const string LAP_TYPE = "laps";
+    public const string RELAY_HEARTBEAT_TYPE = "relayhb";
+
     #endregion
 }

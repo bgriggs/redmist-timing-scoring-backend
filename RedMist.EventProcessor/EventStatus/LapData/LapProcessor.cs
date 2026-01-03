@@ -164,8 +164,7 @@ public class LapProcessor : IDisposable
                 Logger.LogError(ex, "Error processing pending lap completions");
                 try
                 {
-                    await Task.Delay(1000, CancellationTokenSource.CreateLinkedTokenSource(
-                 backgroundTaskCts.Token, sessionContext.CancellationToken).Token); // Throttle on error
+                    await Task.Delay(1000, CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskCts.Token, sessionContext.CancellationToken).Token); // Throttle on error
                 }
                 catch (OperationCanceledException)
                 {
@@ -237,7 +236,7 @@ public class LapProcessor : IDisposable
         var streamId = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, eventId);
         var cache = cacheMux.GetDatabase();
         var json = JsonSerializer.Serialize(lapLogs);
-        await cache.StreamAddAsync(streamId, "laps", json);
+        await cache.StreamAddAsync(streamId, Consts.LAP_TYPE, json);
     }
 
     /// <summary>
@@ -316,21 +315,21 @@ public class LapProcessor : IDisposable
         }
     }
 
-        /// <summary>
-        /// Cleanup resources when the processor is disposed
-        /// </summary>
-        public void Dispose()
+    /// <summary>
+    /// Cleanup resources when the processor is disposed
+    /// </summary>
+    public void Dispose()
+    {
+        try
         {
-            try
-            {
-                backgroundTaskCts.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // Already disposed, ignore
-            }
-
-            backgroundTaskCts.Dispose();
-            GC.SuppressFinalize(this);
+            backgroundTaskCts.Cancel();
         }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed, ignore
+        }
+
+        backgroundTaskCts.Dispose();
+        GC.SuppressFinalize(this);
     }
+}

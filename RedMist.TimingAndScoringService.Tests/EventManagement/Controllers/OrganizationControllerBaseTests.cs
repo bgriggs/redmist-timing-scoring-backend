@@ -13,7 +13,7 @@ using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using System.Security.Claims;
 using ConfigEvent = RedMist.TimingCommon.Models.Configuration.Event;
-using Organization = RedMist.TimingCommon.Models.Configuration.Organization;
+using Organization = RedMist.TimingCommon.Models.Organization;
 
 namespace RedMist.TimingAndScoringService.Tests.EventManagement.Controllers;
 

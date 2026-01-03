@@ -64,12 +64,20 @@ public class EventProcessLogger : BackgroundService
                         {
                             var tag = field.Name.ToString();
 
-                            if (tag == "laps")
+                            if (tag == Consts.LAP_TYPE)
                             {
                                 var lapData = JsonSerializer.Deserialize<List<CarLapData>>(field.Value.ToString());
                                 if (lapData != null)
                                 {
                                     await SaveLogsAsync(lapData, stoppingToken);
+                                }
+                            }
+                            else if (tag == Consts.RELAY_HEARTBEAT_TYPE)
+                            {
+                                var relayConn = JsonSerializer.Deserialize<RelayConnectionEventEntry>(field.Value.ToString());
+                                if (relayConn != null)
+                                {
+                                    await SaveRelayConnectionInformation(relayConn, stoppingToken);
                                 }
                             }
 
@@ -130,7 +138,7 @@ public class EventProcessLogger : BackgroundService
 
     private async Task SaveLogsAsync(List<CarLapData> lapLogs, CancellationToken stoppingToken)
     {
-        using var context = tsContext.CreateDbContext();
+        using var context = await tsContext.CreateDbContextAsync(stoppingToken);
         try
         {
             foreach (var log in lapLogs)
@@ -165,6 +173,25 @@ public class EventProcessLogger : BackgroundService
         {
             var log = lapLogs.FirstOrDefault();
             Logger.LogWarning(ex, "Error saving lap for event:{e},session:{s},car:{c},lap:{l}", eventId, log?.SessionId, log?.Log.CarNumber, log?.LastLapNum);
+        }
+    }
+
+    private async Task SaveRelayConnectionInformation(RelayConnectionEventEntry relayConnectionUpdate, CancellationToken stoppingToken)
+    {
+        using var context = await tsContext.CreateDbContextAsync(stoppingToken);
+        try
+        {
+            var org = context.Organizations.Find(relayConnectionUpdate.OrganizationId);
+            if (org != null)
+            {
+                org.RelayLastConnected = relayConnectionUpdate.Timestamp;
+                org.RelayVersion = relayConnectionUpdate.RelayVersion;
+                await context.SaveChangesAsync(stoppingToken);   
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error saving relay connection info for event:{e},connection:{c}", eventId, relayConnectionUpdate.ConnectionId);
         }
     }
 

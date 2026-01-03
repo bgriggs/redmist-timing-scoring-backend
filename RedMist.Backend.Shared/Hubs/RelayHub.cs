@@ -100,7 +100,7 @@ public class RelayHub : Hub
 
     #region Relay Clients
 
-    public async Task SendHeartbeat(int eventId)
+    public async Task SendHeartbeat(int eventId, string relayVersion)
     {
         var clientId = GetClientId();
         if (clientId == null)
@@ -119,11 +119,17 @@ public class RelayHub : Hub
             EventId = eventId,
             ConnectionId = Context.ConnectionId,
             OrganizationId = orgId,
-            Timestamp = DateTime.UtcNow
+            Timestamp = DateTime.UtcNow,
+            RelayVersion = relayVersion
         };
+
         var entryKey = string.Format(Consts.RELAY_HEARTBEAT, eventId);
         var entryJson = JsonSerializer.Serialize(entry);
         await cache.HashSetAsync(hashKey, entryKey, entryJson);
+
+        // Also log to event processor stream
+        var streamId = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, eventId);
+        await cache.StreamAddAsync(streamId, Consts.RELAY_HEARTBEAT_TYPE, entryJson);
     }
 
     /// <summary>
