@@ -14,6 +14,8 @@ global:
     "Archive__StorageZoneName": "redmist-archive"
     "Archive__MainReplicationRegion": "ny"
     "Archive__CdnId": "5058723"
+    "Email__Host": "in-v3.mailjet.com"
+    "Email__Port": "587"
 
   secrets:
     - env: "REDIS_PW"
@@ -37,6 +39,12 @@ global:
     - env: "Archive__StorageAccessKey"
       name: "rmkeys"
       key: "archivestorageaccesskey"
+    - env: "Email__Username"
+      name: "rmkeys"
+      key: "emailusername"
+    - env: "Email__Password"
+      name: "rmkeys"
+      key: "emailpassword"
 
 # Redis Operator configuration
 redis-operator:

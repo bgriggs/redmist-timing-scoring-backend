@@ -38,6 +38,12 @@ global:
     - env: "Archive__StorageAccessKey"
       name: "rmkeys-test"
       key: "archivestorageaccesskey"
+    - env: "Email__Username"
+      name: "rmkeys-test"
+      key: "emailusername"
+    - env: "Email__Password"
+      name: "rmkeys-test"
+      key: "emailpassword"
 
 # Override for all subcharts - disable TLS since Cloudflare handles it
 redmist-status-api:

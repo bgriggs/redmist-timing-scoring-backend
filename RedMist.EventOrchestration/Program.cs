@@ -34,6 +34,7 @@ public class Program
 
         builder.Services.AddSingleton<EventsChecker>();
         builder.Services.AddTransient<IArchiveStorage, BunnyArchiveStorage>();
+        builder.Services.AddTransient<EmailHelper>();
         builder.Services.AddHostedService<EventArchiveService>();
         builder.Services.AddHostedService<OrchestrationService>();
         builder.Services.AddHostedService<RelayLogCleanupService>();
