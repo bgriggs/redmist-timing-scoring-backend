@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.SignalR;
+﻿using MessagePack;
+using MessagePack.Resolvers;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
 
@@ -13,6 +15,10 @@ public static class SignalRExtensions
             {
                 options.Configuration.ChannelPrefix = RedisChannel.Literal(Consts.STATUS_CHANNEL_PREFIX);
             })
-            .AddMessagePackProtocol();
+            .AddMessagePackProtocol(options =>
+            {
+                options.SerializerOptions = MessagePackSerializerOptions.Standard
+                    .WithResolver(ContractlessStandardResolver.Instance);
+            });
     }
 }
