@@ -298,15 +298,22 @@ public class LapProcessorTests
         await Task.WhenAll(tasks);
         await _lapProcessor.FlushPendingLapsAsync();
 
-        // Assert - All laps should be logged exactly once
-        Assert.HasCount(1, _capturedStreamAdds);
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
-        Assert.IsNotNull(laps);
-        Assert.HasCount(3, laps, "All three laps should be logged");
+        // Assert - All laps should be logged exactly once (may be across multiple stream adds if background task processed some)
+        var allLaps = _capturedStreamAdds
+            .SelectMany(add => JsonSerializer.Deserialize<List<CarLapData>>(add.value.ToString()) ?? [])
+            .ToList();
+
+        Assert.IsNotNull(allLaps);
+        Assert.HasCount(3, allLaps, "All three laps should be logged");
 
         // Verify no duplicates
-        var lapNumbers = laps.Select(l => l.Log.LapNumber).ToList();
+        var lapNumbers = allLaps.Select(l => l.Log.LapNumber).ToList();
         Assert.AreEqual(3, lapNumbers.Distinct().Count(), "No duplicate laps should be logged");
+
+        // Verify all expected laps are present
+        Assert.IsTrue(allLaps.Any(l => l.Log.LapNumber == 1), "Lap 1 should be logged");
+        Assert.IsTrue(allLaps.Any(l => l.Log.LapNumber == 2), "Lap 2 should be logged");
+        Assert.IsTrue(allLaps.Any(l => l.Log.LapNumber == 3), "Lap 3 should be logged");
     }
 
     [TestMethod]
