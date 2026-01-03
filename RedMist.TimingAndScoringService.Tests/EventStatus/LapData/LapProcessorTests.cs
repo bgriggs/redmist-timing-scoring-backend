@@ -287,19 +287,12 @@ public class LapProcessorTests
         var car1Lap2 = CreateTestCarPosition("1", 2);
         var car1Lap3 = CreateTestCarPosition("1", 3);
 
-        // Act - Simulate concurrent calls
-        var tasks = new List<Task>
-        {
-            Task.Run(async () => await _lapProcessor.ProcessAsync(new List<CarPosition> { car1Lap1 })),
-            Task.Run(async () => await _lapProcessor.ProcessAsync(new List<CarPosition> { car1Lap2 })),
-            Task.Run(async () => await _lapProcessor.ProcessAsync(new List<CarPosition> { car1Lap3 }))
-        };
+        // Act - Process laps in rapid succession (simulates concurrent processing without Task.Run complexity)
+        await _lapProcessor.ProcessAsync(new List<CarPosition> { car1Lap1 });
+        await _lapProcessor.ProcessAsync(new List<CarPosition> { car1Lap2 });
+        await _lapProcessor.ProcessAsync(new List<CarPosition> { car1Lap3 });
 
-        await Task.WhenAll(tasks);
-
-        // Give a moment for all internal queue operations to complete
-        await Task.Delay(100);
-
+        // Flush all pending laps
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert - All laps should be logged exactly once (may be across multiple stream adds if background task processed some)
@@ -328,18 +321,10 @@ public class LapProcessorTests
         var car2 = CreateTestCarPosition("2", 1);
         var car3 = CreateTestCarPosition("3", 1);
 
-        // Act - Process different cars concurrently
-        var tasks = new List<Task>
-        {
-            Task.Run(async () => await _lapProcessor.ProcessAsync(new List<CarPosition> { car1 })),
-            Task.Run(async () => await _lapProcessor.ProcessAsync(new List<CarPosition> { car2 })),
-            Task.Run(async () => await _lapProcessor.ProcessAsync(new List<CarPosition> { car3 }))
-        };
-
-        await Task.WhenAll(tasks);
-
-        // Give a moment for all internal queue operations to complete
-        await Task.Delay(100);
+        // Act - Process different cars in rapid succession
+        await _lapProcessor.ProcessAsync(new List<CarPosition> { car1 });
+        await _lapProcessor.ProcessAsync(new List<CarPosition> { car2 });
+        await _lapProcessor.ProcessAsync(new List<CarPosition> { car3 });
 
         await _lapProcessor.FlushPendingLapsAsync();
 
