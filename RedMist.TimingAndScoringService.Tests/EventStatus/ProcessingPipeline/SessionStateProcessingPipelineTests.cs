@@ -175,7 +175,7 @@ public class SessionStateProcessingPipelineTests
     {
         // Create real processor instances for end-to-end testing
         _resetProcessor = new ResetProcessor(_sessionContext, _mockHubContext.Object, _mockLoggerFactory.Object);
-        _startingPositionProcessor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object);
+        _startingPositionProcessor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object, _dbContextFactory);
         _rMonitorProcessor = new RMonitorDataProcessor(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor);
         _multiloopProcessor = new MultiloopProcessor(_mockLoggerFactory.Object, _sessionContext);
         _pitProcessor = new PitProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);

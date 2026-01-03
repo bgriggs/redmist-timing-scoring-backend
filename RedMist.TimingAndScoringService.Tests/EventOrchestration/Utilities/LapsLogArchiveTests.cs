@@ -442,8 +442,8 @@ public class LapsLogArchiveTests
     public async Task ArchiveLapsAsync_TempFilesCleanedUp_OnSuccess()
     {
         // Arrange
-        int eventId = 1;
-        int sessionId = 1;
+        int eventId = Random.Shared.Next(100000, 999999);
+        int sessionId = Random.Shared.Next(100000, 999999);
         await SeedCarLapLogs(eventId, sessionId, "42", count: 5);
 
         // Act
@@ -465,8 +465,8 @@ public class LapsLogArchiveTests
     public async Task ArchiveLapsAsync_TempFilesCleanedUp_OnFailure()
     {
         // Arrange
-        int eventId = 1;
-        int sessionId = 1;
+        int eventId = Random.Shared.Next(100000, 999999);
+        int sessionId = Random.Shared.Next(100000, 999999);
         await SeedCarLapLogs(eventId, sessionId, "42", count: 5);
         _mockArchiveStorage.Setup(x => x.UploadSessionLapsAsync(It.IsAny<Stream>(), eventId, sessionId))
             .ReturnsAsync(false);

@@ -43,7 +43,7 @@ public class RMonitorDataProcessorV2Tests
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
 
         _resetProcessor = new ResetProcessor(_sessionContext, _mockHubContext.Object, _mockLoggerFactory.Object);
-        _startingPositionProcessor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object);
+        _startingPositionProcessor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object, dbContextFactory);
         _processor = new RMonitorDataProcessor(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor);
     }
 

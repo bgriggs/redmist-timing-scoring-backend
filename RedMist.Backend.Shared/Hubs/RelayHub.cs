@@ -113,7 +113,7 @@ public class RelayHub : Hub
 
         var cache = cacheMux.GetDatabase();
         var hashKey = new RedisKey(Consts.RELAY_EVENT_CONNECTIONS);
-        var orgId = await GetOrganizationId(clientId);
+        var orgId = await GetOrganizationIdAsync(clientId);
         var entry = new RelayConnectionEventEntry
         {
             EventId = eventId,
@@ -245,7 +245,7 @@ public class RelayHub : Hub
         try
         {
             // Verify that the event is under this client
-            var orgId = await GetOrganizationId(clientId);
+            var orgId = await GetOrganizationIdAsync(clientId);
             using var db = await tsContext.CreateDbContextAsync();
             var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.Id == eventId);
             if (ev != null)
@@ -311,7 +311,7 @@ public class RelayHub : Hub
             return;
         }
 
-        var orgId = await GetOrganizationId(clientId);
+        var orgId = await GetOrganizationIdAsync(clientId);
         foreach (var pass in passings)
         {
             pass.OrganizationId = orgId;
@@ -361,7 +361,7 @@ public class RelayHub : Hub
             return;
         }
 
-        var orgId = await GetOrganizationId(clientId);
+        var orgId = await GetOrganizationIdAsync(clientId);
         foreach (var loop in loops)
         {
             loop.OrganizationId = orgId;
@@ -413,7 +413,7 @@ public class RelayHub : Hub
         }
 
         // Ensure the event provided is valid for this client
-        var orgId = await GetOrganizationId(clientId);
+        var orgId = await GetOrganizationIdAsync(clientId);
         using var db = await tsContext.CreateDbContextAsync();
         var ev = await db.Events.FirstOrDefaultAsync(x => x.OrganizationId == orgId && x.Id == eventId);
         if (ev?.Id != eventId)
@@ -475,7 +475,7 @@ public class RelayHub : Hub
         Logger.LogTrace("SaveLoggerMessage: {t} {l} {s} {e}", timestamp, level, state, exception);
         var clientId = GetClientId();
         if (clientId == null) return;
-        var orgId = await GetOrganizationId(clientId);
+        var orgId = await GetOrganizationIdAsync(clientId);
 
         var logEntry = new RelayLog
         {
@@ -491,7 +491,7 @@ public class RelayHub : Hub
         await db.SaveChangesAsync();
 
         // Track batch for email reporting
-        await TrackRelayLogBatchAsync(clientId, orgId, level);
+        await TrackRelayLogBatchAsync(clientId, orgId, level ?? "Unknown");
     }
 
     #endregion
@@ -528,14 +528,14 @@ public class RelayHub : Hub
         }
     }
 
-    public async Task<int> GetOrganizationId(string clientId)
+    public async Task<int> GetOrganizationIdAsync(string clientId)
     {
         var key = string.Format(Consts.CLIENT_ID, clientId);
         return await hcache.GetOrCreateAsync(key,
-            async cancel => await LoadOrganizationId(clientId));
+            async cancel => await LoadOrganizationIdAsync(clientId));
     }
 
-    private async Task<int> LoadOrganizationId(string clientId)
+    private async Task<int> LoadOrganizationIdAsync(string clientId)
     {
         using var db = await tsContext.CreateDbContextAsync();
         var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);

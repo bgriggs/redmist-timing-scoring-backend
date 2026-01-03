@@ -16,6 +16,7 @@ public class RelayLogBatchEmailService : BackgroundService
     private const int InactivityThresholdSeconds = 60;
     private const int CheckIntervalSeconds = 15;
 
+
     public RelayLogBatchEmailService(
         ILogger<RelayLogBatchEmailService> logger,
         IConnectionMultiplexer cacheMux,

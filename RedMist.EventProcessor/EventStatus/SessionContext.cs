@@ -229,4 +229,33 @@ public class SessionContext
             SessionState.ClassOrder = organization.Classes.ToDictionary(cm => cm.Name, cm => cm.Order.ToString());
         }
     }
+
+    /// <summary>
+    /// Gets the current flag in thread-safe manner.
+    /// </summary>
+    /// <returns></returns>
+    public virtual async Task<(Flags, int)> GetCurrentFlagAndLap()
+    {
+        using (await SessionStateLock.AcquireReadLockAsync(CancellationToken))
+        {
+            int lastLap = 0;
+            if (SessionState.CarPositions.Count > 0)
+            {
+                lastLap = SessionState.CarPositions.Max(cp => cp.LastLapCompleted);
+            }
+            return (SessionState.CurrentFlag, lastLap);
+        }
+    }
+
+    /// <summary>
+    /// Get whether there are any starting positions recorded in thread-safe manner.
+    /// </summary>
+    /// <returns>true if there are starting positions</returns>
+    public virtual async Task<bool> HasStartingPositions()
+    {
+        using (await SessionStateLock.AcquireReadLockAsync(CancellationToken))
+        {
+            return startingPositions.Count > 0;
+        }
+    }
 }

@@ -425,7 +425,7 @@ public class EventLogArchiveTests
     public async Task ArchiveEventLogsAsync_TempFilesCleanedUp_OnSuccess()
     {
         // Arrange
-        int eventId = 1;
+        int eventId = Random.Shared.Next(100000, 999999);
         await SeedEventLogs(eventId, sessionId: 1, count: 5);
 
         // Act
@@ -447,7 +447,7 @@ public class EventLogArchiveTests
     public async Task ArchiveEventLogsAsync_TempFilesCleanedUp_OnFailure()
     {
         // Arrange
-        int eventId = 1;
+        int eventId = Random.Shared.Next(100000, 999999);
         await SeedEventLogs(eventId, sessionId: 1, count: 5);
         _mockArchiveStorage.Setup(x => x.UploadEventLogsAsync(It.IsAny<Stream>(), eventId))
             .ReturnsAsync(false);

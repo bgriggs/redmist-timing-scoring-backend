@@ -58,6 +58,9 @@
 		<None Update="event-finish-with-cars-data.log">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+		<None Update="EventStatus\RMonitor\data-1767472981761.csv">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestAbnormalReset.txt">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>

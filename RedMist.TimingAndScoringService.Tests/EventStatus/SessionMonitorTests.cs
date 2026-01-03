@@ -34,7 +34,7 @@ public class SessionMonitorTests
 
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
-        var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object);
+        var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object, dbMock.Object);
         var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
 
         // Create the debug session monitor with the SAME session context
@@ -98,7 +98,7 @@ public class SessionMonitorTests
 
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
-        var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object);
+        var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object, dbMock.Object);
         var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
 
         // Create the debug session monitor with the SAME session context
@@ -167,7 +167,7 @@ public class SessionMonitorTests
 
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
-        var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object);
+        var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object, dbMock.Object);
         var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
 
         // Create the debug session monitor with the SAME session context

@@ -83,7 +83,7 @@ public class Program
             c.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
             {
                 {
-                      new OpenApiSecuritySchemeReference("Bearer"), []
+                    new OpenApiSecuritySchemeReference("Bearer"), []
                 }
             });
         });
@@ -94,7 +94,7 @@ public class Program
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
         builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 5; c.ConnectTimeout = 10; }));
-        builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(100), LocalCacheExpiration = TimeSpan.FromDays(100) });
+        builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(7), LocalCacheExpiration = TimeSpan.FromDays(7) });
         builder.Services.AddSingleton<SessionContext>();
         builder.Services.AddSingleton<MultiloopProcessor>();
         builder.Services.AddSingleton<RMonitorDataProcessor>();
@@ -108,6 +108,7 @@ public class Program
         builder.Services.AddSingleton<UpdateConsolidator>();
         builder.Services.AddSingleton<StatusAggregator>();
         builder.Services.AddSingleton<StartingPositionProcessor>();
+        builder.Services.AddHostedService(provider => provider.GetRequiredService<StartingPositionProcessor>());
         builder.Services.AddSingleton<ControlLogEnricher>();
         builder.Services.AddSingleton<DriverModeProcessor>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<ControlLogEnricher>());
@@ -120,8 +121,7 @@ public class Program
 
         builder.Services.AddHealthChecks()
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
-            .AddRedis(redisConn, tags: ["cache", "redis"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 400, name: "Process Allocated Memory", tags: ["memory"]);
+            .AddRedis(redisConn, tags: ["cache", "redis"]);
 
         builder.Services.AddRedMistSignalR(redisConn);
 
@@ -132,7 +132,6 @@ public class Program
         if (app.Environment.IsDevelopment())
         {
             Console.Title = "Event Processor";
-            app.UseDeveloperExceptionPage();
         }
 
         // Enable Swagger in all environments

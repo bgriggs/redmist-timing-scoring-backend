@@ -89,8 +89,9 @@ public class LapProcessor : IDisposable
                     }
 
                     // Only enqueue if lap is still newer after acquiring lock
+                    // OR if it's lap 0 and we haven't logged it yet
                     bool shouldEnqueue = position.LastLapCompleted > lockedLastLap ||
-                             (position.LastLapCompleted == 0 && lockedLastLap > 0);
+                        (position.LastLapCompleted == 0 && !carLastLapLookup.ContainsKey(position.Number));
 
                     if (shouldEnqueue)
                     {
@@ -99,17 +100,12 @@ public class LapProcessor : IDisposable
                             queue = new Queue<(CarPosition position, DateTimeOffset timestamp)>();
                             pendingLapCompletions[position.Number] = queue;
                         }
-                        
+
                         var copy = position.DeepCopy();
                         queue.Enqueue((copy, _timeProvider.GetUtcNow()));
 
                         // Update the last lap tracking immediately while still holding the lock
-                        // Only update if this lap is greater than the current last lap
-                        // Don't let lap 0 (starting grid) reset the counter backwards
-                        if (position.LastLapCompleted > lockedLastLap)
-                        {
-                            carLastLapLookup[position.Number] = position.LastLapCompleted;
-                        }
+                        carLastLapLookup[position.Number] = position.LastLapCompleted;
                     }
                 }
             }
@@ -213,8 +209,6 @@ public class LapProcessor : IDisposable
     /// </summary>
     private async Task LogCompletedLapsAsync(List<(string carNumber, CarPosition position)> completions)
     {
-        if (completions.Count == 0) return;
-
         var eventId = sessionContext.EventId;
         var sessionId = sessionContext.SessionState.SessionId;
         var lapLogs = new List<CarLapData>();
@@ -222,7 +216,7 @@ public class LapProcessor : IDisposable
         foreach (var (carNumber, position) in completions)
         {
             Logger.LogTrace("Car {n} completed lap {l} in event {e}. Logging...", carNumber, position.LastLapCompleted, eventId);
-            
+
             // Update pit stops - this will set LapIncludedPit if the lap included a pit stop
             pitProcessor?.UpdateCarPositionForLogging(position);
 
@@ -295,12 +289,48 @@ public class LapProcessor : IDisposable
     }
 
     /// <summary>
-    /// Cleanup resources when the processor is disposed
+    /// Flushes all pending lap completions immediately for testing purposes.
+    /// This is useful in unit tests to force processing of buffered laps without waiting for the timer.
     /// </summary>
-    public void Dispose()
+    internal async Task FlushPendingLapsAsync()
     {
-        backgroundTaskCts.Cancel();
-        backgroundTaskCts.Dispose();
-        GC.SuppressFinalize(this);
+        var completionsToProcess = new List<(string carNumber, CarPosition position)>();
+
+        lock (pendingLapCompletions)
+        {
+            // Process all pending laps regardless of timestamp
+            foreach (var (carNumber, queue) in pendingLapCompletions.ToList())
+            {
+                while (queue.Count > 0)
+                {
+                    var (position, _) = queue.Dequeue();
+                    completionsToProcess.Add((carNumber, position));
+                }
+            }
+            pendingLapCompletions.Clear();
+        }
+
+        if (completionsToProcess.Count > 0)
+        {
+            await LogCompletedLapsAsync(completionsToProcess);
+        }
     }
-}
+
+        /// <summary>
+        /// Cleanup resources when the processor is disposed
+        /// </summary>
+        public void Dispose()
+        {
+            try
+            {
+                backgroundTaskCts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed, ignore
+            }
+
+            backgroundTaskCts.Dispose();
+            GC.SuppressFinalize(this);
+        }
+    }
