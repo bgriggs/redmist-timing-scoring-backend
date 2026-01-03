@@ -98,4 +98,28 @@ public class BunnyArchiveStorage : IArchiveStorage
         }
         return result;
     }
+
+    public async Task<bool> UploadSessionFlagsAsync(Stream stream, int eventId, int sessionId)
+    {
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        Logger.LogInformation("Uploading session flags for event {EventId}, session {SessionId} to CDN...", eventId, sessionId);
+        var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-flags/event-{eventId}-session-{sessionId}-flags.gz");
+        if (!result)
+        {
+            Logger.LogError("Failed to upload session flags to CDN for event {EventId}, session {SessionId}", eventId, sessionId);
+        }
+        return result;
+    }
+
+    public async Task<bool> UploadEventCompetitorMetadataAsync(Stream stream, int eventId)
+    {
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        Logger.LogInformation("Uploading event competitor metadata for event {EventId} to CDN...", eventId);
+        var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-competitor-metadata/event-{eventId}-competitor-metadata.gz");
+        if (!result)
+        {
+            Logger.LogError("Failed to upload event competitor metadata to CDN for event {EventId}", eventId);
+        }
+        return result;
+    }
 }

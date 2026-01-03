@@ -171,6 +171,26 @@ public class EventArchiveService : BackgroundService
             return false;
         }
 
+        // Archive flags for all sessions in this event
+        Logger.LogInformation("Archiving flags for event {eventId}...", eventId);
+        var flagsArchived = await ArchiveEventFlagsAsync(eventId, stoppingToken);
+
+        if (!flagsArchived)
+        {
+            Logger.LogWarning("Failed to archive flags for event {eventId}.", eventId);
+            return false;
+        }
+
+        // Archive Competitor Metadata
+        Logger.LogInformation("Archiving competitor metadata for event {eventId}...", eventId);
+        var competitorMetadataArchiver = new CompetitorMetadataArchive(loggerFactory, tsContext, archiveStorage, purgeUtilities);
+        var competitorMetadataResult = await competitorMetadataArchiver.ArchiveCompetitorMetadataAsync(eventId, stoppingToken);
+        if (!competitorMetadataResult)
+        {
+            Logger.LogWarning("Failed to archive competitor metadata for event {eventId}.", eventId);
+            return false;
+        }
+
         // Mark event as archived
         await using var dbContext = await tsContext.CreateDbContextAsync(stoppingToken);
         var ev = await dbContext.Events.FirstOrDefaultAsync(e => e.Id == eventId, cancellationToken: stoppingToken);
@@ -251,6 +271,50 @@ public class EventArchiveService : BackgroundService
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error archiving laps for event {eventId}", eventId);
+            return false;
+        }
+    }
+
+    private async Task<bool> ArchiveEventFlagsAsync(int eventId, CancellationToken stoppingToken)
+    {
+        try
+        {
+            await using var dbContext = await tsContext.CreateDbContextAsync(stoppingToken);
+
+            // Get all distinct sessions for this event that have laps
+            var sessionIds = await dbContext.FlagLog
+                .Where(l => l.EventId == eventId)
+                .Select(l => l.SessionId)
+                .Distinct()
+                .ToListAsync(stoppingToken);
+
+            if (sessionIds.Count == 0)
+            {
+                Logger.LogInformation("No flags found to archive for event {eventId}", eventId);
+                return true;
+            }
+
+            Logger.LogInformation("Found {count} sessions with flags to archive for event {eventId}", sessionIds.Count, eventId);
+            foreach (var sessionId in sessionIds)
+            {
+                Logger.LogInformation("Archiving flags for event {eventId}, session {sessionId}...", eventId, sessionId);
+                var purgeUtilities = new PurgeUtilities(loggerFactory, tsContext);
+                var flagsArchive = new FlagsArchive(loggerFactory, tsContext, archiveStorage, purgeUtilities);
+                var success = await flagsArchive.ArchiveFlagsAsync(eventId, sessionId, stoppingToken);
+
+                if (!success)
+                {
+                    Logger.LogWarning("Failed to archive flags for event {eventId}, session {sessionId}", eventId, sessionId);
+                    return false;
+                }
+            }
+
+            Logger.LogInformation("Successfully archived flags for all sessions in event {eventId}", eventId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error archiving flags for event {eventId}", eventId);
             return false;
         }
     }

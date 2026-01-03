@@ -6,21 +6,11 @@ using System.Text.Json;
 
 namespace RedMist.EventOrchestration.Utilities;
 
-public class LapsLogArchive
+public class LapsLogArchive : BaseArchive
 {
-    private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly IArchiveStorage archiveStorage;
-    private readonly PurgeUtilities purgeUtilities;
-
-    private ILogger Logger { get; }
-
-
     public LapsLogArchive(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IArchiveStorage archiveStorage, PurgeUtilities purgeUtilities)
+        : base(loggerFactory, tsContext, archiveStorage, purgeUtilities)
     {
-        Logger = loggerFactory.CreateLogger(GetType().Name);
-        this.tsContext = tsContext;
-        this.archiveStorage = archiveStorage;
-        this.purgeUtilities = purgeUtilities;
     }
 
 
@@ -53,7 +43,7 @@ public class LapsLogArchive
             if (!uploadSuccess)
                 return false;
 
-            await purgeUtilities.DeleteLapsFromDatabaseAsync(eventId, sessionId, totalLaps, cancellationToken);
+            await PurgeUtilities.DeleteLapsFromDatabaseAsync(eventId, sessionId, totalLaps, cancellationToken);
 
             Logger.LogInformation("Successfully archived and deleted {count} laps for event {eventId}, session {sessionId}", totalLaps, eventId, sessionId);
             return true;
@@ -85,7 +75,7 @@ public class LapsLogArchive
 
             while (true)
             {
-                await using var dbContext = await tsContext.CreateDbContextAsync(cancellationToken);
+                await using var dbContext = await TsContext.CreateDbContextAsync(cancellationToken);
 
                 var lapBatch = await dbContext.CarLapLogs
                     .Where(l => l.EventId == eventId && l.SessionId == sessionId)
@@ -199,24 +189,14 @@ public class LapsLogArchive
             var gzipFile = writers.FilePath + ".gz";
             writers.GzipFilePath = gzipFile;
 
-            await using (var originalStream = new FileStream(writers.FilePath, FileMode.Open, FileAccess.Read, FileShare.None, 8192, useAsync: true))
-            await using (var compressedStream = new FileStream(gzipFile, FileMode.Create, FileAccess.Write, FileShare.None, 8192, useAsync: true))
-            await using (var gzipStream = new System.IO.Compression.GZipStream(compressedStream, System.IO.Compression.CompressionLevel.Optimal))
-            {
-                await originalStream.CopyToAsync(gzipStream, cancellationToken);
-            }
+            var uploadSuccess = await CompressAndUploadFileAsync(
+                writers.FilePath,
+                stream => ArchiveStorage.UploadSessionCarLapsAsync(stream, eventId, sessionId, carNumber),
+                $"car laps for event {eventId}, session {sessionId}, car {carNumber}",
+                cancellationToken);
 
-            await using (var uploadStream = new FileStream(gzipFile, FileMode.Open, FileAccess.Read, FileShare.None, 8192, useAsync: true))
-            {
-                var uploadSuccess = await archiveStorage.UploadSessionCarLapsAsync(uploadStream, eventId, sessionId, carNumber);
-                if (!uploadSuccess)
-                {
-                    Logger.LogError("Failed to upload car laps for event {eventId}, session {sessionId}, car {carNumber}", eventId, sessionId, carNumber);
-                    return false;
-                }
-            }
-
-            Logger.LogInformation("Successfully uploaded car laps for event {eventId}, session {sessionId}, car {carNumber}", eventId, sessionId, carNumber);
+            if (!uploadSuccess)
+                return false;
         }
 
         return true;
@@ -224,24 +204,11 @@ public class LapsLogArchive
 
     private async Task<bool> CompressAndUploadSessionFileAsync(int eventId, int sessionId, string tempFilePath, CancellationToken cancellationToken)
     {
-        string gzipFilePath = tempFilePath + ".gz";
-
-        await using (var originalFileStream = new FileStream(tempFilePath, FileMode.Open, FileAccess.Read, FileShare.None, 8192, useAsync: true))
-        await using (var compressedFileStream = new FileStream(gzipFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, useAsync: true))
-        await using (var gzipStream = new System.IO.Compression.GZipStream(compressedFileStream, System.IO.Compression.CompressionLevel.Optimal))
-        {
-            await originalFileStream.CopyToAsync(gzipStream, cancellationToken);
-        }
-
-        await using var uploadStream = new FileStream(gzipFilePath, FileMode.Open, FileAccess.Read, FileShare.None, 8192, useAsync: true);
-        var uploadSuccess = await archiveStorage.UploadSessionLapsAsync(uploadStream, eventId, sessionId);
-        if (!uploadSuccess)
-        {
-            Logger.LogError("Failed to upload archived laps for event {eventId}, session {sessionId}", eventId, sessionId);
-            return false;
-        }
-
-        return true;
+        return await CompressAndUploadFileAsync(
+            tempFilePath,
+            stream => ArchiveStorage.UploadSessionLapsAsync(stream, eventId, sessionId),
+            $"archived laps for event {eventId}, session {sessionId}",
+            cancellationToken);
     }
 
     private async Task CleanupCarFilesAsync(Dictionary<string, CarFileWriters> carFiles)
@@ -265,22 +232,7 @@ public class LapsLogArchive
 
     private void CleanupSessionFiles(string? tempFilePath, int eventId, int sessionId)
     {
-        if (tempFilePath == null)
-            return;
-
-        try
-        {
-            if (File.Exists(tempFilePath))
-                File.Delete(tempFilePath);
-
-            string gzipFilePath = tempFilePath + ".gz";
-            if (File.Exists(gzipFilePath))
-                File.Delete(gzipFilePath);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Failed to delete session temp files for event {eventId}, session {sessionId}", eventId, sessionId);
-        }
+        CleanupFile(tempFilePath, $"event {eventId}, session {sessionId}");
     }
 
     private class CarFileWriters

@@ -4,20 +4,11 @@ using RedMist.Database;
 
 namespace RedMist.EventOrchestration.Utilities;
 
-public class EventLogArchive
+public class EventLogArchive : BaseArchive
 {
-    private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly IArchiveStorage archiveStorage;
-    private readonly PurgeUtilities purgeUtilities;
-    private ILogger Logger { get; }
-
-
     public EventLogArchive(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IArchiveStorage archiveStorage, PurgeUtilities purgeUtilities)
+        : base(loggerFactory, tsContext, archiveStorage, purgeUtilities)
     {
-        Logger = loggerFactory.CreateLogger(GetType().Name);
-        this.tsContext = tsContext;
-        this.archiveStorage = archiveStorage;
-        this.purgeUtilities = purgeUtilities;
     }
 
 
@@ -50,7 +41,7 @@ public class EventLogArchive
             if (!uploadSuccess)
                 return false;
 
-            await purgeUtilities.DeleteEventStatusLogsFromDatabaseAsync(eventId, totalLogs, cancellationToken);
+            await PurgeUtilities.DeleteEventStatusLogsFromDatabaseAsync(eventId, totalLogs, cancellationToken);
 
             Logger.LogInformation("Successfully archived and deleted {count} logs for event {eventId}", totalLogs, eventId);
             return true;
@@ -82,7 +73,7 @@ public class EventLogArchive
 
             while (true)
             {
-                await using var dbContext = await tsContext.CreateDbContextAsync(cancellationToken);
+                await using var dbContext = await TsContext.CreateDbContextAsync(cancellationToken);
 
                 var logBatch = await dbContext.EventStatusLogs
                     .Where(e => e.EventId == eventId)
@@ -180,24 +171,14 @@ public class EventLogArchive
             var gzipFile = writers.FilePath + ".gz";
             writers.GzipFilePath = gzipFile;
 
-            await using (var originalStream = new FileStream(writers.FilePath, FileMode.Open, FileAccess.Read, FileShare.None, 8192, useAsync: true))
-            await using (var compressedStream = new FileStream(gzipFile, FileMode.Create, FileAccess.Write, FileShare.None, 8192, useAsync: true))
-            await using (var gzipStream = new System.IO.Compression.GZipStream(compressedStream, System.IO.Compression.CompressionLevel.Optimal))
-            {
-                await originalStream.CopyToAsync(gzipStream, cancellationToken);
-            }
+            var uploadSuccess = await CompressAndUploadFileAsync(
+                writers.FilePath,
+                stream => ArchiveStorage.UploadSessionLogsAsync(stream, eventId, sessionId),
+                $"session logs for event {eventId}, session {sessionId}",
+                cancellationToken);
 
-            await using (var uploadStream = new FileStream(gzipFile, FileMode.Open, FileAccess.Read, FileShare.None, 8192, useAsync: true))
-            {
-                var uploadSuccess = await archiveStorage.UploadSessionLogsAsync(uploadStream, eventId, sessionId);
-                if (!uploadSuccess)
-                {
-                    Logger.LogError("Failed to upload session logs for event {eventId}, session {sessionId}", eventId, sessionId);
-                    return false;
-                }
-            }
-
-            Logger.LogInformation("Successfully uploaded session logs for event {eventId}, session {sessionId}", eventId, sessionId);
+            if (!uploadSuccess)
+                return false;
         }
 
         return true;
@@ -205,24 +186,11 @@ public class EventLogArchive
 
     private async Task<bool> CompressAndUploadEventFileAsync(int eventId, string tempFilePath, CancellationToken cancellationToken)
     {
-        string gzipFilePath = tempFilePath + ".gz";
-
-        await using (var originalFileStream = new FileStream(tempFilePath, FileMode.Open, FileAccess.Read, FileShare.None, 8192, useAsync: true))
-        await using (var compressedFileStream = new FileStream(gzipFilePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, useAsync: true))
-        await using (var gzipStream = new System.IO.Compression.GZipStream(compressedFileStream, System.IO.Compression.CompressionLevel.Optimal))
-        {
-            await originalFileStream.CopyToAsync(gzipStream, cancellationToken);
-        }
-
-        await using var uploadStream = new FileStream(gzipFilePath, FileMode.Open, FileAccess.Read, FileShare.None, 8192, useAsync: true);
-        var uploadSuccess = await archiveStorage.UploadEventLogsAsync(uploadStream, eventId);
-        if (!uploadSuccess)
-        {
-            Logger.LogError("Failed to upload archived logs for event {eventId}", eventId);
-            return false;
-        }
-
-        return true;
+        return await CompressAndUploadFileAsync(
+            tempFilePath,
+            stream => ArchiveStorage.UploadEventLogsAsync(stream, eventId),
+            $"archived logs for event {eventId}",
+            cancellationToken);
     }
 
     private async Task CleanupSessionFilesAsync(Dictionary<int, SessionFileWriters> sessionFiles)
@@ -246,22 +214,7 @@ public class EventLogArchive
 
     private void CleanupEventFiles(string? tempFilePath, int eventId)
     {
-        if (tempFilePath == null)
-            return;
-
-        try
-        {
-            if (File.Exists(tempFilePath))
-                File.Delete(tempFilePath);
-
-            string gzipFilePath = tempFilePath + ".gz";
-            if (File.Exists(gzipFilePath))
-                File.Delete(gzipFilePath);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Failed to delete event temp files for event {eventId}", eventId);
-        }
+        CleanupFile(tempFilePath, $"event {eventId}");
     }
 
     private class SessionFileWriters
