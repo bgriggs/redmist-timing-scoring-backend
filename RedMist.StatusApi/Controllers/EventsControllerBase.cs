@@ -86,7 +86,7 @@ public abstract class EventsControllerBase : ControllerBase
         }
 
         using var context = await tsContext.CreateDbContextAsync();
-        
+
         // Load events with sessions in a single query
         var results = await (
             from e in context.Events
@@ -607,7 +607,7 @@ public abstract class EventsControllerBase : ControllerBase
     #region Control Logs
 
     /// <summary>
-    /// Loads the complete control log for an event.
+    /// Loads the complete control log for a live event.
     /// Control logs contain race control decisions, penalties, and incident reports.
     /// </summary>
     /// <param name="eventId">The unique identifier of the event.</param>
@@ -634,6 +634,34 @@ public abstract class EventsControllerBase : ControllerBase
         }
         var ccl = JsonSerializer.Deserialize<CarControlLogs>(json.ToString());
         return ccl?.ControlLogEntries ?? [];
+    }
+
+    /// <summary>
+    /// Loads the complete control log for a finished event.
+    /// Control logs contain race control decisions, penalties, and incident reports.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="sessionId"></param>
+    /// <returns>A list of control log entries, or an empty list if not available.</returns>
+    /// <response code="200">Returns the list of control log entries.</response>
+    /// <remarks>
+    /// Control logs are only available if configured by the event organizer.
+    /// </remarks>
+    [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
+    [ProducesResponseType<List<ControlLogEntry>>(StatusCodes.Status200OK)]
+    public virtual async Task<List<ControlLogEntry>> LoadSessionHistoricalControlLog(int eventId, int sessionId)
+    {
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for event {eventId} session {sessionId}, clientId {clientId}", 
+            nameof(LoadControlLog), eventId, sessionId, clientId);
+
+        using var context = await tsContext.CreateDbContextAsync();
+        var logs = await context.SessionResults
+            .Where(s => s.EventId == eventId && s.SessionId == sessionId)
+            .Select(s => s.ControlLogs)
+            .FirstOrDefaultAsync();
+        return logs ?? [];
     }
 
     /// <summary>
