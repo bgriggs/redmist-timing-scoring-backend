@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.EventOrchestration.Utilities;
 
@@ -58,7 +59,13 @@ public class FlagsArchive : BaseArchive
         var query = dbContext.FlagLog
             .Where(f => f.EventId == eventId && f.SessionId == sessionId)
             .OrderBy(f => f.Flag)
-            .ThenBy(f => f.StartTime);
+            .ThenBy(f => f.StartTime)
+            .Select(f => new FlagDuration
+            {
+                Flag = f.Flag,
+                StartTime = f.StartTime,
+                EndTime = f.EndTime,
+            });
 
         return await WriteToJsonFileAsync(
             query,
