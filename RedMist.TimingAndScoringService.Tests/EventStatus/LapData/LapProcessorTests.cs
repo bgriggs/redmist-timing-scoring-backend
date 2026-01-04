@@ -413,7 +413,12 @@ public class LapProcessorTests
         _timeProvider.Advance(TimeSpan.FromMilliseconds(1100));
 
         // Wait for background task to process (it checks every 100ms)
-        await Task.Delay(250);
+        // Poll for up to 2 seconds to give background task time to wake up and process
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        while (_capturedStreamAdds.Count == 0 && stopwatch.ElapsedMilliseconds < 2000)
+        {
+            await Task.Delay(50);
+        }
 
         // Assert - Lap should be processed automatically by background task
         Assert.IsGreaterThanOrEqualTo(1, _capturedStreamAdds.Count, "Background task should process the lap");
@@ -428,7 +433,10 @@ public class LapProcessorTests
 
         // Act - Advance time but not past the timeout
         _timeProvider.Advance(TimeSpan.FromMilliseconds(500));
-        await Task.Delay(150);
+
+        // Wait multiple cycles for the background task to potentially process (it shouldn't)
+        // Give it several opportunities to incorrectly process the lap
+        await Task.Delay(300);
 
         // Assert - Lap should NOT be processed yet
         Assert.IsEmpty(_capturedStreamAdds, "Lap should not be processed before timeout");
