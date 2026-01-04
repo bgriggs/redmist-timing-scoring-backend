@@ -348,7 +348,7 @@ public class FlagsArchiveTests
         using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
         using var reader = new StreamReader(gzipStream);
         var json = await reader.ReadToEndAsync();
-        var archivedFlags = JsonSerializer.Deserialize<List<FlagLog>>(json);
+        var archivedFlags = JsonSerializer.Deserialize<List<FlagDuration>>(json);
 
         Assert.IsNotNull(archivedFlags);
         Assert.HasCount(2, archivedFlags);
@@ -398,7 +398,7 @@ public class FlagsArchiveTests
         using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
         using var reader = new StreamReader(gzipStream);
         var json = await reader.ReadToEndAsync();
-        var archivedFlags = JsonSerializer.Deserialize<List<FlagLog>>(json);
+        var archivedFlags = JsonSerializer.Deserialize<List<FlagDuration>>(json);
 
         Assert.IsNotNull(archivedFlags);
         Assert.HasCount(4, archivedFlags);
@@ -449,7 +449,7 @@ public class FlagsArchiveTests
         using var gzipStream = new GZipStream(capturedStream, CompressionMode.Decompress);
         using var reader = new StreamReader(gzipStream);
         var json = await reader.ReadToEndAsync();
-        var archivedFlags = JsonSerializer.Deserialize<List<FlagLog>>(json);
+        var archivedFlags = JsonSerializer.Deserialize<List<FlagDuration>>(json);
 
         Assert.IsNotNull(archivedFlags);
         Assert.HasCount(4, archivedFlags);
