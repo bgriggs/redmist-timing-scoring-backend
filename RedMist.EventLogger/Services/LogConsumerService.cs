@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using Prometheus;
 using RedMist.Backend.Shared;
 using RedMist.Database;
@@ -13,9 +14,11 @@ public class LogConsumerService : BackgroundService
 {
     private readonly string streamKey;
     private readonly int eventId;
+    private const string EVENT_STATUS_LOGGING_KEY = "event_status_logging_{0}";
     private readonly static TimeSpan interval = TimeSpan.FromSeconds(10);
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly HybridCache hcache;
     private const string CONSUMER_GROUP = "log";
     private readonly Queue<DateTime> logTimestamps = new();
     private readonly TimeSpan window = TimeSpan.FromMinutes(1);
@@ -24,11 +27,13 @@ public class LogConsumerService : BackgroundService
     private ILogger Logger { get; }
 
 
-    public LogConsumerService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration, IDbContextFactory<TsContext> tsContext)
+    public LogConsumerService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration, 
+        IDbContextFactory<TsContext> tsContext, HybridCache hcache)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
+        this.hcache = hcache;
         eventId = configuration.GetValue("event_id", 0);
         streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
         cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
@@ -57,6 +62,7 @@ public class LogConsumerService : BackgroundService
                 }
                 else
                 {
+                    bool isSourceLoggingEnabled = await SourceLoggingEnabledAsync(eventId);
                     foreach (var entry in result)
                     {
                         foreach (var field in entry.Values)
@@ -69,11 +75,14 @@ public class LogConsumerService : BackgroundService
                             }
 
                             var type = tags[0];
-                            var eventId = int.Parse(tags[1]);
+                            //var eventId = int.Parse(tags[1]);
                             var sessionId = int.Parse(tags[2]);
                             var data = field.Value.ToString();
 
-                            await LogStatusData(type, eventId, sessionId, data, stoppingToken);
+                            if (isSourceLoggingEnabled)
+                            {
+                                await LogStatusDataAsync(type, eventId, sessionId, data, stoppingToken);
+                            }
 
                             // Parse RMonitor data
                             if (type == Consts.RMONITOR_TYPE)
@@ -82,12 +91,12 @@ public class LogConsumerService : BackgroundService
                             // Passings
                             else if (type == Consts.X2PASS_TYPE)
                             {
-                                await SavePassings(data, stoppingToken);
+                                await SavePassingsAsync(data, stoppingToken);
                             }
                             // Loops
                             else if (type == "x2loop")
                             {
-                                await SaveLoops(data, stoppingToken);
+                                await SaveLoopsAsync(data, stoppingToken);
                             }
                             // Flags
                             else if (type == Consts.FLAGS_TYPE)
@@ -153,7 +162,7 @@ public class LogConsumerService : BackgroundService
         }
     }
 
-    private async Task LogStatusData(string type, int eventId, int sessionId, string data, CancellationToken stoppingToken)
+    private async Task LogStatusDataAsync(string type, int eventId, int sessionId, string data, CancellationToken stoppingToken)
     {
         try
         {
@@ -175,7 +184,7 @@ public class LogConsumerService : BackgroundService
         }
     }
 
-    private async Task SavePassings(string json, CancellationToken stoppingToken)
+    private async Task SavePassingsAsync(string json, CancellationToken stoppingToken)
     {
         try
         {
@@ -212,7 +221,7 @@ public class LogConsumerService : BackgroundService
         }
     }
 
-    private async Task SaveLoops(string json, CancellationToken stoppingToken)
+    private async Task SaveLoopsAsync(string json, CancellationToken stoppingToken)
     {
         try
         {
@@ -239,6 +248,19 @@ public class LogConsumerService : BackgroundService
         {
             Logger.LogError(ex, "Error processing X2 loops");
         }
+    }
+
+    private async Task<bool> SourceLoggingEnabledAsync(int eventId)
+    {
+        var key = string.Format(EVENT_STATUS_LOGGING_KEY, eventId);
+        return await hcache.GetOrCreateAsync(key,
+            async cancel => await LoadEventStatusLoggingFromDbAsync(eventId));
+    }
+
+    private async Task<bool> LoadEventStatusLoggingFromDbAsync(int eventId)
+    {
+        using var db = await tsContext.CreateDbContextAsync();
+        return await db.Events.Where(e => e.Id == eventId).Select(e => e.EnableSourceDataLogging).FirstOrDefaultAsync();
     }
 
     #region Metrics

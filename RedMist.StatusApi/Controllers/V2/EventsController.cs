@@ -106,6 +106,13 @@ public class EventsController : EventsControllerBase
             options, cancellationToken: default);
     }
 
+    /// <summary>
+    /// Retrieves a paginated list of archived events, ordered by start date in descending order.
+    /// </summary>
+    /// <param name="offset">The zero-based index of the first archived event to retrieve. Must be greater than or equal to 0.</param>
+    /// <param name="take">The maximum number of archived events to return. Must be between 1 and 100.</param>
+    /// <returns>An <see cref="ActionResult{T}">ActionResult</see> containing a list of <see cref="EventListSummary"/> objects
+    /// representing the archived events. Returns a 400 Bad Request response if <paramref name="take"/> exceeds 100.</returns>
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
