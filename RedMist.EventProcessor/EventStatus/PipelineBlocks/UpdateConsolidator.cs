@@ -33,6 +33,7 @@ public class UpdateConsolidator
     {
         if (update == null || (update.SessionPatches.Count == 0 && update.CarPatches.Count == 0))
             return;
+
         await processLock.WaitAsync(sessionContext.CancellationToken);
         try
         {
@@ -115,6 +116,8 @@ public class UpdateConsolidator
             var properties = TimingCommon.Models.Mappers.CarPositionMapper.GetChangedProperties(kvp.Value);
             if (properties.Length > 1) // More than just the Number property
             {
+                kvp.Value.EventId = sessionContext.EventId.ToString();
+                kvp.Value.SessionId = sessionContext.SessionState.SessionId.ToString();
                 carPatchList.Add(kvp.Value);
             }
         }
@@ -124,7 +127,11 @@ public class UpdateConsolidator
         accumulatedCarPatches.Clear();
 
         if (sessionPatch != null)
+        {
+            sessionPatch.EventId = sessionContext.EventId;
+            sessionPatch.SessionId = sessionContext.SessionState.SessionId;
             return new PatchUpdates([sessionPatch], [.. carPatchList]);
+        }
         return new PatchUpdates([], [.. carPatchList]);
     }
 }

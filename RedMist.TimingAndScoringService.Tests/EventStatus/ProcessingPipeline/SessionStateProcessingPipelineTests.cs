@@ -840,6 +840,47 @@ public class SessionStateProcessingPipelineTests
         Assert.IsTrue(finalizedCalled, "FinalizedSession event should have been called at end of event.");
     }
 
+    [TestMethod]
+    public async Task PatchesIncludeEventId_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "TestSessionChanges.txt");
+        await entriesData.LoadAsync();
+        _statusAggregator.OnSessionPatch += (patch) =>
+        {
+            if (patch.EventId == null)
+            {
+                Assert.Fail($"Patch EventId expected to be 1 but was {patch.EventId}");
+            }
+        };
+        _statusAggregator.OnCarPatch += (patches) =>
+        {
+            foreach (var patch in patches)
+            {
+                if (patch.EventId == null)
+                {
+                    Assert.Fail($"Car patch EventId expected to be 1 but was {patch.EventId}");
+                }
+            }
+        };
+        // Act
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                // Advance time to simulate passage between records
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+            }
+
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            await _pipeline.PostAsync(tm);
+        }
+
+        // Assert
+        
+    }
+
 
     /// <summary>
     /// Parse time strings in various formats (m:ss.fff, mm:ss.fff, HH:mm:ss.fff, s.fff)

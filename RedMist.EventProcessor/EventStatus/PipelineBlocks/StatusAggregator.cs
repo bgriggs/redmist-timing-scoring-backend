@@ -2,6 +2,7 @@
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.TimingCommon.Extensions;
+using RedMist.TimingCommon.Models;
 using System.Text.Json;
 
 namespace RedMist.EventProcessor.EventStatus.PipelineBlocks;
@@ -13,7 +14,8 @@ public class StatusAggregator
 {
     private readonly IHubContext<StatusHub> hubContext;
     private readonly SessionContext sessionContext;
-
+    public event Action<SessionStatePatch>? OnSessionPatch;
+    public event Action<IEnumerable<CarPositionPatch>>? OnCarPatch;
 
     public StatusAggregator(IHubContext<StatusHub> hubContext, ILoggerFactory loggerFactory, SessionContext sessionContext)
     {
@@ -33,25 +35,27 @@ public class StatusAggregator
             {
                 var st = hubContext.Clients.Group(subKey).SendAsync("ReceiveSessionPatch", sp, sessionContext.CancellationToken);
                 tasks.Add(st);
+                OnSessionPatch?.Invoke(sp);
             }
 
             // Legacy support
-            var payload = sessionContext.SessionState.ToPayload();
-            payload.EventEntries.Clear(); // Event entries are sent separately as patches
+            //var payload = sessionContext.SessionState.ToPayload();
+            //payload.EventEntries.Clear(); // Event entries are sent separately as patches
             if (updates.CarPatches.Count > 0)
             {
                 var ct = hubContext.Clients.Group(subKey).SendAsync("ReceiveCarPatches", updates.CarPatches, sessionContext.CancellationToken);
                 tasks.Add(ct);
+                OnCarPatch?.Invoke(updates.CarPatches);
 
-                var updatedCarNumbers = updates.CarPatches.Select(p => p.Number).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                payload.CarPositionUpdates.AddRange(payload.CarPositions.Where(c => updatedCarNumbers.Contains(c.Number)));
+                //var updatedCarNumbers = updates.CarPatches.Select(p => p.Number).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                //payload.CarPositionUpdates.AddRange(payload.CarPositions.Where(c => updatedCarNumbers.Contains(c.Number)));
             }
-            payload.CarPositions.Clear();
+            //payload.CarPositions.Clear();
 
-            // Legacy support
-            var json = JsonSerializer.Serialize(payload);
-            var pt = hubContext.Clients.Group(eventId).SendAsync("ReceiveMessage", json, sessionContext.CancellationToken);
-            tasks.Add(pt);
+            //// Legacy support
+            //var json = JsonSerializer.Serialize(payload);
+            //var pt = hubContext.Clients.Group(eventId).SendAsync("ReceiveMessage", json, sessionContext.CancellationToken);
+            //tasks.Add(pt);
         }
         await Task.WhenAll(tasks);
     }
