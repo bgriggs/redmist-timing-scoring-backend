@@ -162,12 +162,11 @@ public class SessionMonitor : BackgroundService
     protected virtual async Task SaveLastUpdatedTimestampAsync(int eventId, int sessionId, CancellationToken stoppingToken = default)
     {
         using var db = await tsContext.CreateDbContextAsync(stoppingToken);
-        var session = await db.Sessions.FirstOrDefaultAsync(s => s.EventId == eventId && s.Id == sessionId, stoppingToken);
-        if (session != null)
-        {
-            session.LastUpdated = DateTime.UtcNow;
-            await db.SaveChangesAsync(stoppingToken);
-        }
+        await db.Sessions
+            .Where(s => s.EventId == eventId && s.Id == sessionId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(
+                s => s.LastUpdated,
+                DateTime.UtcNow), stoppingToken);
     }
 
 
@@ -175,18 +174,13 @@ public class SessionMonitor : BackgroundService
     {
         using var db = tsContext.CreateDbContext();
 
-        // Set all sessions as not live for this event
-        var sessionsToUpdate = await db.Sessions.Where(s => s.EventId == eventId).ToListAsync();
-        foreach (var session in sessionsToUpdate)
-        {
-            session.IsLive = false;
-        }
-
-        // Set the specific session as live
-        var targetSession = sessionsToUpdate.FirstOrDefault(s => s.Id == sessionId);
-        targetSession?.IsLive = true;
-
-        await db.SaveChangesAsync();
+        // Set all sessions as not live for this event, then set the specific session as live
+        // This is done in a single SQL UPDATE statement for efficiency
+        await db.Sessions
+            .Where(s => s.EventId == eventId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(
+                s => s.IsLive,
+                s => s.Id == sessionId));
     }
 
     /// <summary>
