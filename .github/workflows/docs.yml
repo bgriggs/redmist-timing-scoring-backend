@@ -45,7 +45,10 @@ jobs:
     - name: Install DocFX
       run: dotnet tool install -g docfx
 
-    - name: Restore Dependencies
+    - name: Restore RedMist.TimingCommon
+      run: dotnet restore external/RedMist.TimingCommon/RedMist.TimingCommon/RedMist.TimingCommon.csproj
+
+    - name: Restore Solution Dependencies
       run: dotnet restore
 
     - name: Build RedMist.TimingCommon
