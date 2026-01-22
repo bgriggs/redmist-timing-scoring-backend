@@ -46,13 +46,13 @@ jobs:
       run: dotnet tool install -g docfx
 
     - name: Build RedMist.TimingCommon
-      run: dotnet build external/RedMist.TimingCommon/RedMist.TimingCommon/RedMist.TimingCommon.csproj --configuration Release /p:EmitCompilerGeneratedFiles=true
+      run: dotnet build external/RedMist.TimingCommon/RedMist.TimingCommon/RedMist.TimingCommon.csproj --configuration Release /p:EmitCompilerGeneratedFiles=true /p:GenerateDocumentationFile=true
 
     - name: Build Solution
-      run: dotnet build --configuration Release --no-incremental /p:EmitCompilerGeneratedFiles=true
+      run: dotnet build --configuration Release --no-incremental /p:EmitCompilerGeneratedFiles=true /p:GenerateDocumentationFile=true
 
     - name: Generate API Metadata
-      run: docfx metadata docfx.json --property TargetFramework=net10.0 --warningsAsErrors false
+      run: docfx metadata docfx.json --property TargetFramework=net10.0 --property Configuration=Release --warningsAsErrors false
 
     - name: Build Documentation
       run: docfx build docfx.json --warningsAsErrors false
