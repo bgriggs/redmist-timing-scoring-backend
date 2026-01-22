@@ -58,7 +58,7 @@ jobs:
       run: dotnet build --configuration Release --no-incremental --no-restore
 
     - name: Generate API Metadata
-      run: docfx metadata docfx.json --property TargetFramework=net10.0 --warningsAsErrors false --loglevel Verbose
+      run: docfx metadata docfx.json --property TargetFramework=net10.0 --warningsAsErrors false
 
     - name: Build Documentation
       run: docfx build docfx.json --warningsAsErrors false
