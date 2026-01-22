@@ -4,13 +4,12 @@
       "src": [
         {
           "files": [
-            "RedMist.StatusApi/**/*.csproj",
+            "RedMist.StatusApi/**/*.csproj"
             //"RedMist.EventManagement/**/*.csproj",
             //"RedMist.UserManagement/**/*.csproj",
             //"RedMist.Backend.Shared/**/*.csproj",
             //"RedMist.Database/**/*.csproj",
-            //"RedMist.ControlLogs/**/*.csproj",
-            "external/RedMist.TimingCommon/RedMist.TimingCommon/*.csproj"
+            //"RedMist.ControlLogs/**/*.csproj"
           ],
           "exclude": [
             "**/bin/**",
@@ -30,6 +29,20 @@
         "TargetFramework": "net10.0",
         "Configuration": "Release"
       }
+    },
+    {
+      "src": [
+        {
+          "files": [
+            "external/RedMist.TimingCommon/RedMist.TimingCommon/bin/Release/net10.0/RedMist.TimingCommon.dll"
+          ],
+          "src": "."
+        }
+      ],
+      "dest": "api",
+      "disableGitFeatures": false,
+      "disableDefaultFilter": false,
+      "enumSortOrder": "declaringOrder"
     }
   ],
   "build": {
