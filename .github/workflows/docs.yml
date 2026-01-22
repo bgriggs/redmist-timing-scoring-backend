@@ -45,17 +45,11 @@ jobs:
     - name: Install DocFX
       run: dotnet tool install -g docfx
 
-    - name: Restore RedMist.TimingCommon
-      run: dotnet restore external/RedMist.TimingCommon/RedMist.TimingCommon/RedMist.TimingCommon.csproj
-
-    - name: Restore Solution Dependencies
-      run: dotnet restore
-
     - name: Build RedMist.TimingCommon
-      run: dotnet build external/RedMist.TimingCommon/RedMist.TimingCommon/RedMist.TimingCommon.csproj --configuration Release --no-restore
+      run: dotnet build external/RedMist.TimingCommon/RedMist.TimingCommon/RedMist.TimingCommon.csproj --configuration Release /p:EmitCompilerGeneratedFiles=true
 
     - name: Build Solution
-      run: dotnet build --configuration Release --no-incremental --no-restore
+      run: dotnet build --configuration Release --no-incremental /p:EmitCompilerGeneratedFiles=true
 
     - name: Generate API Metadata
       run: docfx metadata docfx.json --property TargetFramework=net10.0 --warningsAsErrors false
