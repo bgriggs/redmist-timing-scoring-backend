@@ -20,7 +20,7 @@
 		<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.1" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
-		<PackageReference Include="RedMist.TimingCommon" Version="1.3.2" />
+		<PackageReference Include="RedMist.TimingCommon" Version="1.3.3" />
 		<PackageReference Include="BigMission.Shared" Version="1.0.4" />
 	</ItemGroup>
 	

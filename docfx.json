@@ -24,6 +24,7 @@
       "dest": "api",
       "disableGitFeatures": false,
       "disableDefaultFilter": false,
+      "enumSortOrder": "declaringOrder",
       "properties": {
         "TargetFramework": "net10.0"
       }
