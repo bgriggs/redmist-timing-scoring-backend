@@ -34,41 +34,30 @@ public class EventArchiveService : BackgroundService
         {
             try
             {
-                // Wait until after midnight Mountain Time
+                // Calculate next midnight Mountain Time
                 var now = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, mountainTimeZone);
                 var nextMidnight = now.Date.AddDays(1);
+                var delayUntilMidnight = nextMidnight - now;
 
-                if (now.TimeOfDay < TimeSpan.Zero || now.Date == nextMidnight.AddDays(-1))
-                {
-                    // We're before midnight or already past it today, wait until next midnight
-                    var delayUntilMidnight = nextMidnight - now;
-                    if (delayUntilMidnight.TotalMilliseconds > 0)
-                    {
-                        Logger.LogInformation("Waiting until midnight Mountain Time ({nextMidnight}) to run archive process. Current time: {now}",
-                            nextMidnight, now);
-                        await Task.Delay(delayUntilMidnight, stoppingToken);
-                        continue;
-                    }
-                }
+                Logger.LogInformation("Waiting until midnight Mountain Time ({nextMidnight}) to run archive process. Current time: {now}, Delay: {delay}",
+                    nextMidnight, now, delayUntilMidnight);
+                await Task.Delay(delayUntilMidnight, stoppingToken);
 
                 // Run archive process with retry logic
                 await RunArchiveProcessWithRetriesAsync(maxRetriesPerDay, stoppingToken);
 
                 // Run simulated event purge
                 await RunSimulatedEventPurgeAsync(stoppingToken);
-
-                // Wait until next midnight Mountain Time
-                var currentTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, mountainTimeZone);
-                var tomorrowMidnight = currentTime.Date.AddDays(1);
-                var delayUntilNextRun = tomorrowMidnight - currentTime;
-
-                Logger.LogInformation("Waiting until next midnight Mountain Time ({tomorrowMidnight}) to run archive process again. Delay: {delay}",
-                    tomorrowMidnight, delayUntilNextRun);
-                await Task.Delay(delayUntilNextRun, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.LogInformation("Event archive service is stopping.");
+                break;
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "An unexpected error occurred in the event archive service main loop.");
+                await SendArchiveFailureEmailAsync($"Unexpected error in archive service main loop: {ex.Message}", null, 0);
                 // Wait 1 hour before trying again if there's an unexpected error
                 await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
             }
@@ -369,6 +358,7 @@ public class EventArchiveService : BackgroundService
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error during simulated event purge process.");
+                await SendArchiveFailureEmailAsync($"Simulated event purge failed: {ex.Message}", null, 0);
             }
         }
 
