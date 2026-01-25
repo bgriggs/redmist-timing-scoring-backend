@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "RedMist.ConvertPayloadToSessionResults": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
