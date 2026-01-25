@@ -122,6 +122,8 @@ public abstract class EventControllerBase : ControllerBase
         if (org == null)
             return NotFound("org");
         newEvent.OrganizationId = org.Id;
+        newEvent.IsSimulation = clientId?.StartsWith("api") ?? true;
+        newEvent.EnableSourceDataLogging = !newEvent.IsSimulation;
         context.Events.Add(newEvent);
         await context.SaveChangesAsync();
 
@@ -175,6 +177,8 @@ public abstract class EventControllerBase : ControllerBase
             dbEvent.LoopsMetadata = @event.LoopsMetadata;
             dbEvent.IsSimulation = @event.IsSimulation;
             dbEvent.IsArchived = @event.IsArchived;
+            dbEvent.IsSimulation = clientId?.StartsWith("api") ?? true;
+
             await context.SaveChangesAsync();
 
             // Publish event configuration change notification
