@@ -11,10 +11,11 @@ public class BunnyArchiveStorage : IArchiveStorage
     private readonly string apiAccessKey;
     private readonly string cdnId;
     private readonly ILoggerFactory loggerFactory;
+    private readonly IHttpClientFactory httpClientFactory;
     private ILogger Logger { get; }
 
 
-    public BunnyArchiveStorage(IConfiguration configuration, ILoggerFactory loggerFactory)
+    public BunnyArchiveStorage(IConfiguration configuration, ILoggerFactory loggerFactory, IHttpClientFactory httpClientFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         storageZoneName = configuration["Archive:StorageZoneName"] ?? throw new ArgumentNullException(nameof(configuration));
@@ -23,13 +24,14 @@ public class BunnyArchiveStorage : IArchiveStorage
         apiAccessKey = configuration["Archive:ApiAccessKey"] ?? throw new ArgumentNullException(nameof(configuration));
         cdnId = configuration["Archive:CdnId"] ?? throw new ArgumentNullException(nameof(configuration));
         this.loggerFactory = loggerFactory;
+        this.httpClientFactory = httpClientFactory;
     }
 
 
     public async Task<bool> UploadEventLogsAsync(Stream stream, int eventId)
     {
 
-        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory, httpClientFactory);
         Logger.LogInformation("Uploading event logs for event {EventId} to CDN...", eventId);
         var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-logs/event-{eventId}.gz");
         if (!result)
@@ -41,7 +43,7 @@ public class BunnyArchiveStorage : IArchiveStorage
 
     public async Task<bool> UploadSessionLogsAsync(Stream stream, int eventId, int sessionId)
     {
-        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory, httpClientFactory);
         Logger.LogInformation("Uploading session logs for event {EventId}, session {SessionId} to CDN...", eventId, sessionId);
         var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-logs/sessions-{eventId}/session-{sessionId}.gz");
         if (!result)
@@ -53,7 +55,7 @@ public class BunnyArchiveStorage : IArchiveStorage
 
     public async Task<bool> UploadSessionLapsAsync(Stream stream, int eventId, int sessionId)
     {
-        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory, httpClientFactory);
         Logger.LogInformation("Uploading session laps for event {EventId}, session {SessionId} to CDN...", eventId, sessionId);
         var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-laps/event-{eventId}-session-{sessionId}-laps.gz");
         if (!result)
@@ -65,7 +67,7 @@ public class BunnyArchiveStorage : IArchiveStorage
 
     public async Task<bool> UploadSessionCarLapsAsync(Stream stream, int eventId, int sessionId, string carNum)
     {
-        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory, httpClientFactory);
         Logger.LogInformation("Uploading session car laps for event {EventId}, session {SessionId}, car {CarNum} to CDN...", eventId, sessionId, carNum);
         var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-laps/event-{eventId}-session-{sessionId}-car-laps/car-{carNum}-laps.gz");
         if (!result)
@@ -77,7 +79,7 @@ public class BunnyArchiveStorage : IArchiveStorage
 
     public async Task<bool> UploadEventX2PassingsAsync(Stream stream, int eventId)
     {
-        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory, httpClientFactory);
         Logger.LogInformation("Uploading event X2 passings for event {EventId} to CDN...", eventId);
         var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-passings/event-{eventId}-passings.gz");
         if (!result)
@@ -89,7 +91,7 @@ public class BunnyArchiveStorage : IArchiveStorage
 
     public async Task<bool> UploadEventX2LoopsAsync(Stream stream, int eventId)
     {
-        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory, httpClientFactory);
         Logger.LogInformation("Uploading event X2 loops for event {EventId} to CDN...", eventId);
         var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-loops/event-{eventId}-loops.gz");
         if (!result)
@@ -101,7 +103,7 @@ public class BunnyArchiveStorage : IArchiveStorage
 
     public async Task<bool> UploadSessionFlagsAsync(Stream stream, int eventId, int sessionId)
     {
-        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory, httpClientFactory);
         Logger.LogInformation("Uploading session flags for event {EventId}, session {SessionId} to CDN...", eventId, sessionId);
         var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-flags/event-{eventId}-session-{sessionId}-flags.gz");
         if (!result)
@@ -113,7 +115,7 @@ public class BunnyArchiveStorage : IArchiveStorage
 
     public async Task<bool> UploadEventCompetitorMetadataAsync(Stream stream, int eventId)
     {
-        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory, httpClientFactory);
         Logger.LogInformation("Uploading event competitor metadata for event {EventId} to CDN...", eventId);
         var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-competitor-metadata/event-{eventId}-competitor-metadata.gz");
         if (!result)

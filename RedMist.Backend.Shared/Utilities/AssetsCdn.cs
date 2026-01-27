@@ -11,10 +11,11 @@ public class AssetsCdn
     private readonly string apiAccessKey;
     private readonly string cdnId;
     private readonly ILoggerFactory loggerFactory;
+    private readonly IHttpClientFactory httpClientFactory;
     private ILogger Logger { get; }
 
 
-    public AssetsCdn(IConfiguration configuration, ILoggerFactory loggerFactory)
+    public AssetsCdn(IConfiguration configuration, ILoggerFactory loggerFactory, IHttpClientFactory httpClientFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         storageZoneName = configuration["Assets:StorageZoneName"] ?? throw new ArgumentNullException(nameof(configuration));
@@ -23,12 +24,13 @@ public class AssetsCdn
         apiAccessKey = configuration["Assets:ApiAccessKey"] ?? throw new ArgumentNullException(nameof(configuration));
         cdnId = configuration["Assets:CdnId"] ?? throw new ArgumentNullException(nameof(configuration));
         this.loggerFactory = loggerFactory;
+        this.httpClientFactory = httpClientFactory;
     }
 
 
     public async Task<bool> SaveLogoAsync(int organizationId, byte[] data)
     {
-        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory);
+        using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory, httpClientFactory);
         using var stream = new MemoryStream(data);
         Logger.LogInformation("Uploading logo for organization {OrganizationId} to CDN...", organizationId);
         var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/logos/org-{organizationId}.img");

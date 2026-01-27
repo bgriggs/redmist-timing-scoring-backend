@@ -64,7 +64,7 @@ public abstract class OrganizationControllerBase : Controller
         Logger.LogTrace("{m}", nameof(LoadOrganization));
         var clientId = User.FindFirstValue("client_id");
         using var db = await tsContext.CreateDbContextAsync();
-        var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        var org = await db.Organizations.AsNoTracking().FirstOrDefaultAsync(x => x.ClientId == clientId);
         if (org == null)
             return NotFound();
 
@@ -175,6 +175,7 @@ public abstract class OrganizationControllerBase : Controller
 
         using var db = await tsContext.CreateDbContextAsync();
         var sessions = await db.SessionResults
+            .AsNoTracking()
             .Where(s => db.Events.Any(e => e.Id == s.EventId && e.OrganizationId == orgId) && s.ControlLogs.Count > 0)
             .OrderByDescending(s => s.Start)
             .Take(3)

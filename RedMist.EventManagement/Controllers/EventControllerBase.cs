@@ -60,6 +60,7 @@ public abstract class EventControllerBase : ControllerBase
         var clientId = User.FindFirstValue("client_id");
         using var context = await tsContext.CreateDbContextAsync();
         var dbEvents = await context.Events
+            .AsNoTracking()
             .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
             .Where(s => s.o.ClientId == clientId && !s.e.IsDeleted)
             .OrderByDescending(s => s.e.StartDate)
@@ -90,6 +91,7 @@ public abstract class EventControllerBase : ControllerBase
         var clientId = User.FindFirstValue("client_id");
         using var context = await tsContext.CreateDbContextAsync();
         return await context.Events
+            .AsNoTracking()
             .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
             .Where(s => s.o.ClientId == clientId && s.e.Id == eventId && !s.e.IsDeleted)
             .Select(s => s.e)

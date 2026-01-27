@@ -49,6 +49,8 @@ public class Program
         //    options.GlobalPermitLimit = 30;
         //});
 
+        builder.Services.AddHttpClient();
+
         builder.Services.AddControllersWithMessagePack();
 
         builder.Services.AddEndpointsApiExplorer();

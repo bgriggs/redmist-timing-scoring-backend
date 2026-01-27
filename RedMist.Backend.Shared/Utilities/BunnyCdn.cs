@@ -8,6 +8,7 @@ public class BunnyCdn : IDisposable
 {
     private readonly BunnyCDNStorage bunnyClient;
     private readonly string apiAccessKey;
+    private readonly IHttpClientFactory httpClientFactory;
 
     private ILogger Logger { get; }
 
@@ -20,7 +21,8 @@ public class BunnyCdn : IDisposable
     /// <param name="mainReplicationRegion">Name from the replication page, default is de</param>
     /// <param name="apiAccessKey">Overall API key from account settings</param>
     /// <param name="loggerFactory"></param>
-    public BunnyCdn(string storageZoneName, string storageAccessKey, string mainReplicationRegion, string apiAccessKey, ILoggerFactory loggerFactory)
+    /// <param name="httpClientFactory">Factory for creating HttpClient instances to prevent socket exhaustion</param>
+    public BunnyCdn(string storageZoneName, string storageAccessKey, string mainReplicationRegion, string apiAccessKey, ILoggerFactory loggerFactory, IHttpClientFactory httpClientFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         bunnyClient = new BunnyCDNStorage(storageZoneName, storageAccessKey, mainReplicationRegion);
@@ -31,6 +33,7 @@ public class BunnyCdn : IDisposable
         }
 
         this.apiAccessKey = apiAccessKey;
+        this.httpClientFactory = httpClientFactory;
     }
 
 
@@ -177,7 +180,7 @@ public class BunnyCdn : IDisposable
     public async Task<bool> PurgeCacheAsync(string cdnId)
     {
         var url = $"https://api.bunny.net/pullzone/{cdnId}/purgeCache";
-        using var httpClient = new HttpClient();
+        var httpClient = httpClientFactory.CreateClient();
         httpClient.DefaultRequestHeaders.Add("AccessKey", apiAccessKey);
         var message = new HttpRequestMessage(HttpMethod.Post, url);
         var response = await httpClient.SendAsync(message);

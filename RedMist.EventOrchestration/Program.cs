@@ -32,6 +32,8 @@ public class Program
             .AddRedis(redisConn, tags: ["cache", "redis"])
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"]);
 
+        builder.Services.AddHttpClient();
+
         builder.Services.AddSingleton<EventsChecker>();
         builder.Services.AddTransient<IArchiveStorage, BunnyArchiveStorage>();
         builder.Services.AddTransient<EmailHelper>();

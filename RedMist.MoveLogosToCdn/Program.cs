@@ -34,6 +34,9 @@ internal class Program
             builder.Services.AddDbContext<TsContext>(options =>
                 options.UseNpgsql(sqlConn));
 
+            builder.Services.AddHttpClient();
+            builder.Services.AddTransient<AssetsCdn>();
+
             var host = builder.Build();
             var logger = host.Services.GetRequiredService<ILogger<Program>>();
             var loggerFactory = host.Services.GetRequiredService<ILoggerFactory>();
@@ -53,7 +56,7 @@ internal class Program
                 return 1;
             }
 
-            var assetsCdn = new AssetsCdn(config, loggerFactory);
+            var assetsCdn = scope.ServiceProvider.GetRequiredService<AssetsCdn>();
 
             foreach (var org in orgs)
             {

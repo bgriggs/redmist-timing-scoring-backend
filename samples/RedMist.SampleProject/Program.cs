@@ -351,496 +351,496 @@ internal class Program
         Console.WriteLine($"Set car video result: {result}");
     }
 
-        /// <summary>
-        /// Removes car video details.
-        /// </summary>
-        static async Task RemoveVideoExternalTelemetryAsync(ExternalTelemetryClient client)
+    /// <summary>
+    /// Removes car video details.
+    /// </summary>
+    static async Task RemoveVideoExternalTelemetryAsync(ExternalTelemetryClient client)
+    {
+        var videoCar = new VideoMetadata { EventId = EVENTID, CarNumber = "60" };
+
+        var videoTrans = new VideoMetadata { TransponderId = 14451114 };
+
+        var videoAll = new VideoMetadata { EventId = EVENTID, CarNumber = "72", TransponderId = 1329228 };
+        var result = await client.UpdateCarVideosAsync([videoCar, videoTrans, videoAll]);
+        Console.WriteLine($"Remove car video result: {result}");
+    }
+
+    /// <summary>
+    /// Loads recent events.
+    /// </summary>
+    static async Task LoadRecentEventsAsync(StatusClient client)
+    {
+        Console.WriteLine("Loading recent events...");
+        var events = await client.LoadRecentEventsAsync();
+        Console.WriteLine($"Found {events.Count} events:");
+        foreach (var evt in events)
         {
-            var videoCar = new VideoMetadata { EventId = EVENTID, CarNumber = "60" };
-
-            var videoTrans = new VideoMetadata { TransponderId = 14451114 };
-
-            var videoAll = new VideoMetadata { EventId = EVENTID, CarNumber = "72", TransponderId = 1329228 };
-            var result = await client.UpdateCarVideosAsync([videoCar, videoTrans, videoAll]);
-            Console.WriteLine($"Remove car video result: {result}");
+            Console.WriteLine($"  {JsonSerializer.Serialize(evt)}");
         }
+    }
 
-        /// <summary>
-        /// Loads recent events.
-        /// </summary>
-        static async Task LoadRecentEventsAsync(StatusClient client)
+    /// <summary>
+    /// Loads a specific event.
+    /// </summary>
+    static async Task LoadEventAsync(StatusClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (int.TryParse(Console.ReadLine(), out int eventId))
         {
-            Console.WriteLine("Loading recent events...");
-            var events = await client.LoadRecentEventsAsync();
-            Console.WriteLine($"Found {events.Count} events:");
-            foreach (var evt in events)
+            Console.WriteLine($"Loading event {eventId}...");
+            var evt = await client.LoadEventAsync(eventId);
+            if (evt != null)
             {
-                Console.WriteLine($"  {JsonSerializer.Serialize(evt)}");
-            }
-        }
-
-        /// <summary>
-        /// Loads a specific event.
-        /// </summary>
-        static async Task LoadEventAsync(StatusClient client)
-        {
-            Console.Write("Enter Event ID: ");
-            if (int.TryParse(Console.ReadLine(), out int eventId))
-            {
-                Console.WriteLine($"Loading event {eventId}...");
-                var evt = await client.LoadEventAsync(eventId);
-                if (evt != null)
-                {
-                    Console.WriteLine(JsonSerializer.Serialize(evt, new JsonSerializerOptions { WriteIndented = true }));
-                }
-                else
-                {
-                    Console.WriteLine("Event not found.");
-                }
+                Console.WriteLine(JsonSerializer.Serialize(evt, new JsonSerializerOptions { WriteIndented = true }));
             }
             else
             {
-                Console.WriteLine("Invalid Event ID.");
+                Console.WriteLine("Event not found.");
             }
         }
-
-        /// <summary>
-        /// Loads current event status.
-        /// </summary>
-        static async Task LoadEventStatusAsync(StatusClient client)
+        else
         {
-            Console.Write("Enter Event ID: ");
-            if (int.TryParse(Console.ReadLine(), out int eventId))
+            Console.WriteLine("Invalid Event ID.");
+        }
+    }
+
+    /// <summary>
+    /// Loads current event status.
+    /// </summary>
+    static async Task LoadEventStatusAsync(StatusClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine($"Loading event status for {eventId}...");
+            var status = await client.LoadEventStatusAsync(eventId);
+            if (status != null)
             {
-                Console.WriteLine($"Loading event status for {eventId}...");
-                var status = await client.LoadEventStatusAsync(eventId);
-                if (status != null)
-                {
-                    Console.WriteLine(JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true }));
-                }
-                else
-                {
-                    Console.WriteLine("Status not found.");
-                }
+                Console.WriteLine(JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true }));
             }
             else
             {
-                Console.WriteLine("Invalid Event ID.");
+                Console.WriteLine("Status not found.");
             }
         }
-
-        /// <summary>
-        /// Loads car laps.
-        /// </summary>
-        static async Task LoadCarLapsAsync(StatusClient client)
+        else
         {
-            Console.Write("Enter Event ID: ");
-            if (!int.TryParse(Console.ReadLine(), out int eventId))
-            {
-                Console.WriteLine("Invalid Event ID.");
-                return;
-            }
-
-            Console.Write("Enter Session ID: ");
-            if (!int.TryParse(Console.ReadLine(), out int sessionId))
-            {
-                Console.WriteLine("Invalid Session ID.");
-                return;
-            }
-
-            Console.Write("Enter Car Number: ");
-            var carNumber = Console.ReadLine();
-            if (string.IsNullOrWhiteSpace(carNumber))
-            {
-                Console.WriteLine("Invalid Car Number.");
-                return;
-            }
-
-            Console.WriteLine($"Loading laps for car {carNumber}...");
-            var laps = await client.LoadCarLapsAsync(eventId, sessionId, carNumber);
-            Console.WriteLine($"Found {laps.Count} laps:");
-            foreach (var lap in laps.Take(10))
-            {
-                Console.WriteLine($"  {JsonSerializer.Serialize(lap)}");
-            }
-            if (laps.Count > 10)
-            {
-                Console.WriteLine($"  ... and {laps.Count - 10} more laps");
-            }
+            Console.WriteLine("Invalid Event ID.");
         }
+    }
 
-        /// <summary>
-        /// Loads sessions for an event.
-        /// </summary>
-        static async Task LoadSessionsAsync(StatusClient client)
+    /// <summary>
+    /// Loads car laps.
+    /// </summary>
+    static async Task LoadCarLapsAsync(StatusClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int eventId))
         {
-            Console.Write("Enter Event ID: ");
-            if (int.TryParse(Console.ReadLine(), out int eventId))
-            {
-                Console.WriteLine($"Loading sessions for event {eventId}...");
-                var sessions = await client.LoadSessionsAsync(eventId);
-                Console.WriteLine($"Found {sessions.Count} sessions:");
-                foreach (var session in sessions)
-                {
-                    Console.WriteLine($"  {JsonSerializer.Serialize(session)}");
-                }
-            }
-            else
-            {
-                Console.WriteLine("Invalid Event ID.");
-            }
+            Console.WriteLine("Invalid Event ID.");
+            return;
         }
 
-        /// <summary>
-        /// Loads session results.
-        /// </summary>
-        static async Task LoadSessionResultsAsync(StatusClient client)
+        Console.Write("Enter Session ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int sessionId))
         {
-            Console.Write("Enter Event ID: ");
-            if (!int.TryParse(Console.ReadLine(), out int eventId))
-            {
-                Console.WriteLine("Invalid Event ID.");
-                return;
-            }
-
-            Console.Write("Enter Session ID: ");
-            if (!int.TryParse(Console.ReadLine(), out int sessionId))
-            {
-                Console.WriteLine("Invalid Session ID.");
-                return;
-            }
-
-            Console.WriteLine($"Loading results for session {sessionId}...");
-            var results = await client.LoadSessionResultsAsync(eventId, sessionId);
-            if (results != null)
-            {
-                Console.WriteLine(JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
-            }
-            else
-            {
-                Console.WriteLine("Results not found.");
-            }
+            Console.WriteLine("Invalid Session ID.");
+            return;
         }
 
-        /// <summary>
-        /// Loads competitor metadata.
-        /// </summary>
-        static async Task LoadCompetitorMetadataAsync(StatusClient client)
+        Console.Write("Enter Car Number: ");
+        var carNumber = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(carNumber))
         {
-            Console.Write("Enter Event ID: ");
-            if (!int.TryParse(Console.ReadLine(), out int eventId))
-            {
-                Console.WriteLine("Invalid Event ID.");
-                return;
-            }
-
-            Console.Write("Enter Car Number: ");
-            var carNumber = Console.ReadLine();
-            if (string.IsNullOrWhiteSpace(carNumber))
-            {
-                Console.WriteLine("Invalid Car Number.");
-                return;
-            }
-
-            Console.WriteLine($"Loading metadata for car {carNumber}...");
-            var metadata = await client.LoadCompetitorMetadataAsync(eventId, carNumber);
-            if (metadata != null)
-            {
-                Console.WriteLine(JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
-            }
-            else
-            {
-                Console.WriteLine("Metadata not found.");
-            }
+            Console.WriteLine("Invalid Car Number.");
+            return;
         }
 
-        /// <summary>
-        /// Loads control log.
-        /// </summary>
-        static async Task LoadControlLogAsync(StatusClient client)
+        Console.WriteLine($"Loading laps for car {carNumber}...");
+        var laps = await client.LoadCarLapsAsync(eventId, sessionId, carNumber);
+        Console.WriteLine($"Found {laps.Count} laps:");
+        foreach (var lap in laps.Take(10))
         {
-            Console.Write("Enter Event ID: ");
-            if (int.TryParse(Console.ReadLine(), out int eventId))
-            {
-                Console.WriteLine($"Loading control log for event {eventId}...");
-                var entries = await client.LoadControlLogAsync(eventId);
-                Console.WriteLine($"Found {entries.Count} control log entries:");
-                foreach (var entry in entries.Take(10))
-                {
-                    Console.WriteLine($"  {JsonSerializer.Serialize(entry)}");
-                }
-                if (entries.Count > 10)
-                {
-                    Console.WriteLine($"  ... and {entries.Count - 10} more entries");
-                }
-            }
-            else
-            {
-                Console.WriteLine("Invalid Event ID.");
-            }
+            Console.WriteLine($"  {JsonSerializer.Serialize(lap)}");
         }
-
-        /// <summary>
-        /// Loads car control logs.
-        /// </summary>
-        static async Task LoadCarControlLogsAsync(StatusClient client)
+        if (laps.Count > 10)
         {
-            Console.Write("Enter Event ID: ");
-            if (!int.TryParse(Console.ReadLine(), out int eventId))
-            {
-                Console.WriteLine("Invalid Event ID.");
-                return;
-            }
-
-            Console.Write("Enter Car Number: ");
-            var carNumber = Console.ReadLine();
-            if (string.IsNullOrWhiteSpace(carNumber))
-            {
-                Console.WriteLine("Invalid Car Number.");
-                return;
-            }
-
-            Console.WriteLine($"Loading control logs for car {carNumber}...");
-            var logs = await client.LoadCarControlLogsAsync(eventId, carNumber);
-            if (logs != null)
-            {
-                Console.WriteLine(JsonSerializer.Serialize(logs, new JsonSerializerOptions { WriteIndented = true }));
-            }
-            else
-            {
-                Console.WriteLine("Control logs not found.");
-            }
+            Console.WriteLine($"  ... and {laps.Count - 10} more laps");
         }
+    }
 
-        /// <summary>
-        /// Loads in-car driver mode payload.
-        /// </summary>
-        static async Task LoadInCarDriverModePayloadAsync(StatusClient client)
+    /// <summary>
+    /// Loads sessions for an event.
+    /// </summary>
+    static async Task LoadSessionsAsync(StatusClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (int.TryParse(Console.ReadLine(), out int eventId))
         {
-            Console.Write("Enter Event ID: ");
-            if (!int.TryParse(Console.ReadLine(), out int eventId))
+            Console.WriteLine($"Loading sessions for event {eventId}...");
+            var sessions = await client.LoadSessionsAsync(eventId);
+            Console.WriteLine($"Found {sessions.Count} sessions:");
+            foreach (var session in sessions)
             {
-                Console.WriteLine("Invalid Event ID.");
-                return;
-            }
-
-            Console.Write("Enter Car Number: ");
-            var carNumber = Console.ReadLine();
-            if (string.IsNullOrWhiteSpace(carNumber))
-            {
-                Console.WriteLine("Invalid Car Number.");
-                return;
-            }
-
-            Console.WriteLine($"Loading in-car payload for car {carNumber}...");
-            var payload = await client.LoadInCarDriverModePayloadAsync(eventId, carNumber);
-            if (payload != null)
-            {
-                Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
-            }
-            else
-            {
-                Console.WriteLine("Payload not found.");
+                Console.WriteLine($"  {JsonSerializer.Serialize(session)}");
             }
         }
+        else
+        {
+            Console.WriteLine("Invalid Event ID.");
+        }
+    }
 
-            /// <summary>
-            /// Loads flags.
-            /// </summary>
-            static async Task LoadFlagsAsync(StatusClient client)
+    /// <summary>
+    /// Loads session results.
+    /// </summary>
+    static async Task LoadSessionResultsAsync(StatusClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine("Invalid Event ID.");
+            return;
+        }
+
+        Console.Write("Enter Session ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int sessionId))
+        {
+            Console.WriteLine("Invalid Session ID.");
+            return;
+        }
+
+        Console.WriteLine($"Loading results for session {sessionId}...");
+        var results = await client.LoadSessionResultsAsync(eventId, sessionId);
+        if (results != null)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        else
+        {
+            Console.WriteLine("Results not found.");
+        }
+    }
+
+    /// <summary>
+    /// Loads competitor metadata.
+    /// </summary>
+    static async Task LoadCompetitorMetadataAsync(StatusClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine("Invalid Event ID.");
+            return;
+        }
+
+        Console.Write("Enter Car Number: ");
+        var carNumber = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(carNumber))
+        {
+            Console.WriteLine("Invalid Car Number.");
+            return;
+        }
+
+        Console.WriteLine($"Loading metadata for car {carNumber}...");
+        var metadata = await client.LoadCompetitorMetadataAsync(eventId, carNumber);
+        if (metadata != null)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        else
+        {
+            Console.WriteLine("Metadata not found.");
+        }
+    }
+
+    /// <summary>
+    /// Loads control log.
+    /// </summary>
+    static async Task LoadControlLogAsync(StatusClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine($"Loading control log for event {eventId}...");
+            var entries = await client.LoadControlLogAsync(eventId);
+            Console.WriteLine($"Found {entries.Count} control log entries:");
+            foreach (var entry in entries.Take(10))
             {
-                Console.Write("Enter Event ID: ");
-                if (!int.TryParse(Console.ReadLine(), out int eventId))
-                {
-                    Console.WriteLine("Invalid Event ID.");
-                    return;
-                }
-
-                Console.Write("Enter Session ID: ");
-                if (!int.TryParse(Console.ReadLine(), out int sessionId))
-                {
-                    Console.WriteLine("Invalid Session ID.");
-                    return;
-                }
-
-                Console.WriteLine($"Loading flags for session {sessionId}...");
-                var flags = await client.LoadFlagsAsync(eventId, sessionId);
-                Console.WriteLine($"Found {flags.Count} flag periods:");
-                foreach (var flag in flags)
-                {
-                    Console.WriteLine($"  {JsonSerializer.Serialize(flag)}");
-                }
+                Console.WriteLine($"  {JsonSerializer.Serialize(entry)}");
             }
-
-            /// <summary>
-            /// Subscribes to event updates via SignalR.
-            /// </summary>
-            static async Task SubscribeToEventAsync(StatusSubscriptionClient client)
+            if (entries.Count > 10)
             {
-                Console.Write("Enter Event ID to subscribe: ");
-                if (int.TryParse(Console.ReadLine(), out int eventId))
-                {
-                    Console.WriteLine($"Subscribing to event {eventId}...");
-                    await client.SubscribeToEventAsync(eventId);
-                    Console.WriteLine("Subscribed! Updates will be logged. Keep the application running to receive updates.");
-                }
-                else
-                {
-                    Console.WriteLine("Invalid Event ID.");
-                }
-            }
-
-            /// <summary>
-            /// Unsubscribes from event updates.
-            /// </summary>
-            static async Task UnsubscribeFromEventAsync(StatusSubscriptionClient client)
-            {
-                Console.Write("Enter Event ID to unsubscribe: ");
-                if (int.TryParse(Console.ReadLine(), out int eventId))
-                {
-                    Console.WriteLine($"Unsubscribing from event {eventId}...");
-                    await client.UnsubscribeFromEventAsync(eventId);
-                    Console.WriteLine("Unsubscribed.");
-                }
-                else
-                {
-                    Console.WriteLine("Invalid Event ID.");
-                }
-            }
-
-            /// <summary>
-            /// Subscribes to control logs via SignalR.
-            /// </summary>
-            static async Task SubscribeToControlLogsAsync(StatusSubscriptionClient client)
-            {
-                Console.Write("Enter Event ID: ");
-                if (int.TryParse(Console.ReadLine(), out int eventId))
-                {
-                    Console.WriteLine($"Subscribing to control logs for event {eventId}...");
-                    await client.SubscribeToControlLogsAsync(eventId);
-                    Console.WriteLine("Subscribed! Control log updates will be logged.");
-                }
-                else
-                {
-                    Console.WriteLine("Invalid Event ID.");
-                }
-            }
-
-            /// <summary>
-            /// Unsubscribes from control logs.
-            /// </summary>
-            static async Task UnsubscribeFromControlLogsAsync(StatusSubscriptionClient client)
-            {
-                Console.Write("Enter Event ID: ");
-                if (int.TryParse(Console.ReadLine(), out int eventId))
-                {
-                    Console.WriteLine($"Unsubscribing from control logs for event {eventId}...");
-                    await client.UnsubscribeFromControlLogsAsync(eventId);
-                    Console.WriteLine("Unsubscribed.");
-                }
-                else
-                {
-                    Console.WriteLine("Invalid Event ID.");
-                }
-            }
-
-            /// <summary>
-            /// Subscribes to car control logs via SignalR.
-            /// </summary>
-            static async Task SubscribeToCarControlLogsAsync(StatusSubscriptionClient client)
-            {
-                Console.Write("Enter Event ID: ");
-                if (!int.TryParse(Console.ReadLine(), out int eventId))
-                {
-                    Console.WriteLine("Invalid Event ID.");
-                    return;
-                }
-
-                Console.Write("Enter Car Number: ");
-                var carNumber = Console.ReadLine();
-                if (string.IsNullOrWhiteSpace(carNumber))
-                {
-                    Console.WriteLine("Invalid Car Number.");
-                    return;
-                }
-
-                Console.WriteLine($"Subscribing to control logs for car {carNumber}...");
-                await client.SubscribeToCarControlLogsAsync(eventId, carNumber);
-                Console.WriteLine("Subscribed! Car control log updates will be logged.");
-            }
-
-            /// <summary>
-            /// Unsubscribes from car control logs.
-            /// </summary>
-            static async Task UnsubscribeFromCarControlLogsAsync(StatusSubscriptionClient client)
-            {
-                Console.Write("Enter Event ID: ");
-                if (!int.TryParse(Console.ReadLine(), out int eventId))
-                {
-                    Console.WriteLine("Invalid Event ID.");
-                    return;
-                }
-
-                Console.Write("Enter Car Number: ");
-                var carNumber = Console.ReadLine();
-                if (string.IsNullOrWhiteSpace(carNumber))
-                {
-                    Console.WriteLine("Invalid Car Number.");
-                    return;
-                }
-
-                Console.WriteLine($"Unsubscribing from control logs for car {carNumber}...");
-                await client.UnsubscribeFromCarControlLogsAsync(eventId, carNumber);
-                Console.WriteLine("Unsubscribed.");
-            }
-
-            /// <summary>
-            /// Subscribes to in-car driver event via SignalR.
-            /// </summary>
-            static async Task SubscribeToInCarDriverEventAsync(StatusSubscriptionClient client)
-            {
-                Console.Write("Enter Event ID: ");
-                if (!int.TryParse(Console.ReadLine(), out int eventId))
-                {
-                    Console.WriteLine("Invalid Event ID.");
-                    return;
-                }
-
-                Console.Write("Enter Car Number: ");
-                var carNumber = Console.ReadLine();
-                if (string.IsNullOrWhiteSpace(carNumber))
-                {
-                    Console.WriteLine("Invalid Car Number.");
-                    return;
-                }
-
-                Console.WriteLine($"Subscribing to in-car driver event for car {carNumber}...");
-                await client.SubscribeToInCarDriverEventAsync(eventId, carNumber);
-                Console.WriteLine("Subscribed! In-car updates will be logged. Keep the application running to receive updates.");
-            }
-
-            /// <summary>
-            /// Unsubscribes from in-car driver event.
-            /// </summary>
-            static async Task UnsubscribeFromInCarDriverEventAsync(StatusSubscriptionClient client)
-            {
-                Console.Write("Enter Event ID: ");
-                if (!int.TryParse(Console.ReadLine(), out int eventId))
-                {
-                    Console.WriteLine("Invalid Event ID.");
-                    return;
-                }
-
-                Console.Write("Enter Car Number: ");
-                var carNumber = Console.ReadLine();
-                if (string.IsNullOrWhiteSpace(carNumber))
-                {
-                    Console.WriteLine("Invalid Car Number.");
-                    return;
-                }
-
-                Console.WriteLine($"Unsubscribing from in-car driver event for car {carNumber}...");
-                await client.UnsubscribeFromInCarDriverEventAsync(eventId, carNumber);
-                Console.WriteLine("Unsubscribed.");
+                Console.WriteLine($"  ... and {entries.Count - 10} more entries");
             }
         }
+        else
+        {
+            Console.WriteLine("Invalid Event ID.");
+        }
+    }
+
+    /// <summary>
+    /// Loads car control logs.
+    /// </summary>
+    static async Task LoadCarControlLogsAsync(StatusClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine("Invalid Event ID.");
+            return;
+        }
+
+        Console.Write("Enter Car Number: ");
+        var carNumber = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(carNumber))
+        {
+            Console.WriteLine("Invalid Car Number.");
+            return;
+        }
+
+        Console.WriteLine($"Loading control logs for car {carNumber}...");
+        var logs = await client.LoadCarControlLogsAsync(eventId, carNumber);
+        if (logs != null)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(logs, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        else
+        {
+            Console.WriteLine("Control logs not found.");
+        }
+    }
+
+    /// <summary>
+    /// Loads in-car driver mode payload.
+    /// </summary>
+    static async Task LoadInCarDriverModePayloadAsync(StatusClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine("Invalid Event ID.");
+            return;
+        }
+
+        Console.Write("Enter Car Number: ");
+        var carNumber = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(carNumber))
+        {
+            Console.WriteLine("Invalid Car Number.");
+            return;
+        }
+
+        Console.WriteLine($"Loading in-car payload for car {carNumber}...");
+        var payload = await client.LoadInCarDriverModePayloadAsync(eventId, carNumber);
+        if (payload != null)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        else
+        {
+            Console.WriteLine("Payload not found.");
+        }
+    }
+
+    /// <summary>
+    /// Loads flags.
+    /// </summary>
+    static async Task LoadFlagsAsync(StatusClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine("Invalid Event ID.");
+            return;
+        }
+
+        Console.Write("Enter Session ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int sessionId))
+        {
+            Console.WriteLine("Invalid Session ID.");
+            return;
+        }
+
+        Console.WriteLine($"Loading flags for session {sessionId}...");
+        var flags = await client.LoadFlagsAsync(eventId, sessionId);
+        Console.WriteLine($"Found {flags.Count} flag periods:");
+        foreach (var flag in flags)
+        {
+            Console.WriteLine($"  {JsonSerializer.Serialize(flag)}");
+        }
+    }
+
+    /// <summary>
+    /// Subscribes to event updates via SignalR.
+    /// </summary>
+    static async Task SubscribeToEventAsync(StatusSubscriptionClient client)
+    {
+        Console.Write("Enter Event ID to subscribe: ");
+        if (int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine($"Subscribing to event {eventId}...");
+            await client.SubscribeToEventAsync(eventId);
+            Console.WriteLine("Subscribed! Updates will be logged. Keep the application running to receive updates.");
+        }
+        else
+        {
+            Console.WriteLine("Invalid Event ID.");
+        }
+    }
+
+    /// <summary>
+    /// Unsubscribes from event updates.
+    /// </summary>
+    static async Task UnsubscribeFromEventAsync(StatusSubscriptionClient client)
+    {
+        Console.Write("Enter Event ID to unsubscribe: ");
+        if (int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine($"Unsubscribing from event {eventId}...");
+            await client.UnsubscribeFromEventAsync(eventId);
+            Console.WriteLine("Unsubscribed.");
+        }
+        else
+        {
+            Console.WriteLine("Invalid Event ID.");
+        }
+    }
+
+    /// <summary>
+    /// Subscribes to control logs via SignalR.
+    /// </summary>
+    static async Task SubscribeToControlLogsAsync(StatusSubscriptionClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine($"Subscribing to control logs for event {eventId}...");
+            await client.SubscribeToControlLogsAsync(eventId);
+            Console.WriteLine("Subscribed! Control log updates will be logged.");
+        }
+        else
+        {
+            Console.WriteLine("Invalid Event ID.");
+        }
+    }
+
+    /// <summary>
+    /// Unsubscribes from control logs.
+    /// </summary>
+    static async Task UnsubscribeFromControlLogsAsync(StatusSubscriptionClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine($"Unsubscribing from control logs for event {eventId}...");
+            await client.UnsubscribeFromControlLogsAsync(eventId);
+            Console.WriteLine("Unsubscribed.");
+        }
+        else
+        {
+            Console.WriteLine("Invalid Event ID.");
+        }
+    }
+
+    /// <summary>
+    /// Subscribes to car control logs via SignalR.
+    /// </summary>
+    static async Task SubscribeToCarControlLogsAsync(StatusSubscriptionClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine("Invalid Event ID.");
+            return;
+        }
+
+        Console.Write("Enter Car Number: ");
+        var carNumber = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(carNumber))
+        {
+            Console.WriteLine("Invalid Car Number.");
+            return;
+        }
+
+        Console.WriteLine($"Subscribing to control logs for car {carNumber}...");
+        await client.SubscribeToCarControlLogsAsync(eventId, carNumber);
+        Console.WriteLine("Subscribed! Car control log updates will be logged.");
+    }
+
+    /// <summary>
+    /// Unsubscribes from car control logs.
+    /// </summary>
+    static async Task UnsubscribeFromCarControlLogsAsync(StatusSubscriptionClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine("Invalid Event ID.");
+            return;
+        }
+
+        Console.Write("Enter Car Number: ");
+        var carNumber = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(carNumber))
+        {
+            Console.WriteLine("Invalid Car Number.");
+            return;
+        }
+
+        Console.WriteLine($"Unsubscribing from control logs for car {carNumber}...");
+        await client.UnsubscribeFromCarControlLogsAsync(eventId, carNumber);
+        Console.WriteLine("Unsubscribed.");
+    }
+
+    /// <summary>
+    /// Subscribes to in-car driver event via SignalR.
+    /// </summary>
+    static async Task SubscribeToInCarDriverEventAsync(StatusSubscriptionClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine("Invalid Event ID.");
+            return;
+        }
+
+        Console.Write("Enter Car Number: ");
+        var carNumber = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(carNumber))
+        {
+            Console.WriteLine("Invalid Car Number.");
+            return;
+        }
+
+        Console.WriteLine($"Subscribing to in-car driver event for car {carNumber}...");
+        await client.SubscribeToInCarDriverEventAsync(eventId, carNumber);
+        Console.WriteLine("Subscribed! In-car updates will be logged. Keep the application running to receive updates.");
+    }
+
+    /// <summary>
+    /// Unsubscribes from in-car driver event.
+    /// </summary>
+    static async Task UnsubscribeFromInCarDriverEventAsync(StatusSubscriptionClient client)
+    {
+        Console.Write("Enter Event ID: ");
+        if (!int.TryParse(Console.ReadLine(), out int eventId))
+        {
+            Console.WriteLine("Invalid Event ID.");
+            return;
+        }
+
+        Console.Write("Enter Car Number: ");
+        var carNumber = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(carNumber))
+        {
+            Console.WriteLine("Invalid Car Number.");
+            return;
+        }
+
+        Console.WriteLine($"Unsubscribing from in-car driver event for car {carNumber}...");
+        await client.UnsubscribeFromInCarDriverEventAsync(eventId, carNumber);
+        Console.WriteLine("Unsubscribed.");
+    }
+}
