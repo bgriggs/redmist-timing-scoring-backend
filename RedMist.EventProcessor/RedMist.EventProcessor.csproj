@@ -20,7 +20,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
+		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.2" />
 		<PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="9.0.0" />
 		<PackageReference Include="Keycloak.AuthServices.Authorization" Version="2.8.0" />
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
@@ -36,7 +36,7 @@
 		<PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
 		<PackageReference Include="Keycloak.AuthServices.Authentication" Version="2.8.0" />
 		<PackageReference Include="BigMission.TestHelpers" Version="3.0.8" />
-		<PackageReference Include="BigMission.Shared" Version="1.0.4" />
+		<PackageReference Include="BigMission.Shared" Version="1.0.5" />
 	</ItemGroup>
 
 	<ItemGroup>
