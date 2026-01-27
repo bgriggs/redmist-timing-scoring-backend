@@ -559,9 +559,9 @@ public class StartingPositionProcessorTests
 
         // Assert
         Assert.IsTrue(result1, "First session check should succeed");
-        Assert.IsTrue(session67Positions > 0, "Session 67 should have starting positions");
+        Assert.IsGreaterThan(0, session67Positions, "Session 67 should have starting positions");
         Assert.IsTrue(result2, "New session check should succeed");
-        Assert.IsTrue(session68Positions > 0, "Session 68 should have starting positions");
+        Assert.IsGreaterThan(0, session68Positions, "Session 68 should have starting positions");
     }
 
     [TestMethod]

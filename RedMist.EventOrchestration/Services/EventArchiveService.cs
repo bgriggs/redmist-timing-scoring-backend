@@ -57,7 +57,7 @@ public class EventArchiveService : BackgroundService
             catch (Exception ex)
             {
                 Logger.LogError(ex, "An unexpected error occurred in the event archive service main loop.");
-                await SendArchiveFailureEmailAsync($"Unexpected error in archive service main loop: {ex.Message}", null, 0);
+                await SendArchiveFailureEmailAsync($"Unexpected error in archive service main loop: {ex.Message}", null, 0, ex);
                 // Wait 1 hour before trying again if there's an unexpected error
                 await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
             }
@@ -126,12 +126,14 @@ public class EventArchiveService : BackgroundService
             if (!archiveSuccessful)
             {
                 Logger.LogWarning("Archive process failed after {maxRetries} attempts. Will retry tomorrow after midnight.", maxRetriesPerDay);
-                await SendArchiveFailureEmailAsync("Archive process failed after all retry attempts", null, maxRetriesPerDay);
+                await SendArchiveFailureEmailAsync("Archive process failed after all retry attempts", null, maxRetriesPerDay, null);
             }
         }
 
     private async Task<bool> ArchiveSingleEventAsync(int eventId, CancellationToken stoppingToken)
     {
+        Exception? lastException = null;
+
         Logger.LogInformation("Archiving logs for event {eventId}...", eventId);
         var purgeUtilities = new PurgeUtilities(loggerFactory, tsContext);
         var eventArchive = new EventLogArchive(loggerFactory, tsContext, archiveStorage, purgeUtilities);
@@ -140,18 +142,19 @@ public class EventArchiveService : BackgroundService
         if (!eventLogArchived)
         {
             Logger.LogWarning("Failed to archive logs for event {eventId}.", eventId);
-            await SendArchiveFailureEmailAsync("Failed to archive event logs", eventId, 0);
+            await SendArchiveFailureEmailAsync("Failed to archive event logs", eventId, 0, lastException);
             return false;
         }
 
         // Archive laps for all sessions in this event
         Logger.LogInformation("Archiving laps for event {eventId}...", eventId);
-        var lapsArchived = await ArchiveEventLapsAsync(eventId, stoppingToken);
+        var (lapsArchived, lapsException) = await ArchiveEventLapsAsync(eventId, stoppingToken);
+        lastException = lapsException;
 
         if (!lapsArchived)
         {
             Logger.LogWarning("Failed to archive laps for event {eventId}.", eventId);
-            await SendArchiveFailureEmailAsync("Failed to archive laps", eventId, 0);
+            await SendArchiveFailureEmailAsync("Failed to archive laps", eventId, 0, lastException);
             return false;
         }
 
@@ -162,18 +165,19 @@ public class EventArchiveService : BackgroundService
         if (!x2Result)
         {
             Logger.LogWarning("Failed to archive X2 data for event {eventId}.", eventId);
-            await SendArchiveFailureEmailAsync("Failed to archive X2 data", eventId, 0);
+            await SendArchiveFailureEmailAsync("Failed to archive X2 data", eventId, 0, lastException);
             return false;
         }
 
         // Archive flags for all sessions in this event
         Logger.LogInformation("Archiving flags for event {eventId}...", eventId);
-        var flagsArchived = await ArchiveEventFlagsAsync(eventId, stoppingToken);
+        var (flagsArchived, flagsException) = await ArchiveEventFlagsAsync(eventId, stoppingToken);
+        lastException = flagsException;
 
         if (!flagsArchived)
         {
             Logger.LogWarning("Failed to archive flags for event {eventId}.", eventId);
-            await SendArchiveFailureEmailAsync("Failed to archive flags", eventId, 0);
+            await SendArchiveFailureEmailAsync("Failed to archive flags", eventId, 0, lastException);
             return false;
         }
 
@@ -184,7 +188,7 @@ public class EventArchiveService : BackgroundService
         if (!competitorMetadataResult)
         {
             Logger.LogWarning("Failed to archive competitor metadata for event {eventId}.", eventId);
-            await SendArchiveFailureEmailAsync("Failed to archive competitor metadata", eventId, 0);
+            await SendArchiveFailureEmailAsync("Failed to archive competitor metadata", eventId, 0, lastException);
             return false;
         }
 
@@ -200,12 +204,13 @@ public class EventArchiveService : BackgroundService
 
             // Cleanup CarLastLaps for this event
             Logger.LogInformation("Cleaning up CarLastLaps for event {eventId}...", eventId);
-            var lastLapsCleanedUp = await CleanupCarLastLapsAsync(eventId, stoppingToken);
+            var (lastLapsCleanedUp, cleanupException) = await CleanupCarLastLapsAsync(eventId, stoppingToken);
+            lastException = cleanupException;
 
             if (!lastLapsCleanedUp)
             {
                 Logger.LogWarning("Failed to cleanup CarLastLaps for event {eventId}.", eventId);
-                await SendArchiveFailureEmailAsync("Failed to cleanup CarLastLaps", eventId, 0);
+                await SendArchiveFailureEmailAsync("Failed to cleanup CarLastLaps", eventId, 0, lastException);
                 return false;
             }
 
@@ -228,7 +233,7 @@ public class EventArchiveService : BackgroundService
         return eventIds;
     }
 
-    private async Task<bool> ArchiveEventLapsAsync(int eventId, CancellationToken stoppingToken)
+    private async Task<(bool success, Exception? exception)> ArchiveEventLapsAsync(int eventId, CancellationToken stoppingToken)
     {
         try
         {
@@ -244,7 +249,7 @@ public class EventArchiveService : BackgroundService
             if (sessionIds.Count == 0)
             {
                 Logger.LogInformation("No laps found to archive for event {eventId}", eventId);
-                return true;
+                return (true, null);
             }
 
             Logger.LogInformation("Found {count} sessions with laps to archive for event {eventId}", sessionIds.Count, eventId);
@@ -258,22 +263,23 @@ public class EventArchiveService : BackgroundService
 
                 if (!success)
                 {
-                    Logger.LogWarning("Failed to archive laps for event {eventId}, session {sessionId}", eventId, sessionId);
-                    return false;
+                    var failureException = new Exception($"Failed to archive laps for event {eventId}, session {sessionId}. Check LapsLogArchive logs for details.");
+                    Logger.LogWarning(failureException, "Failed to archive laps for event {eventId}, session {sessionId}", eventId, sessionId);
+                    return (false, failureException);
                 }
             }
 
             Logger.LogInformation("Successfully archived laps for all sessions in event {eventId}", eventId);
-            return true;
+            return (true, null);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error archiving laps for event {eventId}", eventId);
-            return false;
+            return (false, ex);
         }
     }
 
-    private async Task<bool> ArchiveEventFlagsAsync(int eventId, CancellationToken stoppingToken)
+    private async Task<(bool success, Exception? exception)> ArchiveEventFlagsAsync(int eventId, CancellationToken stoppingToken)
     {
         try
         {
@@ -289,7 +295,7 @@ public class EventArchiveService : BackgroundService
             if (sessionIds.Count == 0)
             {
                 Logger.LogInformation("No flags found to archive for event {eventId}", eventId);
-                return true;
+                return (true, null);
             }
 
             Logger.LogInformation("Found {count} sessions with flags to archive for event {eventId}", sessionIds.Count, eventId);
@@ -302,22 +308,23 @@ public class EventArchiveService : BackgroundService
 
                 if (!success)
                 {
-                    Logger.LogWarning("Failed to archive flags for event {eventId}, session {sessionId}", eventId, sessionId);
-                    return false;
+                    var failureException = new Exception($"Failed to archive flags for event {eventId}, session {sessionId}. Check FlagsArchive logs for details.");
+                    Logger.LogWarning(failureException, "Failed to archive flags for event {eventId}, session {sessionId}", eventId, sessionId);
+                    return (false, failureException);
                 }
             }
 
             Logger.LogInformation("Successfully archived flags for all sessions in event {eventId}", eventId);
-            return true;
+            return (true, null);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error archiving flags for event {eventId}", eventId);
-            return false;
+            return (false, ex);
         }
     }
 
-    private async Task<bool> CleanupCarLastLapsAsync(int eventId, CancellationToken stoppingToken)
+    private async Task<(bool success, Exception? exception)> CleanupCarLastLapsAsync(int eventId, CancellationToken stoppingToken)
     {
         try
         {
@@ -328,12 +335,12 @@ public class EventArchiveService : BackgroundService
                 .ExecuteDeleteAsync(stoppingToken);
 
             Logger.LogInformation("Deleted {deletedCount} CarLastLaps records for event {eventId}", deletedCount, eventId);
-            return true;
+            return (true, null);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error cleaning up CarLastLaps for event {eventId}", eventId);
-            return false;
+            return (false, ex);
         }
     }
 
@@ -358,58 +365,80 @@ public class EventArchiveService : BackgroundService
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error during simulated event purge process.");
-                await SendArchiveFailureEmailAsync($"Simulated event purge failed: {ex.Message}", null, 0);
+                await SendArchiveFailureEmailAsync($"Simulated event purge failed: {ex.Message}", null, 0, ex);
             }
         }
 
-        private async Task SendArchiveFailureEmailAsync(string failureReason, int? eventId, int retryCount)
-        {
-            try
+            private async Task SendArchiveFailureEmailAsync(string failureReason, int? eventId, int retryCount, Exception? exception)
             {
-                var eventInfo = "N/A";
-                if (eventId.HasValue)
+                try
                 {
-                    try
+                    var eventInfo = "N/A";
+                    if (eventId.HasValue)
                     {
-                        await using var dbContext = await tsContext.CreateDbContextAsync();
-                        var ev = await dbContext.Events.FirstOrDefaultAsync(e => e.Id == eventId.Value);
-                        if (ev != null)
+                        try
                         {
-                            eventInfo = $"Event ID: {eventId.Value}, Name: {ev.Name}, End Date: {ev.EndDate:yyyy-MM-dd HH:mm:ss} UTC";
+                            await using var dbContext = await tsContext.CreateDbContextAsync();
+                            var ev = await dbContext.Events.FirstOrDefaultAsync(e => e.Id == eventId.Value);
+                            if (ev != null)
+                            {
+                                eventInfo = $"Event ID: {eventId.Value}, Name: {ev.Name}, End Date: {ev.EndDate:yyyy-MM-dd HH:mm:ss} UTC";
+                            }
+                            else
+                            {
+                                eventInfo = $"Event ID: {eventId.Value} (Event not found in database)";
+                            }
                         }
-                        else
+                        catch
                         {
-                            eventInfo = $"Event ID: {eventId.Value} (Event not found in database)";
+                            eventInfo = $"Event ID: {eventId.Value} (Unable to retrieve event details)";
                         }
                     }
-                    catch
+
+                    var exceptionDetails = "";
+                    if (exception != null)
                     {
-                        eventInfo = $"Event ID: {eventId.Value} (Unable to retrieve event details)";
+                        exceptionDetails = $@"
+            <h3>Exception Details</h3>
+            <p><strong>Exception Type:</strong> {exception.GetType().FullName}</p>
+            <p><strong>Exception Message:</strong> {exception.Message}</p>
+            <p><strong>Stack Trace:</strong></p>
+            <pre style=""background-color: #f4f4f4; padding: 10px; border: 1px solid #ddd; overflow-x: auto;"">{exception.StackTrace}</pre>";
+
+                        if (exception.InnerException != null)
+                        {
+                            exceptionDetails += $@"
+            <h4>Inner Exception</h4>
+            <p><strong>Type:</strong> {exception.InnerException.GetType().FullName}</p>
+            <p><strong>Message:</strong> {exception.InnerException.Message}</p>
+            <p><strong>Stack Trace:</strong></p>
+            <pre style=""background-color: #f4f4f4; padding: 10px; border: 1px solid #ddd; overflow-x: auto;"">{exception.InnerException.StackTrace}</pre>";
+                        }
                     }
+
+                    var subject = eventId.HasValue
+                        ? $"Red Mist Archive Failure - Event {eventId.Value}"
+                        : "Red Mist Archive Failure";
+
+                    var body = $@"
+        <html>
+        <body>
+            <h2>Archive Process Failure Alert</h2>
+            <p><strong>Failure Reason:</strong> {failureReason}</p>
+            <p><strong>Event Information:</strong> {eventInfo}</p>
+            <p><strong>Timestamp:</strong> {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</p>
+            {(retryCount > 0 ? $"<p><strong>Retry Attempts:</strong> {retryCount}</p>" : "")}
+            {exceptionDetails}
+            <p>Please investigate the logs for more detailed information.</p>
+        </body>
+        </html>";
+
+                    await emailHelper.SendEmailAsync(subject, body, "support@redmist.racing", "noreply@redmist.racing");
+                    Logger.LogInformation("Archive failure email sent successfully for: {failureReason}", failureReason);
                 }
-
-                var subject = eventId.HasValue
-                    ? $"Red Mist Archive Failure - Event {eventId.Value}"
-                    : "Red Mist Archive Failure";
-
-                var body = $@"
-    <html>
-    <body>
-        <h2>Archive Process Failure Alert</h2>
-        <p><strong>Failure Reason:</strong> {failureReason}</p>
-        <p><strong>Event Information:</strong> {eventInfo}</p>
-        <p><strong>Timestamp:</strong> {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</p>
-        {(retryCount > 0 ? $"<p><strong>Retry Attempts:</strong> {retryCount}</p>" : "")}
-        <p>Please investigate the logs for more detailed information.</p>
-    </body>
-    </html>";
-
-                await emailHelper.SendEmailAsync(subject, body, "support@redmist.racing", "noreply@redmist.racing");
-                Logger.LogInformation("Archive failure email sent successfully for: {failureReason}", failureReason);
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Failed to send archive failure email for: {failureReason}", failureReason);
+                }
             }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Failed to send archive failure email for: {failureReason}", failureReason);
-            }
-        }
     }
