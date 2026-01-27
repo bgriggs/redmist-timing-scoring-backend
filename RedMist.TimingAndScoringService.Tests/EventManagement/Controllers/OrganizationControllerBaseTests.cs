@@ -24,6 +24,7 @@ public class OrganizationControllerBaseTests
     private Mock<ILogger> _mockLogger = null!;
     private Mock<IControlLogFactory> _mockControlLogFactory = null!;
     private Mock<IControlLog> _mockControlLog = null!;
+    private Mock<IHttpClientFactory> _mockHttpClientFactory = null!;
     private Mock<AssetsCdn> _mockAssetsCdn = null!;
     private IDbContextFactory<TsContext> _dbContextFactory = null!;
     private TestOrganizationController _controller = null!;
@@ -36,6 +37,7 @@ public class OrganizationControllerBaseTests
         _mockLogger = new Mock<ILogger>();
         _mockControlLogFactory = new Mock<IControlLogFactory>();
         _mockControlLog = new Mock<IControlLog>();
+        _mockHttpClientFactory = new Mock<IHttpClientFactory>();
 
         var mockConfiguration = new Mock<IConfiguration>();
         mockConfiguration.Setup(c => c["Assets:StorageZoneName"]).Returns("test-zone");
@@ -44,7 +46,7 @@ public class OrganizationControllerBaseTests
         mockConfiguration.Setup(c => c["Assets:ApiAccessKey"]).Returns("test-api-key");
         mockConfiguration.Setup(c => c["Assets:CdnId"]).Returns("test-cdn-id");
 
-        _mockAssetsCdn = new Mock<AssetsCdn>(mockConfiguration.Object, _mockLoggerFactory.Object);
+        _mockAssetsCdn = new Mock<AssetsCdn>(mockConfiguration.Object, _mockLoggerFactory.Object, _mockHttpClientFactory.Object);
 
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
 
