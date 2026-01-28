@@ -254,22 +254,39 @@ public class EventArchiveService : BackgroundService
 
             Logger.LogInformation("Found {count} sessions with laps to archive for event {eventId}", sessionIds.Count, eventId);
 
+            var processedCount = 0;
             foreach (var sessionId in sessionIds)
             {
                 Logger.LogInformation("Archiving laps for event {eventId}, session {sessionId}...", eventId, sessionId);
                 var purgeUtilities = new PurgeUtilities(loggerFactory, tsContext);
                 var lapsArchive = new LapsLogArchive(loggerFactory, tsContext, archiveStorage, purgeUtilities);
-                var success = await lapsArchive.ArchiveLapsAsync(eventId, sessionId, stoppingToken);
 
-                if (!success)
+                try
                 {
-                    var failureException = new Exception($"Failed to archive laps for event {eventId}, session {sessionId}. Check LapsLogArchive logs for details.");
-                    Logger.LogWarning(failureException, "Failed to archive laps for event {eventId}, session {sessionId}", eventId, sessionId);
-                    return (false, failureException);
+                    var success = await lapsArchive.ArchiveLapsAsync(eventId, sessionId, stoppingToken);
+
+                    if (!success)
+                    {
+                        var failureException = new Exception(
+                            $"Failed to archive laps for event {eventId}, session {sessionId}. " +
+                            $"Processed {processedCount} of {sessionIds.Count} sessions successfully before failure. " +
+                            $"Remaining sessions: {string.Join(", ", sessionIds.Skip(processedCount + 1))}. " +
+                            $"Check LapsLogArchive logs for details.");
+                        Logger.LogWarning("Failed to archive laps for event {eventId}, session {sessionId}. Processed {processedCount}/{totalCount} sessions",
+                            eventId, sessionId, processedCount, sessionIds.Count);
+                        return (false, failureException);
+                    }
+                    processedCount++;
+                }
+                catch (Exception sessionEx)
+                {
+                    Logger.LogError(sessionEx, "Exception while archiving laps for event {eventId}, session {sessionId}. Processed {processedCount}/{totalCount} sessions",
+                        eventId, sessionId, processedCount, sessionIds.Count);
+                    return (false, sessionEx);
                 }
             }
 
-            Logger.LogInformation("Successfully archived laps for all sessions in event {eventId}", eventId);
+            Logger.LogInformation("Successfully archived laps for all {count} sessions in event {eventId}", sessionIds.Count, eventId);
             return (true, null);
         }
         catch (Exception ex)
@@ -285,7 +302,7 @@ public class EventArchiveService : BackgroundService
         {
             await using var dbContext = await tsContext.CreateDbContextAsync(stoppingToken);
 
-            // Get all distinct sessions for this event that have laps
+            // Get all distinct sessions for this event that have flags
             var sessionIds = await dbContext.FlagLog
                 .Where(l => l.EventId == eventId)
                 .Select(l => l.SessionId)
@@ -299,22 +316,40 @@ public class EventArchiveService : BackgroundService
             }
 
             Logger.LogInformation("Found {count} sessions with flags to archive for event {eventId}", sessionIds.Count, eventId);
+
+            var processedCount = 0;
             foreach (var sessionId in sessionIds)
             {
                 Logger.LogInformation("Archiving flags for event {eventId}, session {sessionId}...", eventId, sessionId);
                 var purgeUtilities = new PurgeUtilities(loggerFactory, tsContext);
                 var flagsArchive = new FlagsArchive(loggerFactory, tsContext, archiveStorage, purgeUtilities);
-                var success = await flagsArchive.ArchiveFlagsAsync(eventId, sessionId, stoppingToken);
 
-                if (!success)
+                try
                 {
-                    var failureException = new Exception($"Failed to archive flags for event {eventId}, session {sessionId}. Check FlagsArchive logs for details.");
-                    Logger.LogWarning(failureException, "Failed to archive flags for event {eventId}, session {sessionId}", eventId, sessionId);
-                    return (false, failureException);
+                    var success = await flagsArchive.ArchiveFlagsAsync(eventId, sessionId, stoppingToken);
+
+                    if (!success)
+                    {
+                        var failureException = new Exception(
+                            $"Failed to archive flags for event {eventId}, session {sessionId}. " +
+                            $"Processed {processedCount} of {sessionIds.Count} sessions successfully before failure. " +
+                            $"Remaining sessions: {string.Join(", ", sessionIds.Skip(processedCount + 1))}. " +
+                            $"Check FlagsArchive logs for details.");
+                        Logger.LogWarning("Failed to archive flags for event {eventId}, session {sessionId}. Processed {processedCount}/{totalCount} sessions",
+                            eventId, sessionId, processedCount, sessionIds.Count);
+                        return (false, failureException);
+                    }
+                    processedCount++;
+                }
+                catch (Exception sessionEx)
+                {
+                    Logger.LogError(sessionEx, "Exception while archiving flags for event {eventId}, session {sessionId}. Processed {processedCount}/{totalCount} sessions",
+                        eventId, sessionId, processedCount, sessionIds.Count);
+                    return (false, sessionEx);
                 }
             }
 
-            Logger.LogInformation("Successfully archived flags for all sessions in event {eventId}", eventId);
+            Logger.LogInformation("Successfully archived flags for all {count} sessions in event {eventId}", sessionIds.Count, eventId);
             return (true, null);
         }
         catch (Exception ex)
@@ -395,26 +430,34 @@ public class EventArchiveService : BackgroundService
                         }
                     }
 
-                    var exceptionDetails = "";
-                    if (exception != null)
-                    {
-                        exceptionDetails = $@"
-            <h3>Exception Details</h3>
-            <p><strong>Exception Type:</strong> {exception.GetType().FullName}</p>
-            <p><strong>Exception Message:</strong> {exception.Message}</p>
-            <p><strong>Stack Trace:</strong></p>
-            <pre style=""background-color: #f4f4f4; padding: 10px; border: 1px solid #ddd; overflow-x: auto;"">{exception.StackTrace}</pre>";
+                            var exceptionDetails = "";
+                            if (exception != null)
+                            {
+                                var stackTrace = string.IsNullOrWhiteSpace(exception.StackTrace) 
+                                    ? "<em>Stack trace not available. This exception was created for diagnostic purposes and was not thrown. Check the exception message for details and review the EventOrchestration logs for more information.</em>" 
+                                    : exception.StackTrace;
 
-                        if (exception.InnerException != null)
-                        {
-                            exceptionDetails += $@"
-            <h4>Inner Exception</h4>
-            <p><strong>Type:</strong> {exception.InnerException.GetType().FullName}</p>
-            <p><strong>Message:</strong> {exception.InnerException.Message}</p>
-            <p><strong>Stack Trace:</strong></p>
-            <pre style=""background-color: #f4f4f4; padding: 10px; border: 1px solid #ddd; overflow-x: auto;"">{exception.InnerException.StackTrace}</pre>";
-                        }
-                    }
+                                exceptionDetails = $@"
+                    <h3>Exception Details</h3>
+                    <p><strong>Exception Type:</strong> {exception.GetType().FullName}</p>
+                    <p><strong>Exception Message:</strong> {exception.Message}</p>
+                    <p><strong>Stack Trace:</strong></p>
+                    <pre style=""background-color: #f4f4f4; padding: 10px; border: 1px solid #ddd; overflow-x: auto;"">{stackTrace}</pre>";
+
+                                if (exception.InnerException != null)
+                                {
+                                    var innerStackTrace = string.IsNullOrWhiteSpace(exception.InnerException.StackTrace)
+                                        ? "<em>Stack trace not available</em>"
+                                        : exception.InnerException.StackTrace;
+
+                                    exceptionDetails += $@"
+                    <h4>Inner Exception</h4>
+                    <p><strong>Type:</strong> {exception.InnerException.GetType().FullName}</p>
+                    <p><strong>Message:</strong> {exception.InnerException.Message}</p>
+                    <p><strong>Stack Trace:</strong></p>
+                    <pre style=""background-color: #f4f4f4; padding: 10px; border: 1px solid #ddd; overflow-x: auto;"">{innerStackTrace}</pre>";
+                                }
+                            }
 
                     var subject = eventId.HasValue
                         ? $"Red Mist Archive Failure - Event {eventId.Value}"
