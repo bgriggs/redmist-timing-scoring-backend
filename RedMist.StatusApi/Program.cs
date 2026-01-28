@@ -36,10 +36,13 @@ public class Program
 
         builder.Services.AddCors(options =>
         {
+            // Unified policy supporting both 3rd party SignalR clients and sticky sessions
             options.AddDefaultPolicy(policy =>
             {
-                policy.AllowAnyOrigin();
-                policy.AllowAnyHeader();
+                policy.SetIsOriginAllowed(_ => true) // Allow any origin (for 3rd party integrations)
+                    .AllowAnyHeader()
+                    .AllowAnyMethod()
+                    .AllowCredentials(); // Enable credentials for sticky session cookies (required for multi-replica SignalR)
             });
         });
 
