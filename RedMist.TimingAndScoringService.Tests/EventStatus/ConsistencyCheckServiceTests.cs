@@ -29,7 +29,7 @@ public class ConsistencyCheckServiceTests
         mockLogger = new Mock<ILogger>();
         mockMediator = new Mock<IMediator>();
         fakeTimeProvider = new FakeTimeProvider();
-        
+
         mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>()))
             .Returns(mockLogger.Object);
 
@@ -76,7 +76,7 @@ public class ConsistencyCheckServiceTests
         var service = CreateService(consistentCars);
 
         // Act
-        await service.PerformConsistencyCheck(CancellationToken.None);
+        await service.PerformConsistencyCheckAsync(CancellationToken.None);
 
         // Assert
         mockMediator.Verify(x => x.Publish(It.IsAny<RelayResetRequest>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -95,11 +95,11 @@ public class ConsistencyCheckServiceTests
         var service = CreateService(inconsistentCars);
 
         // Act
-        await service.PerformConsistencyCheck(CancellationToken.None);
+        await service.PerformConsistencyCheckAsync(CancellationToken.None);
 
         // Assert
-        mockMediator.Verify(x => x.Publish(It.Is<RelayResetRequest>(r => 
-            r.EventId == sessionContext.EventId && 
+        mockMediator.Verify(x => x.Publish(It.Is<RelayResetRequest>(r =>
+            r.EventId == sessionContext.EventId &&
             !r.ForceTimingDataReset), It.IsAny<CancellationToken>()), Times.Once);
         Assert.IsTrue(service.RelayResetCalled);
         Assert.AreEqual(testOptions.MaxConsistencyErrorsBeforeRelayReset, service.RetryCount);
@@ -121,7 +121,7 @@ public class ConsistencyCheckServiceTests
         service.CarsToReturnAfterFirstCheck = consistentCars;
 
         // Act
-        await service.PerformConsistencyCheck(CancellationToken.None);
+        await service.PerformConsistencyCheckAsync(CancellationToken.None);
 
         // Assert
         mockMediator.Verify(x => x.Publish(It.IsAny<RelayResetRequest>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -141,7 +141,7 @@ public class ConsistencyCheckServiceTests
         await service.TestSendRelayReset();
 
         // Assert
-        mockMediator.Verify(x => x.Publish(It.Is<RelayResetRequest>(r => 
+        mockMediator.Verify(x => x.Publish(It.Is<RelayResetRequest>(r =>
             !r.ForceTimingDataReset), It.IsAny<CancellationToken>()), Times.Once);
         Assert.AreEqual(baseTime, service.LastConsistencyError);
     }
@@ -153,11 +153,11 @@ public class ConsistencyCheckServiceTests
         var service = CreateService();
         var baseTime = new DateTimeOffset(2024, 1, 1, 12, 0, 0, TimeSpan.Zero);
         fakeTimeProvider.SetUtcNow(baseTime);
-        
+
         // Simulate a previous reset 1.5 minutes ago by first resetting, then advancing time forward
         service.ResetInternalState();
         await service.TestSendRelayReset(); // This sets lastConsistencyError to baseTime
-        
+
         // Advance time by 1.5 minutes to simulate the time window scenario
         var advancedTime = baseTime.AddMinutes(1.5);
         fakeTimeProvider.SetUtcNow(advancedTime);
@@ -166,7 +166,7 @@ public class ConsistencyCheckServiceTests
         await service.TestSendRelayReset();
 
         // Assert
-        mockMediator.Verify(x => x.Publish(It.Is<RelayResetRequest>(r => 
+        mockMediator.Verify(x => x.Publish(It.Is<RelayResetRequest>(r =>
             r.ForceTimingDataReset), It.IsAny<CancellationToken>()), Times.Once);
         Assert.AreEqual(advancedTime, service.LastRelayForceReconnect);
     }
@@ -189,11 +189,11 @@ public class ConsistencyCheckServiceTests
         // Arrange
         var service = CreateService();
         fakeTimeProvider.SetUtcNow(new DateTimeOffset(2024, 1, 1, 12, 0, 0, TimeSpan.Zero));
-        
+
         // Act - trigger some state changes
         await service.TestSendRelayReset();
         Assert.AreNotEqual(DateTime.MinValue, service.LastConsistencyError);
-        
+
         // Reset state
         service.ResetInternalState();
 
@@ -227,33 +227,33 @@ public class ConsistencyCheckServiceTests
         {
             await Task.CompletedTask;
             checkCount++;
-            
+
             // Return different data after first check if specified (for testing resolution scenarios)
             if (checkCount > 1 && CarsToReturnAfterFirstCheck != null)
             {
                 RetryCount = checkCount - 1;
                 return CarsToReturnAfterFirstCheck;
             }
-            
+
             RetryCount = checkCount - 1;
             return carsToReturn;
         }
 
-        protected override async Task SendRelayReset()
+        protected override async Task SendRelayResetAsync(CancellationToken stoppingToken = default)
         {
             RelayResetCalled = true;
-            await base.SendRelayReset();
+            await base.SendRelayResetAsync(stoppingToken);
         }
 
-                public async Task TestSendRelayReset() => await base.SendRelayReset();
-            }
+        public async Task TestSendRelayReset() => await base.SendRelayResetAsync();
+    }
 
-            private static IDbContextFactory<TsContext> CreateDbContextFactory()
-            {
-                var databaseName = $"TestDatabase_{Guid.NewGuid()}";
-                var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
-                optionsBuilder.UseInMemoryDatabase(databaseName);
-                var options = optionsBuilder.Options;
-                return new TestDbContextFactory(options);
-            }
-        }
+    private static IDbContextFactory<TsContext> CreateDbContextFactory()
+    {
+        var databaseName = $"TestDatabase_{Guid.NewGuid()}";
+        var optionsBuilder = new DbContextOptionsBuilder<TsContext>();
+        optionsBuilder.UseInMemoryDatabase(databaseName);
+        var options = optionsBuilder.Options;
+        return new TestDbContextFactory(options);
+    }
+}

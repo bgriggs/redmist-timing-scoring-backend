@@ -41,7 +41,7 @@ public class ConsistencyCheckService : BackgroundService
             try
             {
                 Logger.LogInformation("Checking car consistency...");
-                await PerformConsistencyCheck(stoppingToken);
+                await PerformConsistencyCheckAsync(stoppingToken);
                 await Task.Delay(options.MainLoopInterval, stoppingToken);
             }
             catch (Exception ex)
@@ -53,7 +53,7 @@ public class ConsistencyCheckService : BackgroundService
         }
     }
 
-    public async Task PerformConsistencyCheck(CancellationToken stoppingToken)
+    public async Task PerformConsistencyCheckAsync(CancellationToken stoppingToken)
     {
         var cars = await GetCarsAsync(stoppingToken);
         var areConsistent = CarsConsistencyCheck.AreCarsConsistent(cars, Logger);
@@ -76,7 +76,7 @@ public class ConsistencyCheckService : BackgroundService
             }
             if (!areConsistent)
             {
-                await SendRelayReset();
+                await SendRelayResetAsync(stoppingToken);
             }
         }
     }
@@ -89,7 +89,7 @@ public class ConsistencyCheckService : BackgroundService
         }
     }
 
-    protected virtual async Task SendRelayReset()
+    protected virtual async Task SendRelayResetAsync(CancellationToken stoppingToken = default)
     {
         bool forceTimingDataReset = false;
 
@@ -107,7 +107,7 @@ public class ConsistencyCheckService : BackgroundService
             Logger.LogInformation("Consistency check: forcing timing data reset due to recent cached data request failure to resolve.");
         }
 
-        await mediator.Publish(new RelayResetRequest { EventId = sessionContext.EventId, ForceTimingDataReset = forceTimingDataReset }, CancellationToken.None);
+        await mediator.Publish(new RelayResetRequest { EventId = sessionContext.EventId, ForceTimingDataReset = forceTimingDataReset }, stoppingToken);
 
         lastConsistencyError = timeProvider.GetUtcNow();
         if (forceTimingDataReset)
