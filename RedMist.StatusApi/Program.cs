@@ -264,7 +264,7 @@ public class Program
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
-        app.MapHub<StatusHub>("/event-status");
+        app.MapHub<StatusHub>("/event-status").RequireCors();
         app.Run();
     }
 }
