@@ -183,7 +183,20 @@ public class StatusHub : Hub
     {
         var connectionId = Context.ConnectionId;
         var subKey = string.Format(Consts.EVENT_SUB_V2, eventId);
-        await Groups.AddToGroupAsync(connectionId, subKey);
+
+        Logger.LogInformation("[MULTI-REPLICA DEBUG] ATTEMPTING to add connectionId {connectionId} to group {subKey}", connectionId, subKey);
+
+        try
+        {
+            await Groups.AddToGroupAsync(connectionId, subKey);
+            Logger.LogInformation("[MULTI-REPLICA DEBUG] SUCCESSFULLY added connectionId {connectionId} to group {subKey}", connectionId, subKey);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[MULTI-REPLICA DEBUG] FAILED to add connectionId {connectionId} to group {subKey}", connectionId, subKey);
+            throw;
+        }
+
         if (eventId > 0)
         {
             // Update connection tracking for this event

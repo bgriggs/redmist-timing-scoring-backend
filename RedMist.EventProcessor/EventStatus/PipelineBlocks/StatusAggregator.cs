@@ -14,6 +14,7 @@ public class StatusAggregator
 {
     private readonly IHubContext<StatusHub> hubContext;
     private readonly SessionContext sessionContext;
+    private readonly ILogger logger;
     public event Action<SessionStatePatch>? OnSessionPatch;
     public event Action<IEnumerable<CarPositionPatch>>? OnCarPatch;
 
@@ -21,6 +22,7 @@ public class StatusAggregator
     {
         this.hubContext = hubContext;
         this.sessionContext = sessionContext;
+        this.logger = loggerFactory.CreateLogger<StatusAggregator>();
     }
 
 
@@ -29,6 +31,10 @@ public class StatusAggregator
         var tasks = new List<Task>();
         var eventId = sessionContext.EventId.ToString();
         var subKey = string.Format(Consts.EVENT_SUB_V2, eventId);
+
+        logger.LogInformation("[MULTI-REPLICA DEBUG] Sending patches to group {subKey}. SessionPatches: {sessionCount}, CarPatches: {carCount}", 
+            subKey, updates.SessionPatches.Count, updates.CarPatches.Count);
+
         using (await sessionContext.SessionStateLock.AcquireReadLockAsync())
         {
             foreach (var sp in updates.SessionPatches)
@@ -57,6 +63,16 @@ public class StatusAggregator
             //var pt = hubContext.Clients.Group(eventId).SendAsync("ReceiveMessage", json, sessionContext.CancellationToken);
             //tasks.Add(pt);
         }
-        await Task.WhenAll(tasks);
+
+        try
+        {
+            await Task.WhenAll(tasks);
+            logger.LogDebug("[MULTI-REPLICA DEBUG] Successfully sent all patches to group {subKey}", subKey);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[MULTI-REPLICA DEBUG] FAILED to send patches to group {subKey}", subKey);
+            throw;
+        }
     }
 }

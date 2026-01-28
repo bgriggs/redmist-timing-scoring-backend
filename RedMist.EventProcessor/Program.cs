@@ -93,7 +93,18 @@ public class Program
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
-        builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 5; c.ConnectTimeout = 10; }));
+
+        // Configure Redis with consistent settings matching StatusApi for reliable multi-replica operation
+        var redisOptions = ConfigurationOptions.Parse(redisConn);
+        redisOptions.AbortOnConnectFail = false;
+        redisOptions.ConnectRetry = 10;
+        redisOptions.ConnectTimeout = 10000; // 10 seconds
+        redisOptions.SyncTimeout = 10000;
+        redisOptions.AsyncTimeout = 10000;
+        redisOptions.KeepAlive = 60;
+        redisOptions.ReconnectRetryPolicy = new ExponentialRetry(5000);
+
+        builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisOptions));
         builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(7), LocalCacheExpiration = TimeSpan.FromDays(7) });
         builder.Services.AddSingleton<SessionContext>();
         builder.Services.AddSingleton<MultiloopProcessor>();

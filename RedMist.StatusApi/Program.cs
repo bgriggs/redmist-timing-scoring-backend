@@ -129,7 +129,18 @@ public class Program
         builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
-        builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisConn, c => { c.AbortOnConnectFail = false; c.ConnectRetry = 10; c.ConnectTimeout = 10; }));
+
+        // Configure Redis with robust settings for SignalR backplane in multi-replica environment
+        var redisOptions = ConfigurationOptions.Parse(redisConn);
+        redisOptions.AbortOnConnectFail = false;
+        redisOptions.ConnectRetry = 10;
+        redisOptions.ConnectTimeout = 10000; // 10 seconds
+        redisOptions.SyncTimeout = 10000;
+        redisOptions.AsyncTimeout = 10000;
+        redisOptions.KeepAlive = 60;
+        redisOptions.ReconnectRetryPolicy = new ExponentialRetry(5000);
+
+        builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisOptions));
 
         builder.Services.AddHealthChecks()
             .AddRedis(redisConn, tags: ["cache", "redis"])
