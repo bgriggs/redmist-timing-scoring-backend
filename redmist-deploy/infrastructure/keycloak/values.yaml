@@ -19,7 +19,7 @@ keycloak:
 database:
   host: ""  # Will be set via helm install
   port: 25060
-  name: keycloak
+  name: keycloak-prod
   username: doadmin
   sslMode: require
 
