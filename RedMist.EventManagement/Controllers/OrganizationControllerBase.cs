@@ -216,11 +216,13 @@ public abstract class OrganizationControllerBase : Controller
         using var db = await tsContext.CreateDbContextAsync();
         var sessions = await db.SessionResults
             .AsNoTracking()
-            .Where(s => db.Events.Any(e => e.Id == s.EventId && e.OrganizationId == orgId) && s.ControlLogs != null && s.ControlLogs.Count > 0)
+            .Where(s => db.Events.Any(e => e.Id == s.EventId && e.OrganizationId == orgId) && s.ControlLogs != null)
             .OrderByDescending(s => s.Start)
-            .Take(3)
+            .Take(10)
             .Select(s => new { s.EventId, s.SessionId, s.ControlLogs })
             .ToListAsync();
+
+        sessions = [.. sessions.Where(s => s.ControlLogs.Count > 0).Take(3)];
 
         foreach (var session in sessions)
         {

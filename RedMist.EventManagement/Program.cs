@@ -56,9 +56,9 @@ public class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(c =>
         {
-            c.SwaggerDoc("v1", new OpenApiInfo 
-            { 
-                Title = "RedMist Event Management API", 
+            c.SwaggerDoc("v1", new OpenApiInfo
+            {
+                Title = "RedMist Event Management API",
                 Version = "v1",
                 Description = "API for managing racing events, configurations, and organization settings",
                 Contact = new OpenApiContact
@@ -103,8 +103,7 @@ public class Program
 
         builder.Services.AddHealthChecks()
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
-            .AddRedis(redisConn, tags: ["cache", "redis"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 400, name: "Process Allocated Memory", tags: ["memory"]);
+            .AddRedis(redisConn, tags: ["cache", "redis"]);
 
         builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
         builder.Services.AddTransient<AssetsCdn>();
