@@ -189,9 +189,9 @@ public class BunnyCdn : IDisposable
     {
         var url = $"https://api.bunny.net/pullzone/{cdnId}/purgeCache";
         var httpClient = httpClientFactory.CreateClient();
-        httpClient.DefaultRequestHeaders.Add("AccessKey", apiAccessKey);
-        var message = new HttpRequestMessage(HttpMethod.Post, url);
-        var response = await httpClient.SendAsync(message);
+        using var message = new HttpRequestMessage(HttpMethod.Post, url);
+        message.Headers.Add("AccessKey", apiAccessKey);
+        using var response = await httpClient.SendAsync(message);
         return response.IsSuccessStatusCode;
     }
 
