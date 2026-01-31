@@ -120,9 +120,10 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
         request.Ranges = range;
 
         var log = new List<ControlLogEntry>();
+        Spreadsheet? response = null;
         try
         {
-            var response = await request.ExecuteAsync(stoppingToken);
+            response = await request.ExecuteAsync(stoppingToken);
 
             if (columnIndexMappings.Count == 0)
             {
@@ -135,10 +136,11 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
             }
 
             int missedTimestampCount = 0;
+            var rowDataList = response.Sheets[0].Data[0].RowData;
 
-            for (int row = 1; row < response.Sheets[0].Data[0].RowData.Count; row++)
+            for (int row = 1; row < rowDataList.Count; row++)
             {
-                var rowData = response.Sheets[0].Data[0].RowData[row];
+                var rowData = rowDataList[row];
                 if (rowData.Values == null)
                 {
                     continue;
@@ -185,11 +187,23 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
                     break;
                 }
             }
+
+            // Explicitly clear response data to release memory
+            // The Google Sheets API response can contain massive amounts of grid data
+            if (response?.Sheets?[0]?.Data?[0]?.RowData != null)
+            {
+                response.Sheets[0].Data[0].RowData.Clear();
+            }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading control log from Google Sheets: {p}", parameter);
             return (false, []);
+        }
+        finally
+        {
+            // Ensure response is released even if exception occurs
+            response = null;
         }
         return (true, log);
     }
@@ -247,6 +261,11 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
             if (disposing)
             {
                 configLock?.Dispose();
+
+                // Clear large fields to allow GC to reclaim memory
+                configJson = null;
+                credential = null;
+                columnIndexMappings.Clear();
             }
             disposed = true;
         }

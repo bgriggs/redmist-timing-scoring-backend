@@ -50,7 +50,7 @@ public partial class ControlLogCache : IDisposable
             if (org != null && !string.IsNullOrEmpty(org.ControlLogType))
             {
                 penalityCounts.Clear();
-                var controlLog = controlLogFactory.CreateControlLog(org.ControlLogType);
+                using var controlLog = controlLogFactory.CreateControlLog(org.ControlLogType);
                 var logEntries = await controlLog.LoadControlLogAsync(org.ControlLogParams, stoppingToken);
                 var logsList = logEntries.logs.ToList();
                 Logger.LogDebug("Control log loaded for event {eventId} with {Count} entries", eventId, logsList.Count);
