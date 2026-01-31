@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using System.Text;
 
 namespace RedMist.Backend.Shared.Utilities;
 
@@ -13,6 +14,23 @@ public class BunnyArchiveStorage : IArchiveStorage
     private readonly ILoggerFactory loggerFactory;
     private readonly IHttpClientFactory httpClientFactory;
     private ILogger Logger { get; }
+
+    private static string SanitizeForPath(string input)
+    {
+        // Replace characters that are problematic in URLs/paths
+        // # is used for URL fragments, so it's especially problematic
+        var sb = new StringBuilder();
+        foreach (var c in input)
+        {
+            if (c == '#')
+                sb.Append("No");
+            else if (char.IsLetterOrDigit(c) || c == '-' || c == '_' || c == ' ')
+                sb.Append(c);
+            else
+                sb.Append('_');
+        }
+        return sb.ToString();
+    }
 
 
     public BunnyArchiveStorage(IConfiguration configuration, ILoggerFactory loggerFactory, IHttpClientFactory httpClientFactory)
@@ -68,8 +86,10 @@ public class BunnyArchiveStorage : IArchiveStorage
     public async Task<bool> UploadSessionCarLapsAsync(Stream stream, int eventId, int sessionId, string carNum)
     {
         using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory, httpClientFactory);
-        Logger.LogInformation("Uploading session car laps for event {EventId}, session {SessionId}, car {CarNum} to CDN...", eventId, sessionId, carNum);
-        var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-laps/event-{eventId}-session-{sessionId}-car-laps/car-{carNum}-laps.gz");
+        var sanitizedCarNum = SanitizeForPath(carNum);
+        Logger.LogInformation("Uploading session car laps for event {EventId}, session {SessionId}, car {CarNum} (sanitized: {SanitizedCarNum}) to CDN...", 
+            eventId, sessionId, carNum, sanitizedCarNum);
+        var result = await cdnClient.UploadAsync(stream, $"/{storageZoneName}/event-laps/event-{eventId}-session-{sessionId}-car-laps/car-{sanitizedCarNum}-laps.gz");
         if (!result)
         {
             Logger.LogError("Failed to upload session car laps to CDN for event {EventId}, session {SessionId}, car {CarNum}", eventId, sessionId, carNum);
