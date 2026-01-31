@@ -85,6 +85,10 @@ public class BunnyCdn : IDisposable
             Logger.LogError(ex, "Error cleaning destination: {destinationPath}", destinationPath);
             return 2;
         }
+        finally
+        {
+            semaphore?.Dispose();
+        }
         return 0;
     }
 
@@ -120,6 +124,10 @@ public class BunnyCdn : IDisposable
         {
             Logger.LogError(ex, "Error copying files");
             return 3;
+        }
+        finally
+        {
+            semaphore?.Dispose();
         }
         return 0;
     }
