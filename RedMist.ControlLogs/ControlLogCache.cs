@@ -52,11 +52,12 @@ public partial class ControlLogCache : IDisposable
                 penalityCounts.Clear();
                 var controlLog = controlLogFactory.CreateControlLog(org.ControlLogType);
                 var logEntries = await controlLog.LoadControlLogAsync(org.ControlLogParams, stoppingToken);
-                Logger.LogDebug("Control log loaded for event {eventId} with {Count} entries", eventId, logEntries.logs.Count());
+                var logsList = logEntries.logs.ToList();
+                Logger.LogDebug("Control log loaded for event {eventId} with {Count} entries", eventId, logsList.Count);
                 //Logger.LogInformation("LoadControlLogAsync in {t}ms", sw.ElapsedMilliseconds);
                 var oldLogs = controlLogCache.ToDictionary(x => x.Key, x => x.Value);
-                var car1Grp = logEntries.logs.GroupBy(x => x.Car1);
-                var car2Grp = logEntries.logs.GroupBy(x => x.Car2);
+                var car1Grp = logsList.GroupBy(x => x.Car1);
+                var car2Grp = logsList.GroupBy(x => x.Car2);
 
                 controlLogCache.Clear();
                 foreach (var l in car1Grp)
@@ -124,7 +125,7 @@ public partial class ControlLogCache : IDisposable
 
     private static List<string> GetChangedCars(Dictionary<string, List<ControlLogEntry>> old, Dictionary<string, List<ControlLogEntry>> @new)
     {
-        var changedCars = new List<string>();
+        var changedCars = new HashSet<string>();
 
         foreach (var car in @new.Keys)
         {
@@ -141,21 +142,19 @@ public partial class ControlLogCache : IDisposable
                 }
                 else
                 {
+                    bool hasChanges = false;
                     foreach (var ne in newEntries)
                     {
                         var oe = oldEntries.FirstOrDefault(x => x.OrderId == ne.OrderId);
-                        if (oe != null)
+                        if (oe == null || !AreEntriesEqual(oe, ne))
                         {
-                            var changed = CompareControlLogEntries(oe, ne);
-                            if (changed)
-                            {
-                                changedCars.Add(car);
-                            }
+                            hasChanges = true;
+                            break;
                         }
-                        else
-                        {
-                            changedCars.Add(car);
-                        }
+                    }
+                    if (hasChanges)
+                    {
+                        changedCars.Add(car);
                     }
                 }
             }
@@ -167,28 +166,19 @@ public partial class ControlLogCache : IDisposable
                 changedCars.Add(car);
             }
         }
-        return changedCars;
+        return [.. changedCars];
     }
 
-    private static bool CompareControlLogEntries(ControlLogEntry old, ControlLogEntry @new)
+    private static bool AreEntriesEqual(ControlLogEntry old, ControlLogEntry @new)
     {
-        if (old.OrderId != @new.OrderId)
-            return false;
-        if (old.Car1 != @new.Car1)
-            return false;
-        if (old.Car2 != @new.Car2)
-            return false;
-        if (old.Timestamp != @new.Timestamp)
-            return false;
-        if (old.Status != @new.Status)
-            return false;
-        if (old.Corner != @new.Corner)
-            return false;
-        if (old.Note != @new.Note)
-            return false;
-        if (old.OtherNotes != @new.OtherNotes)
-            return false;
-        return true;
+        return old.OrderId == @new.OrderId
+            && old.Car1 == @new.Car1
+            && old.Car2 == @new.Car2
+            && old.Timestamp == @new.Timestamp
+            && old.Status == @new.Status
+            && old.Corner == @new.Corner
+            && old.Note == @new.Note
+            && old.OtherNotes == @new.OtherNotes;
     }
 
     public async Task<Dictionary<string, List<ControlLogEntry>>> GetCarControlEntriesAsync(string[]? cars = null)
