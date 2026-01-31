@@ -379,7 +379,7 @@ public class EventArchiveService : BackgroundService
         }
     }
 
-        private async Task RunSimulatedEventPurgeAsync(CancellationToken stoppingToken)
+        internal async Task RunSimulatedEventPurgeAsync(CancellationToken stoppingToken)
         {
             Logger.LogInformation("Starting simulated event purge process...");
             try

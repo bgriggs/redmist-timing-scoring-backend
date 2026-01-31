@@ -20,6 +20,12 @@ public class Program
             return;
         }
 
+        if (args.Contains("--run-simulated-event-purge"))
+        {
+            await RunSimulatedEventPurgeOnceAsync(args);
+            return;
+        }
+
         var builder = WebApplication.CreateBuilder(args);
         ConfigureCommonServices(builder);
 
@@ -121,6 +127,45 @@ public class Program
         catch (Exception ex)
         {
             logger.LogError(ex, "Archive process failed with exception.");
+            Environment.ExitCode = 1;
+        }
+    }
+
+    private static async Task RunSimulatedEventPurgeOnceAsync(string[] args)
+    {
+        var builder = WebApplication.CreateBuilder(args);
+        ConfigureCommonServices(builder);
+
+        var serviceProvider = builder.Services.BuildServiceProvider();
+        var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+        var logger = loggerFactory.CreateLogger<Program>();
+
+        logger.LogInformation("Starting simulated event purge with --run-simulated-event-purge flag...");
+
+        try
+        {
+            var dbContextFactory = serviceProvider.GetRequiredService<IDbContextFactory<TsContext>>();
+            var archiveStorage = serviceProvider.GetRequiredService<IArchiveStorage>();
+            var emailHelper = serviceProvider.GetRequiredService<EmailHelper>();
+
+            var archiveService = new EventArchiveService(loggerFactory, dbContextFactory, archiveStorage, emailHelper);
+
+            using var cts = new CancellationTokenSource();
+
+            Console.CancelKeyPress += (sender, e) =>
+            {
+                e.Cancel = true;
+                cts.Cancel();
+                logger.LogWarning("Cancellation requested. Stopping simulated event purge...");
+            };
+
+            await archiveService.RunSimulatedEventPurgeAsync(cts.Token);
+
+            logger.LogInformation("Simulated event purge completed.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Simulated event purge failed with exception.");
             Environment.ExitCode = 1;
         }
     }
