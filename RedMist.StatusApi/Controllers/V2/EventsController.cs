@@ -1,4 +1,5 @@
 using Asp.Versioning;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
@@ -114,6 +115,7 @@ public class EventsController : EventsControllerBase
     /// <returns>An <see cref="ActionResult{T}">ActionResult</see> containing a list of <see cref="EventListSummary"/> objects
     /// representing the archived events. Returns a 400 Bad Request response if <paramref name="take"/> exceeds 100.</returns>
     [HttpGet]
+    [AllowAnonymous]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
