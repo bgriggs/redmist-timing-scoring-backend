@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Prometheus;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.ControlLogs;
 using RedMist.Database;
@@ -28,6 +29,26 @@ public abstract class OrganizationControllerBase : Controller
     private readonly AssetsCdn assetsCdn;
 
     protected ILogger Logger { get; }
+
+    private static readonly Counter ControlLogStatsRequestCounter = Metrics.CreateCounter(
+        "eventmgmt_controllog_stats_requests_total",
+        "Total number of control log statistics requests");
+
+    private static readonly Counter ControlLogStatsFailureCounter = Metrics.CreateCounter(
+        "eventmgmt_controllog_stats_failures_total",
+        "Total number of failed control log statistics requests");
+
+    private static readonly Histogram ControlLogStatsLatency = Metrics.CreateHistogram(
+        "eventmgmt_controllog_stats_duration_seconds",
+        "Duration of control log statistics requests in seconds");
+
+    private static readonly Counter OrgUpdateCounter = Metrics.CreateCounter(
+        "eventmgmt_org_updates_total",
+        "Total number of organization update operations");
+
+    private static readonly Counter CdnUploadCounter = Metrics.CreateCounter(
+        "eventmgmt_cdn_uploads_total",
+        "Total number of CDN logo upload operations");
 
 
     /// <summary>
@@ -92,6 +113,8 @@ public abstract class OrganizationControllerBase : Controller
     public virtual async Task<IActionResult> UpdateOrganization(Organization organization)
     {
         Logger.LogTrace("{o}", nameof(UpdateOrganization));
+        OrgUpdateCounter.Inc();
+
         var clientId = User.FindFirstValue("client_id");
         using var db = await tsContext.CreateDbContextAsync();
         var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
@@ -121,13 +144,17 @@ public abstract class OrganizationControllerBase : Controller
             {
                 org.Logo = organization.Logo;
                 updateCdnTask = assetsCdn.SaveLogoAsync(org.Id, organization.Logo);
+                CdnUploadCounter.Inc();
             }
             else if (organization.Logo != null && organization.Logo.Length == 0)
             {
                 org.Logo = null;
                 var defaultImage = db.DefaultOrgImages.FirstOrDefault();
                 if (defaultImage != null)
+                {
                     updateCdnTask = assetsCdn.SaveLogoAsync(org.Id, defaultImage.ImageData);
+                    CdnUploadCounter.Inc();
+                }
             }
 
             await db.SaveChangesAsync();
@@ -154,15 +181,28 @@ public abstract class OrganizationControllerBase : Controller
     public virtual async Task<ControlLogStatistics> GetControlLogStatistics(Organization organization)
     {
         Logger.LogTrace("{m}", nameof(GetControlLogStatistics));
+        ControlLogStatsRequestCounter.Inc();
+
+        using var timer = ControlLogStatsLatency.NewTimer();
         var cls = new ControlLogStatistics();
-        if (!string.IsNullOrEmpty(organization.ControlLogType))
+
+        try
         {
-            var cl = controlLogFactory.CreateControlLog(organization.ControlLogType);
-            var logEntries = await cl.LoadControlLogAsync(organization.ControlLogParams);
-            cls.IsConnected = logEntries.success;
-            cls.TotalEntries = logEntries.logs.Count();
-            var isStale = await DetermineControlLogStaleAsync(organization.Id, logEntries.logs);
-            cls.IsStaleWarning = isStale;
+            if (!string.IsNullOrEmpty(organization.ControlLogType))
+            {
+                using var cl = controlLogFactory.CreateControlLog(organization.ControlLogType);
+                var logEntries = await cl.LoadControlLogAsync(organization.ControlLogParams);
+                cls.IsConnected = logEntries.success;
+                cls.TotalEntries = logEntries.logs.Count();
+                var isStale = await DetermineControlLogStaleAsync(organization.Id, logEntries.logs);
+                cls.IsStaleWarning = isStale;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error getting control log statistics for org {orgId}", organization.Id);
+            ControlLogStatsFailureCounter.Inc();
+            throw;
         }
 
         return cls;
@@ -179,6 +219,7 @@ public abstract class OrganizationControllerBase : Controller
             .Where(s => db.Events.Any(e => e.Id == s.EventId && e.OrganizationId == orgId) && s.ControlLogs.Count > 0)
             .OrderByDescending(s => s.Start)
             .Take(3)
+            .Select(s => new { s.EventId, s.SessionId, s.ControlLogs })
             .ToListAsync();
 
         foreach (var session in sessions)
