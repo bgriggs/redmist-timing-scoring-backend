@@ -64,7 +64,7 @@ public class EventArchiveService : BackgroundService
         }
     }
 
-    private async Task RunArchiveProcessWithRetriesAsync(int maxRetriesPerDay, CancellationToken stoppingToken)
+    internal async Task RunArchiveProcessWithRetriesAsync(int maxRetriesPerDay, CancellationToken stoppingToken)
     {
         var retryCount = 0;
         var archiveSuccessful = false;
