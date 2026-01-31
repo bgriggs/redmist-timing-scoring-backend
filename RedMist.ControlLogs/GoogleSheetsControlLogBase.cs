@@ -20,7 +20,9 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
     protected IConfiguration Config { get; }
     protected ILogger Logger { get; }
     private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly SemaphoreSlim configLock = new(1, 1);
     private string? configJson;
+    private ServiceAccountCredential? credential;
     private string? lastWorksheetParameter;
     private readonly Dictionary<int, SheetColumnMapping> columnIndexMappings = [];
 
@@ -60,18 +62,6 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
 
     public async Task<(bool success, IEnumerable<ControlLogEntry> logs)> LoadControlLogAsync(string parameter, CancellationToken stoppingToken = default)
     {
-        if (configJson == null)
-        {
-            using var db = await tsContext.CreateDbContextAsync(stoppingToken);
-            var eventConfig = await db.GoogleSheetsConfigs.FirstOrDefaultAsync(stoppingToken);
-            if (eventConfig == null)
-            {
-                Logger.LogError("Unable to find control log configuration for sheet {p}", parameter);
-                return (false, []);
-            }
-            configJson = eventConfig.Json;
-        }
-
         var paramParts = parameter.Split(';');
         if (paramParts.Length != 2)
         {
@@ -79,21 +69,39 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
             return (false, []);
         }
 
-        if (lastWorksheetParameter != parameter)
+        await configLock.WaitAsync(stoppingToken);
+        try
         {
-            if (lastWorksheetParameter != null)
+            if (configJson == null)
             {
-                Logger.LogInformation("Worksheet parameter changed from '{oldParam}' to '{newParam}', clearing column mappings", lastWorksheetParameter, parameter);
+                using var db = await tsContext.CreateDbContextAsync(stoppingToken);
+                var eventConfig = await db.GoogleSheetsConfigs.FirstOrDefaultAsync(stoppingToken);
+                if (eventConfig == null)
+                {
+                    Logger.LogError("Unable to find control log configuration for sheet {p}", parameter);
+                    return (false, []);
+                }
+                configJson = eventConfig.Json;
+
+                using var stream = new MemoryStream(Encoding.UTF8.GetBytes(configJson));
+                credential = ServiceAccountCredential.FromServiceAccountData(stream);
             }
-            columnIndexMappings.Clear();
-            lastWorksheetParameter = parameter;
+
+            if (lastWorksheetParameter != parameter)
+            {
+                if (lastWorksheetParameter != null)
+                {
+                    Logger.LogInformation("Worksheet parameter changed from '{oldParam}' to '{newParam}', clearing column mappings", lastWorksheetParameter, parameter);
+                }
+                columnIndexMappings.Clear();
+                lastWorksheetParameter = parameter;
+            }
+        }
+        finally
+        {
+            configLock.Release();
         }
 
-        ServiceAccountCredential credential;
-        using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(configJson)))
-        {
-            credential = ServiceAccountCredential.FromServiceAccountData(stream);
-        }
         using var sheetsService = new SheetsService(new BaseClientService.Initializer()
         {
             HttpClientInitializer = credential,
