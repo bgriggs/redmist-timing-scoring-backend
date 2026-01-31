@@ -100,6 +100,12 @@ public class SheetColumnMapping
         }
     }
 
+    /// <summary>
+    /// Sets the corresponding highlight flag property on the control log entry typically indicating which car is at fault when there are two.
+    /// The highlight property name is derived by prefixing "Is" and suffixing "Highlighted" to the PropertyName.
+    /// For example, if PropertyName is "Note", this sets "IsNoteHighlighted" to true.
+    /// </summary>
+    /// <param name="entry">The control log entry to update.</param>
     public void SetCellHighlighted(ControlLogEntry entry)
     {
         EnsureInitialized(entry);

@@ -26,6 +26,14 @@ public class StatusAggregatorService : BackgroundService
     private int? eventId;
     private readonly SemaphoreSlim subscriptionCheckLock = new(1);
 
+    private static readonly Gauge CacheEntryCount = Metrics.CreateGauge(
+        "controllog_cache_entry_count",
+        "Number of entries in control log cache");
+
+    private static readonly Gauge CacheSizeBytes = Metrics.CreateGauge(
+        "controllog_cache_size_bytes",
+        "Approximate memory size of control log cache in bytes");
+
 
     public StatusAggregatorService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, 
         IConfiguration configuration, IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory,
@@ -66,7 +74,14 @@ public class StatusAggregatorService : BackgroundService
                 await RequestAndSendControlLogUpdatesAsync(stoppingToken);
                 var entries = await controlLogCache.GetControlEntriesAsync();
                 entriesCounter.IncTo(entries.Count);
-                Logger.LogInformation("Total entries: {count}, requests: {r}, failures: {f}", entries.Count, requestCounter.Value, failureCounter.Value);
+
+                // Update monitoring metrics
+                CacheEntryCount.Set(entries.Count);
+                var estimatedSizeBytes = EstimateCacheSize(entries);
+                CacheSizeBytes.Set(estimatedSizeBytes);
+
+                Logger.LogInformation("Total entries: {count}, requests: {r}, failures: {f}, cache size: {size} bytes", 
+                    entries.Count, requestCounter.Value, failureCounter.Value, estimatedSizeBytes);
                 await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
             }
             catch (Exception ex)
@@ -306,6 +321,35 @@ public class StatusAggregatorService : BackgroundService
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error sending control log update to clients.");
+        }
+    }
+
+    /// <summary>
+    /// Estimates the memory size of the control log cache in bytes
+    /// </summary>
+    private static long EstimateCacheSize(List<ControlLogEntry> entries)
+    {
+        // Rough estimation: each entry has strings and properties
+        // Average ~500 bytes per entry (conservative estimate for strings, datetimes, etc.)
+        const long bytesPerEntry = 500;
+        return entries.Count * bytesPerEntry;
+    }
+
+    public override void Dispose()
+    {
+        try
+        {
+            controlLogCache?.Dispose();
+            subscriptionCheckLock?.Dispose();
+            Logger.LogInformation("StatusAggregatorService resources disposed.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error disposing StatusAggregatorService resources.");
+        }
+        finally
+        {
+            base.Dispose();
         }
     }
 }

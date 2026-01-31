@@ -25,6 +25,7 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
     private ServiceAccountCredential? credential;
     private string? lastWorksheetParameter;
     private readonly Dictionary<int, SheetColumnMapping> columnIndexMappings = [];
+    private bool disposed;
 
     /// <summary>
     /// Gets the type identifier for this control log implementation.
@@ -230,6 +231,24 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
                 Logger.LogError($"Required column '{requiredHeader.SheetColumn}'->'{requiredHeader.PropertyName}' not found");
                 columnIndexMappings.Clear();
             }
+        }
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!disposed)
+        {
+            if (disposing)
+            {
+                configLock?.Dispose();
+            }
+            disposed = true;
         }
     }
 }
