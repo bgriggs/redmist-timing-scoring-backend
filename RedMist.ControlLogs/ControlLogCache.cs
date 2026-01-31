@@ -37,10 +37,14 @@ public partial class ControlLogCache : IDisposable
         {
             Logger.LogDebug("Checking control log for event {eventId} cached size {controlLogCacheCount}", eventId, controlLogCache.Count);
             using var db = await tsContext.CreateDbContextAsync(stoppingToken);
-            var org = await db.Events.Where(db => db.Id == eventId)
-                .Join(db.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
-                .Select(x => x.o)
+            var orgId = await db.Events
+                .Where(e => e.Id == eventId)
+                .Select(e => e.OrganizationId)
                 .FirstOrDefaultAsync(stoppingToken);
+
+            var org = orgId != default
+                ? await db.Organizations.FirstOrDefaultAsync(o => o.Id == orgId, stoppingToken)
+                : null;
             //Logger.LogInformation("DB load in {t}ms", sw.ElapsedMilliseconds);
 
             if (org != null && !string.IsNullOrEmpty(org.ControlLogType))
