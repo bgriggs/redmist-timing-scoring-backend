@@ -194,9 +194,9 @@ public partial class ControlLogCache : IDisposable
 
             foreach (var car in cars)
             {
-                if (controlLogCache.TryGetValue(car, out List<ControlLogEntry>? value))
+                if (controlLogCache.TryGetValue(car.ToLower(), out List<ControlLogEntry>? value))
                 {
-                    entries[car] = value;
+                    entries[car] = [.. value];
                 }
             }
         }
