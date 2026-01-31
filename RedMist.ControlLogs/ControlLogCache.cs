@@ -71,7 +71,7 @@ public partial class ControlLogCache : IDisposable
                 {
                     if (l.Key != null)
                     {
-                        if (!controlLogCache.TryGetValue(l.Key, out List<ControlLogEntry>? value))
+                        if (!controlLogCache.TryGetValue(l.Key.ToLower(), out List<ControlLogEntry>? value))
                         {
                             controlLogCache[l.Key.ToLower()] = [.. l];
                         }
