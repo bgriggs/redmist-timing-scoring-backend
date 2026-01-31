@@ -34,8 +34,7 @@ public class Program
 
         builder.Services.AddHealthChecks()
             .AddRedis(redisConn, tags: ["cache", "redis"])
-            .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 1024, name: "Process Allocated Memory", tags: ["memory"]);
+            .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"]);
 
         builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
         builder.Services.AddHostedService<StatusAggregatorService>();

@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 
 namespace RedMist.ControlLogs;
 
-public partial class ControlLogCache
+public partial class ControlLogCache : IDisposable
 {
     private readonly int eventId;
     private ILogger Logger { get; }
@@ -16,6 +16,7 @@ public partial class ControlLogCache
     private readonly Dictionary<string, List<ControlLogEntry>> controlLogCache = [];
     private Dictionary<string, (int warnings, int laps)> penalityCounts = [];
     private readonly SemaphoreSlim cacheLock = new(1, 1);
+    private bool disposed;
 
 
     public ControlLogCache(int eventId, ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory)
@@ -27,7 +28,7 @@ public partial class ControlLogCache
     }
 
 
-    public async Task<List<string>> RequestControlLogChanges(CancellationToken stoppingToken = default)
+    public async Task<List<string>> RequestControlLogChangesAsync(CancellationToken stoppingToken = default)
     {
         //var sw = Stopwatch.StartNew();
         await cacheLock.WaitAsync(stoppingToken);
@@ -88,7 +89,7 @@ public partial class ControlLogCache
                         }
                         else
                         {
-                            value.AddRange(entry);
+                            value.Add(entry);
                         }
                     }
                 }
@@ -186,7 +187,7 @@ public partial class ControlLogCache
         return true;
     }
 
-    public async Task<Dictionary<string, List<ControlLogEntry>>> GetCarControlEntries(string[]? cars = null)
+    public async Task<Dictionary<string, List<ControlLogEntry>>> GetCarControlEntriesAsync(string[]? cars = null)
     {
         Dictionary<string, List<ControlLogEntry>> entries = [];
         await cacheLock.WaitAsync();
@@ -212,7 +213,7 @@ public partial class ControlLogCache
         return entries;
     }
 
-    public async Task<List<ControlLogEntry>> GetControlEntries()
+    public async Task<List<ControlLogEntry>> GetControlEntriesAsync()
     {
         await cacheLock.WaitAsync();
         try
@@ -307,6 +308,24 @@ public partial class ControlLogCache
         finally
         {
             cacheLock.Release();
+        }
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!disposed)
+        {
+            if (disposing)
+            {
+                cacheLock?.Dispose();
+            }
+            disposed = true;
         }
     }
 }

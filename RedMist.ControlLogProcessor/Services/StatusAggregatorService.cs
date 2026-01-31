@@ -64,7 +64,7 @@ public class StatusAggregatorService : BackgroundService
                 Logger.LogInformation("Updating control log entries");
                 requestCounter.Inc();
                 await RequestAndSendControlLogUpdatesAsync(stoppingToken);
-                var entries = await controlLogCache.GetControlEntries();
+                var entries = await controlLogCache.GetControlEntriesAsync();
                 entriesCounter.IncTo(entries.Count);
                 Logger.LogInformation("Total entries: {count}, requests: {r}, failures: {f}", entries.Count, requestCounter.Value, failureCounter.Value);
                 await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
@@ -91,8 +91,8 @@ public class StatusAggregatorService : BackgroundService
         }
 
         // Single car update
-        var changedCars = await controlLogCache.RequestControlLogChanges(stoppingToken);
-        var entries = await controlLogCache.GetCarControlEntries([.. changedCars]);
+        var changedCars = await controlLogCache.RequestControlLogChangesAsync(stoppingToken);
+        var entries = await controlLogCache.GetCarControlEntriesAsync([.. changedCars]);
         foreach (var e in entries)
         {
             if (!string.IsNullOrWhiteSpace(e.Key))
@@ -103,7 +103,7 @@ public class StatusAggregatorService : BackgroundService
         }
 
         // Full log update
-        var fullLog = await controlLogCache.GetControlEntries();
+        var fullLog = await controlLogCache.GetControlEntriesAsync();
         var fullCcl = new CarControlLogs { CarNumber = string.Empty, ControlLogEntries = fullLog };
         await SendAsync(eventId.ToString()!, string.Empty, fullCcl, stoppingToken);
 
@@ -117,7 +117,7 @@ public class StatusAggregatorService : BackgroundService
 
         // Update the cache with car control logs
         Logger.LogInformation("Updating cache with car control logs...");
-        var carEntriesLookup = await controlLogCache.GetCarControlEntries();
+        var carEntriesLookup = await controlLogCache.GetCarControlEntriesAsync();
         foreach (var carEntry in carEntriesLookup)
         {
             var carLogEntryKey = string.Format(Consts.CONTROL_LOG_CAR, eventId, carEntry.Key);
