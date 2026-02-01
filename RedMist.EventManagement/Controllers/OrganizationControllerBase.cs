@@ -188,7 +188,7 @@ public abstract class OrganizationControllerBase : Controller
 
         try
         {
-            if (!string.IsNullOrEmpty(organization.ControlLogType))
+            if (!string.IsNullOrEmpty(organization.ControlLogType) && organization.ControlLogType != "Default" && organization.ControlLogType != "None")
             {
                 using var cl = controlLogFactory.CreateControlLog(organization.ControlLogType);
                 var logEntries = await cl.LoadControlLogAsync(organization.ControlLogParams);
