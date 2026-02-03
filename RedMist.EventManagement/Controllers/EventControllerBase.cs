@@ -179,7 +179,8 @@ public abstract class EventControllerBase : ControllerBase
             dbEvent.LoopsMetadata = @event.LoopsMetadata;
             dbEvent.IsSimulation = @event.IsSimulation;
             dbEvent.IsArchived = @event.IsArchived;
-            dbEvent.IsSimulation = clientId?.StartsWith("api") ?? true;
+            // Force to simulation if client is an API client rather than relay for an actual organization
+            dbEvent.IsSimulation = @event.IsSimulation || (clientId?.StartsWith("api") ?? true);
 
             await context.SaveChangesAsync();
 
