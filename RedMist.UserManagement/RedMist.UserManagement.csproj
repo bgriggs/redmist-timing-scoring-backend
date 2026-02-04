@@ -28,9 +28,9 @@
 		  <PrivateAssets>all</PrivateAssets>
 		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
+		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-		<PackageReference Include="NLog.Extensions.Logging" Version="6.1.0" />
+		<PackageReference Include="NLog.Extensions.Logging" Version="6.1.1" />
 		<PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="9.0.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.System" Version="9.0.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
@@ -40,8 +40,8 @@
 		  <PrivateAssets>all</PrivateAssets>
 		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="BigMission.Shared" Version="1.0.5" />
-		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.0" />
+		<PackageReference Include="BigMission.Shared" Version="1.0.6" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.1" />
 	</ItemGroup>
 
 	<ItemGroup>

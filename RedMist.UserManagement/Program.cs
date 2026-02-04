@@ -116,6 +116,7 @@ public class Program
         builder.Services.AddHealthChecks()
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"]);
 
+        builder.Services.AddHttpClient();
         builder.Services.AddTransient<AssetsCdn>();
 
         var app = builder.Build();
