@@ -7,6 +7,7 @@ using RedMist.Database;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
 using StackExchange.Redis;
+using System.Text.Json;
 
 namespace RedMist.EventProcessor.EventStatus.InCarDriverMode;
 
@@ -97,27 +98,29 @@ public class SignalRInCarUpdateSender : IInCarUpdateSender
             var subKey = string.Format(Consts.IN_CAR_EVENT_SUB_V2, sessionContext.EventId, change.CarNumber);
             await hubContext.Clients.Group(subKey).SendAsync("ReceiveInCarUpdateV2", change, sessionContext.CancellationToken);
 
-            //// Legacy, send to in-car hub. To be removed in future.
-            //var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB, sessionContext.EventId, change.CarNumber);
-            //try
-            //{
-            //    var json = JsonSerializer.Serialize(change);
-            //    var bytes = Encoding.UTF8.GetBytes(json);
-            //    using var output = new MemoryStream();
-            //    using (var gzip = new GZipStream(output, CompressionLevel.Optimal))
-            //    {
-            //        gzip.Write(bytes, 0, bytes.Length);
-            //    }
-            //    var b64 = Convert.ToBase64String(output.ToArray());
-            //    await hubContext.Clients.Group(grpKey).SendAsync("ReceiveInCarUpdate", b64, cancellationToken);
+            try
+            {
+                var json = JsonSerializer.Serialize(change);
 
-            //    var cacheKey = string.Format(Consts.IN_CAR_DATA, sessionContext.EventId, change.CarNumber);
-            //    await cache.StringSetAsync(cacheKey, json, TimeSpan.FromMinutes(5));
-            //}
-            //catch (Exception ex)
-            //{
-            //    logger.LogError(ex, "Error sending in-car update to clients.");
-            //}
+                // Legacy, send to in-car hub. To be removed in future.
+                //var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB, sessionContext.EventId, change.CarNumber);
+                //var bytes = Encoding.UTF8.GetBytes(json);
+                //using var output = new MemoryStream();
+                //using (var gzip = new GZipStream(output, CompressionLevel.Optimal))
+                //{
+                //    gzip.Write(bytes, 0, bytes.Length);
+                //}
+                //var b64 = Convert.ToBase64String(output.ToArray());
+                //await hubContext.Clients.Group(grpKey).SendAsync("ReceiveInCarUpdate", b64, cancellationToken);
+
+                // Update cache for initial payload loading
+                var cacheKey = string.Format(Consts.IN_CAR_DATA, sessionContext.EventId, change.CarNumber);
+                await cache.StringSetAsync(cacheKey, json, TimeSpan.FromMinutes(5));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error updating in-car cache.");
+            }
         }
     }
 }
