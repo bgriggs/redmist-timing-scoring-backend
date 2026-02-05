@@ -41,7 +41,7 @@ public class Program
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"]);
 
         builder.Services.AddSingleton<EventsChecker>();
-        builder.Services.AddHostedService<EventArchiveService>();
+        //builder.Services.AddHostedService<EventArchiveService>();
         builder.Services.AddHostedService<OrchestrationService>();
         builder.Services.AddHostedService<RelayLogCleanupService>();
 
