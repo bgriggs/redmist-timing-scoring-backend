@@ -1,7 +1,6 @@
 ﻿using k8s;
 using k8s.Models;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
@@ -40,10 +39,10 @@ public class OrchestrationService : BackgroundService
         var version = GetAssemblyVersion();
         eventProcessorContainerDetails = new(
             "bigmission/redmist-event-processor", version, "{0}-evt-{1}-event-processor", true,
-            "100m", "200Mi", "350m", "750Mi");
+            "100m", "220Mi", "350m", "800Mi");
         controlLogContainerDetails = new(
             "bigmission/redmist-control-log", version, "{0}-evt-{1}-control-log", false,
-            "60m", "165Mi", "150m", "450Mi");
+            "60m", "310Mi", "150m", "550Mi");
         loggerContainerDetails = new(
             "bigmission/redmist-event-logger", version, "{0}-evt-{1}-logger", false,
             "55m", "90Mi", "400m", "550Mi");
@@ -120,7 +119,7 @@ public class OrchestrationService : BackgroundService
                 Logger.LogDebug("Found {eventCount} current events", currentEvents.Count);
 
                 // Update the live events in the database
-                await UpdateLiveEvents(currentEvents);
+                await UpdateLiveEventsAsync(currentEvents);
 
                 string currentNamespace = await GetCurrentNamespaceAsync(stoppingToken);
                 var config = KubernetesClientConfiguration.InClusterConfig();
@@ -137,7 +136,7 @@ public class OrchestrationService : BackgroundService
 
                     // Send pre-shutdown notification to event processors to allow graceful shutdown
                     Logger.LogInformation("Sending pre-shutdown notification for expired events");
-                    await SendPreshutdownNotification([.. expiredEvents.Select(e => e.EventId)]);
+                    await SendPreshutdownNotificationAsync([.. expiredEvents.Select(e => e.EventId)]);
 
                     // Wait 15 seconds to allow any in-flight operations to complete, such as session finalization
                     Logger.LogInformation("Waiting 15 seconds for event processors to shut down gracefully");
@@ -204,7 +203,7 @@ public class OrchestrationService : BackgroundService
                 using var db = await tsContext.CreateDbContextAsync(stoppingToken);
                 foreach (var evt in activeEvents)
                 {
-                    await EnsureEventJobs(evt, client, currentNamespace, currentJobs, stoppingToken);
+                    await EnsureEventJobsAsync(evt, client, currentNamespace, currentJobs, stoppingToken);
                 }
             }
             catch (Exception ex)
@@ -235,7 +234,7 @@ public class OrchestrationService : BackgroundService
     /// Sets the IsLive flag on Events when they are currently active in the system.
     /// All other Events are set to false.
     /// </summary>
-    private async Task UpdateLiveEvents(List<RelayConnectionEventEntry> currentEvents)
+    private async Task UpdateLiveEventsAsync(List<RelayConnectionEventEntry> currentEvents)
     {
         using var context = await tsContext.CreateDbContextAsync();
         var currentEventIds = currentEvents.Select(e => e.EventId).ToList();
@@ -261,7 +260,7 @@ public class OrchestrationService : BackgroundService
     /// Sends notification to event processors that the event is shutting down.
     /// </summary>
     /// <param name="eventIds">List of event IDs that are shutting down.</param>
-    private async Task SendPreshutdownNotification(List<int> eventIds)
+    private async Task SendPreshutdownNotificationAsync(List<int> eventIds)
     {
         try
         {
@@ -346,7 +345,7 @@ public class OrchestrationService : BackgroundService
     /// <summary>
     /// Make sure the necessary jobs for an event are created.
     /// </summary>
-    private async Task EnsureEventJobs(RelayConnectionEventEntry evt, Kubernetes client, string ns, V1JobList jobs, CancellationToken stoppingToken)
+    private async Task EnsureEventJobsAsync(RelayConnectionEventEntry evt, Kubernetes client, string ns, V1JobList jobs, CancellationToken stoppingToken)
     {
         using var db = await tsContext.CreateDbContextAsync(stoppingToken);
         var org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == evt.OrganizationId, cancellationToken: stoppingToken);
@@ -366,35 +365,74 @@ public class OrchestrationService : BackgroundService
         if (!string.IsNullOrWhiteSpace(org.ControlLogType))
         {
             var clJobName = string.Format(controlLogContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
-            if (!jobs.Items.Any(job => job.Metadata.Name.Equals(clJobName, StringComparison.OrdinalIgnoreCase)))
-            {
-                Logger.LogInformation("Control log job {clJobName} does not exist for event {eventId}. Creating new job.", clJobName, evt.EventId);
-                await CreateJobAsync(client, clJobName, ns, controlLogContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
-            }
+            await EnsureJobRunningAsync(client, ns, jobs, clJobName, evt.EventId, eventDefinition.Name, org.Id, org.Name, controlLogContainerDetails, stoppingToken);
         }
 
         // Check for logger job
         var loggerJobName = string.Format(loggerContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
-        if (!jobs.Items.Any(job => job.Metadata.Name.Equals(loggerJobName, StringComparison.OrdinalIgnoreCase)))
-        {
-            Logger.LogInformation("Logger job {loggerJobName} does not exist for event {eventId}. Creating new job.", loggerJobName, evt.EventId);
-            await CreateJobAsync(client, loggerJobName, ns, loggerContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
-        }
-        else
-        {
-            Logger.LogTrace("Logger job {loggerJobName} already exists for event {eventId}.", loggerJobName, evt.EventId);
-        }
+        await EnsureJobRunningAsync(client, ns, jobs, loggerJobName, evt.EventId, eventDefinition.Name, org.Id, org.Name, loggerContainerDetails, stoppingToken);
 
         // Check for event processor job
         var epJobName = string.Format(eventProcessorContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
-        if (!jobs.Items.Any(job => job.Metadata.Name.Equals(epJobName, StringComparison.OrdinalIgnoreCase)))
+        await EnsureJobRunningAsync(client, ns, jobs, epJobName, evt.EventId, eventDefinition.Name, org.Id, org.Name, eventProcessorContainerDetails, stoppingToken);
+    }
+
+    /// <summary>
+    /// Ensures a job is running. If it's completed or failed, it will be deleted and recreated.
+    /// </summary>
+    private async Task EnsureJobRunningAsync(Kubernetes client, string ns, V1JobList jobs, string jobName, int eventId, string eventName, int organizationId, string organizationName, ContainerDetails containerDetails, CancellationToken stoppingToken)
+    {
+        var existingJob = jobs.Items.FirstOrDefault(job => job.Metadata.Name.Equals(jobName, StringComparison.OrdinalIgnoreCase));
+
+        if (existingJob == null)
         {
-            Logger.LogInformation("Event processor job {epJobName} does not exist for event {eventId}. Creating new job.", epJobName, evt.EventId);
-            await CreateJobAsync(client, epJobName, ns, eventProcessorContainerDetails, evt.EventId, eventDefinition.Name, org.Id, org.Name, stoppingToken);
+            Logger.LogInformation("Job {jobName} does not exist for event {eventId}. Creating new job.", jobName, eventId);
+            await CreateJobAsync(client, jobName, ns, containerDetails, eventId, eventName, organizationId, organizationName, stoppingToken);
+            return;
+        }
+
+        // Check if the job has completed (either successfully or failed)
+        var isCompleted = (existingJob.Status?.Succeeded ?? 0) > 0 || (existingJob.Status?.Failed ?? 0) > 0;
+
+        if (isCompleted)
+        {
+            Logger.LogInformation("Job {jobName} for event {eventId} has completed. Deleting and recreating.", jobName, eventId);
+
+            var deleteOptions = new V1DeleteOptions { PropagationPolicy = "Foreground" };
+            try
+            {
+                await client.DeleteNamespacedJobAsync(jobName, ns, body: deleteOptions, cancellationToken: stoppingToken);
+
+                // If this was a service job, also delete the service
+                if (containerDetails.IsService)
+                {
+                    var serviceName = $"{jobName}-service";
+                    try
+                    {
+                        await client.DeleteNamespacedServiceAsync(serviceName, ns, body: deleteOptions, cancellationToken: stoppingToken);
+                        Logger.LogInformation("Deleted service {serviceName} for completed job {jobName}", serviceName, jobName);
+                    }
+                    catch (k8s.Autorest.HttpOperationException ex) when (ex.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    {
+                        Logger.LogTrace("Service {serviceName} not found (may have already been deleted)", serviceName);
+                    }
+                }
+
+                // Wait a moment for the deletion to complete
+                await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+
+                // Recreate the job
+                Logger.LogInformation("Recreating job {jobName} for event {eventId}", jobName, eventId);
+                await CreateJobAsync(client, jobName, ns, containerDetails, eventId, eventName, organizationId, organizationName, stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to restart completed job {jobName} for event {eventId}", jobName, eventId);
+            }
         }
         else
         {
-            Logger.LogTrace("Event processor job {epJobName} already exists for event {eventId}.", epJobName, evt.EventId);
+            Logger.LogTrace("Job {jobName} is already running for event {eventId}.", jobName, eventId);
         }
     }
 
