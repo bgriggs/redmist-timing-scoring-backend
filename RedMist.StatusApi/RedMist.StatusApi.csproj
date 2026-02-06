@@ -27,7 +27,7 @@
 		<PackageReference Include="NLog.Extensions.Logging" Version="6.1.1" />
 		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.2.0" />
 		<PackageReference Include="KubernetesClient" Version="18.0.13" />
-		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.1" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.2" />
 		<PackageReference Include="MessagePack" Version="3.1.4" />
 		<PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.4" />
 	</ItemGroup>

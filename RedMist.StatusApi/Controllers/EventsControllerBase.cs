@@ -106,6 +106,7 @@ public abstract class EventsControllerBase : ControllerBase
                 e.IsLive,
                 e.IsArchived,
                 e.IsSimulation,
+                e.OrganizationId,
                 OrganizationName = o.Name,
                 OrganizationWebsite = o.Website,
                 o.ControlLogType,
@@ -131,6 +132,7 @@ public abstract class EventsControllerBase : ControllerBase
             IsLive = result.IsLive,
             IsArchived = result.IsArchived,
             IsSimulation = result.IsSimulation,
+            OrganizationId = result.OrganizationId,
         }).ToList();
 
         return Ok(eventDtos);
@@ -275,6 +277,7 @@ public abstract class EventsControllerBase : ControllerBase
                 e.IsLive,
                 e.IsArchived,
                 e.IsSimulation,
+                e.OrganizationId,
                 OrganizationName = o.Name,
                 OrganizationWebsite = o.Website,
                 o.ControlLogType,
@@ -302,6 +305,7 @@ public abstract class EventsControllerBase : ControllerBase
             IsLive = result.IsLive,
             IsArchived = result.IsArchived,
             IsSimulation = result.IsSimulation,
+            OrganizationId = result.OrganizationId,
         };
     }
 
