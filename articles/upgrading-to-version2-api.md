@@ -35,13 +35,13 @@ If you want full status updates periodically, you will need to implement that lo
 ## REST API Changes
 The REST API endpoints have been updated to version 2. 
 
-Full status updates are no longer included in the SignalR websocket, only changes. To get full status of an event, call `GET https://api.redmist.racing/status/v2/Events/GetCurrentSessionState/{eventId}`
+Full status updates are no longer included in the SignalR websocket, only changes. To get full status of an event, call `GET https://api.redmist.racing/status/v2/Events/GetCurrentSessionState?eventId=123`
 This returns a MessagePack response application/x-msgpack for best performance. MessagePack provides significantly better performance than JSON due to its binary serialization format, which results in smaller payload sizes and faster serialization/deserialization.
 
-If you must have JSON, call `GET https://api.redmist.racing/status/v2/Events/GetCurrentSessionStateJson/{eventId}` with accept header application/json.
+If you must have JSON, call `GET https://api.redmist.racing/status/v2/Events/GetCurrentSessionStateJson?eventId=123` with accept header application/json.
 
 For temporary access to the Version 1 [Payload](https://github.com/bgriggs/redmist-timing-common/blob/main/RedMist.TimingCommon/Models/Payload.cs) format, 
-call `GET https://api.redmist.racing/status/v2/Events/GetCurrentLegacySessionPayload/{eventId}`.
+call `GET https://api.redmist.racing/status/v2/Events/GetCurrentLegacySessionPayload?eventId=123`.
 
 # OpenAPI / Swagger
 For reference, the full OpenAPI specification for Version 2 of the Status API can be found at:
