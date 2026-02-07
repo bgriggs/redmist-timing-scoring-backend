@@ -23,7 +23,7 @@ public class GoogleSheetsControlLog : GoogleSheetsControlLogBase
         new SheetColumnMapping{ SheetColumn = "Cause", PropertyName = "Note", IsRequired = false, SetIfNotNullOrEmpty = true },
         new SheetColumnMapping{ SheetColumn = "Flag State", PropertyName = "Note", IsRequired = false, SetIfNotNullOrEmpty = true, SetIfTargetNotNullOrEmpty = true },
         new SheetColumnMapping{ SheetColumn = "Status", PropertyName = "Status", IsRequired = false },
-        new SheetColumnMapping{ SheetColumn = "Penalty / Action", PropertyName = "PenalityAction", IsRequired = false },
+        new SheetColumnMapping{ SheetColumn = "Penalty / Action", PropertyName = "PenaltyAction", IsRequired = false },
         new SheetColumnMapping{ SheetColumn = "Other Notes", PropertyName = "OtherNotes", IsRequired = false },
     ];
 

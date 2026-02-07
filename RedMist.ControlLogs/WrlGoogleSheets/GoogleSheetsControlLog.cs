@@ -19,7 +19,7 @@ public class GoogleSheetsControlLog : GoogleSheetsControlLogBase
         new SheetColumnMapping{ SheetColumn = "Car #", PropertyName = "Car2", IsRequired = false },
         new SheetColumnMapping{ SheetColumn = "Note", PropertyName = "Note", IsRequired = true },
         new SheetColumnMapping{ SheetColumn = "Status", PropertyName = "Status", IsRequired = false },
-        new SheetColumnMapping{ SheetColumn = "Penalty / Action", PropertyName = "PenalityAction", IsRequired = false },
+        new SheetColumnMapping{ SheetColumn = "Penalty / Action", PropertyName = "PenaltyAction", IsRequired = false },
         new SheetColumnMapping{ SheetColumn = "Other Notes", PropertyName = "OtherNotes", IsRequired = false },
     ];
 
