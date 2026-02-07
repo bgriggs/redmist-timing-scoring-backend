@@ -54,6 +54,8 @@ public class ExternalTelemetryController : Controller
         bool isRelaySource = clientId.StartsWith("relay", true, CultureInfo.InvariantCulture);
         if (!isRelaySource && !User.IsInRole("ext-telem"))
             return Forbid();
+        if (clientId.StartsWith("api", true, CultureInfo.InvariantCulture))
+            return Ok();
         if (drivers == null || drivers.Count == 0)
             return BadRequest("No drivers found");
 
