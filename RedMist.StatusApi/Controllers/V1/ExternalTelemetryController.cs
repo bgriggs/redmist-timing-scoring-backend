@@ -54,7 +54,7 @@ public class ExternalTelemetryController : Controller
         bool isRelaySource = clientId.StartsWith("relay", true, CultureInfo.InvariantCulture);
         if (!isRelaySource && !User.IsInRole("ext-telem"))
             return Forbid();
-        if (clientId.StartsWith("api", true, CultureInfo.InvariantCulture))
+        if (!isRelaySource)
             return Ok();
         if (drivers == null || drivers.Count == 0)
             return BadRequest("No drivers found");
@@ -66,6 +66,10 @@ public class ExternalTelemetryController : Controller
         {
             try
             {
+                if (string.IsNullOrEmpty(driver.DriverName))
+                {
+                    Logger.LogWarning($"Empty driver name from client: {clientId}");
+                }
                 var dis = new DriverInfoSource(driver, clientId, DateTime.UtcNow);
                 var json = JsonSerializer.Serialize(dis);
                 string key = string.Empty;
@@ -79,7 +83,7 @@ public class ExternalTelemetryController : Controller
                 }
                 else
                 {
-                    Logger.LogWarning("Skipping driver update with insufficient info");
+                    Logger.LogWarning($"Skipping driver update with insufficient info: {clientId}");
                     continue;
                 }
 
