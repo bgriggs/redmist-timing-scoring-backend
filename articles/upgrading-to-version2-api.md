@@ -2,7 +2,7 @@
 As of January 1, 2026, the Version 1 API has been officially deprecated. To ensure uninterrupted service and access to the latest features, all users must transition to Version 2 of the API.
 
 The main breaking change is the Version 1 SignalR websocket SubscribeToEvent call is no longer supported due to performance reasons. As a temporary measure, if you still require access to the Version 1 API data format, a new direct request endpoint call has been added that will return the [Payload](https://github.com/bgriggs/redmist-timing-common/blob/main/RedMist.TimingCommon/Models/Payload.cs) in the 
-Version 1 format `GET https://api.redmist.racing/status/v2/Events/GetCurrentLegacySessionPayload/{eventId}`. 
+Version 1 format `GET https://api.redmist.racing/status/v2/Events/GetCurrentLegacySessionPayload?eventId=123`. 
 However, this is only a stopgap solution, and we strongly recommend migrating to Version 2 as soon as possible.
 
 ## Real-Time Breaking Changes

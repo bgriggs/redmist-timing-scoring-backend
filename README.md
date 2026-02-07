@@ -22,4 +22,4 @@ Sample projects demonstrating how to interact with the Red Mist backend services
 # Upgrading to V2 API
 As of January 1, 2026, Version 1 of the Red Mist API has been officially deprecated due to performance reasons.
 
-Please refer to the [Upgrading to API Version 2](upgrading-to-version2-api.md) guide for details on migrating from Version 1 to Version 2 of the Red Mist API.
+Please refer to the [Upgrading to API Version 2](articles/upgrading-to-version2-api.md) guide for details on migrating from Version 1 to Version 2 of the Red Mist API.
