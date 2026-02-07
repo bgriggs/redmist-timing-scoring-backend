@@ -68,7 +68,7 @@ public class ExternalTelemetryController : Controller
             {
                 if (string.IsNullOrEmpty(driver.DriverName))
                 {
-                    Logger.LogWarning($"Empty driver name from client: {clientId}");
+                    Logger.LogDebug($"Empty driver name from client: {clientId} for event {driver.EventId} car {driver.CarNumber}");
                 }
                 var dis = new DriverInfoSource(driver, clientId, DateTime.UtcNow);
                 var json = JsonSerializer.Serialize(dis);
