@@ -25,6 +25,7 @@ public class LapProcessorTests
     private Mock<IConnectionMultiplexer> _mockConnectionMultiplexer = null!;
     private Mock<IDatabase> _mockDatabase = null!;
     private PitProcessor _pitProcessor = null!;
+    private CarLapHistoryService _carLapHistoryService = null!;
     private FakeTimeProvider _timeProvider = null!;
     private LapProcessor _lapProcessor = null!;
     private readonly List<(RedisKey key, RedisValue field, RedisValue value)> _capturedStreamAdds = [];
@@ -48,6 +49,7 @@ public class LapProcessorTests
         SetupRedisMock();
 
         _pitProcessor = new PitProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
+        _carLapHistoryService = new CarLapHistoryService(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _sessionContext);
 
         _lapProcessor = new LapProcessor(
             _mockLoggerFactory.Object,
@@ -55,6 +57,7 @@ public class LapProcessorTests
             _sessionContext,
             _mockConnectionMultiplexer.Object,
             _pitProcessor,
+            _carLapHistoryService,
             _timeProvider);
     }
 
@@ -536,6 +539,7 @@ public class LapProcessorTests
             _sessionContext,
             _mockConnectionMultiplexer.Object,
             _pitProcessor,
+            _carLapHistoryService,
             _timeProvider);
 
         // Act - Try to process lap 5 for car 1 (should not log because it's not newer)
@@ -822,6 +826,7 @@ public class LapProcessorTests
             _sessionContext,
             _mockConnectionMultiplexer.Object,
             _pitProcessor,
+            _carLapHistoryService,
             _timeProvider);
 
         // Act & Assert - Should not throw
@@ -840,6 +845,7 @@ public class LapProcessorTests
             _sessionContext,
             _mockConnectionMultiplexer.Object,
             _pitProcessor,
+            _carLapHistoryService,
             _timeProvider);
 
         var car1 = CreateTestCarPosition("1", 1);

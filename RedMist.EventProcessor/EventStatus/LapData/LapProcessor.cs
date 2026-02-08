@@ -21,6 +21,7 @@ public class LapProcessor : IDisposable
     private readonly SessionContext sessionContext;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly PitProcessor pitProcessor;
+    private readonly CarLapHistoryService carLapHistoryService;
     private readonly TimeProvider _timeProvider;
     private readonly Dictionary<string, CarPosition> lastCarPositionLookup = [];
     private readonly Dictionary<(int evt, int sess), Dictionary<string, int>> eventCarLastLapLookup = [];
@@ -32,13 +33,15 @@ public class LapProcessor : IDisposable
 
 
     public LapProcessor(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
-        SessionContext sessionContext, IConnectionMultiplexer cacheMux, PitProcessor pitProcessor, TimeProvider? timeProvider = null)
+        SessionContext sessionContext, IConnectionMultiplexer cacheMux, PitProcessor pitProcessor, 
+        CarLapHistoryService carLapHistoryService, TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.sessionContext = sessionContext;
         this.cacheMux = cacheMux;
         this.pitProcessor = pitProcessor;
+        this.carLapHistoryService = carLapHistoryService;
         _timeProvider = timeProvider ?? TimeProvider.System;
 
         // Start background task to process pending lap completions
@@ -218,6 +221,9 @@ public class LapProcessor : IDisposable
 
             // Update pit stops - this will set LapIncludedPit if the lap included a pit stop
             pitProcessor?.UpdateCarPositionForLogging(position);
+
+            // Add the lap to the rolling window history in Redis
+            await carLapHistoryService.AddLapAsync(position);
 
             var log = new CarLapLog
             {

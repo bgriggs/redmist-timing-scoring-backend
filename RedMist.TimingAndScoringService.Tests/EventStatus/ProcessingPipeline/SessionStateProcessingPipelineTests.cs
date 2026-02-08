@@ -55,9 +55,11 @@ public class SessionStateProcessingPipelineTests
     private ControlLogEnricher _controlLogEnricher = null!;
     private ResetProcessor _resetProcessor = null!;
     private DriverModeProcessor _driverModeProcessor = null!;
+    private CarLapHistoryService _carLapHistoryService = null!;
     private LapProcessor _lapProcessor = null!;
     private DriverEnricher _driverEnricher = null!;
     private VideoEnricher _videoEnricher = null!;
+    private FastestPaceEnricher _fastestPaceEnricher = null!;
     private UpdateConsolidator _updateConsolidator = null!;
     private StatusAggregator _statusAggregator = null!;
     private StartingPositionProcessor _startingPositionProcessor = null!;
@@ -190,9 +192,11 @@ public class SessionStateProcessingPipelineTests
             _mockConnectionMultiplexer.Object,
             _sessionContext);
         _positionEnricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
-        _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor, _timeProvider);
+        _carLapHistoryService = new CarLapHistoryService(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _sessionContext);
+        _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor, _carLapHistoryService, _timeProvider);
         _driverEnricher = new DriverEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _videoEnricher = new VideoEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
+        _fastestPaceEnricher = new FastestPaceEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
         _statusAggregator = new StatusAggregator(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
     }
@@ -213,6 +217,7 @@ public class SessionStateProcessingPipelineTests
             _lapProcessor,
             _driverEnricher,
             _videoEnricher,
+            _fastestPaceEnricher,
             _updateConsolidator
         );
     }

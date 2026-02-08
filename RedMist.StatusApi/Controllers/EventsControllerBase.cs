@@ -508,7 +508,7 @@ public abstract class EventsControllerBase : ControllerBase
 
         return result;
     }
-
+#pragma warning disable CS0618
     /// <summary>
     /// Gets the current session state in legacy Payload format from the event processor service.
     /// This method will eventually be removed.
@@ -556,7 +556,7 @@ public abstract class EventsControllerBase : ControllerBase
 
         return result;
     }
-
+#pragma warning restore CS0618
     #endregion
 
     #region Competitor Metadata

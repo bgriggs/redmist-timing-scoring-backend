@@ -26,7 +26,7 @@ public class ControlLogEnricher : BackgroundService
         this.cacheMux = cacheMux;
         this.sessionContext = sessionContext;
         eventId = configuration.GetValue("event_id", 0);
-        penaltyLookup = ImmutableDictionary<string, CarPenalty>.Empty; 
+        penaltyLookup = [];
     }
 
 

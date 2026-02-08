@@ -1,3 +1,4 @@
+#pragma warning disable CS0618
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -141,3 +142,4 @@ public class TsContext : DbContext
         modelBuilder.Entity<Models.DriverInfo>().HasIndex(o => o.FlagtronicsId).IsUnique();
     }
 }
+#pragma warning restore CS0618

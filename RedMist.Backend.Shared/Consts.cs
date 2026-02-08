@@ -33,6 +33,7 @@ public class Consts
     public const string EVENT_SHUTDOWN_SIGNAL = "evt-shutdown-signal";
     public const string RELAY_LOG_BATCH = "relay-log-batch-{0}";
     public const string RELAY_LOG_BATCH_TRACKING = "relay-log-batch-tracking";
+    public const string CAR_LAP_HISTORY = "car-lap-history-evt-{0}-car-{1}";
 
     #region External Metadata
     public const string EVENT_DRIVER_CHANGE_STREAM_FIELD = "drevt-{0}-999999";
@@ -61,6 +62,7 @@ public class Consts
     public const string DRIVER_EVENT_TYPE = "drevt";
     public const string DRIVER_TRANS_TYPE = "drtrans";
     public const string VIDEO_TYPE = "video";
+    public const string LAP_COMPLETED_TYPE = "lapcompleted";
 
     public const string EVENT_SESSION_CHANGED_TYPE = "evtsessionchanged";
     public const string EVENT_SESSION_CHANGED = EVENT_SESSION_CHANGED_TYPE + "-{0}-{1}";

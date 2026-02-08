@@ -116,6 +116,16 @@ public class SessionContext
         return null;
     }
 
+    /// <summary>
+    /// Gets all car positions for a given class name.
+    /// </summary>
+    /// <param name="className"></param>
+    /// <returns></returns>
+    public virtual ImmutableList<CarPosition> GetClassCarPositions(string className)
+    {
+        return [.. SessionState.CarPositions.Where(c => c.Class == className)];
+    }
+
     public virtual void ResetCommand()
     {
         // Prevent multiple resets from overwriting the previous session state, which there are 
