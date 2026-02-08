@@ -1,8 +1,11 @@
 ﻿using Asp.Versioning;
 using k8s.KubeConfigModels;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Models;
+using RedMist.Database;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarVideo;
 using StackExchange.Redis;
@@ -16,16 +19,22 @@ namespace RedMist.StatusApi.Controllers.V1;
 [ApiVersion("1.0")]
 public class ExternalTelemetryController : Controller
 {
+    private const long VALIDATING_DRIVER_ID = 4294967295;
     private ILogger Logger { get; }
     private readonly IConnectionMultiplexer cacheMux;
     private readonly V2.EventsController eventsController;
+    private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly HybridCache hybridCache;
 
 
-    public ExternalTelemetryController(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, V2.EventsController eventsController)
+    public ExternalTelemetryController(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, 
+        V2.EventsController eventsController, IDbContextFactory<TsContext> tsContext, HybridCache hybridCache)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.eventsController = eventsController;
+        this.tsContext = tsContext;
+        this.hybridCache = hybridCache;
     }
 
 
@@ -61,6 +70,7 @@ public class ExternalTelemetryController : Controller
 
         Logger.LogTrace("{m} source: {s}", nameof(UpdateDriversAsync), clientId);
 
+        await using var db = await tsContext.CreateDbContextAsync();
         var cache = cacheMux.GetDatabase();
         foreach (var driver in drivers)
         {
@@ -87,6 +97,20 @@ public class ExternalTelemetryController : Controller
                     continue;
                 }
 
+                // See if DriverId is in the DB and use that if available
+                string? centrallyStoredDriverName = null;
+                if (long.TryParse(driver.DriverId, out var flagtronicsId) && flagtronicsId != 0 && flagtronicsId != VALIDATING_DRIVER_ID) // 0xFFFFFFFF indicating the name is being validated
+                {
+                    var centrallyStoredDriver = await hybridCache.GetOrCreateAsync(
+                        $"driver-flagtronics-{flagtronicsId}",
+                        async cancel => await db.DriverInfo.FirstOrDefaultAsync(d => d.FlagtronicsId == flagtronicsId, cancel),
+                        new HybridCacheEntryOptions { LocalCacheExpiration = TimeSpan.FromMinutes(15), Expiration = TimeSpan.FromMinutes(15) });
+                    if (centrallyStoredDriver != null)
+                    {
+                        centrallyStoredDriverName = centrallyStoredDriver.Name;
+                    }
+                }
+
                 // Check cache to see if driver exists
                 var existingDriverJson = await cache.StringGetAsync(key);
                 bool changed = false;
@@ -111,11 +135,23 @@ public class ExternalTelemetryController : Controller
                                 return StatusCode(StatusCodes.Status423Locked, "Record is set with data from another source that has a name");
                             }
                             changed = !existingDis.EqualsDriverInfo(dis);
+
+                            // Additionally, if the existing source does not have a name but there is a centrally stored name for the driver
+                            if (!changed && !string.IsNullOrEmpty(centrallyStoredDriverName) && existingDis.DriverInfo.DriverName != centrallyStoredDriverName)
+                            {
+                                changed = true;
+                            }
                         }
                         // Non-relay source, only mark as changed if the existing source is also non-relay
                         else if (!existingDis.ClientId.StartsWith("relay", true, CultureInfo.InvariantCulture))
                         {
                             changed = !existingDis.EqualsDriverInfo(dis);
+
+                            // Additionally, if the existing source does not have a name but there is a centrally stored name for the driver
+                            if (!changed && !string.IsNullOrEmpty(centrallyStoredDriverName) && existingDis.DriverInfo.DriverName != centrallyStoredDriverName)
+                            {
+                                changed = true;
+                            }
                         }
                         else
                         {
@@ -132,6 +168,14 @@ public class ExternalTelemetryController : Controller
                 else
                 {
                     changed = true;
+                }
+
+                // Overwrite the driver name with the centrally stored name if it exists and is different than the incoming name,
+                // prioritizing the centrally stored name for consistency across sources when available
+                if (changed && !string.IsNullOrEmpty(centrallyStoredDriverName))
+                {
+                    dis.DriverInfo.DriverName = centrallyStoredDriverName;  
+                    json = JsonSerializer.Serialize(dis);
                 }
 
                 // Set new driver info to update the expiration

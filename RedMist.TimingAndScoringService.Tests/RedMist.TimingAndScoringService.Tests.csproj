@@ -43,6 +43,7 @@
 		<ProjectReference Include="..\RedMist.ExternalDataCollection\RedMist.ExternalDataCollection.csproj" />
 		<ProjectReference Include="..\RedMist.EventOrchestration\RedMist.EventOrchestration.csproj" />
 		<ProjectReference Include="..\RedMist.EventManagement\RedMist.EventManagement.csproj" />
+		<ProjectReference Include="..\RedMist.StatusApi\RedMist.StatusApi.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

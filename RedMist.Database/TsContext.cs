@@ -28,6 +28,7 @@ public class TsContext : DbContext
     public DbSet<DefaultOrgImage> DefaultOrgImages { get; set; } = null!;
     public DbSet<RelayLog> RelayLogs { get; set; } = null!;
     public DbSet<UIVersionInfo> UIVersions { get; set; } = null!;
+    public DbSet<Models.DriverInfo> DriverInfo { get; set; } = null!;
 
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }
@@ -115,8 +116,8 @@ public class TsContext : DbContext
             v => JsonSerializer.Deserialize<SessionState>(v, (JsonSerializerOptions?)null) ?? new SessionState());
         var controlLogConverter = new ValueConverter<List<ControlLogEntry>, string>(
             v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-            v => string.IsNullOrWhiteSpace(v) || v == "{}" 
-                ? new List<ControlLogEntry>() 
+            v => string.IsNullOrWhiteSpace(v) || v == "{}"
+                ? new List<ControlLogEntry>()
                 : JsonSerializer.Deserialize<List<ControlLogEntry>>(v, (JsonSerializerOptions?)null) ?? new List<ControlLogEntry>());
 
         var payloadProperty = modelBuilder.Entity<SessionResult>().Property(o => o.Payload);
@@ -126,7 +127,7 @@ public class TsContext : DbContext
         var sessionStateProperty = modelBuilder.Entity<SessionResult>().Property(o => o.SessionState);
         sessionStateProperty.HasConversion(sessionStateConverter!);
         sessionStateProperty.HasColumnType("jsonb");
-        
+
         var controlLogsProperty = modelBuilder.Entity<SessionResult>().Property(o => o.ControlLogs);
         controlLogsProperty.HasConversion(controlLogConverter!);
         controlLogsProperty.HasColumnType("jsonb");
@@ -137,5 +138,6 @@ public class TsContext : DbContext
         modelBuilder.Entity<Loop>().HasKey(l => new { l.OrganizationId, l.EventId, l.Id });
         modelBuilder.Entity<Passing>().HasKey(p => new { p.OrganizationId, p.EventId, p.Id });
         modelBuilder.Entity<UIVersionInfo>().HasNoKey().ToTable("UIVersions");
+        modelBuilder.Entity<Models.DriverInfo>().HasIndex(o => o.FlagtronicsId).IsUnique();
     }
 }

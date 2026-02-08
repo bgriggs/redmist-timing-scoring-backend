@@ -67,6 +67,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.TeamSample", "sampl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.ConvertPayloadToSessionResults", "RedMist.ConvertPayloadToSessionResults\RedMist.ConvertPayloadToSessionResults.csproj", "{925A4DAF-2841-4CF0-9B48-4D8B3CA66E34}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.UpdateFlagtronicsDriverNames", "RedMist.UpdateFlagtronicsDriverNames\RedMist.UpdateFlagtronicsDriverNames.csproj", "{B8D60839-DD57-4907-A6AA-E85A04C2EFEE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -145,6 +147,10 @@ Global
 		{925A4DAF-2841-4CF0-9B48-4D8B3CA66E34}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{925A4DAF-2841-4CF0-9B48-4D8B3CA66E34}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{925A4DAF-2841-4CF0-9B48-4D8B3CA66E34}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B8D60839-DD57-4907-A6AA-E85A04C2EFEE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8D60839-DD57-4907-A6AA-E85A04C2EFEE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8D60839-DD57-4907-A6AA-E85A04C2EFEE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B8D60839-DD57-4907-A6AA-E85A04C2EFEE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -156,6 +162,7 @@ Global
 		{AA946B3E-8C7E-4FFD-BF70-FDD844327880} = {9A872EE1-4945-4299-8485-11425E9B25DC}
 		{1FA9DA03-DFA9-4880-AFCD-539100081C5C} = {19FD202B-0205-4250-9FB9-9D728241FB5D}
 		{925A4DAF-2841-4CF0-9B48-4D8B3CA66E34} = {9A872EE1-4945-4299-8485-11425E9B25DC}
+		{B8D60839-DD57-4907-A6AA-E85A04C2EFEE} = {9A872EE1-4945-4299-8485-11425E9B25DC}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {BCE8ECC7-D522-49B0-B6FD-E0C57E6E5E3C}

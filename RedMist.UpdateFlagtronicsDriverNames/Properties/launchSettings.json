@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "RedMist.UpdateFlagtronicsDriverNames": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
