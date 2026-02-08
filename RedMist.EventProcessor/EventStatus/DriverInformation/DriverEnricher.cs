@@ -214,11 +214,13 @@ public class DriverEnricher
         if (car.DriverId != driverInfo.DriverId)
         {
             car.DriverId = driverInfo.DriverId;
+            patch.DriverId = driverInfo.DriverId;
             changed = true;
         }
         if (car.DriverName != driverInfo.DriverName)
         {
             car.DriverName = driverInfo.DriverName;
+            patch.DriverName = driverInfo.DriverName;
             changed = true;
         }
 
