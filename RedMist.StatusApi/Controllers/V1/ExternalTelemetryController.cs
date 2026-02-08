@@ -78,7 +78,7 @@ public class ExternalTelemetryController : Controller
             {
                 if (string.IsNullOrEmpty(driver.DriverName))
                 {
-                    Logger.LogDebug($"Empty driver name from client: {clientId} for event {driver.EventId} car {driver.CarNumber}");
+                    Logger.LogDebug($"Empty driver name from client: {clientId} ID: {driver.DriverId} for event {driver.EventId} car {driver.CarNumber}");
                 }
                 var dis = new DriverInfoSource(driver, clientId, DateTime.UtcNow);
                 var json = JsonSerializer.Serialize(dis);
@@ -108,6 +108,7 @@ public class ExternalTelemetryController : Controller
                     if (centrallyStoredDriver != null)
                     {
                         centrallyStoredDriverName = centrallyStoredDriver.Name;
+                        Logger.LogTrace($"Centrally stored name found for driver {driver.DriverId} ({centrallyStoredDriverName}), source name: {driver.DriverName} ID: {driver.DriverId} from client: {clientId}");
                     }
                 }
 
