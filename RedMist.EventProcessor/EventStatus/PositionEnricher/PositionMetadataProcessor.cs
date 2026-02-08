@@ -183,16 +183,27 @@ public class PositionMetadataProcessor
     {
         foreach (var car in carPositions)
         {
-            if (car.OverallPosition == 0 || car.ClassPosition == 0 || car.OverallStartingPosition == 0 || car.InClassStartingPosition == 0)
+            if (car.OverallPosition == 0 || car.OverallStartingPosition == 0)
             {
                 car.OverallPositionsGained = CarPosition.InvalidPosition;
-                car.InClassPositionsGained = CarPosition.InvalidPosition;
-                continue;
+            }
+            else
+            {
+                car.OverallPositionsGained = car.OverallStartingPosition - car.OverallPosition;
             }
 
-            car.OverallPositionsGained = car.OverallStartingPosition - car.OverallPosition;
-            car.InClassPositionsGained = car.InClassStartingPosition - car.ClassPosition;
+            if (car.ClassPosition == 0 || car.InClassStartingPosition == 0)
+            {
+                car.InClassPositionsGained = CarPosition.InvalidPosition;
+            }
+            else
+            {
+                car.InClassPositionsGained = car.InClassStartingPosition - car.ClassPosition;
+            }
         }
+
+        // Validate positions gained BEFORE marking most gained
+        ValidatePositionsGained(carPositions);
 
         // Reset most gained flags
         foreach (var car in carPositions)
@@ -218,10 +229,43 @@ public class PositionMetadataProcessor
             var carClassMostGainedGroups = cg
                 .Where(c => c.InClassPositionsGained > 0)
                 .OrderByDescending(c => c.InClassPositionsGained)
-                .GroupBy(c => c.OverallPositionsGained);
+                .GroupBy(c => c.InClassPositionsGained);
             if (carClassMostGainedGroups.Any() && carClassMostGainedGroups.First().Count() == 1)
             {
                 carClassMostGainedGroups.First().First().IsClassMostPositionsGained = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Validates that positions gained/lost values are reasonable. If a value exceeds the total number
+    /// of cars (overall) or cars in class (in-class), it's reset to InvalidPosition as it indicates
+    /// corrupted or invalid data.
+    /// </summary>
+    private static void ValidatePositionsGained(List<CarPosition> positions)
+    {
+        int totalCars = positions.Count;
+        var classCounts = positions
+            .Where(c => c.Class != null)
+            .GroupBy(c => c.Class!)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        foreach (var car in positions)
+        {
+            // Validate overall positions gained
+            if (car.OverallPositionsGained != CarPosition.InvalidPosition &&
+                Math.Abs(car.OverallPositionsGained) >= totalCars)
+            {
+                car.OverallPositionsGained = CarPosition.InvalidPosition;
+            }
+
+            // Validate in-class positions gained
+            if (car.InClassPositionsGained != CarPosition.InvalidPosition &&
+                car.Class != null &&
+                classCounts.TryGetValue(car.Class, out var carsInClass) &&
+                Math.Abs(car.InClassPositionsGained) >= carsInClass)
+            {
+                car.InClassPositionsGained = CarPosition.InvalidPosition;
             }
         }
     }

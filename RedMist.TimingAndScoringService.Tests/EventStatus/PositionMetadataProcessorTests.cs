@@ -588,21 +588,30 @@ public class PositionMetadataProcessorTests
     {
         var secondaryProcessor = new PositionMetadataProcessor();
 
-        // Overall starting position missing
+        // Overall starting position missing - overall should be invalid, class should be valid (UpdateClassPositions will set ClassPosition)
         var car1 = new CarPosition { Number = "1", Class = "A", OverallPosition = 1, OverallStartingPosition = 0, InClassStartingPosition = 1 };
-        // In class starting position missing
+        // In class starting position missing - overall should be valid, class should be invalid
         var car2 = new CarPosition { Number = "2", Class = "A", OverallPosition = 2, OverallStartingPosition = 2, InClassStartingPosition = 0 };
-        // Overall position missing
+        // Overall position missing - overall should be invalid, class should be valid (UpdateClassPositions will set ClassPosition)
         var car3 = new CarPosition { Number = "3", Class = "B", OverallPosition = 0, OverallStartingPosition = 3, InClassStartingPosition = 1 };
 
         secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
 
-        Assert.AreEqual(CarPosition.InvalidPosition, car1.OverallPositionsGained);
-        Assert.AreEqual(CarPosition.InvalidPosition, car1.InClassPositionsGained);
-        Assert.AreEqual(CarPosition.InvalidPosition, car2.OverallPositionsGained);
-        Assert.AreEqual(CarPosition.InvalidPosition, car2.InClassPositionsGained);
-        Assert.AreEqual(CarPosition.InvalidPosition, car3.OverallPositionsGained);
-        Assert.AreEqual(CarPosition.InvalidPosition, car3.InClassPositionsGained);
+        // Car 1: Overall starting position is 0, so OverallPositionsGained should be invalid
+        // But ClassPosition will be set by UpdateClassPositions and InClassStartingPosition is valid
+        Assert.AreEqual(CarPosition.InvalidPosition, car1.OverallPositionsGained, "Car1 should have invalid overall positions gained when OverallStartingPosition is 0");
+        // Note: car1.ClassPosition will be set by UpdateClassPositions to 1, and InClassStartingPosition is 1, so gain is 0
+        Assert.AreEqual(0, car1.InClassPositionsGained, "Car1 should have valid class positions gained when class data is valid");
+
+        // Car 2: Overall data is valid (pos=2, start=2), class starting position is 0
+        Assert.AreEqual(0, car2.OverallPositionsGained, "Car2 should have valid overall positions gained when overall data is valid");
+        Assert.AreEqual(CarPosition.InvalidPosition, car2.InClassPositionsGained, "Car2 should have invalid class positions gained when InClassStartingPosition is 0");
+
+        // Car 3: Overall position is 0, so OverallPositionsGained should be invalid
+        // ClassPosition will be set by UpdateClassPositions and InClassStartingPosition is valid
+        Assert.AreEqual(CarPosition.InvalidPosition, car3.OverallPositionsGained, "Car3 should have invalid overall positions gained when OverallPosition is 0");
+        // Note: car3.ClassPosition will be set by UpdateClassPositions to 1, and InClassStartingPosition is 1, so gain is 0
+        Assert.AreEqual(0, car3.InClassPositionsGained, "Car3 should have valid class positions gained when class data is valid");
     }
 
     [TestMethod]
@@ -849,13 +858,37 @@ public class PositionMetadataProcessorTests
             ClassPosition = 1
         };
 
+        var car2 = new CarPosition 
+        { 
+            Number = "2", 
+            Class = "A", 
+            TotalTime = "00:10:01.000", 
+            LastLapCompleted = 10, 
+            OverallPosition = 2,
+            OverallStartingPosition = 2,
+            InClassStartingPosition = 3,
+            ClassPosition = 2
+        };
+
+        var car3 = new CarPosition 
+        { 
+            Number = "3", 
+            Class = "A", 
+            TotalTime = "00:10:02.000", 
+            LastLapCompleted = 10, 
+            OverallPosition = 3,
+            OverallStartingPosition = 1,
+            InClassStartingPosition = 1,
+            ClassPosition = 3
+        };
+
         // First update
-        processor.UpdateCarPositions([car1]);
+        processor.UpdateCarPositions([car1, car2, car3]);
         Assert.AreEqual(2, car1.OverallPositionsGained);
 
         // Second update with different position
         car1.OverallPosition = 2;
-        processor.UpdateCarPositions([car1]);
+        processor.UpdateCarPositions([car1, car2, car3]);
         Assert.AreEqual(1, car1.OverallPositionsGained);
     }
 

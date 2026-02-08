@@ -57,7 +57,7 @@ public class PositionDataEnricher
             {
                 if (c.Number == null)
                     continue;
-                
+
                 if (copiedCarLookup.ContainsKey(c.Number))
                 {
                     Logger.LogWarning("Duplicate car number found: {CarNumber}", c.Number);
@@ -72,7 +72,7 @@ public class PositionDataEnricher
             for (int i = 0; i < originalCarPositions.Count; i++)
             {
                 var original = originalCarPositions[i];
-                
+
                 // Skip if car number is null or not found in copied positions
                 if (original.Number == null || !copiedCarLookup.TryGetValue(original.Number, out var updated))
                     continue;
@@ -106,11 +106,14 @@ public class PositionDataEnricher
         // Use multiloop starting positions if active
         if (sessionContext.IsMultiloopActive)
         {
+            Logger.LogDebug("Using multiloop starting positions");
+
             // Multiloop will set the overall starting positions. If these have changed
             // since last time, we need to recalculate the in-class starting positions.
             bool startingPositionsChanged = StartingPositionsChanged();
             if (startingPositionsChanged)
             {
+                Logger.LogDebug("Multiloop starting positions changed, recalculating in-class positions");
                 UpdateMLInClassStartingPositionLookup();
                 lastMLOverallStartingPositions.Clear();
                 foreach (var kvp in sessionContext.GetStartingPositions())
@@ -120,19 +123,27 @@ public class PositionDataEnricher
             }
 
             // Apply the in-class starting positions
+            int appliedCount = 0;
             foreach (var cp in copiedCarPositions)
             {
                 if (cp.Number == null)
                     continue;
                 if (mlInClassStartingPositions.TryGetValue(cp.Number, out var sp))
+                {
                     cp.InClassStartingPosition = sp;
+                    appliedCount++;
+                }
                 else
                     cp.InClassStartingPosition = 0;
             }
+            Logger.LogDebug("Applied multiloop in-class starting positions to {AppliedCount} cars", appliedCount);
         }
         else // Infer positions from RMonitor data at start of the race
         {
+            Logger.LogDebug("Using RMonitor starting positions");
+
             // Apply starting positions from session context
+            int appliedCount = 0;
             foreach (var cp in copiedCarPositions)
             {
                 if (cp.Number == null)
@@ -141,7 +152,10 @@ public class PositionDataEnricher
                 cp.OverallStartingPosition = sp ?? 0;
                 var icsp = sessionContext.GetInClassStartingPosition(cp.Number);
                 cp.InClassStartingPosition = icsp ?? 0;
+                if (sp.HasValue && icsp.HasValue)
+                    appliedCount++;
             }
+            Logger.LogDebug("Applied RMonitor starting positions to {AppliedCount} cars", appliedCount);
         }
     }
 
