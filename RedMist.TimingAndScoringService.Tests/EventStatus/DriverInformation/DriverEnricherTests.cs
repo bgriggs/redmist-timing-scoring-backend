@@ -11,7 +11,6 @@ using RedMist.EventProcessor.Models;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
-using System.IO;
 using System.Text.Json;
 using DriverInfo = RedMist.TimingCommon.Models.DriverInfo;
 
@@ -91,6 +90,11 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(1, result.CarPatches);
+
+        // Verify patch contains the new values
+        var patch = result.CarPatches[0];
+        Assert.AreEqual("driver-123", patch.DriverId);
+        Assert.AreEqual("John Doe", patch.DriverName);
 
         // Verify car position was updated
         Assert.AreEqual("driver-123", car.DriverId);
@@ -178,6 +182,11 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(1, result.CarPatches);
+
+        // Verify patch contains the new values
+        var patch = result.CarPatches[0];
+        Assert.AreEqual("driver-456", patch.DriverId);
+        Assert.AreEqual("Jane Smith", patch.DriverName);
 
         // Verify car position was updated
         Assert.AreEqual("driver-456", car.DriverId);
@@ -427,6 +436,139 @@ public class DriverEnricherTests
 
     #endregion
 
+    #region Process Method Tests - Patch Content Validation
+
+    [TestMethod]
+    public void Process_OnlyDriverIdChanges_PatchContainsOnlyDriverId()
+    {
+        // Arrange
+        var car = new CarPosition
+        {
+            Number = "42",
+            TransponderId = 12345,
+            DriverId = "old-id",
+            DriverName = "John Doe"
+        };
+        sessionContext.UpdateCars([car]);
+
+        var driverInfo = new DriverInfo
+        {
+            EventId = 1,
+            CarNumber = "42",
+            DriverId = "new-id",
+            DriverName = "John Doe" // Same name
+        };
+
+        var message = new TimingMessage(
+            Consts.DRIVER_EVENT_TYPE,
+            JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)),
+            1,
+            DateTime.UtcNow);
+
+        // Act
+        var result = driverEnricher.Process(message);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(1, result.CarPatches);
+
+        var patch = result.CarPatches[0];
+        Assert.AreEqual("new-id", patch.DriverId);
+        Assert.IsNull(patch.DriverName); // Should not be set since it didn't change
+
+        // Verify car position was updated
+        Assert.AreEqual("new-id", car.DriverId);
+        Assert.AreEqual("John Doe", car.DriverName);
+    }
+
+    [TestMethod]
+    public void Process_OnlyDriverNameChanges_PatchContainsOnlyDriverName()
+    {
+        // Arrange
+        var car = new CarPosition
+        {
+            Number = "42",
+            TransponderId = 12345,
+            DriverId = "driver-123",
+            DriverName = "Old Name"
+        };
+        sessionContext.UpdateCars([car]);
+
+        var driverInfo = new DriverInfo
+        {
+            EventId = 1,
+            CarNumber = "42",
+            DriverId = "driver-123", // Same ID
+            DriverName = "New Name"
+        };
+
+        var message = new TimingMessage(
+            Consts.DRIVER_EVENT_TYPE,
+            JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)),
+            1,
+            DateTime.UtcNow);
+
+        // Act
+        var result = driverEnricher.Process(message);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(1, result.CarPatches);
+
+        var patch = result.CarPatches[0];
+        Assert.IsNull(patch.DriverId); // Should not be set since it didn't change
+        Assert.AreEqual("New Name", patch.DriverName);
+
+        // Verify car position was updated
+        Assert.AreEqual("driver-123", car.DriverId);
+        Assert.AreEqual("New Name", car.DriverName);
+    }
+
+    [TestMethod]
+    public void Process_BothDriverIdAndNameChange_PatchContainsBoth()
+    {
+        // Arrange
+        var car = new CarPosition
+        {
+            Number = "42",
+            TransponderId = 12345,
+            DriverId = "old-id",
+            DriverName = "Old Name"
+        };
+        sessionContext.UpdateCars([car]);
+
+        var driverInfo = new DriverInfo
+        {
+            EventId = 1,
+            CarNumber = "42",
+            DriverId = "new-id",
+            DriverName = "New Name"
+        };
+
+        var message = new TimingMessage(
+            Consts.DRIVER_EVENT_TYPE,
+            JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)),
+            1,
+            DateTime.UtcNow);
+
+        // Act
+        var result = driverEnricher.Process(message);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(1, result.CarPatches);
+
+        var patch = result.CarPatches[0];
+        Assert.AreEqual("new-id", patch.DriverId);
+        Assert.AreEqual("New Name", patch.DriverName);
+
+        // Verify car position was updated
+        Assert.AreEqual("new-id", car.DriverId);
+        Assert.AreEqual("New Name", car.DriverName);
+    }
+
+    #endregion
+
     #region ProcessApplyFullAsync Tests - Cache Integration
 
     [TestMethod]
@@ -453,6 +595,11 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(1, result.CarPatches);
+
+        // Verify patch contains the new values
+        var patch = result.CarPatches[0];
+        Assert.AreEqual("driver-123", patch.DriverId);
+        Assert.AreEqual("John Doe", patch.DriverName);
 
         // Verify car position was updated
         Assert.AreEqual("driver-123", car.DriverId);
@@ -489,6 +636,11 @@ public class DriverEnricherTests
         // Assert
         Assert.IsNotNull(result);
         Assert.HasCount(1, result.CarPatches);
+
+        // Verify patch contains the new values
+        var patch = result.CarPatches[0];
+        Assert.AreEqual("driver-456", patch.DriverId);
+        Assert.AreEqual("Jane Smith", patch.DriverName);
 
         // Verify car position was updated
         Assert.AreEqual("driver-456", car.DriverId);
@@ -654,6 +806,8 @@ public class DriverEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
+        Assert.AreEqual("driver-123", result.DriverId);
+        Assert.AreEqual("John Doe", result.DriverName);
         Assert.AreEqual("driver-123", car.DriverId);
         Assert.AreEqual("John Doe", car.DriverName);
     }
@@ -755,6 +909,8 @@ public class DriverEnricherTests
 
         // Assert
         Assert.IsNotNull(result);
+        Assert.AreEqual("driver-456", result.DriverId);
+        Assert.AreEqual("Jane Smith", result.DriverName);
         Assert.AreEqual("driver-456", car.DriverId);
         Assert.AreEqual("Jane Smith", car.DriverName);
     }
@@ -786,6 +942,152 @@ public class DriverEnricherTests
 
         // Verify only the first key was checked
         mockDatabase.Verify(x => x.StringGetAsync(key, CommandFlags.None), Times.Once);
+    }
+
+    #endregion
+
+    #region ProcessCarAsync Tests - Patch Content Validation
+
+    [TestMethod]
+    public async Task ProcessCarAsync_OnlyDriverIdChanges_PatchContainsOnlyDriverId()
+    {
+        // Arrange
+        var car = new CarPosition
+        {
+            Number = "42",
+            TransponderId = 12345,
+            DriverId = "old-id",
+            DriverName = "John Doe"
+        };
+        sessionContext.UpdateCars([car]);
+
+        var driverInfo = new DriverInfo
+        {
+            CarNumber = "42",
+            DriverId = "new-id",
+            DriverName = "John Doe" // Same name
+        };
+
+        var key = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, "42");
+        mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)));
+
+        // Act
+        var result = await driverEnricher.ProcessCarAsync("42", mockDatabase.Object);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.AreEqual("new-id", result.DriverId);
+        Assert.IsNull(result.DriverName); // Should not be set since it didn't change
+
+        // Verify car position was updated
+        Assert.AreEqual("new-id", car.DriverId);
+        Assert.AreEqual("John Doe", car.DriverName);
+    }
+
+    [TestMethod]
+    public async Task ProcessCarAsync_OnlyDriverNameChanges_PatchContainsOnlyDriverName()
+    {
+        // Arrange
+        var car = new CarPosition
+        {
+            Number = "42",
+            TransponderId = 12345,
+            DriverId = "driver-123",
+            DriverName = "Old Name"
+        };
+        sessionContext.UpdateCars([car]);
+
+        var driverInfo = new DriverInfo
+        {
+            CarNumber = "42",
+            DriverId = "driver-123", // Same ID
+            DriverName = "New Name"
+        };
+
+        var key = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, "42");
+        mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)));
+
+        // Act
+        var result = await driverEnricher.ProcessCarAsync("42", mockDatabase.Object);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.IsNull(result.DriverId); // Should not be set since it didn't change
+        Assert.AreEqual("New Name", result.DriverName);
+
+        // Verify car position was updated
+        Assert.AreEqual("driver-123", car.DriverId);
+        Assert.AreEqual("New Name", car.DriverName);
+    }
+
+    [TestMethod]
+    public async Task ProcessCarAsync_BothDriverIdAndNameChange_PatchContainsBoth()
+    {
+        // Arrange
+        var car = new CarPosition
+        {
+            Number = "42",
+            TransponderId = 12345,
+            DriverId = "old-id",
+            DriverName = "Old Name"
+        };
+        sessionContext.UpdateCars([car]);
+
+        var driverInfo = new DriverInfo
+        {
+            CarNumber = "42",
+            DriverId = "new-id",
+            DriverName = "New Name"
+        };
+
+        var key = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, "42");
+        mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)));
+
+        // Act
+        var result = await driverEnricher.ProcessCarAsync("42", mockDatabase.Object);
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.AreEqual("new-id", result.DriverId);
+        Assert.AreEqual("New Name", result.DriverName);
+
+        // Verify car position was updated
+        Assert.AreEqual("new-id", car.DriverId);
+        Assert.AreEqual("New Name", car.DriverName);
+    }
+
+    [TestMethod]
+    public async Task ProcessCarAsync_NoChanges_ReturnsNull()
+    {
+        // Arrange
+        var car = new CarPosition
+        {
+            Number = "42",
+            TransponderId = 12345,
+            DriverId = "driver-123",
+            DriverName = "John Doe"
+        };
+        sessionContext.UpdateCars([car]);
+
+        var driverInfo = new DriverInfo
+        {
+            CarNumber = "42",
+            DriverId = "driver-123",
+            DriverName = "John Doe"
+        };
+
+        var key = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, "42");
+        mockDatabase.Setup(x => x.StringGetAsync(key, CommandFlags.None))
+            .ReturnsAsync((RedisValue)JsonSerializer.Serialize(new DriverInfoSource(driverInfo, string.Empty, DateTime.Now)));
+
+        // Act
+        var result = await driverEnricher.ProcessCarAsync("42", mockDatabase.Object);
+
+        // Assert
+        Assert.IsNull(result); // No changes, so no patch
     }
 
     #endregion
