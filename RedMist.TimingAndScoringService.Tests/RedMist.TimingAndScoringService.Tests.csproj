@@ -11,17 +11,17 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <Compile Remove="ControlLogProcessor\Services\**" />
-	  <EmbeddedResource Remove="ControlLogProcessor\Services\**" />
-	  <None Remove="ControlLogProcessor\Services\**" />
+		<Compile Remove="ControlLogProcessor\Services\**" />
+		<EmbeddedResource Remove="ControlLogProcessor\Services\**" />
+		<None Remove="ControlLogProcessor\Services\**" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Compile Remove="EventStatus\RMonitor\RMonitorProcessorTests.cs" />
+		<Compile Remove="EventStatus\RMonitor\RMonitorProcessorTests.cs" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <None Remove="EventStatus\ProcessingPipeline\TestMidRaceClassChange.txt~RFdf3aee4.TMP" />
+		<None Remove="EventStatus\ProcessingPipeline\TestMidRaceClassChange.txt~RFdf3aee4.TMP" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -60,41 +60,44 @@
 		<None Update="event-finish-with-cars-data.log">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
-		<None Update="EventStatus\RMonitor\data-1767472981761.csv">
+		<None Update="EventStatus\ProcessingPipeline\ra2025.txt">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="EventStatus\RMonitor\data-1767472981761.csv">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestAbnormalReset.txt">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestEntries.txt">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestEventEndSessionFinialization.txt">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestGap.txt">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestGapDiff.txt">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestInitialPositions.txt">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestMidRaceClassChange.txt">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestMissingLaps.txt">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestResetRetainLapTime.txt">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestSessionChanges.txt">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestStart.txt">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
 

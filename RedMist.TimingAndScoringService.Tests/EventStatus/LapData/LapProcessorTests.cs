@@ -25,7 +25,7 @@ public class LapProcessorTests
     private Mock<IConnectionMultiplexer> _mockConnectionMultiplexer = null!;
     private Mock<IDatabase> _mockDatabase = null!;
     private PitProcessor _pitProcessor = null!;
-    private CarLapHistoryService _carLapHistoryService = null!;
+    private InMemoryCarLapHistoryService _carLapHistoryService = null!;
     private FakeTimeProvider _timeProvider = null!;
     private LapProcessor _lapProcessor = null!;
     private readonly List<(RedisKey key, RedisValue field, RedisValue value)> _capturedStreamAdds = [];
@@ -49,7 +49,7 @@ public class LapProcessorTests
         SetupRedisMock();
 
         _pitProcessor = new PitProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
-        _carLapHistoryService = new CarLapHistoryService(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _sessionContext);
+        _carLapHistoryService = new InMemoryCarLapHistoryService(_sessionContext);
 
         _lapProcessor = new LapProcessor(
             _mockLoggerFactory.Object,

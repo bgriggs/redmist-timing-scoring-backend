@@ -9,7 +9,7 @@ namespace RedMist.EventProcessor.EventStatus.LapData;
 /// Service for managing a rolling window of the last 5 laps per car in Redis.
 /// Provides fast lookup of recent lap history by event ID and car number.
 /// </summary>
-public class CarLapHistoryService
+public class CarLapHistoryService : ICarLapHistoryService
 {
     private const int MaxLapsPerCar = 5;
     

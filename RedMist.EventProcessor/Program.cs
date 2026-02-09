@@ -113,7 +113,7 @@ public class Program
         builder.Services.AddSingleton<FlagProcessor>();
         builder.Services.AddSingleton<PositionDataEnricher>();
         builder.Services.AddSingleton<ResetProcessor>();
-        builder.Services.AddSingleton<CarLapHistoryService>();
+        builder.Services.AddSingleton<ICarLapHistoryService, CarLapHistoryService>();
         builder.Services.AddSingleton<LapProcessor>();
         builder.Services.AddSingleton<VideoEnricher>();
         builder.Services.AddSingleton<FastestPaceEnricher>();

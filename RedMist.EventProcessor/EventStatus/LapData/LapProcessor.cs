@@ -21,7 +21,7 @@ public class LapProcessor : IDisposable
     private readonly SessionContext sessionContext;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly PitProcessor pitProcessor;
-    private readonly CarLapHistoryService carLapHistoryService;
+    private readonly ICarLapHistoryService carLapHistoryService;
     private readonly TimeProvider _timeProvider;
     private readonly Dictionary<string, CarPosition> lastCarPositionLookup = [];
     private readonly Dictionary<(int evt, int sess), Dictionary<string, int>> eventCarLastLapLookup = [];
@@ -37,7 +37,7 @@ public class LapProcessor : IDisposable
 
     public LapProcessor(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
         SessionContext sessionContext, IConnectionMultiplexer cacheMux, PitProcessor pitProcessor, 
-        CarLapHistoryService carLapHistoryService, TimeProvider? timeProvider = null)
+        ICarLapHistoryService carLapHistoryService, TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;

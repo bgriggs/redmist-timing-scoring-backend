@@ -5,7 +5,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
+using Org.BouncyCastle.Asn1.X509;
 using RedMist.Backend.Shared.Hubs;
+using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
@@ -29,6 +31,220 @@ using System.Text.Json;
 
 
 namespace RedMist.EventProcessor.Tests.EventStatus.ProcessingPipeline;
+
+/// <summary>
+/// Tracks projected lap times and compares them to actual lap times for accuracy analysis
+/// </summary>
+internal class ProjectedLapTimeTracker
+{
+    private readonly Dictionary<string, Dictionary<int, ProjectionRecord>> _projections = new();
+    private readonly List<PredictionResult> _results = new();
+
+    public void RecordProjection(string carNumber, int lapNumber, long projectedMs, Flags flag)
+    {
+        if (!_projections.ContainsKey(carNumber))
+        {
+            _projections[carNumber] = new Dictionary<int, ProjectionRecord>();
+        }
+
+        _projections[carNumber][lapNumber] = new ProjectionRecord
+        {
+            CarNumber = carNumber,
+            LapNumber = lapNumber,
+            ProjectedMs = projectedMs,
+            Flag = flag
+        };
+    }
+
+    public void RecordActual(string carNumber, int lapNumber, double actualMs, Flags flag)
+    {
+        if (_projections.TryGetValue(carNumber, out var carProjections) &&
+            carProjections.TryGetValue(lapNumber, out var projection))
+        {
+            // Only record if the projection was made under green or yellow conditions
+            if (projection.Flag == Flags.Green || projection.Flag == Flags.Yellow)
+            {
+                _results.Add(new PredictionResult
+                {
+                    CarNumber = carNumber,
+                    LapNumber = lapNumber,
+                    ProjectedMs = projection.ProjectedMs,
+                    ActualMs = actualMs,
+                    ErrorMs = projection.ProjectedMs - actualMs,
+                    Flag = flag
+                });
+            }
+
+            // Remove the projection after matching
+            carProjections.Remove(lapNumber);
+        }
+    }
+
+    public ProjectionStatistics CalculateStatistics()
+    {
+        if (_results.Count == 0)
+        {
+            return new ProjectionStatistics();
+        }
+
+        var errors = _results.Select(r => r.ErrorMs).ToList();
+        var absErrors = errors.Select(Math.Abs).ToList();
+        var squaredErrors = errors.Select(e => e * e).ToList();
+
+        var totalProjections = _projections.Values.Sum(d => d.Count) + _results.Count;
+        var matchedPredictions = _results.Count;
+
+        var stats = new ProjectionStatistics
+        {
+            TotalProjections = totalProjections,
+            MatchedPredictions = matchedPredictions,
+            MatchRate = totalProjections > 0 ? (double)matchedPredictions / totalProjections : 0,
+
+            AverageErrorMs = errors.Average(),
+            AverageErrorSeconds = errors.Average() / 1000.0,
+            MedianErrorMs = GetMedian(errors),
+            StandardDeviationMs = CalculateStandardDeviation(errors),
+
+            ProjectionsOver = errors.Count(e => e > 0),
+            ProjectionsUnder = errors.Count(e => e < 0),
+            PercentOver = (double)errors.Count(e => e > 0) / errors.Count,
+            PercentUnder = (double)errors.Count(e => e < 0) / errors.Count,
+
+            MaxOverMs = errors.Max(),
+            MaxUnderMs = errors.Min(),
+
+            MeanAbsoluteErrorMs = absErrors.Average(),
+            RootMeanSquareErrorMs = Math.Sqrt(squaredErrors.Average()),
+
+            Within500Ms = absErrors.Count(e => e <= 500),
+            Within1000Ms = absErrors.Count(e => e <= 1000),
+            Within2000Ms = absErrors.Count(e => e <= 2000),
+            Within5000Ms = absErrors.Count(e => e <= 5000),
+            PercentWithin500Ms = (double)absErrors.Count(e => e <= 500) / absErrors.Count,
+            PercentWithin1000Ms = (double)absErrors.Count(e => e <= 1000) / absErrors.Count,
+            PercentWithin2000Ms = (double)absErrors.Count(e => e <= 2000) / absErrors.Count,
+            PercentWithin5000Ms = (double)absErrors.Count(e => e <= 5000) / absErrors.Count
+        };
+
+        // Find max over and under details
+        var maxOver = _results.OrderByDescending(r => r.ErrorMs).FirstOrDefault();
+        if (maxOver != null)
+        {
+            stats.MaxOverCar = maxOver.CarNumber;
+            stats.MaxOverLap = maxOver.LapNumber;
+        }
+
+        var maxUnder = _results.OrderBy(r => r.ErrorMs).FirstOrDefault();
+        if (maxUnder != null)
+        {
+            stats.MaxUnderCar = maxUnder.CarNumber;
+            stats.MaxUnderLap = maxUnder.LapNumber;
+        }
+
+        // Calculate per-car statistics
+        stats.PerCarStats = _results
+            .GroupBy(r => r.CarNumber)
+            .Select(g => new CarStatistics
+            {
+                CarNumber = g.Key,
+                Count = g.Count(),
+                AverageErrorMs = g.Average(r => r.ErrorMs),
+                StandardDeviationMs = CalculateStandardDeviation(g.Select(r => r.ErrorMs).ToList()),
+                MaxOverMs = g.Max(r => r.ErrorMs),
+                MaxUnderMs = g.Min(r => r.ErrorMs)
+            })
+            .ToList();
+
+        return stats;
+    }
+
+    private static double GetMedian(List<double> values)
+    {
+        var sorted = values.OrderBy(v => v).ToList();
+        int count = sorted.Count;
+        if (count % 2 == 0)
+        {
+            return (sorted[count / 2 - 1] + sorted[count / 2]) / 2.0;
+        }
+        return sorted[count / 2];
+    }
+
+    private static double CalculateStandardDeviation(List<double> values)
+    {
+        if (values.Count <= 1)
+            return 0;
+
+        double average = values.Average();
+        double sumOfSquaresOfDifferences = values.Select(val => (val - average) * (val - average)).Sum();
+        return Math.Sqrt(sumOfSquaresOfDifferences / values.Count);
+    }
+
+    private class ProjectionRecord
+    {
+        public string CarNumber { get; set; } = string.Empty;
+        public int LapNumber { get; set; }
+        public long ProjectedMs { get; set; }
+        public Flags Flag { get; set; }
+    }
+
+    private class PredictionResult
+    {
+        public string CarNumber { get; set; } = string.Empty;
+        public int LapNumber { get; set; }
+        public long ProjectedMs { get; set; }
+        public double ActualMs { get; set; }
+        public double ErrorMs { get; set; }
+        public Flags Flag { get; set; }
+    }
+}
+
+internal class ProjectionStatistics
+{
+    public int TotalProjections { get; set; }
+    public int MatchedPredictions { get; set; }
+    public double MatchRate { get; set; }
+
+    public double AverageErrorMs { get; set; }
+    public double AverageErrorSeconds { get; set; }
+    public double MedianErrorMs { get; set; }
+    public double StandardDeviationMs { get; set; }
+
+    public int ProjectionsOver { get; set; }
+    public int ProjectionsUnder { get; set; }
+    public double PercentOver { get; set; }
+    public double PercentUnder { get; set; }
+
+    public double MaxOverMs { get; set; }
+    public string MaxOverCar { get; set; } = string.Empty;
+    public int MaxOverLap { get; set; }
+    public double MaxUnderMs { get; set; }
+    public string MaxUnderCar { get; set; } = string.Empty;
+    public int MaxUnderLap { get; set; }
+
+    public double MeanAbsoluteErrorMs { get; set; }
+    public double RootMeanSquareErrorMs { get; set; }
+
+    public int Within500Ms { get; set; }
+    public int Within1000Ms { get; set; }
+    public int Within2000Ms { get; set; }
+    public int Within5000Ms { get; set; }
+    public double PercentWithin500Ms { get; set; }
+    public double PercentWithin1000Ms { get; set; }
+    public double PercentWithin2000Ms { get; set; }
+    public double PercentWithin5000Ms { get; set; }
+
+    public List<CarStatistics> PerCarStats { get; set; } = new();
+}
+
+internal class CarStatistics
+{
+    public string CarNumber { get; set; } = string.Empty;
+    public int Count { get; set; }
+    public double AverageErrorMs { get; set; }
+    public double StandardDeviationMs { get; set; }
+    public double MaxOverMs { get; set; }
+    public double MaxUnderMs { get; set; }
+}
 
 [TestClass]
 public class SessionStateProcessingPipelineTests
@@ -55,11 +271,12 @@ public class SessionStateProcessingPipelineTests
     private ControlLogEnricher _controlLogEnricher = null!;
     private ResetProcessor _resetProcessor = null!;
     private DriverModeProcessor _driverModeProcessor = null!;
-    private CarLapHistoryService _carLapHistoryService = null!;
+    private ICarLapHistoryService _carLapHistoryService = null!;
     private LapProcessor _lapProcessor = null!;
     private DriverEnricher _driverEnricher = null!;
     private VideoEnricher _videoEnricher = null!;
     private FastestPaceEnricher _fastestPaceEnricher = null!;
+    private ProjectedLapTimeEnricher _projectedLapTimeEnricher = null!;
     private UpdateConsolidator _updateConsolidator = null!;
     private StatusAggregator _statusAggregator = null!;
     private StartingPositionProcessor _startingPositionProcessor = null!;
@@ -192,11 +409,12 @@ public class SessionStateProcessingPipelineTests
             _mockConnectionMultiplexer.Object,
             _sessionContext);
         _positionEnricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
-        _carLapHistoryService = new CarLapHistoryService(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _sessionContext);
+        _carLapHistoryService = new InMemoryCarLapHistoryService(_sessionContext);
         _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor, _carLapHistoryService, _timeProvider);
         _driverEnricher = new DriverEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _videoEnricher = new VideoEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _fastestPaceEnricher = new FastestPaceEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
+        _projectedLapTimeEnricher = new ProjectedLapTimeEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
         _statusAggregator = new StatusAggregator(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
     }
@@ -218,6 +436,7 @@ public class SessionStateProcessingPipelineTests
             _driverEnricher,
             _videoEnricher,
             _fastestPaceEnricher,
+            _projectedLapTimeEnricher,
             _updateConsolidator
         );
     }
@@ -885,6 +1104,131 @@ public class SessionStateProcessingPipelineTests
         // Assert
         
     }
+
+    [TestMethod]
+    public async Task ProjectedLapTime_Accuracy_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "ra2025.txt");
+        await entriesData.LoadAsync();
+
+        var projectionTracker = new ProjectedLapTimeTracker();
+
+        _lapProcessor.OnLapCompleted += async (car)=> 
+        {
+            var lapCompleted = new LapCompleted(car.Number ?? string.Empty, car.LastLapCompleted, car.Class ?? string.Empty, _timeProvider.GetUtcNow().UtcDateTime);
+            var lapJson = JsonSerializer.Serialize(lapCompleted);
+            var tm = new TimingMessage(Backend.Shared.Consts.LAP_COMPLETED_TYPE, lapJson, 1, _timeProvider.GetUtcNow().UtcDateTime);
+            await _pipeline.PostAsync(tm);
+        };
+
+        int count = 0;
+        Dictionary<string, (int lastLap, long lastProjectedMs, Flags lastFlag)> lastSeen = [];
+
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                count++;
+
+                // Advance time to simulate passage between records
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+
+                // After processing, check each car's current state
+                foreach (var car in _sessionContext.SessionState.CarPositions)
+                {
+                    if (string.IsNullOrEmpty(car.Number))
+                        continue;
+
+                    // Check if we've seen this car before
+                    if (lastSeen.TryGetValue(car.Number, out var last))
+                    {
+                        // Check if a lap was just completed
+                        if (car.LastLapCompleted > last.lastLap && !string.IsNullOrEmpty(car.LastLapTime))
+                        {
+                            var actualTime = FastestPaceEnricher.ParseRMTime(car.LastLapTime);
+                            if (actualTime != TimeSpan.Zero)
+                            {
+                                var actualTimeMs = actualTime.TotalMilliseconds;
+
+                                // Only track if not a pit lap and flag is green or yellow
+                                if (!car.LapIncludedPit && (car.TrackFlag == Flags.Green || car.TrackFlag == Flags.Yellow))
+                                {
+                                    // Match with the projection from the previous update
+                                    if (last.lastProjectedMs > 0)
+                                    {
+                                        // Filter out absurd actual times (>10 minutes suggests data corruption)
+                                        if (actualTimeMs < 600000) // 10 minutes
+                                        {
+                                            projectionTracker.RecordProjection(car.Number, car.LastLapCompleted, last.lastProjectedMs, last.lastFlag);
+                                            projectionTracker.RecordActual(car.Number, car.LastLapCompleted, actualTimeMs, car.TrackFlag);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Update last seen state for this car
+                    lastSeen[car.Number] = (car.LastLapCompleted, car.ProjectedLapTimeMs, car.TrackFlag);
+                }
+            }
+
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            await _pipeline.PostAsync(tm);
+        }
+
+        // Assert and Report
+        var stats = projectionTracker.CalculateStatistics();
+
+        var report = new System.Text.StringBuilder();
+        report.AppendLine("========================================");
+        report.AppendLine("PROJECTED LAP TIME ACCURACY ANALYSIS");
+        report.AppendLine("========================================");
+        report.AppendLine();
+        report.AppendLine($"Total Projections: {stats.TotalProjections}");
+        report.AppendLine($"Matched Predictions: {stats.MatchedPredictions}");
+        report.AppendLine($"Match Rate: {stats.MatchRate:P2}");
+        report.AppendLine();
+        report.AppendLine($"Average Error: {stats.AverageErrorMs:F3} ms ({stats.AverageErrorSeconds:F3} seconds)");
+        report.AppendLine($"Median Error: {stats.MedianErrorMs:F3} ms");
+        report.AppendLine($"Standard Deviation: {stats.StandardDeviationMs:F3} ms");
+        report.AppendLine();
+        report.AppendLine($"Projections Over Actual: {stats.ProjectionsOver} ({stats.PercentOver:P2})");
+        report.AppendLine($"Projections Under Actual: {stats.ProjectionsUnder} ({stats.PercentUnder:P2})");
+        report.AppendLine();
+        report.AppendLine($"Max Over Prediction: {stats.MaxOverMs:F3} ms (Car {stats.MaxOverCar}, Lap {stats.MaxOverLap})");
+        report.AppendLine($"Max Under Prediction: {stats.MaxUnderMs:F3} ms (Car {stats.MaxUnderCar}, Lap {stats.MaxUnderLap})");
+        report.AppendLine();
+        report.AppendLine($"Mean Absolute Error: {stats.MeanAbsoluteErrorMs:F3} ms");
+        report.AppendLine($"Root Mean Square Error: {stats.RootMeanSquareErrorMs:F3} ms");
+        report.AppendLine();
+        report.AppendLine("Error Distribution:");
+        report.AppendLine($"  Within ±0.5s: {stats.Within500Ms} ({stats.PercentWithin500Ms:P2})");
+        report.AppendLine($"  Within ±1.0s: {stats.Within1000Ms} ({stats.PercentWithin1000Ms:P2})");
+        report.AppendLine($"  Within ±2.0s: {stats.Within2000Ms} ({stats.PercentWithin2000Ms:P2})");
+        report.AppendLine($"  Within ±5.0s: {stats.Within5000Ms} ({stats.PercentWithin5000Ms:P2})");
+        report.AppendLine();
+        report.AppendLine("Per-Car Statistics (Top 10 by prediction count):");
+        foreach (var carStat in stats.PerCarStats.OrderByDescending(c => c.Count).Take(10))
+        {
+            report.AppendLine($"  Car {carStat.CarNumber}: {carStat.Count} laps, Avg Error: {carStat.AverageErrorMs:F3} ms, StdDev: {carStat.StandardDeviationMs:F3} ms");
+        }
+
+        var reportText = report.ToString();
+        Console.WriteLine(reportText);
+
+        // Also write to file for easier review
+        await File.WriteAllTextAsync("projection-accuracy-results.txt", reportText);
+
+        // Assertions - just verify we got some data
+        Assert.IsTrue(stats.TotalProjections > 0, "Should have some projections recorded");
+        Assert.IsTrue(stats.MatchedPredictions > 0, "Should have some matched predictions");
+        Assert.IsTrue(stats.MatchRate > 0.5, $"Should have a reasonable match rate, got {stats.MatchRate:P2}");
+    }
+
+    
 
 
     /// <summary>

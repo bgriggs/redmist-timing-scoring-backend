@@ -13,12 +13,12 @@ namespace RedMist.EventProcessor.EventStatus.LapData;
 public class FastestPaceEnricher
 {
     const int LapsForPace = 5;
-    private readonly CarLapHistoryService carLapHistoryService;
+    private readonly ICarLapHistoryService carLapHistoryService;
     private readonly SessionContext sessionContext;
 
     private ILogger Logger { get; }
 
-    public FastestPaceEnricher(ILoggerFactory loggerFactory, CarLapHistoryService carLapHistoryService, SessionContext sessionContext)
+    public FastestPaceEnricher(ILoggerFactory loggerFactory, ICarLapHistoryService carLapHistoryService, SessionContext sessionContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.carLapHistoryService = carLapHistoryService;
