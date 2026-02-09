@@ -31,6 +31,9 @@ public class LapProcessor : IDisposable
     private readonly TimeSpan pitMessageWaitTime = TimeSpan.FromMilliseconds(1000);
     private readonly CancellationTokenSource backgroundTaskCts = new();
 
+    // Event that can be subscribed to for testing or additional processing when a lap is completed
+    public event Action<CarPosition>? OnLapCompleted;
+
 
     public LapProcessor(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
         SessionContext sessionContext, IConnectionMultiplexer cacheMux, PitProcessor pitProcessor, 
@@ -214,6 +217,8 @@ public class LapProcessor : IDisposable
         var eventId = sessionContext.EventId;
         var sessionId = sessionContext.SessionState.SessionId;
         var lapLogs = new List<CarLapData>();
+        var cache = cacheMux.GetDatabase();
+        var streamId = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, eventId);
 
         foreach (var (carNumber, position) in completions)
         {
@@ -224,6 +229,14 @@ public class LapProcessor : IDisposable
 
             // Add the lap to the rolling window history in Redis
             await carLapHistoryService.AddLapAsync(position);
+
+            // Send message to session pipeline to process laps (FastestPaceEnricher, ProjectedLapTimeEnricher, etc.)
+            var lapCompleted = new LapCompleted(carNumber, position.LastLapCompleted, position.Class ?? string.Empty, _timeProvider.GetUtcNow().UtcDateTime);
+            var lapJson = JsonSerializer.Serialize(lapCompleted);
+            await cache.StreamAddAsync(streamId, Consts.LAP_COMPLETED_TYPE, lapJson);
+
+            // Invoke the lap completed event for testing hooks - this is null in production
+            OnLapCompleted?.Invoke(position);
 
             var log = new CarLapLog
             {
@@ -239,8 +252,7 @@ public class LapProcessor : IDisposable
         }
 
         // Post the lap logs to Redis for logger service to consume
-        var streamId = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, eventId);
-        var cache = cacheMux.GetDatabase();
+        
         var json = JsonSerializer.Serialize(lapLogs);
         await cache.StreamAddAsync(streamId, Consts.LAP_TYPE, json);
     }

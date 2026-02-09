@@ -116,10 +116,11 @@ public class LapProcessorTests
         await _lapProcessor.ProcessAsync(carPositions);
         await _lapProcessor.FlushPendingLapsAsync();
 
-        // Assert
-        Assert.HasCount(1, _capturedStreamAdds, "Lap 0 should be logged");
+        // Assert - Filter to only 'laps' messages (excluding 'lapcompleted' pipeline messages)
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(1, lapMessages, "Lap 0 should be logged");
 
-        var capturedData = _capturedStreamAdds[0];
+        var capturedData = lapMessages[0];
         Assert.AreEqual("laps", capturedData.field.ToString());
 
         var laps = JsonSerializer.Deserialize<List<CarLapData>>(capturedData.value.ToString());
@@ -142,10 +143,11 @@ public class LapProcessorTests
         await _lapProcessor.ProcessAsync(carPositions);
         await _lapProcessor.FlushPendingLapsAsync();
 
-        // Assert - Should only log once
-        Assert.HasCount(1, _capturedStreamAdds, "Lap 0 should only be logged once");
+        // Assert - Should only log once (filter to 'laps' messages)
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(1, lapMessages, "Lap 0 should only be logged once");
 
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.HasCount(1, laps);
     }
@@ -162,10 +164,11 @@ public class LapProcessorTests
         await _lapProcessor.ProcessAsync(new List<CarPosition> { carPosition1 });
         await _lapProcessor.FlushPendingLapsAsync();
 
-        // Assert - Should have 1 stream add containing both laps
-        Assert.HasCount(1, _capturedStreamAdds, "Should have one stream add");
+        // Assert - Should have 1 'laps' stream add containing both laps
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(1, lapMessages, "Should have one laps stream add");
 
-        var allLaps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var allLaps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(allLaps);
         Assert.HasCount(2, allLaps, "Should contain both lap 0 and lap 1");
 
@@ -187,9 +190,10 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert - Should log all three cars' lap 0
-        Assert.HasCount(1, _capturedStreamAdds);
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(1, lapMessages);
 
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.HasCount(3, laps, "All three cars should have lap 0 logged");
 
@@ -215,9 +219,10 @@ public class LapProcessorTests
 
         // Assert - The behavior depends on IsLapNewerThanLastEntryWithReplace
         // Since position changed, it should be logged
-        Assert.HasCount(1, _capturedStreamAdds);
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(1, lapMessages);
 
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         // Should have logged at least once, possibly twice if position change triggers re-log
         Assert.IsGreaterThanOrEqualTo(1, laps.Count, "At least one lap should be logged");
@@ -238,9 +243,10 @@ public class LapProcessorTests
 
         // Assert - Lap 0 should NOT be logged after lap 1 has been processed
         // because lap 0 is not newer than lap 1
-        Assert.HasCount(1, _capturedStreamAdds, "Should have one stream add");
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(1, lapMessages, "Should have one laps stream add");
 
-        var allLaps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var allLaps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(allLaps);
         Assert.HasCount(1, allLaps, "Only lap 1 should be logged");
         Assert.AreEqual(1, allLaps[0].Log.LapNumber, "Should be lap 1");
@@ -258,7 +264,8 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.AreEqual(1, laps[0].Log.EventId);
         Assert.AreEqual(42, laps[0].Log.SessionId);
@@ -275,7 +282,8 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert
-        Assert.IsEmpty(_capturedStreamAdds, "Car with empty number should not be logged");
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.IsEmpty(lapMessages, "Car with empty number should not be logged");
     }
 
     #endregion
@@ -300,6 +308,7 @@ public class LapProcessorTests
 
         // Assert - All laps should be logged exactly once (may be across multiple stream adds if background task processed some)
         var allLaps = _capturedStreamAdds
+            .Where(x => x.field.ToString() == "laps")
             .SelectMany(add => JsonSerializer.Deserialize<List<CarLapData>>(add.value.ToString()) ?? [])
             .ToList();
 
@@ -333,6 +342,7 @@ public class LapProcessorTests
 
         // Assert - Collect from all stream adds in case background task processed some
         var allLaps = _capturedStreamAdds
+            .Where(x => x.field.ToString() == "laps")
             .SelectMany(add => JsonSerializer.Deserialize<List<CarLapData>>(add.value.ToString()) ?? [])
             .ToList();
 
@@ -359,9 +369,10 @@ public class LapProcessorTests
         await _lapProcessor.ProcessPendingLapForCarAsync("1");
 
         // Assert - Lap should be processed immediately without waiting for timeout
-        Assert.HasCount(1, _capturedStreamAdds, "Lap should be processed immediately");
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(1, lapMessages, "Lap should be processed immediately");
 
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.HasCount(1, laps);
         Assert.AreEqual("1", laps[0].Log.CarNumber);
@@ -380,16 +391,18 @@ public class LapProcessorTests
         await _lapProcessor.ProcessPendingLapForCarAsync("1");
 
         // Assert - Only car 1 should be processed
-        Assert.HasCount(1, _capturedStreamAdds);
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(1, lapMessages);
 
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.HasCount(1, laps, "Only car 1 should be processed");
         Assert.AreEqual("1", laps[0].Log.CarNumber);
 
         // Car 2 should still be pending
         await _lapProcessor.FlushPendingLapsAsync();
-        Assert.HasCount(2, _capturedStreamAdds, "Car 2 should be processed on flush");
+        var allLapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(2, allLapMessages, "Car 2 should be processed on flush");
     }
 
     [TestMethod]
@@ -398,7 +411,8 @@ public class LapProcessorTests
         // Act & Assert - Should not throw exception
         await _lapProcessor.ProcessPendingLapForCarAsync("999");
 
-        Assert.IsEmpty(_capturedStreamAdds, "No laps should be logged");
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.IsEmpty(lapMessages, "No laps should be logged");
     }
 
     #endregion
@@ -418,13 +432,14 @@ public class LapProcessorTests
         // Wait for background task to process (it checks every 100ms)
         // Poll for up to 2 seconds to give background task time to wake up and process
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        while (_capturedStreamAdds.Count == 0 && stopwatch.ElapsedMilliseconds < 2000)
+        while (_capturedStreamAdds.Where(x => x.field.ToString() == "laps").Count() == 0 && stopwatch.ElapsedMilliseconds < 2000)
         {
             await Task.Delay(50);
         }
 
         // Assert - Lap should be processed automatically by background task
-        Assert.IsGreaterThanOrEqualTo(1, _capturedStreamAdds.Count, "Background task should process the lap");
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.IsGreaterThanOrEqualTo(1, lapMessages.Count, "Background task should process the lap");
     }
 
     [TestMethod]
@@ -442,7 +457,8 @@ public class LapProcessorTests
         await Task.Delay(300);
 
         // Assert - Lap should NOT be processed yet
-        Assert.IsEmpty(_capturedStreamAdds, "Lap should not be processed before timeout");
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.IsEmpty(lapMessages, "Lap should not be processed before timeout");
     }
 
     #endregion
@@ -467,10 +483,11 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert - Both should be logged (different sessions)
-        Assert.HasCount(2, _capturedStreamAdds, "Both sessions should log lap 1");
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(2, lapMessages, "Both sessions should log lap 1");
 
-        var session1Laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
-        var session2Laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[1].value.ToString());
+        var session1Laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
+        var session2Laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[1].value.ToString());
 
         Assert.IsNotNull(session1Laps);
         Assert.IsNotNull(session2Laps);
@@ -497,9 +514,10 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert
-        Assert.HasCount(2, _capturedStreamAdds);
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(2, lapMessages);
 
-        var session2Laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[1].value.ToString());
+        var session2Laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[1].value.ToString());
         Assert.IsNotNull(session2Laps);
         Assert.HasCount(1, session2Laps);
         Assert.AreEqual(1, session2Laps[0].Log.LapNumber, "Session 2 should be able to log lap 1");
@@ -551,7 +569,8 @@ public class LapProcessorTests
         await newProcessor.FlushPendingLapsAsync();
 
         // Assert - Only lap 6 should be logged
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.HasCount(1, laps);
         Assert.AreEqual(6, laps[0].Log.LapNumber, "Only new lap should be logged after recovery");
@@ -577,7 +596,8 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert - All should be logged
-        var loggedLaps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        var loggedLaps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(loggedLaps);
         Assert.HasCount(3, loggedLaps, "All provided laps should be logged");
 
@@ -596,7 +616,8 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert - Only laps 5 and 7 should be logged (3 is older than 5)
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.HasCount(2, laps, "Only laps 5 and 7 should be logged");
 
@@ -626,6 +647,7 @@ public class LapProcessorTests
 
         // Assert - Should have logged all laps for all cars
         var allLaps = _capturedStreamAdds
+            .Where(x => x.field.ToString() == "laps")
             .SelectMany(add => JsonSerializer.Deserialize<List<CarLapData>>(add.value.ToString()) ?? [])
             .ToList();
 
@@ -655,7 +677,8 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.HasCount(3, laps);
 
@@ -689,6 +712,7 @@ public class LapProcessorTests
 
         // Assert - Check timestamps
         var allLaps = _capturedStreamAdds
+            .Where(x => x.field.ToString() == "laps")
             .SelectMany(add => JsonSerializer.Deserialize<List<CarLapData>>(add.value.ToString()) ?? [])
             .ToList();
 
@@ -725,7 +749,8 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.HasCount(3, laps);
 
@@ -754,7 +779,8 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert - Second lap 0 with changed lap time should also be logged
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         // The behavior depends on IsLapNewerThanLastEntryWithReplace detecting the change
         // and the lap being enqueued. Since lap 0 is already tracked after first call,
@@ -782,7 +808,8 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert - Similar to lap time, position changes are tracked but lap 0 won't be re-enqueued
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.IsGreaterThanOrEqualTo(1, laps.Count, "At least first lap should be logged");
 
@@ -804,7 +831,8 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert - All laps should be logged
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.HasCount(3, laps, "All three laps should be logged");
         Assert.IsTrue(laps.Any(l => l.Log.LapNumber == 1));
@@ -859,7 +887,8 @@ public class LapProcessorTests
         await Task.Delay(250);
 
         // Assert - Nothing should be logged (background task stopped)
-        Assert.IsEmpty(_capturedStreamAdds, "Background task should stop after disposal");
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.IsEmpty(lapMessages, "Background task should stop after disposal");
     }
 
     #endregion
@@ -928,7 +957,8 @@ public class LapProcessorTests
         stopwatch.Stop();
 
         // Assert
-        var laps = JsonSerializer.Deserialize<List<CarLapData>>(_capturedStreamAdds[0].value.ToString());
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
         Assert.IsNotNull(laps);
         Assert.HasCount(100, laps, "All 100 cars should be logged");
         Assert.IsLessThan(5000, stopwatch.ElapsedMilliseconds, "Should complete in reasonable time");
@@ -953,6 +983,7 @@ public class LapProcessorTests
 
         // Assert
         var allLaps = _capturedStreamAdds
+            .Where(x => x.field.ToString() == "laps")
             .SelectMany(add => JsonSerializer.Deserialize<List<CarLapData>>(add.value.ToString()) ?? [])
             .ToList();
 
@@ -982,7 +1013,8 @@ public class LapProcessorTests
         await _lapProcessor.FlushPendingLapsAsync();
 
         // Assert - Should work correctly after cleanup
-        Assert.HasCount(2, _capturedStreamAdds, "Both batches should be logged");
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(2, lapMessages, "Both batches should be logged");
     }
 
     #endregion

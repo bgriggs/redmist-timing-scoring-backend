@@ -117,6 +117,7 @@ public class Program
         builder.Services.AddSingleton<LapProcessor>();
         builder.Services.AddSingleton<VideoEnricher>();
         builder.Services.AddSingleton<FastestPaceEnricher>();
+        builder.Services.AddSingleton<ProjectedLapTimeEnricher>();
         builder.Services.AddSingleton<DriverEnricher>();
         builder.Services.AddSingleton<UpdateConsolidator>();
         builder.Services.AddSingleton<StatusAggregator>();

@@ -37,6 +37,7 @@ public class SessionStateProcessingPipeline
     private readonly DriverEnricher driverEnricher;
     private readonly VideoEnricher videoEnricher;
     private readonly FastestPaceEnricher fastestPaceEnricher;
+    private readonly ProjectedLapTimeEnricher projectedLapTimeEnricher;
     private readonly UpdateConsolidator updateConsolidator;
 
     // Metrics for pipeline performance
@@ -76,6 +77,7 @@ public class SessionStateProcessingPipeline
         DriverEnricher driverEnricher,
         VideoEnricher videoEnricher,
         FastestPaceEnricher fastestPaceEnricher,
+        ProjectedLapTimeEnricher projectedLapTimeEnricher,
         UpdateConsolidator updateConsolidator)
     {
         sessionContext = context;
@@ -94,6 +96,7 @@ public class SessionStateProcessingPipeline
         this.driverEnricher = driverEnricher;
         this.videoEnricher = videoEnricher;
         this.fastestPaceEnricher = fastestPaceEnricher;
+        this.projectedLapTimeEnricher = projectedLapTimeEnricher;
         this.updateConsolidator = updateConsolidator;
 
         // Wire up the notification from pit processor to lap processor
@@ -261,6 +264,10 @@ public class SessionStateProcessingPipeline
                         var patches = await fastestPaceEnricher.ProcessAsync(message);
                         if (patches.Count > 0)
                             allAppliedChanges.AddRange(new PatchUpdates([], [.. patches]));
+
+                        var projectedPatch = await projectedLapTimeEnricher.ProcessAsync(message);
+                        if (projectedPatch != null)
+                            allAppliedChanges.AddRange(new PatchUpdates([], [projectedPatch]));
                     }
                 }
 
