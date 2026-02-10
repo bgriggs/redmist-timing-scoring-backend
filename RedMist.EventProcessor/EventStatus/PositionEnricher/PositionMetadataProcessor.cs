@@ -272,9 +272,9 @@ public class PositionMetadataProcessor
 
     public static DateTime ParseRMTime(string time)
     {
-        if (DateTime.TryParseExact(time, "HH:mm:ss.fff", null, DateTimeStyles.None, out var result))
+        if (DateTime.TryParseExact(time, "HH:mm:ss.fff", null, DateTimeStyles.NoCurrentDateDefault, out var result))
             return result;
-        DateTime.TryParseExact(time, "HH:mm:ss", null, DateTimeStyles.None, out result);
+        DateTime.TryParseExact(time, "HH:mm:ss", null, DateTimeStyles.NoCurrentDateDefault, out result);
         return result;
     }
 

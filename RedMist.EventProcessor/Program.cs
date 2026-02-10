@@ -118,6 +118,7 @@ public class Program
         builder.Services.AddSingleton<VideoEnricher>();
         builder.Services.AddSingleton<FastestPaceEnricher>();
         builder.Services.AddSingleton<ProjectedLapTimeEnricher>();
+        builder.Services.AddSingleton<StaleCarEnricher>();
         builder.Services.AddSingleton<DriverEnricher>();
         builder.Services.AddSingleton<UpdateConsolidator>();
         builder.Services.AddSingleton<StatusAggregator>();

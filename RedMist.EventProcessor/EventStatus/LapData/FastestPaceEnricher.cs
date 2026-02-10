@@ -45,7 +45,7 @@ public class FastestPaceEnricher
                     continue;
 
                 // Load lap history for the car and calculate the average lap time
-                var laps = await carLapHistoryService.GetLapsAsync(car.Number!);
+                var laps = await carLapHistoryService.GetLapsAsync(car.Number);
                 if (laps != null)
                 {
                     var avgLapTime = CalculateAverageLapTime(laps);
@@ -54,7 +54,7 @@ public class FastestPaceEnricher
                         if (avgLapTime < fastestTimeMs)
                         {
                             fastestTimeMs = avgLapTime.Value;
-                            fastestCarNumber = car.Number!;
+                            fastestCarNumber = car.Number;
                         }
                     }
                 }
