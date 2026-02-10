@@ -17,7 +17,7 @@ public static class SignalRExtensions
             o.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
             o.KeepAliveInterval = TimeSpan.FromSeconds(15);
             o.HandshakeTimeout = TimeSpan.FromSeconds(30);
-            o.EnableDetailedErrors = true; // Enable for debugging multi-replica issues
+            //o.EnableDetailedErrors = true; // Enable for debugging multi-replica issues
         })
         .AddStackExchangeRedis(redisConnectionString, options =>
         {

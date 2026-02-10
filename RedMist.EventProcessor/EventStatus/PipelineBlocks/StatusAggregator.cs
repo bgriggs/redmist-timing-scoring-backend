@@ -32,9 +32,6 @@ public class StatusAggregator
         var eventId = sessionContext.EventId.ToString();
         var subKey = string.Format(Consts.EVENT_SUB_V2, eventId);
 
-        logger.LogInformation("[MULTI-REPLICA DEBUG] Sending patches to group {subKey}. SessionPatches: {sessionCount}, CarPatches: {carCount}", 
-            subKey, updates.SessionPatches.Count, updates.CarPatches.Count);
-
         using (await sessionContext.SessionStateLock.AcquireReadLockAsync())
         {
             foreach (var sp in updates.SessionPatches)
@@ -67,11 +64,10 @@ public class StatusAggregator
         try
         {
             await Task.WhenAll(tasks);
-            logger.LogDebug("[MULTI-REPLICA DEBUG] Successfully sent all patches to group {subKey}", subKey);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "[MULTI-REPLICA DEBUG] FAILED to send patches to group {subKey}", subKey);
+            logger.LogError(ex, "FAILED to send patches to group {subKey}", subKey);
             throw;
         }
     }
