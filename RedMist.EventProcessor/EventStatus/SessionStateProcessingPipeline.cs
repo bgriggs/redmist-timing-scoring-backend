@@ -38,6 +38,7 @@ public class SessionStateProcessingPipeline
     private readonly VideoEnricher videoEnricher;
     private readonly FastestPaceEnricher fastestPaceEnricher;
     private readonly ProjectedLapTimeEnricher projectedLapTimeEnricher;
+    private readonly StaleCarEnricher staleCarEnricher;
     private readonly UpdateConsolidator updateConsolidator;
 
     // Metrics for pipeline performance
@@ -78,6 +79,7 @@ public class SessionStateProcessingPipeline
         VideoEnricher videoEnricher,
         FastestPaceEnricher fastestPaceEnricher,
         ProjectedLapTimeEnricher projectedLapTimeEnricher,
+        StaleCarEnricher staleCarEnricher,
         UpdateConsolidator updateConsolidator)
     {
         sessionContext = context;
@@ -97,6 +99,7 @@ public class SessionStateProcessingPipeline
         this.videoEnricher = videoEnricher;
         this.fastestPaceEnricher = fastestPaceEnricher;
         this.projectedLapTimeEnricher = projectedLapTimeEnricher;
+        this.staleCarEnricher = staleCarEnricher;
         this.updateConsolidator = updateConsolidator;
 
         // Wire up the notification from pit processor to lap processor
@@ -137,7 +140,8 @@ public class SessionStateProcessingPipeline
                             allAppliedChanges.AddRange(rmonitorChanges);
 
                         // ** Pass 2 **
-                        if (allAppliedChanges.SelectMany(c => c.CarPatches).Any())
+                        bool hasCarPatches = allAppliedChanges.SelectMany(c => c.CarPatches).Any();
+                        if (hasCarPatches)
                         {
                             var enrichmentChanges = ProcessPositionEnrichment();
                             if (enrichmentChanges != null)
@@ -207,6 +211,14 @@ public class SessionStateProcessingPipeline
                             var penaltyPatches = controlLogEnricher.Process();
                             if (penaltyPatches != null && penaltyPatches.Count > 0)
                                 allAppliedChanges.Add(new PatchUpdates([], [.. penaltyPatches]));
+                        }
+
+                        // Apply stale car data in case of reset - only every 3 messages or when car patches were created
+                        if (rmonitorMessageCounter % 3 == 0 || hasCarPatches)
+                        {
+                            var staleCarPatches = await staleCarEnricher.ProcessAsync();
+                            if (staleCarPatches != null && staleCarPatches.Count > 0)
+                                allAppliedChanges.Add(new PatchUpdates([], [.. staleCarPatches]));
                         }
 
                         // Perform a full external data update at defined intervals. 60 is at most once per

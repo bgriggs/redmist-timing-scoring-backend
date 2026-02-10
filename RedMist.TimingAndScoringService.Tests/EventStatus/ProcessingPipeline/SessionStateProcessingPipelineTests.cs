@@ -63,6 +63,7 @@ public class SessionStateProcessingPipelineTests
     private VideoEnricher _videoEnricher = null!;
     private FastestPaceEnricher _fastestPaceEnricher = null!;
     private ProjectedLapTimeEnricher _projectedLapTimeEnricher = null!;
+    private StaleCarEnricher _staleCarEnricher = null!;
     private UpdateConsolidator _updateConsolidator = null!;
     private StatusAggregator _statusAggregator = null!;
     private StartingPositionProcessor _startingPositionProcessor = null!;
@@ -201,6 +202,7 @@ public class SessionStateProcessingPipelineTests
         _videoEnricher = new VideoEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _fastestPaceEnricher = new FastestPaceEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
         _projectedLapTimeEnricher = new ProjectedLapTimeEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
+        _staleCarEnricher = new StaleCarEnricher(_mockLoggerFactory.Object, _sessionContext);
         _statusAggregator = new StatusAggregator(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
     }
@@ -223,6 +225,7 @@ public class SessionStateProcessingPipelineTests
             _videoEnricher,
             _fastestPaceEnricher,
             _projectedLapTimeEnricher,
+            _staleCarEnricher,
             _updateConsolidator
         );
     }
