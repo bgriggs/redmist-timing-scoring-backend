@@ -11,6 +11,7 @@ public class EventArchiveService : BackgroundService
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly IArchiveStorage archiveStorage;
     private readonly EmailHelper emailHelper;
+    private readonly ArchiveEmailHelper archiveEmailHelper;
 
     private ILogger Logger { get; }
 
@@ -22,6 +23,7 @@ public class EventArchiveService : BackgroundService
         this.tsContext = tsContext;
         this.archiveStorage = archiveStorage;
         this.emailHelper = emailHelper;
+        archiveEmailHelper = new ArchiveEmailHelper(Logger, tsContext, emailHelper);
     }
 
 
@@ -45,9 +47,6 @@ public class EventArchiveService : BackgroundService
 
                 // Run archive process with retry logic
                 await RunArchiveProcessWithRetriesAsync(maxRetriesPerDay, stoppingToken);
-
-                // Run simulated event purge
-                await RunSimulatedEventPurgeAsync(stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -57,7 +56,7 @@ public class EventArchiveService : BackgroundService
             catch (Exception ex)
             {
                 Logger.LogError(ex, "An unexpected error occurred in the event archive service main loop.");
-                await SendArchiveFailureEmailAsync($"Unexpected error in archive service main loop: {ex.Message}", null, 0, ex);
+                await archiveEmailHelper.SendArchiveFailureEmailAsync($"Unexpected error in archive service main loop: {ex.Message}", null, 0, ex);
                 // Wait 1 hour before trying again if there's an unexpected error
                 await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
             }
@@ -123,12 +122,12 @@ public class EventArchiveService : BackgroundService
             }
         }
 
-            if (!archiveSuccessful)
-            {
-                Logger.LogWarning("Archive process failed after {maxRetries} attempts. Will retry tomorrow after midnight.", maxRetriesPerDay);
-                await SendArchiveFailureEmailAsync("Archive process failed after all retry attempts", null, maxRetriesPerDay, null);
-            }
+        if (!archiveSuccessful)
+        {
+            Logger.LogWarning("Archive process failed after {maxRetries} attempts. Will retry tomorrow after midnight.", maxRetriesPerDay);
+            await archiveEmailHelper.SendArchiveFailureEmailAsync("Archive process failed after all retry attempts", null, maxRetriesPerDay, null);
         }
+    }
 
     private async Task<bool> ArchiveSingleEventAsync(int eventId, CancellationToken stoppingToken)
     {
@@ -142,7 +141,7 @@ public class EventArchiveService : BackgroundService
         if (!eventLogArchived)
         {
             Logger.LogWarning("Failed to archive logs for event {eventId}.", eventId);
-            await SendArchiveFailureEmailAsync("Failed to archive event logs", eventId, 0, lastException);
+            await archiveEmailHelper.SendArchiveFailureEmailAsync("Failed to archive event logs", eventId, 0, lastException);
             return false;
         }
 
@@ -154,7 +153,7 @@ public class EventArchiveService : BackgroundService
         if (!lapsArchived)
         {
             Logger.LogWarning("Failed to archive laps for event {eventId}.", eventId);
-            await SendArchiveFailureEmailAsync("Failed to archive laps", eventId, 0, lastException);
+            await archiveEmailHelper.SendArchiveFailureEmailAsync("Failed to archive laps", eventId, 0, lastException);
             return false;
         }
 
@@ -165,7 +164,7 @@ public class EventArchiveService : BackgroundService
         if (!x2Result)
         {
             Logger.LogWarning("Failed to archive X2 data for event {eventId}.", eventId);
-            await SendArchiveFailureEmailAsync("Failed to archive X2 data", eventId, 0, lastException);
+            await archiveEmailHelper.SendArchiveFailureEmailAsync("Failed to archive X2 data", eventId, 0, lastException);
             return false;
         }
 
@@ -177,7 +176,7 @@ public class EventArchiveService : BackgroundService
         if (!flagsArchived)
         {
             Logger.LogWarning("Failed to archive flags for event {eventId}.", eventId);
-            await SendArchiveFailureEmailAsync("Failed to archive flags", eventId, 0, lastException);
+            await archiveEmailHelper.SendArchiveFailureEmailAsync("Failed to archive flags", eventId, 0, lastException);
             return false;
         }
 
@@ -188,7 +187,7 @@ public class EventArchiveService : BackgroundService
         if (!competitorMetadataResult)
         {
             Logger.LogWarning("Failed to archive competitor metadata for event {eventId}.", eventId);
-            await SendArchiveFailureEmailAsync("Failed to archive competitor metadata", eventId, 0, lastException);
+            await archiveEmailHelper.SendArchiveFailureEmailAsync("Failed to archive competitor metadata", eventId, 0, lastException);
             return false;
         }
 
@@ -210,7 +209,7 @@ public class EventArchiveService : BackgroundService
             if (!lastLapsCleanedUp)
             {
                 Logger.LogWarning("Failed to cleanup CarLastLaps for event {eventId}.", eventId);
-                await SendArchiveFailureEmailAsync("Failed to cleanup CarLastLaps", eventId, 0, lastException);
+                await archiveEmailHelper.SendArchiveFailureEmailAsync("Failed to cleanup CarLastLaps", eventId, 0, lastException);
                 return false;
             }
 
@@ -378,110 +377,4 @@ public class EventArchiveService : BackgroundService
             return (false, ex);
         }
     }
-
-        internal async Task RunSimulatedEventPurgeAsync(CancellationToken stoppingToken)
-        {
-            Logger.LogInformation("Starting simulated event purge process...");
-            try
-            {
-                await using var dbContext = await tsContext.CreateDbContextAsync(stoppingToken);
-                var simulatedEvents = await dbContext.Events
-                    .Where(e => e.IsSimulation && e.EndDate < DateTime.UtcNow.AddDays(-1))
-                    .ToListAsync(stoppingToken);
-                var purgeUtilities = new PurgeUtilities(loggerFactory, tsContext);
-                foreach (var simEvent in simulatedEvents)
-                {
-                    Logger.LogInformation("Purging simulated event {eventId}...", simEvent.Id);
-                    await purgeUtilities.DeleteAllEventDataAsync(simEvent.Id, stoppingToken);
-                }
-                await dbContext.SaveChangesAsync(stoppingToken);
-                Logger.LogInformation("Simulated event purge process completed successfully.");
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error during simulated event purge process.");
-                await SendArchiveFailureEmailAsync($"Simulated event purge failed: {ex.Message}", null, 0, ex);
-            }
-        }
-
-            private async Task SendArchiveFailureEmailAsync(string failureReason, int? eventId, int retryCount, Exception? exception)
-            {
-                try
-                {
-                    var eventInfo = "N/A";
-                    if (eventId.HasValue)
-                    {
-                        try
-                        {
-                            await using var dbContext = await tsContext.CreateDbContextAsync();
-                            var ev = await dbContext.Events.FirstOrDefaultAsync(e => e.Id == eventId.Value);
-                            if (ev != null)
-                            {
-                                eventInfo = $"Event ID: {eventId.Value}, Name: {ev.Name}, End Date: {ev.EndDate:yyyy-MM-dd HH:mm:ss} UTC";
-                            }
-                            else
-                            {
-                                eventInfo = $"Event ID: {eventId.Value} (Event not found in database)";
-                            }
-                        }
-                        catch
-                        {
-                            eventInfo = $"Event ID: {eventId.Value} (Unable to retrieve event details)";
-                        }
-                    }
-
-                            var exceptionDetails = "";
-                            if (exception != null)
-                            {
-                                var stackTrace = string.IsNullOrWhiteSpace(exception.StackTrace) 
-                                    ? "<em>Stack trace not available. This exception was created for diagnostic purposes and was not thrown. Check the exception message for details and review the EventOrchestration logs for more information.</em>" 
-                                    : exception.StackTrace;
-
-                                exceptionDetails = $@"
-                    <h3>Exception Details</h3>
-                    <p><strong>Exception Type:</strong> {exception.GetType().FullName}</p>
-                    <p><strong>Exception Message:</strong> {exception.Message}</p>
-                    <p><strong>Stack Trace:</strong></p>
-                    <pre style=""background-color: #f4f4f4; padding: 10px; border: 1px solid #ddd; overflow-x: auto;"">{stackTrace}</pre>";
-
-                                if (exception.InnerException != null)
-                                {
-                                    var innerStackTrace = string.IsNullOrWhiteSpace(exception.InnerException.StackTrace)
-                                        ? "<em>Stack trace not available</em>"
-                                        : exception.InnerException.StackTrace;
-
-                                    exceptionDetails += $@"
-                    <h4>Inner Exception</h4>
-                    <p><strong>Type:</strong> {exception.InnerException.GetType().FullName}</p>
-                    <p><strong>Message:</strong> {exception.InnerException.Message}</p>
-                    <p><strong>Stack Trace:</strong></p>
-                    <pre style=""background-color: #f4f4f4; padding: 10px; border: 1px solid #ddd; overflow-x: auto;"">{innerStackTrace}</pre>";
-                                }
-                            }
-
-                    var subject = eventId.HasValue
-                        ? $"Red Mist Archive Failure - Event {eventId.Value}"
-                        : "Red Mist Archive Failure";
-
-                    var body = $@"
-        <html>
-        <body>
-            <h2>Archive Process Failure Alert</h2>
-            <p><strong>Failure Reason:</strong> {failureReason}</p>
-            <p><strong>Event Information:</strong> {eventInfo}</p>
-            <p><strong>Timestamp:</strong> {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</p>
-            {(retryCount > 0 ? $"<p><strong>Retry Attempts:</strong> {retryCount}</p>" : "")}
-            {exceptionDetails}
-            <p>Please investigate the logs for more detailed information.</p>
-        </body>
-        </html>";
-
-                    await emailHelper.SendEmailAsync(subject, body, "support@redmist.racing", "noreply@redmist.racing");
-                    Logger.LogInformation("Archive failure email sent successfully for: {failureReason}", failureReason);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError(ex, "Failed to send archive failure email for: {failureReason}", failureReason);
-                }
-            }
-    }
+}

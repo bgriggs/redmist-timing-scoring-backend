@@ -44,6 +44,7 @@ public class Program
         //builder.Services.AddHostedService<EventArchiveService>();
         builder.Services.AddHostedService<OrchestrationService>();
         builder.Services.AddHostedService<RelayLogCleanupService>();
+        builder.Services.AddHostedService<SimulatedEventPurgeService>();
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();
@@ -145,10 +146,9 @@ public class Program
         try
         {
             var dbContextFactory = serviceProvider.GetRequiredService<IDbContextFactory<TsContext>>();
-            var archiveStorage = serviceProvider.GetRequiredService<IArchiveStorage>();
             var emailHelper = serviceProvider.GetRequiredService<EmailHelper>();
 
-            var archiveService = new EventArchiveService(loggerFactory, dbContextFactory, archiveStorage, emailHelper);
+            var purgeService = new SimulatedEventPurgeService(loggerFactory, dbContextFactory, emailHelper);
 
             using var cts = new CancellationTokenSource();
 
@@ -159,7 +159,7 @@ public class Program
                 logger.LogWarning("Cancellation requested. Stopping simulated event purge...");
             };
 
-            await archiveService.RunSimulatedEventPurgeAsync(cts.Token);
+            await purgeService.RunSimulatedEventPurgeAsync(cts.Token);
 
             logger.LogInformation("Simulated event purge completed.");
         }
