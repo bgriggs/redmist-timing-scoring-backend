@@ -18,12 +18,14 @@ public class FastestPaceEnricher
 
     private ILogger Logger { get; }
 
+
     public FastestPaceEnricher(ILoggerFactory loggerFactory, ICarLapHistoryService carLapHistoryService, SessionContext sessionContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.carLapHistoryService = carLapHistoryService;
         this.sessionContext = sessionContext;
     }
+
 
     public async Task<List<CarPositionPatch>> ProcessAsync(TimingMessage tm)
     {
@@ -41,7 +43,8 @@ public class FastestPaceEnricher
             int fastestTimeMs = int.MaxValue;
             foreach (var car in carsInClass)
             {
-                if (string.IsNullOrEmpty(car.Number))
+                // Check if the car has a valid number and is not stale (i.e., has recent data and is not parked)
+                if (string.IsNullOrEmpty(car.Number) || car.IsStale)
                     continue;
 
                 // Load lap history for the car and calculate the average lap time
