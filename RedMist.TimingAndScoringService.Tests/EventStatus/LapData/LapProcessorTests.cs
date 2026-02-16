@@ -1019,6 +1019,109 @@ public class LapProcessorTests
 
     #endregion
 
+    #region Lap 0 Logging Verification Tests
+
+    [TestMethod]
+    public async Task ProcessAsync_Lap0_ProducesLapCompletedStreamEntry()
+    {
+        // Arrange - A single car at lap 0 (starting grid / qualifying)
+        var carPosition = CreateTestCarPosition("42", 0);
+
+        // Act
+        await _lapProcessor.ProcessAsync(new List<CarPosition> { carPosition });
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        // Assert - Should produce a 'lapcompleted' stream entry in addition to the 'laps' entry
+        var lapCompletedMessages = _capturedStreamAdds
+            .Where(x => x.field.ToString().Contains("lapcompleted", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.HasCount(1, lapCompletedMessages, "Lap 0 should produce a lapcompleted stream entry");
+
+        var lapCompleted = JsonSerializer.Deserialize<LapCompleted>(lapCompletedMessages[0].value.ToString());
+        Assert.IsNotNull(lapCompleted);
+        Assert.AreEqual("42", lapCompleted.CarNumber);
+        Assert.AreEqual(0, lapCompleted.LapNumber);
+    }
+
+    [TestMethod]
+    public async Task ProcessAsync_Lap0_IsLoggedToLapsStream()
+    {
+        // Arrange - A single car at lap 0, no prior state
+        var carPosition = CreateTestCarPosition("7", 0);
+
+        // Act
+        await _lapProcessor.ProcessAsync(new List<CarPosition> { carPosition });
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        // Assert - Verify the laps stream entry exists and contains the correct data
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(1, lapMessages, "Lap 0 should produce a laps stream entry");
+
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
+        Assert.IsNotNull(laps);
+        Assert.HasCount(1, laps);
+        Assert.AreEqual("7", laps[0].Log.CarNumber);
+        Assert.AreEqual(0, laps[0].Log.LapNumber);
+        Assert.AreEqual(0, laps[0].LastLapNum);
+        Assert.AreEqual(1, laps[0].Log.EventId);
+        Assert.AreEqual(1, laps[0].Log.SessionId);
+    }
+
+    [TestMethod]
+    public async Task ProcessAsync_Lap0_AddedToCarLapHistory()
+    {
+        // Arrange
+        var carPosition = CreateTestCarPosition("10", 0);
+
+        // Act
+        await _lapProcessor.ProcessAsync(new List<CarPosition> { carPosition });
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        // Assert - Verify the lap was added to the in-memory car lap history service
+        var history = await _carLapHistoryService.GetLapsAsync("10");
+        Assert.IsNotNull(history);
+        Assert.HasCount(1, history);
+        Assert.AreEqual(0, history[0].LastLapCompleted);
+    }
+
+    [TestMethod]
+    public async Task ProcessAsync_Lap0_NotLoggedWhenAlreadyInDatabase()
+    {
+        // Arrange - Pre-populate database with lap 0 already recorded
+        using (var context = _dbContextFactory.CreateDbContext())
+        {
+            context.CarLastLaps.Add(new Database.Models.CarLastLap
+            {
+                EventId = 1,
+                SessionId = 1,
+                CarNumber = "1",
+                LastLapNumber = 0
+            });
+            await context.SaveChangesAsync();
+        }
+
+        // Create a new processor that will load from the database
+        using var newProcessor = new LapProcessor(
+            _mockLoggerFactory.Object,
+            _dbContextFactory,
+            _sessionContext,
+            _mockConnectionMultiplexer.Object,
+            _pitProcessor,
+            _carLapHistoryService,
+            _timeProvider);
+
+        // Act - Process lap 0 again
+        var carPosition = CreateTestCarPosition("1", 0);
+        await newProcessor.ProcessAsync(new List<CarPosition> { carPosition });
+        await newProcessor.FlushPendingLapsAsync();
+
+        // Assert - Lap 0 should NOT be logged again since the database already has it
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.IsEmpty(lapMessages, "Lap 0 should not be re-logged when already persisted in database");
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private static CarPosition CreateTestCarPosition(string number, int lastLapCompleted)

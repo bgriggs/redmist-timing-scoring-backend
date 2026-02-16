@@ -29,7 +29,6 @@ using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
 using System.Text.Json;
 
-
 namespace RedMist.EventProcessor.Tests.EventStatus.ProcessingPipeline;
 
 [TestClass]
@@ -1017,8 +1016,6 @@ public class SessionStateProcessingPipelineTests
         Assert.IsGreaterThan(0.5, stats.MatchRate, $"Should have a reasonable match rate, got {stats.MatchRate:P2}");
     }
 
-    
-
 
     /// <summary>
     /// Parse time strings in various formats (m:ss.fff, mm:ss.fff, HH:mm:ss.fff, s.fff)
@@ -1062,6 +1059,45 @@ public class SessionStateProcessingPipelineTests
         }
 
         return null;
+    }
+
+
+    [TestMethod]
+    public async Task RMonitor_MissingLap0_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "ra2025.txt") { MaxRecords = 850 };
+        await entriesData.LoadAsync();
+        
+        int lapZeroCompleted = 0;
+        _lapProcessor.OnLapCompleted += (lap) =>
+        {
+            if (lap.LastLapCompleted == 0)
+            {
+                lapZeroCompleted++;
+            }
+        };
+
+        // Act
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                // Advance time to simulate passage between records
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+            }
+
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            await _pipeline.PostAsync(tm);
+        }
+
+        // Allow time for pending laps to be processed (LapProcessor has 1 second wait time)
+        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.CancellationTokenSource.Token);
+
+        // Assert
+        // Make sure Lap 0 was logged or any car
+        Assert.IsGreaterThan(0, lapZeroCompleted, "Lap 0 should have been completed for at least one car");
     }
 
     #region Database Initialization

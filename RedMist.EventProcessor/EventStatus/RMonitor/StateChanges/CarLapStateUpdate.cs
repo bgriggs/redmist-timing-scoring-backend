@@ -10,11 +10,14 @@ public record CarLapStateUpdate(RaceInformation RaceInformation) : ICarStateChan
     public CarPositionPatch? GetChanges(CarPosition state)
     {
         var patch = new CarPositionPatch();
+        bool positionChanged = state.OverallPosition != RaceInformation.Position;
         if (state.LastLapCompleted != RaceInformation.Laps)
             patch.LastLapCompleted = RaceInformation.Laps;
+        else if (RaceInformation.Laps == 0 && positionChanged)
+            patch.LastLapCompleted = 0; // Include lap 0 on initial position so LapProcessor can log it
         if (state.TotalTime != RaceInformation.RaceTime)
             patch.TotalTime = RaceInformation.RaceTime;
-        if (state.OverallPosition != RaceInformation.Position)
+        if (positionChanged)
             patch.OverallPosition = RaceInformation.Position;
 
         var f = SessionContext?.SessionState.CurrentFlag;

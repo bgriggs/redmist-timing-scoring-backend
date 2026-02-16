@@ -8,6 +8,7 @@ internal class RMonitorTestDataHelper(string filePath)
     protected int replayIndex = 0;
     public int Count => events.Count;
     public bool IsFinished => replayIndex >= events.Count;
+    public int MaxRecords { get; set; } = int.MaxValue;
 
 
     public async Task LoadAsync()
@@ -17,6 +18,8 @@ internal class RMonitorTestDataHelper(string filePath)
 
         foreach (var packet in packets)
         {
+            if (events.Count >= MaxRecords)
+                break;
             var tsLineEnd = packet.IndexOf('\n');
             if (tsLineEnd < 0)
                 continue;

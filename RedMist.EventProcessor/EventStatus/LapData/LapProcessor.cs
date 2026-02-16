@@ -253,7 +253,6 @@ public class LapProcessor : IDisposable
         }
 
         // Post the lap logs to Redis for logger service to consume
-        
         var json = JsonSerializer.Serialize(lapLogs);
         var logStreamId = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, eventId);
         await cache.StreamAddAsync(logStreamId, Consts.LAP_TYPE, json);

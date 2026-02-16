@@ -244,7 +244,7 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
             }
             else
             {
-                Logger.LogWarning($"Unable to find a mapping for column '{col}' at index {i}");
+                Logger.LogInformation($"Unable to find a mapping for column '{col}' at index {i}");
             }
         }
 
