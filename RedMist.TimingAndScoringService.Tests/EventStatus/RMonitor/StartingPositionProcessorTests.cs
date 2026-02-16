@@ -68,7 +68,7 @@ public class StartingPositionProcessorTests
     }
 
     [TestMethod]
-    public void GetLapNumberPriorToGreen_GreenFlagOnLapZero_ReturnsNegative()
+    public void GetLapNumberPriorToGreen_GreenFlagOnLapZero_ReturnsZero()
     {
         // Arrange
         var laps = new List<CarPosition>
@@ -80,8 +80,8 @@ public class StartingPositionProcessorTests
         // Act
         var result = StartingPositionProcessor.GetLapNumberPriorToGreen(laps);
 
-        // Assert
-        Assert.AreEqual(-1, result);
+        // Assert - Lap 0 with green flag means lap 0 is the starting grid
+        Assert.AreEqual(0, result);
     }
 
     [TestMethod]
@@ -317,8 +317,11 @@ public class StartingPositionProcessorTests
         await SetupSessionContextWithCars();
         _sessionContext.SessionState.SessionId = 67;
 
-        // Set up starting positions to simulate already checked
-        _sessionContext.SetStartingPosition("1", 1);
+        // Set up starting positions for all cars to simulate already checked
+        for (int i = 1; i <= 5; i++)
+        {
+            _sessionContext.SetStartingPosition(i.ToString(), i);
+        }
 
         // Act
         var result1 = await _processor.CheckHistoricLapStartingPositionsAsync();
@@ -343,15 +346,17 @@ public class StartingPositionProcessorTests
             car.LastLapCompleted = 5;
         }
 
-        // Set up starting positions
-        _sessionContext.SetStartingPosition("1", 1);
-        _sessionContext.SetStartingPosition("2", 2);
+        // Set up starting positions for all cars
+        for (int i = 1; i <= 5; i++)
+        {
+            _sessionContext.SetStartingPosition(i.ToString(), i);
+        }
 
         // Act
         var result = await _processor.CheckHistoricLapStartingPositionsAsync();
 
         // Assert
-        Assert.IsFalse(result, "Should return false when starting positions already exist");
+        Assert.IsFalse(result, "Should return false when starting positions already exist for all cars");
     }
 
     [TestMethod]
@@ -857,11 +862,12 @@ public class StartingPositionProcessorTests
         using (await _sessionContext.SessionStateLock.AcquireWriteLockAsync(_sessionContext.CancellationToken))
         {
             _sessionContext.SessionState.SessionId = 67;
+            var cars = new List<CarPosition>();
             for (int i = 1; i <= 5; i++)
             {
-                var car = CreateCarPosition(i.ToString(), i, 0, Flags.Yellow);
-                _sessionContext.SessionState.CarPositions.Add(car);
+                cars.Add(CreateCarPosition(i.ToString(), i, 0, Flags.Yellow));
             }
+            _sessionContext.UpdateCars(cars);
         }
     }
 

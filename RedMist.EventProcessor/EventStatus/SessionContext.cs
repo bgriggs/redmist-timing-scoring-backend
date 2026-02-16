@@ -260,12 +260,12 @@ public class SessionContext
     /// <summary>
     /// Get whether there are any starting positions recorded in thread-safe manner.
     /// </summary>
-    /// <returns>true if there are starting positions</returns>
-    public virtual async Task<bool> HasStartingPositions()
+    /// <returns>true if there are starting positions, number of starting positions, number of cars</returns>
+    public virtual async Task<(bool hasPositions, int startingCount, int totalCars)> HasStartingPositions()
     {
         using (await SessionStateLock.AcquireReadLockAsync(CancellationToken))
         {
-            return startingPositions.Count > 0;
+            return (startingPositions.Count > 0, startingPositions.Count, numberToCarPositionLookup.Count);
         }
     }
 }

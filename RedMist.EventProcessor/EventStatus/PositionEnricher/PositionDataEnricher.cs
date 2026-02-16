@@ -28,7 +28,6 @@ public class PositionDataEnricher
     /// Takes the current session state and finds the position related metadata for each car. These changes 
     /// are returned as a SessionStateUpdate. The session state is not modified.
     /// </summary>
-    /// <returns></returns>
     public PatchUpdates? Process()
     {
         var carChanges = new List<CarPositionPatch>();

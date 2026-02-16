@@ -54,8 +54,8 @@ public class StartingPositionProcessor : BackgroundService
             return false;
 
         // See if starting positions have already been determined
-        var hasStartingPositions = await sessionContext.HasStartingPositions();
-        if (hasStartingPositions)
+        var positionInfo = await sessionContext.HasStartingPositions();
+        if (positionInfo.hasPositions && positionInfo.startingCount == positionInfo.totalCars)
         {
             lastCompletedSessionHistoricalCheck = currentSession;
             return false;
@@ -157,17 +157,21 @@ public class StartingPositionProcessor : BackgroundService
     }
 
     /// <summary>
-    /// Determines the lap number just prior to the green flag lap.
+    /// Determines the lap number that represents the starting grid order.
+    /// If the green flag is on lap 0, lap 0 itself is the starting grid.
+    /// Otherwise, it returns the lap just prior to the green flag lap.
     /// </summary>
     /// <param name="laps">starting number of car laps</param>
-    /// <returns>lap number prior to green or -1 if cannot be determined or is invalid</returns>
+    /// <returns>lap number for starting order or -1 if cannot be determined</returns>
     internal static int GetLapNumberPriorToGreen(List<CarPosition> laps)
     {
         var leader = laps.Where(c => c.OverallPosition == 1).OrderBy(c => c.LastLapCompleted).ToArray();
         // Get the lap number just before the green flag lap, this will be the starting lineup
         var greenLap = leader.FirstOrDefault(c => c.TrackFlag == Flags.Green);
-        if (greenLap == null || greenLap.LastLapCompleted == 0)
+        if (greenLap == null)
             return -1;
+        if (greenLap.LastLapCompleted == 0)
+            return 0;
         return greenLap.LastLapCompleted - 1;
     }
 }
