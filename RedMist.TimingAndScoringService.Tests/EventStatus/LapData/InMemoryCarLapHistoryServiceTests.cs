@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
+using Moq;
 using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
@@ -13,6 +15,7 @@ namespace RedMist.TimingAndScoringService.Tests.EventStatus.LapData;
 [TestClass]
 public class InMemoryCarLapHistoryServiceTests
 {
+    private Mock<ILoggerFactory> _mockLoggerFactory = null!;
     private IDbContextFactory<TsContext> _dbContextFactory = null!;
     private SessionContext _sessionContext = null!;
     private FakeTimeProvider _timeProvider = null!;
@@ -23,13 +26,17 @@ public class InMemoryCarLapHistoryServiceTests
     [TestInitialize]
     public void Setup()
     {
+        _mockLoggerFactory = new Mock<ILoggerFactory>();
+        var mockLogger = new Mock<ILogger>();
+        _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(mockLogger.Object);
+
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", EventId.ToString() } })
             .Build();
 
         _dbContextFactory = CreateDbContextFactory();
         _timeProvider = new FakeTimeProvider();
-        _sessionContext = new SessionContext(configuration, _dbContextFactory, _timeProvider);
+        _sessionContext = new SessionContext(configuration, _dbContextFactory, _mockLoggerFactory.Object, _timeProvider);
         _sessionContext.SessionState.SessionId = SessionId;
 
         _service = new InMemoryCarLapHistoryService(_sessionContext);

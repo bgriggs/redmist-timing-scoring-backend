@@ -35,7 +35,7 @@ public class StartingPositionProcessorTests
 
         _dbContextFactory = CreateDbContextFactory();
         _dbContext = _dbContextFactory.CreateDbContext();
-        _sessionContext = new SessionContext(config, _dbContextFactory);
+        _sessionContext = new SessionContext(config, _dbContextFactory, _mockLoggerFactory.Object);
 
         _processor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object, _dbContextFactory);
     }
@@ -548,7 +548,7 @@ public class StartingPositionProcessorTests
 
         // Change to session 68 and seed new data
         await SeedDatabaseWithStartingLaps(68);
-        await _sessionContext.NewSession(68, "New Session");
+        await _sessionContext.NewSessionAsync(68, "New Session");
         _sessionContext.SessionState.CurrentFlag = Flags.Green;
 
         // Re-setup cars for new session

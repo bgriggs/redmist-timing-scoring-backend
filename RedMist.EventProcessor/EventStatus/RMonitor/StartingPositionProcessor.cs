@@ -62,7 +62,7 @@ public class StartingPositionProcessor : BackgroundService
         }
 
         // See if the event is active
-        var (flag, lap) = await sessionContext.GetCurrentFlagAndLap();
+        var (flag, lap) = await sessionContext.GetCurrentFlagAndLapAsync();
         if (lap > 3 && (flag == Flags.Green || flag == Flags.Yellow || flag == Flags.Red || flag == Flags.Purple35))
         {
             Logger.LogInformation("Starting laps for session {sid} have not been determined. Performing historical check...", currentSession);

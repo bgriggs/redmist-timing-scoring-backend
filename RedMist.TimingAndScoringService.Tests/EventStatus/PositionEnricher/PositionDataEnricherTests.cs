@@ -33,7 +33,7 @@ public class PositionDataEnricherTests
             .Build();
 
         var dbContextFactory = CreateDbContextFactory();
-        _sessionContext = new SessionContext(config, dbContextFactory);
+        _sessionContext = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object);
         _enricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
     }
 
@@ -53,7 +53,8 @@ public class PositionDataEnricherTests
     {
         // Act & Assert - Constructor called in Setup, no exception should be thrown
         Assert.IsNotNull(_enricher);
-        _mockLoggerFactory.Verify(x => x.CreateLogger(It.IsAny<string>()), Times.Once);
+        // SessionContext creates a logger, and PositionDataEnricher creates a logger
+        _mockLoggerFactory.Verify(x => x.CreateLogger(It.IsAny<string>()), Times.Exactly(2));
     }
 
     #endregion

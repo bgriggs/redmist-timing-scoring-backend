@@ -351,7 +351,7 @@ public class SessionMonitor : BackgroundService
         {
             _ = Task.Run(async () =>
             {
-                await sessionContext.NewSession(lastSession.Id, lastSession.Name);
+                await sessionContext.NewSessionAsync(lastSession.Id, lastSession.Name);
                 sessionContext.SetSessionClassMetadata();
             });
         }

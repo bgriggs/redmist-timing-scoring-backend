@@ -12,6 +12,7 @@ namespace RedMist.EventProcessor.EventStatus;
 /// </summary>
 public class SessionContext
 {
+    private ILogger Logger { get; }
     public SessionState SessionState { get; private set; } = new SessionState();
     private readonly AsyncReaderWriterLock sessionStateLock = new();
     public AsyncReaderWriterLock SessionStateLock => sessionStateLock;
@@ -43,12 +44,13 @@ public class SessionContext
     private readonly Dictionary<string, string> lastLapTimesBeforeReset = [];
 
 
-    public SessionContext(IConfiguration configuration, IDbContextFactory<TsContext> tsContext, TimeProvider? timeProvider = null)
+    public SessionContext(IConfiguration configuration, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory, TimeProvider? timeProvider = null)
     {
         EventId = configuration.GetValue("event_id", 0);
         SessionState.EventId = EventId;
         this.tsContext = tsContext;
         _timeProvider = timeProvider ?? TimeProvider.System; // Use system time by default
+        Logger = loggerFactory.CreateLogger(GetType().Name);
     }
 
 
@@ -163,17 +165,28 @@ public class SessionContext
         SessionState.CarPositions.Clear();
     }
 
-    public virtual async Task NewSession(int sessionId, string sessionName)
+    public virtual async Task NewSessionAsync(int sessionId, string sessionName)
     {
+        var eventName = await LoadEventNameAsync();
+
         using (await SessionStateLock.AcquireWriteLockAsync(CancellationToken))
         {
             ResetCommand();
             startingPositions.Clear();
             inClassStartingPositions.Clear();
             lastLapTimesBeforeReset.Clear();
-            SessionState = new SessionState { EventId = EventId, SessionId = sessionId, SessionName = sessionName };
+            
+            SessionState = new SessionState 
+            { 
+                EventId = EventId, 
+                EventName = eventName, 
+                SessionId = sessionId, 
+                SessionName = sessionName 
+            };
         }
     }
+
+    #region Starting Positions
 
     public virtual void SetStartingPosition(string number, int position)
     {
@@ -212,6 +225,20 @@ public class SessionContext
         inClassStartingPositions.Clear();
     }
 
+    /// <summary>
+    /// Get whether there are any starting positions recorded in thread-safe manner.
+    /// </summary>
+    /// <returns>true if there are starting positions, number of starting positions, number of cars</returns>
+    public virtual async Task<(bool hasPositions, int startingCount, int totalCars)> HasStartingPositions()
+    {
+        using (await SessionStateLock.AcquireReadLockAsync(CancellationToken))
+        {
+            return (startingPositions.Count > 0, startingPositions.Count, numberToCarPositionLookup.Count);
+        }
+    }
+
+    #endregion
+
     public virtual void SetLastLapTimeBeforeReset()
     {
         foreach (var car in SessionState.CarPositions)
@@ -244,7 +271,7 @@ public class SessionContext
     /// Gets the current flag in thread-safe manner.
     /// </summary>
     /// <returns></returns>
-    public virtual async Task<(Flags, int)> GetCurrentFlagAndLap()
+    public virtual async Task<(Flags, int)> GetCurrentFlagAndLapAsync()
     {
         using (await SessionStateLock.AcquireReadLockAsync(CancellationToken))
         {
@@ -257,15 +284,18 @@ public class SessionContext
         }
     }
 
-    /// <summary>
-    /// Get whether there are any starting positions recorded in thread-safe manner.
-    /// </summary>
-    /// <returns>true if there are starting positions, number of starting positions, number of cars</returns>
-    public virtual async Task<(bool hasPositions, int startingCount, int totalCars)> HasStartingPositions()
+    private async Task<string> LoadEventNameAsync()
     {
-        using (await SessionStateLock.AcquireReadLockAsync(CancellationToken))
+        try
         {
-            return (startingPositions.Count > 0, startingPositions.Count, numberToCarPositionLookup.Count);
+            using var db = tsContext.CreateDbContext();
+            var eventName = await db.Events.Where(e => e.Id == EventId).Select(e => e.Name).FirstOrDefaultAsync();
+            return eventName ?? string.Empty;
         }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error retrieving event name for event ID {eventId}", EventId);
+        }
+        return string.Empty;
     }
 }

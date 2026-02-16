@@ -39,7 +39,7 @@ public class DriverModeProcessorTests
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
         var dbContextFactory = CreateDbContextFactory();
-        _sessionContext = new SessionContext(configuration, dbContextFactory, new FakeTimeProvider());
+        _sessionContext = new SessionContext(configuration, dbContextFactory, _mockLoggerFactory.Object, new FakeTimeProvider());
 
         _processor = new DriverModeProcessor(
             loggerFactory: _mockLoggerFactory.Object,

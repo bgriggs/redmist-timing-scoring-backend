@@ -43,7 +43,7 @@ public class CarLapHistoryServiceTests
 
         _dbContextFactory = CreateDbContextFactory();
         _timeProvider = new FakeTimeProvider();
-        _sessionContext = new SessionContext(configuration, _dbContextFactory, _timeProvider);
+        _sessionContext = new SessionContext(configuration, _dbContextFactory, _mockLoggerFactory.Object, _timeProvider);
         _sessionContext.SessionState.SessionId = SessionId;
 
         SetupRedisMock();

@@ -161,7 +161,7 @@ public class SessionStateProcessingPipelineTests
             .Build();
 
         SetupDbContextFactory();
-        _sessionContext = new SessionContext(_configuration, _dbContextFactory, _timeProvider);
+        _sessionContext = new SessionContext(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _timeProvider);
     }
 
     private void SetupDbContextFactory()

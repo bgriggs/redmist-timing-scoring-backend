@@ -42,7 +42,7 @@ public class DriverEnricherTests
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
         var dbContextFactory = CreateDbContextFactory();
-        sessionContext = new SessionContext(config, dbContextFactory);
+        sessionContext = new SessionContext(config, dbContextFactory, mockLoggerFactory.Object);
 
         driverEnricher = new DriverEnricher(sessionContext, mockLoggerFactory.Object, mockConnectionMultiplexer.Object);
     }
@@ -56,7 +56,8 @@ public class DriverEnricherTests
 
         // Assert
         Assert.IsNotNull(driverEnricher);
-        mockLoggerFactory.Verify(x => x.CreateLogger(It.IsAny<string>()), Times.Once);
+        // SessionContext creates a logger, and DriverEnricher creates a logger
+        mockLoggerFactory.Verify(x => x.CreateLogger(It.IsAny<string>()), Times.Exactly(2));
     }
 
     #endregion

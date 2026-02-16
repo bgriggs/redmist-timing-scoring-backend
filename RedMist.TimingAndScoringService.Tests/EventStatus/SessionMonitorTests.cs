@@ -235,8 +235,9 @@ public class SessionMonitorTests
             .Build();
 
         var dbContextFactory = CreateDbContextFactory();
+        var loggerFactory = new DebugLoggerFactory();
 
-        return new SessionContext(configuration, dbContextFactory);
+        return new SessionContext(configuration, dbContextFactory, loggerFactory);
     }
 
     private static IDbContextFactory<TsContext> CreateDbContextFactory()

@@ -37,7 +37,7 @@ public class RMonitorDataProcessorV2Tests
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
         var dbContextFactory = CreateDbContextFactory();
-        _sessionContext = new SessionContext(config, dbContextFactory);
+        _sessionContext = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object);
 
         // Verify that CreateLogger is being called and set up the factory to return our mock
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);

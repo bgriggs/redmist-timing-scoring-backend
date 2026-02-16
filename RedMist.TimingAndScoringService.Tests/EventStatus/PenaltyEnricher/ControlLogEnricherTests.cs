@@ -40,7 +40,7 @@ public class ControlLogEnricherTests
             .Build();
 
         var dbContextFactory = CreateDbContextFactory();
-        _sessionContext = new SessionContext(_configuration, dbContextFactory);
+        _sessionContext = new SessionContext(_configuration, dbContextFactory, _mockLoggerFactory.Object);
         _enricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);
     }
 
@@ -51,7 +51,8 @@ public class ControlLogEnricherTests
     {
         // Act & Assert - Constructor called in Setup, no exception should be thrown
         Assert.IsNotNull(_enricher);
-        _mockLoggerFactory.Verify(x => x.CreateLogger(It.IsAny<string>()), Times.Once);
+        // SessionContext creates a logger, and ControlLogEnricher creates a logger
+        _mockLoggerFactory.Verify(x => x.CreateLogger(It.IsAny<string>()), Times.Exactly(2));
     }
 
     #endregion

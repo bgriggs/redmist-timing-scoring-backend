@@ -44,7 +44,7 @@ public class PitProcessorTests
         var options = optionsBuilder.Options;
         var dbContextFactory = new TestDbContextFactory(options);
 
-        _sessionContext = new SessionContext(config, dbContextFactory) { IsMultiloopActive = true };
+        _sessionContext = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object) { IsMultiloopActive = true };
 
         // Use real TsContext instead of mock since we need to access non-virtual properties
         var realDbContext = new TsContext(options);

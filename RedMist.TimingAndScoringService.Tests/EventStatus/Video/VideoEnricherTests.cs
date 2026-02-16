@@ -42,7 +42,7 @@ public class VideoEnricherTests
             .Build();
 
         var dbContextFactory = CreateDbContextFactory();
-        sessionContext = new SessionContext(config, dbContextFactory);
+        sessionContext = new SessionContext(config, dbContextFactory, mockLoggerFactory.Object);
 
             videoEnricher = new VideoEnricher(sessionContext, mockLoggerFactory.Object, mockConnectionMultiplexer.Object);
         }
@@ -65,7 +65,8 @@ public class VideoEnricherTests
 
         // Assert
         Assert.IsNotNull(videoEnricher);
-        mockLoggerFactory.Verify(x => x.CreateLogger(It.IsAny<string>()), Times.Once);
+        // SessionContext creates a logger, and VideoEnricher creates a logger
+        mockLoggerFactory.Verify(x => x.CreateLogger(It.IsAny<string>()), Times.Exactly(2));
     }
 
     #endregion

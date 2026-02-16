@@ -32,7 +32,7 @@ public class MultiloopProcessorTests
             .Build();
 
         var dbContextFactory = CreateDbContextFactory();
-        _context = new SessionContext(config, dbContextFactory);
+        _context = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object);
         _processor = new MultiloopProcessor(_mockLoggerFactory.Object, _context);
     }
 

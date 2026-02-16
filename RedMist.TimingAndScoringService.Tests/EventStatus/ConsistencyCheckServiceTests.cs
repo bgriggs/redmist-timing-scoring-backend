@@ -39,7 +39,7 @@ public class ConsistencyCheckServiceTests
             .AddInMemoryCollection(configDict)
             .Build();
         var dbContextFactory = CreateDbContextFactory();
-        sessionContext = new SessionContext(configuration, dbContextFactory, fakeTimeProvider);
+        sessionContext = new SessionContext(configuration, dbContextFactory, mockLoggerFactory.Object, fakeTimeProvider);
 
         testOptions = new ConsistencyCheckOptions
         {

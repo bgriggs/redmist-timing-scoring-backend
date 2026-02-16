@@ -52,7 +52,7 @@ public class ProjectedLapTimeEnricher
     public async Task<int> CalculateProjectedLapTimeAsync(CarPosition car)
     {
         // Get current track flag
-        var (currentFlag, _) = await sessionContext.GetCurrentFlagAndLap();
+        var (currentFlag, _) = await sessionContext.GetCurrentFlagAndLapAsync();
 
         // Only process for green or yellow flags
         if (currentFlag != Flags.Green && currentFlag != Flags.Yellow)
