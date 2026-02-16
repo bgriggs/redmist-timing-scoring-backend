@@ -19,6 +19,7 @@ public class Consts
     public const string EVENT_X2_LOOPS_STREAM_FIELD = "x2loop-{0}-999999";
     public const string EVENT_X2_PASSINGS_STREAM_FIELD = "x2pass-{0}-{1}";
     public const string EVENT_FLAGS_STREAM_FIELD = "flags-{0}-{1}";
+    public const string EVENT_LAP_COMPLETED_STREAM_FIELD = "lapcompleted-{0}-{1}";
     public const string EVENT_COMPETITORS = "competitors-{0}-999999";
     public const string RELAY_GROUP_PREFIX = "relay-event-{0}";
     public const string CLIENT_ID = "ts-client-{0}";

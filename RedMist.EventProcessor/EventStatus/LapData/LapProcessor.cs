@@ -218,7 +218,7 @@ public class LapProcessor : IDisposable
         var sessionId = sessionContext.SessionState.SessionId;
         var lapLogs = new List<CarLapData>();
         var cache = cacheMux.GetDatabase();
-        var streamId = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, eventId);
+        var statusStreamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
 
         foreach (var (carNumber, position) in completions)
         {
@@ -233,7 +233,8 @@ public class LapProcessor : IDisposable
             // Send message to session pipeline to process laps (FastestPaceEnricher, ProjectedLapTimeEnricher, etc.)
             var lapCompleted = new LapCompleted(carNumber, position.LastLapCompleted, position.Class ?? string.Empty, _timeProvider.GetUtcNow().UtcDateTime);
             var lapJson = JsonSerializer.Serialize(lapCompleted);
-            await cache.StreamAddAsync(streamId, Consts.LAP_COMPLETED_TYPE, lapJson);
+            var lapStreamField = string.Format(Consts.EVENT_LAP_COMPLETED_STREAM_FIELD, eventId, sessionId);
+            await cache.StreamAddAsync(statusStreamId, lapStreamField, lapJson);
 
             // Invoke the lap completed event for testing hooks - this is null in production
             OnLapCompleted?.Invoke(position);
@@ -254,7 +255,8 @@ public class LapProcessor : IDisposable
         // Post the lap logs to Redis for logger service to consume
         
         var json = JsonSerializer.Serialize(lapLogs);
-        await cache.StreamAddAsync(streamId, Consts.LAP_TYPE, json);
+        var logStreamId = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, eventId);
+        await cache.StreamAddAsync(logStreamId, Consts.LAP_TYPE, json);
     }
 
     /// <summary>
