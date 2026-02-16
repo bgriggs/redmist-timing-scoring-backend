@@ -5,6 +5,7 @@ using Moq;
 using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.PenaltyEnricher;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
@@ -40,7 +41,8 @@ public class ControlLogEnricherTests
             .Build();
 
         var dbContextFactory = CreateDbContextFactory();
-        _sessionContext = new SessionContext(_configuration, dbContextFactory, _mockLoggerFactory.Object);
+        var mockLapHistoryService = new Mock<ICarLapHistoryService>();
+        _sessionContext = new SessionContext(_configuration, dbContextFactory, _mockLoggerFactory.Object, mockLapHistoryService.Object);
         _enricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);
     }
 

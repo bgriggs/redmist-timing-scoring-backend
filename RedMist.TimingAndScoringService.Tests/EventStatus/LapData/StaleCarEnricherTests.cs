@@ -40,7 +40,8 @@ public class StaleCarEnricherTests
 
         _dbContextFactory = CreateDbContextFactory();
         _timeProvider = new FakeTimeProvider();
-        _sessionContext = new SessionContext(configuration, _dbContextFactory, _mockLoggerFactory.Object, _timeProvider);
+        var lapHistoryService = new InMemoryCarLapHistoryService(null!);
+        _sessionContext = new SessionContext(configuration, _dbContextFactory, _mockLoggerFactory.Object, lapHistoryService, _timeProvider);
         _sessionContext.SessionState.SessionId = SessionId;
 
         SetupRedisMock();

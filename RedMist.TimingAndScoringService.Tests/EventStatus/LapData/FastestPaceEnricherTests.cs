@@ -44,7 +44,8 @@ public class FastestPaceEnricherTests
 
         _dbContextFactory = CreateDbContextFactory();
         _timeProvider = new FakeTimeProvider();
-        _sessionContext = new SessionContext(configuration, _dbContextFactory, _mockLoggerFactory.Object, _timeProvider);
+        var lapHistoryService = new InMemoryCarLapHistoryService(null!);
+        _sessionContext = new SessionContext(configuration, _dbContextFactory, _mockLoggerFactory.Object, lapHistoryService, _timeProvider);
         _sessionContext.SessionState.SessionId = SessionId;
 
         SetupRedisMock();
@@ -52,7 +53,7 @@ public class FastestPaceEnricherTests
         _mockCarLapHistoryService = new Mock<CarLapHistoryService>(
             _mockLoggerFactory.Object,
             _mockConnectionMultiplexer.Object,
-            _sessionContext);
+            configuration);
 
         _enricher = new FastestPaceEnricher(
             _mockLoggerFactory.Object,

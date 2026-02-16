@@ -7,6 +7,7 @@ using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.DriverInformation;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.Models;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
@@ -42,7 +43,8 @@ public class DriverEnricherTests
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
         var dbContextFactory = CreateDbContextFactory();
-        sessionContext = new SessionContext(config, dbContextFactory, mockLoggerFactory.Object);
+        var mockLapHistoryService = new Mock<ICarLapHistoryService>();
+        sessionContext = new SessionContext(config, dbContextFactory, mockLoggerFactory.Object, mockLapHistoryService.Object);
 
         driverEnricher = new DriverEnricher(sessionContext, mockLoggerFactory.Object, mockConnectionMultiplexer.Object);
     }

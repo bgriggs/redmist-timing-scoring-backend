@@ -5,6 +5,7 @@ using Moq;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.RMonitor;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
@@ -35,7 +36,8 @@ public class StartingPositionProcessorTests
 
         _dbContextFactory = CreateDbContextFactory();
         _dbContext = _dbContextFactory.CreateDbContext();
-        _sessionContext = new SessionContext(config, _dbContextFactory, _mockLoggerFactory.Object);
+        var mockLapHistoryService = new Mock<ICarLapHistoryService>();
+        _sessionContext = new SessionContext(config, _dbContextFactory, _mockLoggerFactory.Object, mockLapHistoryService.Object);
 
         _processor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object, _dbContextFactory);
     }

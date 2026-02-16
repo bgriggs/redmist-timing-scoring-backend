@@ -22,4 +22,9 @@ public interface ICarLapHistoryService
     /// <param name="carNumber">The car number</param>
     /// <returns>A list of CarPosition objects representing the last laps, or an empty list if none found</returns>
     Task<List<CarPosition>> GetLapsAsync(string carNumber);
+
+    /// <summary>
+    /// Clears all lap history data for all cars. This might be used at the start of a new session or when resetting data.
+    /// </summary>
+    Task ClearLapsAsync();
 }

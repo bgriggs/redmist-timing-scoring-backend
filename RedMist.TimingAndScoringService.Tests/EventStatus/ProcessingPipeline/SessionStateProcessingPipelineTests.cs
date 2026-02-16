@@ -161,7 +161,8 @@ public class SessionStateProcessingPipelineTests
             .Build();
 
         SetupDbContextFactory();
-        _sessionContext = new SessionContext(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _timeProvider);
+        _carLapHistoryService = new InMemoryCarLapHistoryService(null, eventId: 1);
+        _sessionContext = new SessionContext(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _carLapHistoryService, _timeProvider);
     }
 
     private void SetupDbContextFactory()
@@ -195,7 +196,7 @@ public class SessionStateProcessingPipelineTests
             _mockConnectionMultiplexer.Object,
             _sessionContext);
         _positionEnricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
-        _carLapHistoryService = new InMemoryCarLapHistoryService(_sessionContext);
+        // Use the existing _carLapHistoryService from SetupSessionContext instead of creating a new one
         _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor, _carLapHistoryService, _timeProvider);
         _driverEnricher = new DriverEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _videoEnricher = new VideoEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
@@ -459,7 +460,6 @@ public class SessionStateProcessingPipelineTests
         // There are 11 direct session changes in the test data. However, there are 4 sessions being completed with Checkered/Finish flag logic.
         Assert.AreEqual(15, finishedCount); 
     }
-
 
     [TestMethod]
     public async Task RMonitor_Reset_KeepLapTimes_Test()
@@ -1098,6 +1098,91 @@ public class SessionStateProcessingPipelineTests
         // Assert
         // Make sure Lap 0 was logged or any car
         Assert.IsGreaterThan(0, lapZeroCompleted, "Lap 0 should have been completed for at least one car");
+    }
+
+    [TestMethod]
+    public async Task RMonitor_RetainLastLapDuringMidRaceReset_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "ra2025.txt") { MaxRecords = 1722 };
+        await entriesData.LoadAsync();
+
+        var lastLapTimes = new Dictionary<string, string?>();
+        bool hasReset = false;
+        // Act
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                // Advance time to simulate passage between records
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+
+                if (hasReset)
+                {
+                    foreach (var c in _sessionContext.SessionState.CarPositions)
+                    {
+                        if (c.Number != "119" && c.Number != "63" && c.Number != "65" && string.IsNullOrEmpty(c.LastLapTime))
+                        {
+                            
+                        }
+                    }
+                }
+            }
+
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            await _pipeline.PostAsync(tm);
+
+            // Note the last lap times at 00:10:12 which is right before a midrace reset $I that
+            // occurs at 00:10:13. We want to make sure the last lap times are retained through
+            // the reset since they are needed for accurate gap/diff calculations and to prevent
+            // data loss in case of resets without $I messages.
+            if (_sessionContext.SessionState.RunningRaceTime == "00:10:12")
+            {
+                foreach (var c in _sessionContext.SessionState.CarPositions)
+                {
+                    if (!string.IsNullOrEmpty(c.Number))
+                    {
+                        lastLapTimes[c.Number] = c.LastLapTime;
+                    }
+                }
+            }
+
+            // 00:10:13 is right after a midrace reset $I
+            if (_sessionContext.SessionState.RunningRaceTime == "00:10:13")
+            {
+                hasReset = true;
+            }
+
+            if (_sessionContext.SessionState.RunningRaceTime == "00:23:25")
+            {
+                foreach (var c in _sessionContext.SessionState.CarPositions)
+                {
+                }
+            }
+        }
+
+        // Allow time for pending laps to be processed (LapProcessor has 1 second wait time)
+        //await Task.Delay(TimeSpan.FromSeconds(2), TestContext.CancellationTokenSource.Token);
+
+        // Assert
+        // Make sure the last lap times noted before the reset are still present after the reset for the same cars
+        foreach (var kvp in lastLapTimes)
+        {
+            var carNumber = kvp.Key;
+
+            // These cars had laps completed right at the reset which may have caused last lap time to update during the reset,
+            // so we will ignore them in this check since the test is focused on ensuring lap times are retained for cars that
+            // did not complete a lap during the reset
+            // lines 9651 and 9658
+            if (carNumber == "196" || carNumber == "36")
+                continue; 
+
+            var lastLapTimeBeforeReset = kvp.Value;
+            var car = _sessionContext.SessionState.CarPositions.SingleOrDefault(c => c.Number == carNumber);
+            Assert.IsNotNull(car, $"Car {carNumber} should still be present after reset");
+            Assert.AreEqual(lastLapTimeBeforeReset, car.LastLapTime, $"Car {carNumber} should retain last lap time through midrace reset");
+        }
     }
 
     #region Database Initialization

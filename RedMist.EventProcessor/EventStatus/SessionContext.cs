@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
 using System.Collections.Immutable;
@@ -25,6 +26,7 @@ public class SessionContext
     public SessionState PreviousSessionState { get; private set; } = new SessionState();
     private DateTime lastPreviousSessionStateUpdate = DateTime.MinValue;
     private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly ICarLapHistoryService lapHistoryService;
     private readonly TimeProvider _timeProvider;
 
     public int EventId { get; }
@@ -40,15 +42,14 @@ public class SessionContext
     private readonly Dictionary<string, int> startingPositions = [];
     private readonly Dictionary<string, int> inClassStartingPositions = [];
 
-    // Last lap time before reset for each car number
-    private readonly Dictionary<string, string> lastLapTimesBeforeReset = [];
 
-
-    public SessionContext(IConfiguration configuration, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory, TimeProvider? timeProvider = null)
+    public SessionContext(IConfiguration configuration, IDbContextFactory<TsContext> tsContext,
+        ILoggerFactory loggerFactory, ICarLapHistoryService lapHistoryService, TimeProvider? timeProvider = null)
     {
         EventId = configuration.GetValue("event_id", 0);
         SessionState.EventId = EventId;
         this.tsContext = tsContext;
+        this.lapHistoryService = lapHistoryService;
         _timeProvider = timeProvider ?? TimeProvider.System; // Use system time by default
         Logger = loggerFactory.CreateLogger(GetType().Name);
     }
@@ -136,26 +137,7 @@ public class SessionContext
         if ((currentTime - lastPreviousSessionStateUpdate).TotalSeconds > 5)
         {
             // Save a copy of the current session state before clearing it if there is a session change
-            var p = TimingCommon.Models.Mappers.SessionStateMapper.ToPatch(SessionState);
-            var copy = TimingCommon.Models.Mappers.SessionStateMapper.PatchToEntity(p);
-            copy.CarPositions = [.. copy.CarPositions.DeepCopy()];
-            copy.EventEntries = [.. SessionState.EventEntries];
-            copy.Announcements = [.. SessionState.Announcements];
-            copy.Sections = [.. SessionState.Sections];
-            copy.ClassColors = SessionState.ClassColors.ToDictionary();
-            copy.FlagDurations = [.. SessionState.FlagDurations];
-            PreviousSessionState = copy;
-
-            // Update last lap times before reset
-            lastLapTimesBeforeReset.Clear();
-            foreach (var car in SessionState.CarPositions)
-            {
-                if (!string.IsNullOrEmpty(car.Number) && !string.IsNullOrEmpty(car.LastLapTime))
-                {
-                    lastLapTimesBeforeReset[car.Number] = car.LastLapTime;
-                }
-            }
-
+            PreviousSessionState = SessionState.DeepCopy();
             lastPreviousSessionStateUpdate = currentTime;
         }
 
@@ -163,6 +145,8 @@ public class SessionContext
         transponderToNumberLookup.Clear();
         SessionState.EventEntries.Clear();
         SessionState.CarPositions.Clear();
+
+        Logger.LogDebug("Session state reset cleared car positions");
     }
 
     public virtual async Task NewSessionAsync(int sessionId, string sessionName)
@@ -174,14 +158,14 @@ public class SessionContext
             ResetCommand();
             startingPositions.Clear();
             inClassStartingPositions.Clear();
-            lastLapTimesBeforeReset.Clear();
-            
-            SessionState = new SessionState 
-            { 
-                EventId = EventId, 
-                EventName = eventName, 
-                SessionId = sessionId, 
-                SessionName = sessionName 
+            await lapHistoryService.ClearLapsAsync();
+
+            SessionState = new SessionState
+            {
+                EventId = EventId,
+                EventName = eventName,
+                SessionId = sessionId,
+                SessionName = sessionName
             };
         }
     }
@@ -239,15 +223,23 @@ public class SessionContext
 
     #endregion
 
-    public virtual void SetLastLapTimeBeforeReset()
+    public virtual async Task SetLastLapTimeBeforeResetAsync()
     {
+        int timeSetCount = 0;
         foreach (var car in SessionState.CarPositions)
         {
-            if (!string.IsNullOrEmpty(car.Number) && lastLapTimesBeforeReset.TryGetValue(car.Number, out var lastLapTime))
+            if (!string.IsNullOrEmpty(car.Number))
             {
-                car.LastLapTime = lastLapTime;
+                var laps = await lapHistoryService.GetLapsAsync(car.Number);
+                if (laps.Count > 0)
+                {
+                    car.LastLapTime = laps[0].LastLapTime;
+                    timeSetCount++;
+                }
             }
         }
+
+        Logger.LogInformation("Set last lap time before reset for {count} cars of {total}", timeSetCount, SessionState.CarPositions.Count);
     }
 
     public virtual void SetSessionClassMetadata()

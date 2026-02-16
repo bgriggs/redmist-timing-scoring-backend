@@ -15,16 +15,16 @@ public class CarLapHistoryService : ICarLapHistoryService
     
     private readonly ILogger _logger;
     private readonly IConnectionMultiplexer _cacheMux;
-    private readonly SessionContext _sessionContext;
+    private readonly int _eventId;
 
     public CarLapHistoryService(
         ILoggerFactory loggerFactory,
         IConnectionMultiplexer cacheMux,
-        SessionContext sessionContext)
+        IConfiguration configuration)
     {
         _logger = (loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger(GetType().Name);
         _cacheMux = cacheMux ?? throw new ArgumentNullException(nameof(cacheMux));
-        _sessionContext = sessionContext ?? throw new ArgumentNullException(nameof(sessionContext));
+        _eventId = configuration.GetValue("event_id", 0);
     }
 
     /// <summary>
@@ -41,8 +41,7 @@ public class CarLapHistoryService : ICarLapHistoryService
 
         try
         {
-            var eventId = _sessionContext.EventId;
-            var key = string.Format(Consts.CAR_LAP_HISTORY, eventId, position.Number);
+            var key = string.Format(Consts.CAR_LAP_HISTORY, _eventId, position.Number);
             var cache = _cacheMux.GetDatabase();
 
             // Serialize the CarPosition to JSON
@@ -54,13 +53,13 @@ public class CarLapHistoryService : ICarLapHistoryService
             // Trim the list to keep only the last MaxLapsPerCar laps
             await cache.ListTrimAsync(key, 0, MaxLapsPerCar - 1);
 
-            _logger.LogTrace("Added lap {lap} for car {car} in event {event}. Key: {key}", 
-                position.LastLapCompleted, position.Number, eventId, key);
+            //_logger.LogTrace("Added lap {lap} for car {car} in event {event}. Key: {key}", 
+            //    position.LastLapCompleted, position.Number, _eventId, key);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error adding lap for car {car} in event {event}", 
-                position.Number, _sessionContext.EventId);
+                position.Number, _eventId);
             throw;
         }
     }
@@ -78,8 +77,7 @@ public class CarLapHistoryService : ICarLapHistoryService
 
         try
         {
-            var eventId = _sessionContext.EventId;
-            var key = string.Format(Consts.CAR_LAP_HISTORY, eventId, carNumber);
+            var key = string.Format(Consts.CAR_LAP_HISTORY, _eventId, carNumber);
             var cache = _cacheMux.GetDatabase();
 
             // Get all laps from the list
@@ -98,15 +96,43 @@ public class CarLapHistoryService : ICarLapHistoryService
                 }
             }
 
-            _logger.LogTrace("Retrieved {count} lap(s) for car {car} in event {event}", 
-                laps.Count, carNumber, eventId);
+            //_logger.LogTrace("Retrieved {count} lap(s) for car {car} in event {event}", 
+            //    laps.Count, carNumber, _eventId);
 
             return laps;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving laps for car {car} in event {event}", 
-                carNumber, _sessionContext.EventId);
+                carNumber, _eventId);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task ClearLapsAsync()
+    {
+        try
+        {
+            var pattern = string.Format(Consts.CAR_LAP_HISTORY, _eventId, "*");
+            var cache = _cacheMux.GetDatabase();
+            var server = _cacheMux.GetServer(_cacheMux.GetEndPoints().First());
+
+            var keys = server.Keys(pattern: pattern).ToArray();
+
+            if (keys.Length > 0)
+            {
+                await cache.KeyDeleteAsync(keys);
+                _logger.LogTrace("Cleared {count} lap history key(s) for event {event}", keys.Length, _eventId);
+            }
+            else
+            {
+                _logger.LogTrace("No lap history keys found to clear for event {event}", _eventId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error clearing lap history for event {event}", _eventId);
             throw;
         }
     }

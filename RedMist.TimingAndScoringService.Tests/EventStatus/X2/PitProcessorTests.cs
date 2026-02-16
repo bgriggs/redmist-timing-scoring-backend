@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.X2;
 using RedMist.EventProcessor.Models;
 using RedMist.EventProcessor.Tests.Utilities;
@@ -44,7 +45,8 @@ public class PitProcessorTests
         var options = optionsBuilder.Options;
         var dbContextFactory = new TestDbContextFactory(options);
 
-        _sessionContext = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object) { IsMultiloopActive = true };
+        var mockLapHistoryService = new Mock<ICarLapHistoryService>();
+        _sessionContext = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object, mockLapHistoryService.Object) { IsMultiloopActive = true };
 
         // Use real TsContext instead of mock since we need to access non-virtual properties
         var realDbContext = new TsContext(options);

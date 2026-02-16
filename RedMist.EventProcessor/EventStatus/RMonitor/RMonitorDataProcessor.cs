@@ -197,7 +197,8 @@ public class RMonitorDataProcessor
         // to have their last lap time updated
         if (isMidRaceReset)
         {
-            sessionContext.SetLastLapTimeBeforeReset();
+            await sessionContext.SetLastLapTimeBeforeResetAsync();
+            Logger.LogInformation("Completed resetting lap times for mid-race reset");
         }
 
         return new PatchUpdates([.. sessionPatches], [.. carPatches]);
@@ -273,7 +274,7 @@ public class RMonitorDataProcessor
         if (Heartbeat.FlagStatus == string.Empty)
             return false;
         // A multi-line command that includes at last the following should follow a reset
-        return data.Contains("$I") && data.Contains("$A") && data.Contains("$COMP") && data.Contains("$G") && data.Contains("$H");
+        return data.Contains("$I") && (data.Contains("$A") || data.Contains("$COMP"));
     }
 
     /// <summary>

@@ -6,6 +6,7 @@ using Moq;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.InCarDriverMode;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
@@ -33,7 +34,9 @@ public class DriverModeProcessorIntegrationTests
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
         var dbContextFactory = CreateDbContextFactory();
-        _sessionContext = new SessionContext(configuration, dbContextFactory, _mockLoggerFactory.Object, new FakeTimeProvider());
+        var fakeTimeProvider = new FakeTimeProvider();
+        var mockLapHistoryService = new Mock<ICarLapHistoryService>();
+        _sessionContext = new SessionContext(configuration, dbContextFactory, _mockLoggerFactory.Object, mockLapHistoryService.Object, fakeTimeProvider);
 
         var carPositions = new List<CarPosition>
         {

@@ -7,6 +7,7 @@ using Moq;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.RMonitor;
 using RedMist.EventProcessor.Models;
@@ -236,8 +237,9 @@ public class SessionMonitorTests
 
         var dbContextFactory = CreateDbContextFactory();
         var loggerFactory = new DebugLoggerFactory();
+        var mockLapHistoryService = new Mock<ICarLapHistoryService>();
 
-        return new SessionContext(configuration, dbContextFactory, loggerFactory);
+        return new SessionContext(configuration, dbContextFactory, loggerFactory, mockLapHistoryService.Object);
     }
 
     private static IDbContextFactory<TsContext> CreateDbContextFactory()

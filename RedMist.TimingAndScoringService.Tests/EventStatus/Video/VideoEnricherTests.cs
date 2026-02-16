@@ -5,6 +5,7 @@ using Moq;
 using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.Video;
 using RedMist.EventProcessor.Models;
 using RedMist.EventProcessor.Tests.Utilities;
@@ -42,7 +43,8 @@ public class VideoEnricherTests
             .Build();
 
         var dbContextFactory = CreateDbContextFactory();
-        sessionContext = new SessionContext(config, dbContextFactory, mockLoggerFactory.Object);
+        var mockLapHistoryService = new Mock<ICarLapHistoryService>();
+        sessionContext = new SessionContext(config, dbContextFactory, mockLoggerFactory.Object, mockLapHistoryService.Object);
 
             videoEnricher = new VideoEnricher(sessionContext, mockLoggerFactory.Object, mockConnectionMultiplexer.Object);
         }

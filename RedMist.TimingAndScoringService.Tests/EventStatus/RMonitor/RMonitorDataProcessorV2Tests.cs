@@ -6,6 +6,7 @@ using Moq;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.RMonitor;
 using RedMist.EventProcessor.Models;
@@ -37,7 +38,8 @@ public class RMonitorDataProcessorV2Tests
             .AddInMemoryCollection(new Dictionary<string, string?> { { "event_id", "1" } })
             .Build();
         var dbContextFactory = CreateDbContextFactory();
-        _sessionContext = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object);
+        var mockLapHistoryService = new Mock<ICarLapHistoryService>();
+        _sessionContext = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object, mockLapHistoryService.Object);
 
         // Verify that CreateLogger is being called and set up the factory to return our mock
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);

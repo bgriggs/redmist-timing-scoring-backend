@@ -82,7 +82,7 @@ public class LapProcessor : IDisposable
                 if (position.LastLapCompleted == 0 && !IsLapNewerThanLastEntryWithReplace(position))
                     continue;
 
-                Logger.LogTrace("Car {n} completed new lap {l} in event {e}. Buffering for pit message check...", position.Number, position.LastLapCompleted, eventId);
+                //Logger.LogTrace("Car {n} completed new lap {l} in event {e}. Buffering for pit message check...", position.Number, position.LastLapCompleted, eventId);
 
                 // Protect both queue operations AND lap tracking updates with the same lock
                 // to prevent race conditions
@@ -204,7 +204,7 @@ public class LapProcessor : IDisposable
 
         if (positionsToProcess.Count > 0)
         {
-            Logger.LogTrace("Processing {count} pending lap(s) for car {n} immediately due to pit message", positionsToProcess.Count, carNumber);
+            //Logger.LogTrace("Processing {count} pending lap(s) for car {n} immediately due to pit message", positionsToProcess.Count, carNumber);
             await LogCompletedLapsAsync([.. positionsToProcess.Select(p => (carNumber, p))]);
         }
     }
@@ -222,7 +222,7 @@ public class LapProcessor : IDisposable
 
         foreach (var (carNumber, position) in completions)
         {
-            Logger.LogTrace("Car {n} completed lap {l} in event {e}. Logging...", carNumber, position.LastLapCompleted, eventId);
+            //Logger.LogTrace("Car {n} completed lap {l} in event {e}. Logging...", carNumber, position.LastLapCompleted, eventId);
 
             // Update pit stops - this will set LapIncludedPit if the lap included a pit stop
             pitProcessor?.UpdateCarPositionForLogging(position);

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
@@ -33,7 +34,8 @@ public class PositionDataEnricherTests
             .Build();
 
         var dbContextFactory = CreateDbContextFactory();
-        _sessionContext = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object);
+        var mockLapHistoryService = new Mock<ICarLapHistoryService>();
+        _sessionContext = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object, mockLapHistoryService.Object);
         _enricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
     }
 

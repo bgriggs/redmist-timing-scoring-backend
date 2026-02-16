@@ -6,6 +6,7 @@ using Moq;
 using RedMist.Backend.Shared.Services;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.Models;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
@@ -39,7 +40,8 @@ public class ConsistencyCheckServiceTests
             .AddInMemoryCollection(configDict)
             .Build();
         var dbContextFactory = CreateDbContextFactory();
-        sessionContext = new SessionContext(configuration, dbContextFactory, mockLoggerFactory.Object, fakeTimeProvider);
+        var mockLapHistoryService = new Mock<ICarLapHistoryService>();
+        sessionContext = new SessionContext(configuration, dbContextFactory, mockLoggerFactory.Object, mockLapHistoryService.Object, fakeTimeProvider);
 
         testOptions = new ConsistencyCheckOptions
         {

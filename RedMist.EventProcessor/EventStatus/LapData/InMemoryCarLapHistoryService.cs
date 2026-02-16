@@ -11,13 +11,15 @@ namespace RedMist.EventProcessor.EventStatus.LapData;
 public class InMemoryCarLapHistoryService : ICarLapHistoryService
 {
     private const int MaxLapsPerCar = 5;
-    
-    private readonly SessionContext _sessionContext;
+
+    private readonly SessionContext? _sessionContext;
+    private readonly int _eventId;
     private readonly Dictionary<string, List<CarPosition>> _storage = new();
 
-    public InMemoryCarLapHistoryService(SessionContext sessionContext)
+    public InMemoryCarLapHistoryService(SessionContext? sessionContext, int? eventId = null)
     {
-        _sessionContext = sessionContext ?? throw new ArgumentNullException(nameof(sessionContext));
+        _sessionContext = sessionContext;
+        _eventId = eventId ?? sessionContext?.EventId ?? 0;
     }
 
     /// <summary>
@@ -30,8 +32,7 @@ public class InMemoryCarLapHistoryService : ICarLapHistoryService
         if (string.IsNullOrEmpty(position?.Number))
             throw new ArgumentException("Car number cannot be null or empty", nameof(position));
 
-        var eventId = _sessionContext.EventId;
-        var key = string.Format(Consts.CAR_LAP_HISTORY, eventId, position.Number);
+        var key = string.Format(Consts.CAR_LAP_HISTORY, _eventId, position.Number);
 
         if (!_storage.ContainsKey(key))
         {
@@ -61,8 +62,7 @@ public class InMemoryCarLapHistoryService : ICarLapHistoryService
         if (string.IsNullOrEmpty(carNumber))
             throw new ArgumentException("Car number cannot be null or empty", nameof(carNumber));
 
-        var eventId = _sessionContext.EventId;
-        var key = string.Format(Consts.CAR_LAP_HISTORY, eventId, carNumber);
+        var key = string.Format(Consts.CAR_LAP_HISTORY, _eventId, carNumber);
 
         if (_storage.TryGetValue(key, out var laps))
         {
@@ -85,5 +85,12 @@ public class InMemoryCarLapHistoryService : ICarLapHistoryService
     public void Clear()
     {
         _storage.Clear();
+    }
+
+    /// <inheritdoc />
+    public Task ClearLapsAsync()
+    {
+        _storage.Clear(); 
+        return Task.CompletedTask;
     }
 }

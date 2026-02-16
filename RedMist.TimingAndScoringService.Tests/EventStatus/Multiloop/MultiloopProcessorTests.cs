@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.Multiloop;
 using RedMist.EventProcessor.Models;
 using RedMist.EventProcessor.Tests.Utilities;
@@ -32,7 +33,8 @@ public class MultiloopProcessorTests
             .Build();
 
         var dbContextFactory = CreateDbContextFactory();
-        _context = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object);
+        var mockLapHistoryService = new Mock<ICarLapHistoryService>();
+        _context = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object, mockLapHistoryService.Object);
         _processor = new MultiloopProcessor(_mockLoggerFactory.Object, _context);
     }
 
