@@ -202,7 +202,6 @@ public abstract class OrganizationControllerBase : Controller
         {
             Logger.LogError(ex, "Error getting control log statistics for org {orgId}", organization.Id);
             ControlLogStatsFailureCounter.Inc();
-            throw;
         }
 
         return cls;
