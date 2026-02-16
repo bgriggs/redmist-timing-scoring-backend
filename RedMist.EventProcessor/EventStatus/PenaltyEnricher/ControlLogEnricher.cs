@@ -96,6 +96,11 @@ public class ControlLogEnricher : BackgroundService
                             car.PenalityLaps = penalty.Laps;
                             patch.PenalityLaps = penalty.Laps;
                         }
+                        if (car.BlackFlags  != penalty.BlackFlags)
+                        {                             
+                            car.BlackFlags = penalty.BlackFlags;
+                            patch.BlackFlags = penalty.BlackFlags;
+                        }
                         if (TimingCommon.Models.Mappers.CarPositionMapper.IsValidPatch(patch))
                         {
                             patch.Number = car.Number;
@@ -106,7 +111,7 @@ public class ControlLogEnricher : BackgroundService
                 else
                 {
                     // Car not in penalty list - clear penalties if they were previously set
-                    if (car.PenalityWarnings > 0 || car.PenalityLaps > 0)
+                    if (car.PenalityWarnings > 0 || car.PenalityLaps > 0 || car.BlackFlags > 0)
                     {
                         var patch = new CarPositionPatch();
                         if (car.PenalityWarnings > 0)
@@ -118,6 +123,11 @@ public class ControlLogEnricher : BackgroundService
                         {
                             car.PenalityLaps = 0;
                             patch.PenalityLaps = 0;
+                        }
+                        if (car.BlackFlags > 0)
+                        {
+                            car.BlackFlags = 0;
+                            patch.BlackFlags = 0;
                         }
                         if (TimingCommon.Models.Mappers.CarPositionMapper.IsValidPatch(patch))
                         {

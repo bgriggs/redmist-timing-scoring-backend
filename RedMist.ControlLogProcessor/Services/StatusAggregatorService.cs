@@ -151,7 +151,7 @@ public class StatusAggregatorService : BackgroundService
         var carPenaltyEntries = new List<HashEntry>();
         foreach (var carPenalty in carPenalties)
         {
-            var penaltyJson = JsonSerializer.Serialize(new CarPenalty(carPenalty.Value.warnings, carPenalty.Value.laps));
+            var penaltyJson = JsonSerializer.Serialize(new CarPenalty(carPenalty.Value.Warnings, carPenalty.Value.Laps, carPenalty.Value.BlackFlags));
             carPenaltyEntries.Add(new HashEntry(carPenalty.Key, penaltyJson));
         }
         

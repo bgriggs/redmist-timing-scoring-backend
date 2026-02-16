@@ -96,7 +96,7 @@ public class ControlLogEnricherTests
         var car2 = CreateTestCarPosition("2", "B", 2);
         _sessionContext.UpdateCars([car1, car2]);
         SetUpdateReset(true);
-        SetPenaltyLookup("2", new CarPenalty(1, 0));
+        SetPenaltyLookup("2", new CarPenalty(1, 0, 0));
 
         // Act
         var result = _enricher.Process();
@@ -136,7 +136,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Simulate penalty lookup with warnings
-        SetPenaltyLookup("1", new CarPenalty(2, 0));
+        SetPenaltyLookup("1", new CarPenalty(2, 0, 0));
 
         // Act
         var result = _enricher.Process();
@@ -164,7 +164,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Simulate penalty lookup with laps
-        SetPenaltyLookup("1", new CarPenalty(0, 3));
+        SetPenaltyLookup("1", new CarPenalty(0, 3, 0));
 
         // Act
         var result = _enricher.Process();
@@ -193,7 +193,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Simulate penalty lookup with different values
-        SetPenaltyLookup("1", new CarPenalty(3, 1));
+        SetPenaltyLookup("1", new CarPenalty(3, 1, 0));
 
         // Act
         var result = _enricher.Process();
@@ -213,6 +213,196 @@ public class ControlLogEnricherTests
     }
 
     [TestMethod]
+    public void Process_CarWithBlackFlagsChanged_CreatesPatch()
+    {
+        // Arrange
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.BlackFlags = 0;
+        _sessionContext.UpdateCars([car1]);
+        SetUpdateReset(true);
+
+        // Simulate penalty lookup with black flags
+        SetPenaltyLookup("1", new CarPenalty(0, 0, 2));
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(1, result);
+
+        var patch = result[0];
+        Assert.AreEqual("1", patch.Number);
+        Assert.AreEqual(2, patch.BlackFlags);
+        Assert.IsNull(patch.PenalityWarnings);
+        Assert.IsNull(patch.PenalityLaps);
+
+        // Verify car state was updated
+        Assert.AreEqual(2, car1.BlackFlags);
+    }
+
+    [TestMethod]
+    public void Process_CarWithAllPenaltiesChanged_CreatesPatchWithAll()
+    {
+        // Arrange
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.PenalityWarnings = 0;
+        car1.PenalityLaps = 0;
+        car1.BlackFlags = 0;
+        _sessionContext.UpdateCars([car1]);
+        SetUpdateReset(true);
+
+        SetPenaltyLookup("1", new CarPenalty(1, 2, 3));
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(1, result);
+
+        var patch = result[0];
+        Assert.AreEqual("1", patch.Number);
+        Assert.AreEqual(1, patch.PenalityWarnings);
+        Assert.AreEqual(2, patch.PenalityLaps);
+        Assert.AreEqual(3, patch.BlackFlags);
+
+        // Verify car state was updated
+        Assert.AreEqual(1, car1.PenalityWarnings);
+        Assert.AreEqual(2, car1.PenalityLaps);
+        Assert.AreEqual(3, car1.BlackFlags);
+    }
+
+    [TestMethod]
+    public void Process_CarWithSameBlackFlags_DoesNotCreatePatch()
+    {
+        // Arrange
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.BlackFlags = 2;
+        _sessionContext.UpdateCars([car1]);
+        SetUpdateReset(true);
+
+        SetPenaltyLookup("1", new CarPenalty(0, 0, 2));
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.IsEmpty(result);
+
+        Assert.AreEqual(2, car1.BlackFlags);
+    }
+
+    [TestMethod]
+    public void Process_CarNotInPenaltyLookupButHasBlackFlags_ClearsBlackFlags()
+    {
+        // Arrange
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.BlackFlags = 3;
+        _sessionContext.UpdateCars([car1]);
+        SetUpdateReset(true);
+
+        // Car "1" is NOT in penalty lookup
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(1, result);
+
+        var patch = result[0];
+        Assert.AreEqual("1", patch.Number);
+        Assert.AreEqual(0, patch.BlackFlags);
+        Assert.IsNull(patch.PenalityWarnings);
+        Assert.IsNull(patch.PenalityLaps);
+
+        // Verify car state was cleared
+        Assert.AreEqual(0, car1.BlackFlags);
+    }
+
+    [TestMethod]
+    public void Process_CarNotInPenaltyLookupButHasAllPenalties_ClearsAll()
+    {
+        // Arrange
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.PenalityWarnings = 1;
+        car1.PenalityLaps = 2;
+        car1.BlackFlags = 3;
+        _sessionContext.UpdateCars([car1]);
+        SetUpdateReset(true);
+
+        // Car "1" is NOT in penalty lookup
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(1, result);
+
+        var patch = result[0];
+        Assert.AreEqual("1", patch.Number);
+        Assert.AreEqual(0, patch.PenalityWarnings);
+        Assert.AreEqual(0, patch.PenalityLaps);
+        Assert.AreEqual(0, patch.BlackFlags);
+
+        // Verify car state was cleared
+        Assert.AreEqual(0, car1.PenalityWarnings);
+        Assert.AreEqual(0, car1.PenalityLaps);
+        Assert.AreEqual(0, car1.BlackFlags);
+    }
+
+    [TestMethod]
+    public void Process_MixedScenario_BlackFlagsIncluded()
+    {
+        // Arrange
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.BlackFlags = 0;
+
+        var car2 = CreateTestCarPosition("2", "B", 2);
+        car2.BlackFlags = 2; // Had black flags, now cleared
+
+        var car3 = CreateTestCarPosition("3", "A", 3);
+        car3.PenalityWarnings = 1;
+        car3.BlackFlags = 1; // Black flags updated
+
+        _sessionContext.UpdateCars([car1, car2, car3]);
+        SetUpdateReset(true);
+
+        SetPenaltyLookup("1", new CarPenalty(0, 0, 1)); // New black flag for car 1
+        SetPenaltyLookup("3", new CarPenalty(1, 0, 3)); // Updated black flags for car 3
+        // Car "2" is NOT in penalty lookup (should be cleared)
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+        Assert.HasCount(3, result);
+
+        var car1Patch = result.FirstOrDefault(p => p.Number == "1");
+        var car2Patch = result.FirstOrDefault(p => p.Number == "2");
+        var car3Patch = result.FirstOrDefault(p => p.Number == "3");
+
+        Assert.IsNotNull(car1Patch);
+        Assert.AreEqual(1, car1Patch.BlackFlags);
+
+        Assert.IsNotNull(car2Patch);
+        Assert.AreEqual(0, car2Patch.BlackFlags);
+
+        Assert.IsNotNull(car3Patch);
+        Assert.AreEqual(3, car3Patch.BlackFlags);
+        Assert.IsNull(car3Patch.PenalityWarnings); // Unchanged
+
+        // Verify car states
+        Assert.AreEqual(1, car1.BlackFlags);
+        Assert.AreEqual(0, car2.BlackFlags);
+        Assert.AreEqual(3, car3.BlackFlags);
+    }
+
+    [TestMethod]
     public void Process_CarWithSamePenalties_DoesNotCreatePatch()
     {
         // Arrange
@@ -223,7 +413,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Simulate penalty lookup with same values
-        SetPenaltyLookup("1", new CarPenalty(2, 1));
+        SetPenaltyLookup("1", new CarPenalty(2, 1, 0));
 
         // Act
         var result = _enricher.Process();
@@ -257,9 +447,9 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Simulate penalty lookup
-        SetPenaltyLookup("1", new CarPenalty(1, 0)); // Warnings changed
-        SetPenaltyLookup("2", new CarPenalty(1, 2)); // Laps changed
-        SetPenaltyLookup("3", new CarPenalty(2, 1)); // No change
+        SetPenaltyLookup("1", new CarPenalty(1, 0, 0)); // Warnings changed
+        SetPenaltyLookup("2", new CarPenalty(1, 2, 0)); // Laps changed
+        SetPenaltyLookup("3", new CarPenalty(2, 1, 0)); // No change
 
         // Act
         var result = _enricher.Process();
@@ -289,7 +479,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Set up penalty lookup to find the car
-        SetPenaltyLookup("1", new CarPenalty(1, 0));
+        SetPenaltyLookup("1", new CarPenalty(1, 0, 0));
 
         // Act
         var result = _enricher.Process();
@@ -318,7 +508,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Set penalties that would result in changes
-        SetPenaltyLookup("1", new CarPenalty(1, 1));
+        SetPenaltyLookup("1", new CarPenalty(1, 1, 0));
 
         // Act
         var result = _enricher.Process();
@@ -340,7 +530,7 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Only set penalty for car "1", not car "2"
-        SetPenaltyLookup("1", new CarPenalty(1, 0));
+        SetPenaltyLookup("1", new CarPenalty(1, 0, 0));
 
         // Act
         var result = _enricher.Process();
@@ -480,8 +670,8 @@ public class ControlLogEnricherTests
         SetUpdateReset(true);
 
         // Only car "1" and "3" have penalties today
-        SetPenaltyLookup("1", new CarPenalty(2, 1)); // New penalties for car 1
-        SetPenaltyLookup("3", new CarPenalty(2, 0)); // Updated penalty for car 3
+        SetPenaltyLookup("1", new CarPenalty(2, 1, 0)); // New penalties for car 1
+        SetPenaltyLookup("3", new CarPenalty(2, 0, 0)); // Updated penalty for car 3
         // Car "2" and "4" are NOT in penalty lookup (should be cleared)
 
         // Act

@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using RedMist.Database;
-using RedMist.TimingCommon.Models;
 
 namespace RedMist.ControlLogs.WrlGoogleSheets;
 

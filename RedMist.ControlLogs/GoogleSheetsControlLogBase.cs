@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using RedMist.Database;
 using RedMist.TimingCommon.Models;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace RedMist.ControlLogs;
 
@@ -54,12 +55,23 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
     /// </summary>
     protected virtual int MaxMissedTimestamps => 2;
 
+    /// <inheritdoc />
+    public virtual Regex WarningPattern { get; } = new(@".*Warning.*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <inheritdoc />
+    public virtual Regex LapPenaltyPattern { get; } = new(@"(\d+)\s+(Lap|Laps)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <inheritdoc />
+    public virtual Regex BlackFlagPattern { get; } = new(@".*Drive Through Penalty.*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+
     protected GoogleSheetsControlLogBase(ILoggerFactory loggerFactory, IConfiguration config, IDbContextFactory<TsContext> tsContext)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         Config = config;
         this.tsContext = tsContext;
     }
+
 
     public async Task<(bool success, IEnumerable<ControlLogEntry> logs)> LoadControlLogAsync(string parameter, CancellationToken stoppingToken = default)
     {

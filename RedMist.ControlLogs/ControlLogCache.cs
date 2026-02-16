@@ -2,19 +2,18 @@
 using Microsoft.Extensions.Logging;
 using RedMist.Database;
 using RedMist.TimingCommon.Models;
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace RedMist.ControlLogs;
 
-public partial class ControlLogCache : IDisposable
+public class ControlLogCache : IDisposable
 {
     private readonly int eventId;
     private ILogger Logger { get; }
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly IControlLogFactory controlLogFactory;
     private readonly Dictionary<string, List<ControlLogEntry>> controlLogCache = [];
-    private Dictionary<string, (int warnings, int laps)> penalityCounts = [];
+    private Dictionary<string, PenaltyCounts> penalityCounts = [];
     private readonly SemaphoreSlim cacheLock = new(1, 1);
     private bool disposed;
 
@@ -100,7 +99,7 @@ public partial class ControlLogCache : IDisposable
                 }
 
                 // Determine the number of penalties (laps and warnings)
-                penalityCounts = GetWarningsAndPenalties(controlLogCache);
+                penalityCounts = GetPenaltyCounts(controlLogCache, controlLog.WarningPattern, controlLog.LapPenaltyPattern, controlLog.BlackFlagPattern);
                 //Logger.LogInformation("GetWarningsAndPenalties in {t}ms", sw.ElapsedMilliseconds);
                 var changes = GetChangedCars(oldLogs, controlLogCache);
                 //Logger.LogInformation("GetChangedCars in {t}ms", sw.ElapsedMilliseconds);
@@ -223,26 +222,23 @@ public partial class ControlLogCache : IDisposable
     /// <summary>
     /// Parse through the penalty column and count the number of warnings and laps.
     /// </summary>
-    public static Dictionary<string, (int warnings, int laps)> GetWarningsAndPenalties(Dictionary<string, List<ControlLogEntry>> logs)
+    public static Dictionary<string, PenaltyCounts> GetPenaltyCounts(Dictionary<string, List<ControlLogEntry>> logs,
+        Regex warningRegex, Regex lapPenaltyRegex, Regex blackFlagRegex)
     {
-        var results = new Dictionary<string, (int warnings, int laps)>();
-        var warningRegex = WarningRegex();
-        var lapPenaltyRegex = LapPenaltyRegex();
+        var results = new Dictionary<string, PenaltyCounts>();
 
         foreach (var car in logs)
         {
             if (string.IsNullOrWhiteSpace(car.Key))
-            {
                 continue;
-            }
+
             int laps = 0;
             int warnings = 0;
+            int blackFlags = 0;
             foreach (var entry in car.Value)
             {
                 if (string.IsNullOrWhiteSpace(entry.PenaltyAction))
-                {
                     continue;
-                }
 
                 var isWarning = warningRegex.IsMatch(entry.PenaltyAction);
                 if (isWarning && ApplyToCar(car.Key, entry))
@@ -255,17 +251,17 @@ public partial class ControlLogCache : IDisposable
                 {
                     laps += int.Parse(lapPenalties.Groups[1].Value);
                 }
+                var isBlackFlag = blackFlagRegex.IsMatch(entry.PenaltyAction);
+                if (isBlackFlag && ApplyToCar(car.Key, entry))
+                {
+                    blackFlags++;
+                    continue;
+                }
             }
-            results[car.Key] = (warnings, laps);
+            results[car.Key] = new PenaltyCounts(warnings, laps, blackFlags);
         }
         return results;
     }
-
-    [GeneratedRegex(@".*Warning.*", RegexOptions.IgnoreCase, "en-US")]
-    private static partial Regex WarningRegex();
-
-    [GeneratedRegex(@"(\d+)\s+(Lap|Laps)", RegexOptions.IgnoreCase, "en-US")]
-    private static partial Regex LapPenaltyRegex();
 
     /// <summary>
     /// When there are two cars, check if the car is highlighted to determine who to apply the penalty to.
@@ -292,7 +288,7 @@ public partial class ControlLogCache : IDisposable
         return false;
     }
 
-    public async Task<Dictionary<string, (int warnings, int laps)>> GetPenaltiesAsync(CancellationToken stoppingToken = default)
+    public async Task<Dictionary<string, PenaltyCounts>> GetPenaltiesAsync(CancellationToken stoppingToken = default)
     {
         await cacheLock.WaitAsync(stoppingToken);
         try

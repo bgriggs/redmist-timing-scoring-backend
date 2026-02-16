@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using RedMist.Database;
+using System.Text.RegularExpressions;
 
 namespace RedMist.ControlLogs.ChampCarGoogleSheets;
 
@@ -33,4 +34,6 @@ public class GoogleSheetsControlLog : GoogleSheetsControlLogBase
         : base(loggerFactory, config, tsContext)
     {
     }
+
+    public override Regex BlackFlagPattern { get; } = new(@".*Drive.*Through.*|\d+.Min(ute)?.*|.*Min(ute)?\s*Hold.*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 }
