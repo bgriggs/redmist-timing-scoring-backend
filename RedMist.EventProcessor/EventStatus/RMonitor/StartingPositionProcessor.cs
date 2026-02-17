@@ -104,7 +104,7 @@ public class StartingPositionProcessor : BackgroundService
             var car = sessionContext.GetCarByNumber(regNum);
             if (car == null || car.Class == null)
             {
-                Logger.LogWarning("Car {rn} not found for starting position", regNum);
+                //Logger.LogWarning("Car {rn} not found for starting position", regNum);
                 continue;
             }
             entries.Add((regNum, car.Class, car.ClassPosition));

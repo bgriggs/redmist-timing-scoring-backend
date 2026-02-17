@@ -105,7 +105,7 @@ public class PositionDataEnricher
         // Use multiloop starting positions if active
         if (sessionContext.IsMultiloopActive)
         {
-            Logger.LogDebug("Using multiloop starting positions");
+            //Logger.LogDebug("Using multiloop starting positions");
 
             // Multiloop will set the overall starting positions. If these have changed
             // since last time, we need to recalculate the in-class starting positions.
@@ -135,11 +135,11 @@ public class PositionDataEnricher
                 else
                     cp.InClassStartingPosition = 0;
             }
-            Logger.LogDebug("Applied multiloop in-class starting positions to {AppliedCount} cars", appliedCount);
+            //Logger.LogDebug("Applied multiloop in-class starting positions to {AppliedCount} cars", appliedCount);
         }
         else // Infer positions from RMonitor data at start of the race
         {
-            Logger.LogDebug("Using RMonitor starting positions");
+            //Logger.LogDebug("Using RMonitor starting positions");
 
             // Apply starting positions from session context
             int appliedCount = 0;
@@ -154,7 +154,7 @@ public class PositionDataEnricher
                 if (sp.HasValue && icsp.HasValue)
                     appliedCount++;
             }
-            Logger.LogDebug("Applied RMonitor starting positions to {AppliedCount} cars", appliedCount);
+            //Logger.LogDebug("Applied RMonitor starting positions to {AppliedCount} cars", appliedCount);
         }
     }
 
