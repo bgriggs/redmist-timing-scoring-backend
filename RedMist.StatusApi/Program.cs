@@ -16,6 +16,7 @@ using RedMist.Database;
 using RedMist.StatusApi.Services;
 using StackExchange.Redis;
 using System.Reflection;
+using System.Threading.RateLimiting;
 
 namespace RedMist.StatusApi;
 
@@ -61,6 +62,28 @@ public class Program
         //    options.SwaggerPermitLimit = 5;
         //    options.GlobalPermitLimit = 30;
         //});
+
+        // Sponsor telemetry rate limiting (per IP)
+        builder.Services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.AddPolicy("sponsor-telemetry", httpContext =>
+                RateLimitPartition.GetTokenBucketLimiter(
+                    httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = 30,
+                        ReplenishmentPeriod = TimeSpan.FromSeconds(10),
+                        TokensPerPeriod = 10,
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 5,
+                        AutoReplenishment = true
+                    }));
+        });
+
+        // Sponsor telemetry background queue
+        builder.Services.AddSingleton<SponsorTelemetryQueue>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<SponsorTelemetryQueue>());
 
         builder.Services.AddControllersWithMessagePack();
 
@@ -211,7 +234,7 @@ public class Program
         }
 
         //// Apply rate limiting middleware (must be after UsePathBase, before endpoints)
-        //app.UseRateLimiter();
+        app.UseRateLimiter();
 
         // Enable Swagger in all environments
         app.UseSwagger(c =>

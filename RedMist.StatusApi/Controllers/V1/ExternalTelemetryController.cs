@@ -1,5 +1,6 @@
 ﻿using Asp.Versioning;
 using k8s.KubeConfigModels;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
@@ -14,6 +15,8 @@ using System.Text.Json;
 
 namespace RedMist.StatusApi.Controllers.V1;
 
+[ApiController]
+[Authorize]
 [Route("v{version:apiVersion}/[controller]/[action]")]
 [Route("[controller]/[action]")] // Also handle legacy unversioned routes
 [ApiVersion("1.0")]

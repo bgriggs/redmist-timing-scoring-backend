@@ -30,6 +30,7 @@ public class TsContext : DbContext
     public DbSet<RelayLog> RelayLogs { get; set; } = null!;
     public DbSet<UIVersionInfo> UIVersions { get; set; } = null!;
     public DbSet<Models.DriverInfo> DriverInfo { get; set; } = null!;
+    public DbSet<SponsorTelemetryLog> SponsorTelemetryLogs { get; set; } = null!;
 
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }

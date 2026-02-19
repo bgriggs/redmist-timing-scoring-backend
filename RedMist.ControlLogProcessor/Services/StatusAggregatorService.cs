@@ -342,6 +342,7 @@ public class StatusAggregatorService : BackgroundService
             controlLogCache?.Dispose();
             subscriptionCheckLock?.Dispose();
             Logger.LogInformation("StatusAggregatorService resources disposed.");
+            GC.SuppressFinalize(this);
         }
         catch (Exception ex)
         {
