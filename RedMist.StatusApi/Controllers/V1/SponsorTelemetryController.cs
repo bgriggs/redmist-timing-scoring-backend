@@ -31,7 +31,7 @@ public class SponsorTelemetryController : Controller
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
-    public IActionResult SaveImpression(string source, string eventId, string imageId)
+    public IActionResult SaveImpression(string source, string imageId, string eventId = "")
     {
         Enqueue(source, eventId, imageId, IMPRESSION);
         return Ok();
@@ -43,7 +43,7 @@ public class SponsorTelemetryController : Controller
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
-    public IActionResult SaveViewableImpression(string source, string eventId, string imageId)
+    public IActionResult SaveViewableImpression(string source, string imageId, string eventId = "")
     {
         Enqueue(source, eventId, imageId, VIEWABLE_IMPRESSION);
         return Ok();
@@ -52,7 +52,7 @@ public class SponsorTelemetryController : Controller
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
-    public IActionResult SaveClickThrough(string source, string eventId, string imageId)
+    public IActionResult SaveClickThrough(string source, string imageId, string eventId = "")
     {
         Enqueue(source, eventId, imageId, CLICK_THROUGH);
         return Ok();
@@ -61,7 +61,7 @@ public class SponsorTelemetryController : Controller
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
-    public IActionResult SaveEngagementDuration(string source, string eventId, string imageId, int durationMs)
+    public IActionResult SaveEngagementDuration(string source, string imageId, int durationMs, string eventId = "")
     {
         Enqueue(source, eventId, imageId, ENGAGEMENT_DURATION, durationMs);
         return Ok();
