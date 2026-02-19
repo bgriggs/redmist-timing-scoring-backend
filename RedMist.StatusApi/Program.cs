@@ -17,6 +17,7 @@ using RedMist.StatusApi.Services;
 using StackExchange.Redis;
 using System.Reflection;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace RedMist.StatusApi;
 
@@ -67,6 +68,13 @@ public class Program
         builder.Services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.AddFixedWindowLimiter("swagger", config =>
+            {
+                config.PermitLimit = 10;
+                config.Window = TimeSpan.FromMinutes(1);
+                config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+                config.QueueLimit = 5;
+            });
             options.AddPolicy("sponsor-telemetry", httpContext =>
                 RateLimitPartition.GetTokenBucketLimiter(
                     httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
