@@ -12,7 +12,7 @@ namespace RedMist.StatusApi.Controllers.V1;
 [Route("v{version:apiVersion}/[controller]/[action]")]
 [Route("[controller]/[action]")]
 [ApiVersion("1.0")]
-public class SponsorTelemetryControler : Controller
+public class SponsorTelemetryController : Controller
 {
     private const string IMPRESSION = "Impression";
     private const string VIEWABLE_IMPRESSION = "ViewableImpression";
@@ -22,7 +22,7 @@ public class SponsorTelemetryControler : Controller
     private ILogger Logger { get; }
     private readonly SponsorTelemetryQueue queue;
 
-    public SponsorTelemetryControler(ILoggerFactory loggerFactory, SponsorTelemetryQueue queue)
+    public SponsorTelemetryController(ILoggerFactory loggerFactory, SponsorTelemetryQueue queue)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.queue = queue;
