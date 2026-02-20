@@ -27,6 +27,12 @@ public class RMonitorDataProcessor
     private readonly StartingPositionProcessor startingPositionProcessor;
     private const string STANDALONE_RESET_CMD = "$I, \"00:00:00\", \"0/0/0000\"";
 
+    /// <summary>
+    /// Callback to flush pending lap completions before reading lap history during mid-race reset.
+    /// This ensures the lap history service has all completed laps before SetLastLapTimeBeforeResetAsync reads it.
+    /// </summary>
+    public Func<Task>? FlushPendingLaps { get; set; }
+
 
     public RMonitorDataProcessor(ILoggerFactory loggerFactory, SessionContext sessionContext,
         ResetProcessor resetProcessor, StartingPositionProcessor startingPositionProcessor)
@@ -197,6 +203,11 @@ public class RMonitorDataProcessor
         // to have their last lap time updated
         if (isMidRaceReset)
         {
+            // Flush any pending lap completions so the lap history service has all completed laps
+            // before we read it to restore last lap times
+            if (FlushPendingLaps != null)
+                await FlushPendingLaps();
+
             await sessionContext.SetLastLapTimeBeforeResetAsync();
             Logger.LogInformation("Completed resetting lap times for mid-race reset");
         }

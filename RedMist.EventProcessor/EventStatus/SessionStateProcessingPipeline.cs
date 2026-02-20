@@ -102,6 +102,9 @@ public class SessionStateProcessingPipeline
         this.staleCarEnricher = staleCarEnricher;
         this.updateConsolidator = updateConsolidator;
 
+        // Wire up flush of pending laps for mid-race reset handling
+        rMonitorDataProcessorV2.FlushPendingLaps = () => lapProcessor.FlushPendingLapsAsync();
+
         // Wire up the notification from pit processor to lap processor
         pitProcessorV2.NotifyLapProcessorOfPitMessages = async (carNumbers) =>
         {
