@@ -818,6 +818,17 @@ public class SessionStateProcessingPipelineTests
         var sessionChangeTm = new TimingMessage(Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE, sJson, s.Id, DateTime.Now);
         await _pipeline.PostAsync(sessionChangeTm);
 
+        // Wait for the background NewSessionAsync task to complete. PostAsync triggers
+        // FinalizeSession -> FireFinalizedSession -> Task.Run(NewSessionAsync) which acquires
+        // the write lock and resets session state. Without this wait, the background task can
+        // race with data processing below and clear accumulated state (car positions, flags),
+        // causing CheckForFinished to miss the checkered flag transition.
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (_sessionContext.SessionState.SessionId != s.Id && sw.ElapsedMilliseconds < 5000)
+        {
+            await Task.Delay(10);
+        }
+
         bool finalizedCalled = false;
         _sessionMonitor.FinalizedSession += () => finalizedCalled = true;
 
