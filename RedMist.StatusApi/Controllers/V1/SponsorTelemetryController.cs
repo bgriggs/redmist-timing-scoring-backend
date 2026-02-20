@@ -2,7 +2,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
+using RedMist.Database;
 using RedMist.StatusApi.Services;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.StatusApi.Controllers.V1;
 
@@ -21,12 +25,18 @@ public class SponsorTelemetryController : Controller
 
     private ILogger Logger { get; }
     private readonly SponsorTelemetryQueue queue;
+    private readonly IDbContextFactory<TsContext> tsContext;
+    private readonly HybridCache hcache;
 
-    public SponsorTelemetryController(ILoggerFactory loggerFactory, SponsorTelemetryQueue queue)
+
+    public SponsorTelemetryController(ILoggerFactory loggerFactory, SponsorTelemetryQueue queue, IDbContextFactory<TsContext> tsContext, HybridCache hcache)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.queue = queue;
+        this.tsContext = tsContext;
+        this.hcache = hcache;
     }
+
 
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -71,5 +81,37 @@ public class SponsorTelemetryController : Controller
     {
         Logger.LogTrace("{m} source={s} eventId={e} imageId={i} type={t}", nameof(Enqueue), source, eventId, imageId, eventType);
         queue.TryEnqueue(new SponsorTelemetryEntry(source, eventId, imageId, eventType, durationMs));
+    }
+
+    [HttpGet]
+    [ProducesResponseType<List<SponsorInfo>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<SponsorInfo>>> GetSponsorsAsync()
+    {
+        var sponsors = await hcache.GetOrCreateAsync(
+            "sponsors-all",
+            async ct =>
+            {
+                using var context = await tsContext.CreateDbContextAsync(ct);
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                return await context.Sponsors
+                    .Where(s => s.SubscriptionStart <= today && (s.SubscriptionEnd == null || s.SubscriptionEnd >= today))
+                    .Select(s => new SponsorInfo
+                    {
+                        Id = s.Id,
+                        Name = s.Name,
+                        ImageUrl = s.ImageUrl,
+                        TargetUrl = s.TargetUrl,
+                        AltText = s.AltText,
+                        DisplayDurationMs = s.DisplayDurationMs,
+                        DisplayPriority = s.DisplayPriority
+                    })
+                    .ToListAsync(ct);
+            },
+            new HybridCacheEntryOptions
+            {
+                Expiration = TimeSpan.FromMinutes(15),
+                LocalCacheExpiration = TimeSpan.FromMinutes(15)
+            });
+        return Ok(sponsors);
     }
 }
