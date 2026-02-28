@@ -454,7 +454,7 @@ public class SessionStateProcessingPipelineTests
                         var sw = System.Diagnostics.Stopwatch.StartNew();
                         while (_sessionContext.SessionState.SessionId != s.Id && sw.ElapsedMilliseconds < 5000)
                         {
-                            await Task.Delay(10);
+                            await Task.Delay(10, TestContext.CancellationToken);
                         }
                     }
                 }

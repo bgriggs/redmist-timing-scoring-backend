@@ -66,8 +66,8 @@ public class ExternalTelemetryController : Controller
         bool isRelaySource = clientId.StartsWith("relay", true, CultureInfo.InvariantCulture);
         if (!isRelaySource && !User.IsInRole("ext-telem"))
             return Forbid();
-        if (!isRelaySource)
-            return StatusCode(StatusCodes.Status423Locked, "Record is locked by a higher priority user");
+        //if (!isRelaySource)
+        //    return StatusCode(StatusCodes.Status423Locked, "Record is locked by a higher priority user");
         if (drivers == null || drivers.Count == 0)
             return BadRequest("No drivers found");
 

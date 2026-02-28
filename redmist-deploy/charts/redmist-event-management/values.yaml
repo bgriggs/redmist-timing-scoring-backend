@@ -1,4 +1,4 @@
-replicaCount: 1
+replicaCount: 2
 
 image:
   repository: bigmission/redmist-event-management
@@ -30,11 +30,11 @@ autoscaling:
 
 resources:
   requests:
-    cpu: "25m"
-    memory: "300Mi"
+    cpu: "35m"
+    memory: "450Mi"
   limits:
     cpu: "100m"
-    memory: "500Mi"
+    memory: "700Mi"
 
 serviceAccount:
   create: false

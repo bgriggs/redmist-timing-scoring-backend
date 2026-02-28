@@ -79,7 +79,7 @@ public class SponsorTelemetryController : Controller
 
     private void Enqueue(string source, string eventId, string imageId, string eventType, int? durationMs = null)
     {
-        Logger.LogTrace("{m} source={s} eventId={e} imageId={i} type={t}", nameof(Enqueue), source, eventId, imageId, eventType);
+        //Logger.LogTrace("{m} source={s} eventId={e} imageId={i} type={t}", nameof(Enqueue), source, eventId, imageId, eventType);
         queue.TryEnqueue(new SponsorTelemetryEntry(source, eventId, imageId, eventType, durationMs));
     }
 

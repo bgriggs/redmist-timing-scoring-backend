@@ -11,7 +11,7 @@ namespace RedMist.UpdateFlagtronicsDriverNames;
 
 internal class Program
 {
-    const string NameCsvPath = @"C:\Users\brian\OneDrive\Documents\WRL-ECR-Drivers-2026.csv";
+    const string NameCsvPath = @"C:\Users\brian\OneDrive\Documents\WRL-Barber-Drivers-2026.csv";
     static async Task Main(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
