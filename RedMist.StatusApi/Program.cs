@@ -18,7 +18,9 @@ using StackExchange.Redis;
 using System.Reflection;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http.Connections;
 
 namespace RedMist.StatusApi;
 
@@ -57,6 +59,27 @@ public class Program
             // Note, this should correspond to role configured with KeycloakAuthenticationOptions
             options.RoleClaimType = KeycloakConstants.RoleClaimType;
         });
+
+        // Extract JWT from query string for SignalR WebSocket connections
+        // (WebSocket API does not support custom HTTP headers, so the token is passed via ?access_token=)
+        builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+            .Configure(options =>
+            {
+                var existingOnMessageReceived = options.Events?.OnMessageReceived;
+                options.Events ??= new JwtBearerEvents();
+                options.Events.OnMessageReceived = async context =>
+                {
+                    if (existingOnMessageReceived != null)
+                        await existingOnMessageReceived(context);
+
+                    var accessToken = context.Request.Query["access_token"];
+                    var path = context.HttpContext.Request.Path;
+                    if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/event-status"))
+                    {
+                        context.Token = accessToken;
+                    }
+                };
+            });
 
         //// Configure Rate Limiting with default settings for Swagger
         //builder.Services.AddRedMistRateLimiting(options =>
@@ -302,7 +325,13 @@ public class Program
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
-        app.MapHub<StatusHub>("/event-status").RequireCors();
+        app.MapHub<StatusHub>("/event-status", options =>
+        {
+            // WebSockets only: a single persistent connection that works across replicas
+            // without sticky sessions. Long Polling/SSE require sticky sessions which
+            // don't work reliably cross-origin (third-party cookie restrictions).
+            options.Transports = HttpTransportType.WebSockets;
+        }).RequireCors();
         app.Run();
     }
 }
