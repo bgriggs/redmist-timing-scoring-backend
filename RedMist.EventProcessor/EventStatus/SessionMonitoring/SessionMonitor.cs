@@ -157,6 +157,7 @@ public class SessionMonitor : BackgroundService
         checkeredCarPositionsLookup.Clear();
         lastCheckeredChangedCount = 0;
         lastCheckeredChangedCountTimestamp = null;
+        last = null;
     }
 
     protected virtual async Task SaveLastUpdatedTimestampAsync(int eventId, int sessionId, CancellationToken stoppingToken = default)
@@ -206,13 +207,13 @@ public class SessionMonitor : BackgroundService
                 eventTime - lastCheckeredChangedCountTimestamp > TimeSpan.FromSeconds(60))
             {
                 Logger.LogInformation("Session {sessionId} finishing completed 60 seconds interval", SessionId);
-                FinalizeSession();
+                FinalizeSession(startNewSession: false);
             }
             // When event time stops changing, finalize the session
             else if (finishingEventLastTimestamp is not null && finishingEventLastTimestamp == eventTime)
             {
                 Logger.LogInformation("Session {sessionId} finishing completed with event time stop", SessionId);
-                FinalizeSession();
+                FinalizeSession(startNewSession: false);
             }
 
             finishingEventLastTimestamp = eventTime;
@@ -257,7 +258,7 @@ public class SessionMonitor : BackgroundService
         return changes;
     }
 
-    protected virtual void FinalizeSession()
+    protected virtual void FinalizeSession(bool startNewSession = true)
     {
         Logger.LogInformation("Finalizing session {sessionId}...", SessionId);
 
@@ -334,7 +335,7 @@ public class SessionMonitor : BackgroundService
 
             db.SaveChanges();
             ClearSession();
-            FireFinalizedSession();
+            FireFinalizedSession(startNewSession);
         }
         catch (Exception ex)
         {
@@ -342,16 +343,21 @@ public class SessionMonitor : BackgroundService
         }
     }
 
-    protected void FireFinalizedSession()
+    protected void FireFinalizedSession(bool startNewSession = true)
     {
         FinalizedSession?.Invoke();
 
-        // Handle session finalization callback
-        if (lastSession != null)
+        // Handle session finalization callback - only start new session when triggered
+        // by a session change (where lastSession is the incoming session). Checkered flag
+        // and shutdown finalizations should not start a new session because lastSession
+        // refers to the session being finalized, not a new one, and doing so would race
+        // with the NewSessionAsync started by the subsequent session change.
+        if (startNewSession && lastSession != null)
         {
+            var session = lastSession; // Capture for thread safety
             _ = Task.Run(async () =>
             {
-                await sessionContext.NewSessionAsync(lastSession.Id, lastSession.Name);
+                await sessionContext.NewSessionAsync(session.Id, session.Name);
                 sessionContext.SetSessionClassMetadata();
             });
         }
@@ -369,7 +375,7 @@ public class SessionMonitor : BackgroundService
             if (eventIds?.Contains(eventId) ?? false)
             {
                 Logger.LogInformation("Received shutdown signal for event {eventId}", eventId);
-                FinalizeSession();
+                FinalizeSession(startNewSession: false);
             }
         }
         catch (Exception ex)
