@@ -15,7 +15,7 @@ public class SponsorTelemetryQueue : BackgroundService
 {
     private const int MAX_CHANNEL_SIZE = 5000;
     private const int BATCH_SIZE = 50;
-    private static readonly TimeSpan FlushInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan FlushInterval = TimeSpan.FromSeconds(15);
 
     private readonly Channel<SponsorTelemetryEntry> channel = Channel.CreateBounded<SponsorTelemetryEntry>(
         new BoundedChannelOptions(MAX_CHANNEL_SIZE)
@@ -127,7 +127,7 @@ public class SponsorTelemetryQueue : BackgroundService
             await using var db = await tsContext.CreateDbContextAsync(stoppingToken);
             db.SponsorTelemetryLogs.AddRange(batch);
             await db.SaveChangesAsync(stoppingToken);
-            Logger.LogTrace("Flushed {count} sponsor telemetry entries", batch.Count);
+            //Logger.LogTrace("Flushed {count} sponsor telemetry entries", batch.Count);
         }
         catch (Exception ex)
         {

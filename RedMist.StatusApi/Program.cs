@@ -80,9 +80,9 @@ public class Program
                     httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     _ => new TokenBucketRateLimiterOptions
                     {
-                        TokenLimit = 30,
-                        ReplenishmentPeriod = TimeSpan.FromSeconds(10),
-                        TokensPerPeriod = 10,
+                        TokenLimit = 60,
+                        ReplenishmentPeriod = TimeSpan.FromSeconds(5),
+                        TokensPerPeriod = 25,
                         QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                         QueueLimit = 5,
                         AutoReplenishment = true
