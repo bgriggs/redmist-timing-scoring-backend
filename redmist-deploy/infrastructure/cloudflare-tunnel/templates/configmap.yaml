@@ -14,9 +14,14 @@ data:
     {{- range .Values.ingress }}
       - hostname: {{ .hostname }}
         service: {{ .service }}
+        {{- if .originRequest }}
+        originRequest:
+          {{- toYaml .originRequest | nindent 10 }}
+        {{- else }}
         originRequest:
           noTLSVerify: true
           connectTimeout: 30s
+        {{- end }}
     {{- end }}
       # Catch-all rule (required)
       - service: http_status:404
