@@ -18,6 +18,8 @@ using StackExchange.Redis;
 using System.Reflection;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http.Connections;
 
 namespace RedMist.StatusApi;
 
@@ -164,7 +166,7 @@ public class Program
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
 
-        // Configure Redis with robust settings for SignalR backplane in multi-replica environment
+        // Configure Redis with settings for SignalR backplane in multi-replica environment
         var redisOptions = ConfigurationOptions.Parse(redisConn);
         redisOptions.AbortOnConnectFail = false;
         redisOptions.ConnectRetry = 10;
@@ -174,7 +176,13 @@ public class Program
         redisOptions.KeepAlive = 60;
         redisOptions.ReconnectRetryPolicy = new ExponentialRetry(5000);
 
-        builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(redisOptions));
+        var redisMux = ConnectionMultiplexer.Connect(redisOptions);
+        builder.Services.AddSingleton<IConnectionMultiplexer>(redisMux);
+
+        // Share Data Protection keys across replicas via Redis
+        builder.Services.AddDataProtection()
+            .SetApplicationName("RedMist-StatusApi")
+            .PersistKeysToStackExchangeRedis(redisMux, "DataProtection-Keys-StatusApi");
 
         builder.Services.AddHealthChecks()
             .AddRedis(redisConn, tags: ["cache", "redis"])
@@ -295,7 +303,13 @@ public class Program
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
-        app.MapHub<StatusHub>("/event-status").RequireCors();
+        app.MapHub<StatusHub>("/event-status", options =>
+        {
+            // Restrict to WebSockets only for multi-replica support without sticky sessions.
+            // Long Polling and SSE require sticky sessions because the negotiate handshake
+            // returns a connection ID that is bound to a specific server instance.
+            options.Transports = HttpTransportType.WebSockets;
+        }).RequireCors();
         app.Run();
     }
 }

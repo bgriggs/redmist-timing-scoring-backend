@@ -15,6 +15,11 @@ ingress:
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$1
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # WebSocket support for SignalR
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
   # Environment-specific configuration
   environment: prod  # Override this in environment-specific values files
   domain: redmist.racing
@@ -27,8 +32,8 @@ ingress:
 
 autoscaling:
   enabled: true
-  minReplicas: 1
-  maxReplicas: 1
+  minReplicas: 3
+  maxReplicas: 3
   targetCPUUtilizationPercentage: 85
   targetMemoryUtilizationPercentage: 90
 
