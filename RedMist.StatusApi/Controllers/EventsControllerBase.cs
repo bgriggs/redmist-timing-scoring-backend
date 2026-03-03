@@ -152,7 +152,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
     public virtual async Task<List<EventListSummary>> LoadLiveEvents()
     {
-        var clientId = User.FindFirstValue("client_id");
+        var clientId = User?.FindFirstValue("client_id");
         Logger.LogTrace("{method} for clientId {clientId}", nameof(LoadLiveEvents), clientId);
 
         return await hcache.GetOrCreateAsync(LIVE_EVENTS_KEY,
@@ -215,7 +215,7 @@ public abstract class EventsControllerBase : ControllerBase
     [ProducesResponseType<List<EventListSummary>>(StatusCodes.Status200OK)]
     public virtual async Task<List<EventListSummary>> LoadLiveAndRecentEvents()
     {
-        var clientId = User.FindFirstValue("client_id");
+        var clientId = User?.FindFirstValue("client_id");
         Logger.LogTrace("{method} for clientId {clientId}", nameof(LoadLiveAndRecentEvents), clientId);
 
         using var db1 = await tsContext.CreateDbContextAsync();
