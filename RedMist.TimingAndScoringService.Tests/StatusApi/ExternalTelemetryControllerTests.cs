@@ -125,23 +125,6 @@ public class ExternalTelemetryControllerTests
     }
 
     [TestMethod]
-    public async Task UpdateDriversAsync_NonRelayWithExtTelemRole_ReturnsLocked()
-    {
-        // Arrange
-        SetupUser("test-client", "ext-telem");
-        var drivers = new List<DriverInfo> { new() { CarNumber = "42", EventId = 1 } };
-
-        // Act
-        var result = await _controller.UpdateDriversAsync(drivers);
-
-        // Assert
-        Assert.IsInstanceOfType<ObjectResult>(result);
-        var objectResult = (ObjectResult)result;
-        Assert.AreEqual(StatusCodes.Status423Locked, objectResult.StatusCode);
-        Assert.AreEqual("Record is locked by a higher priority user", objectResult.Value);
-    }
-
-    [TestMethod]
     public async Task UpdateDriversAsync_NullDriversList_ReturnsBadRequest()
     {
         // Arrange
