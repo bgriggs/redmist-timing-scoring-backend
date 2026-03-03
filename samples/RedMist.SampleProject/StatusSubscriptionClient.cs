@@ -41,6 +41,11 @@ internal class StatusSubscriptionClient : HubClientBase
 
         var builder = new HubConnectionBuilder().WithUrl(hubUrl, delegate (HttpConnectionOptions options)
         {
+            // Skip negotiate to connect directly via WebSocket without a connection ID.
+            // This avoids 404 errors in multi-replica deployments where negotiate and
+            // WebSocket upgrade may hit different pods.
+            options.SkipNegotiation = true;
+            options.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets;
             options.AccessTokenProvider = async delegate
             {
                 try

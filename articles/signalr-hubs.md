@@ -57,7 +57,11 @@ import * as signalR from '@microsoft/signalr';
 // Create connection
 const connection = new signalR.HubConnectionBuilder()
     .withUrl("https://api.redmist.racing/status/event-status", {
-        accessTokenFactory: () => getAccessToken() // Your token function
+        accessTokenFactory: () => getAccessToken(), // Your token function
+        // Skip negotiate to connect directly via WebSocket.
+        // Required for multi-replica deployments without sticky sessions.
+        skipNegotiation: true,
+        transport: signalR.HttpTransportType.WebSockets
     })
     .withAutomaticReconnect({
         nextRetryDelayInMilliseconds: retryContext => {
@@ -112,9 +116,13 @@ hub = HubConnectionBuilder()\
             "access_token_factory": lambda: get_access_token(),
             "headers": {
                 "User-Agent": "RedMist-Python-Client/1.0"
-            }
+            },
+            # Skip negotiate to connect directly via WebSocket.
+            # Required for multi-replica deployments without sticky sessions.
+            "skip_negotiation": True,
+            "transport": "websockets"
         }
-    )\
+    )
     .configure_logging(logging.INFO)\
     .with_automatic_reconnect({
         "type": "interval",
@@ -131,11 +139,16 @@ hub.start()
 
 ```csharp
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.AspNetCore.Http.Connections;
 
 var connection = new HubConnectionBuilder()
     .WithUrl("https://api.redmist.racing/status/event-status", options =>
     {
         options.AccessTokenProvider = async () => await GetAccessTokenAsync();
+        // Skip negotiate to connect directly via WebSocket.
+        // Required for multi-replica deployments without sticky sessions.
+        options.SkipNegotiation = true;
+        options.Transports = HttpTransportType.WebSockets;
     })
     .WithAutomaticReconnect(new[] {
         TimeSpan.Zero,

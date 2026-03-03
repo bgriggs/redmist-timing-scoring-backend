@@ -6,6 +6,12 @@ metadata:
     {{- include "redmist-status-api.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
+  # Session affinity ensures negotiate and WebSocket upgrade from the same client
+  # hit the same pod, preventing 404 errors in multi-replica SignalR deployments.
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
   ports:
     - port: {{ .Values.service.port }}
       targetPort: http

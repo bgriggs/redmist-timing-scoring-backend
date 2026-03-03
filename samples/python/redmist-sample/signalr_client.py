@@ -48,7 +48,11 @@ class RedMistStatusHub:
                     "access_token_factory": lambda: self.token,
                     "headers": {
                         "Authorization": f"Bearer {self.token}"
-                    }
+                    },
+                    # Skip negotiate to connect directly via WebSocket.
+                    # Required for multi-replica deployments without sticky sessions.
+                    "skip_negotiation": True,
+                    "transport": "websockets"
                 }
             )
             .with_automatic_reconnect({
