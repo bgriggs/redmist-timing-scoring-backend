@@ -24,11 +24,14 @@ public class SponsorReportJob(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Wait for the host to fully start before executing (K8s networking/DNS readiness)
+        await WaitForStartupAsync(stoppingToken);
+
         try
         {
             logger.LogInformation("Sponsor report job starting");
 
-            await using var context = await contextFactory.CreateDbContextAsync(stoppingToken);
+            await using var context = await CreateDbContextWithRetryAsync(stoppingToken);
 
             // Find unprocessed statistics
             var unprocessed = await context.SponsorStatistics
@@ -242,5 +245,40 @@ public class SponsorReportJob(
             parts.Add($"{ts.Seconds} {(ts.Seconds == 1 ? "second" : "seconds")}");
 
         return string.Join(", ", parts);
+    }
+
+    /// <summary>
+    /// Waits for the host application to signal that it has fully started.
+    /// </summary>
+    private async Task WaitForStartupAsync(CancellationToken stoppingToken)
+    {
+        var tcs = new TaskCompletionSource();
+        await using var reg = stoppingToken.Register(() => tcs.TrySetCanceled(stoppingToken));
+        lifetime.ApplicationStarted.Register(() => tcs.TrySetResult());
+        await tcs.Task;
+        logger.LogInformation("Host started, beginning report job");
+    }
+
+    /// <summary>
+    /// Creates a DbContext with retry logic for transient connection failures.
+    /// </summary>
+    private async Task<TsContext> CreateDbContextWithRetryAsync(CancellationToken stoppingToken)
+    {
+        const int maxRetries = 5;
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                var context = await contextFactory.CreateDbContextAsync(stoppingToken);
+                await context.Database.CanConnectAsync(stoppingToken);
+                return context;
+            }
+            catch (Exception ex) when (attempt < maxRetries && !stoppingToken.IsCancellationRequested)
+            {
+                var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
+                logger.LogWarning(ex, "Database connection attempt {Attempt}/{MaxRetries} failed, retrying in {Delay}s", attempt, maxRetries, delay.TotalSeconds);
+                await Task.Delay(delay, stoppingToken);
+            }
+        }
     }
 }
