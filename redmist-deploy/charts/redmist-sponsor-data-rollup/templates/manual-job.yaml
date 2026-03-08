@@ -1,6 +1,7 @@
 {{/*
   Standalone Job for manually triggering the sponsor data rollup.
-  Not owned by the CronJob, so the CronJob controller won't interfere.
+  Uses a distinct name and labels so the CronJob controller does not
+  treat it as an "unexpected" job and delete it.
   Auto-cleans up 10 minutes after completion (ttlSecondsAfterFinished).
 
   Usage (from the umbrella chart directory):
@@ -10,7 +11,7 @@
       | kubectl apply -n timing-test -f -
 
   Monitor:
-    kubectl logs -f -n timing-test -l manual-trigger=true,app.kubernetes.io/name=redmist-sponsor-data-rollup
+    kubectl logs -f -n timing-test -l manual-trigger=true
 
   Cleanup (automatic after 10 min, or manual):
     kubectl delete job -n timing-test -l manual-trigger=true
@@ -19,9 +20,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "redmist-sponsor-data-rollup.fullname" . }}-manual
+  name: manual-sponsor-rollup-{{ .Release.Name }}
   labels:
-    {{- include "redmist-sponsor-data-rollup.labels" . | nindent 4 }}
+    app.kubernetes.io/component: manual-sponsor-rollup
     manual-trigger: "true"
 spec:
   ttlSecondsAfterFinished: 600
@@ -30,7 +31,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "redmist-sponsor-data-rollup.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: manual-sponsor-rollup
         manual-trigger: "true"
     spec:
       {{- with .Values.imagePullSecrets }}

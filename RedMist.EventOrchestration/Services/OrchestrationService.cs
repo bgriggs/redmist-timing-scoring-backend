@@ -220,7 +220,7 @@ public class OrchestrationService : BackgroundService
     /// </summary>
     private async Task<V1JobList> GetJobsAsync(Kubernetes client, string ns, CancellationToken stoppingToken)
     {
-        var jobs = await client.ListNamespacedJobAsync(ns, cancellationToken: stoppingToken);
+        var jobs = await client.ListNamespacedJobAsync(ns, labelSelector: "event_id", cancellationToken: stoppingToken);
         Logger.LogDebug("Found {jobCount} jobs in namespace {ns}", jobs.Items.Count, ns);
         foreach (var job in jobs.Items)
         {
