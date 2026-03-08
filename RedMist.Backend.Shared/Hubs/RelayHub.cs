@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Logging;
+using Prometheus;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
@@ -18,6 +19,12 @@ namespace RedMist.Backend.Shared.Hubs;
 [Authorize]
 public class RelayHub : Hub
 {
+    #region Metrics
+
+    public static Gauge RelayConnectionsCount { get; } = Metrics.CreateGauge(Consts.RELAY_CONNECTIONS_KEY, "Active relay connections");
+
+    #endregion
+
     private ILogger Logger { get; }
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDbContextFactory<TsContext> tsContext;
@@ -44,6 +51,7 @@ public class RelayHub : Hub
             return;
         }
         await SetRelayConnectionAsync(clientId);
+        RelayConnectionsCount.Inc();
         Logger.LogInformation("Client {id} connected: {ConnectionId}", clientId, Context.ConnectionId);
     }
 
@@ -58,6 +66,7 @@ public class RelayHub : Hub
         }
 
         await RemoveRelayConnectionAsync();
+        RelayConnectionsCount.Dec();
         Logger.LogInformation("Client {id} disconnected: {ConnectionId}", clientId, Context.ConnectionId);
 
         Logger.LogDebug("Removing relay connection from all groups for client {id}", clientId);

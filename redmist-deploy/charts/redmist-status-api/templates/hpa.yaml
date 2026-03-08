@@ -1,4 +1,46 @@
 {{- if .Values.autoscaling.enabled }}
+{{- if .Values.autoscaling.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "redmist-status-api.fullname" . }}
+  labels:
+    {{- include "redmist-status-api.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "redmist-status-api.fullname" . }}
+  minReplicaCount: {{ .Values.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.autoscaling.maxReplicas }}
+  # Seconds to wait after last scale-down event before scaling down again.
+  # Set this high enough to avoid rapid scale down/up during brief event gaps.
+  cooldownPeriod: {{ .Values.autoscaling.keda.cooldownPeriod | default 300 }}
+  triggers:
+  # Primary trigger: sourced from event-orchestration (always 1 replica), which avoids
+  # the chicken-and-egg problem of querying a metric from the service being scaled.
+  #
+  # clamp_max caps the metric at 1 regardless of how many simultaneous events are live,
+  # so the desired replica count is always exactly podsWhenLive when any event is active.
+  # With minReplicaCount=1, KEDA holds at 1 pod when the query returns 0 (no events).
+  - type: prometheus
+    metadata:
+      serverAddress: {{ .Values.autoscaling.keda.prometheusServerAddress }}
+      metricName: live_events_count
+      threshold: "1"
+      query: "clamp_max(live_events_count, 1) * {{ .Values.autoscaling.keda.podsWhenLive }}"
+  {{- if .Values.autoscaling.keda.targetConnectionsPerPod }}
+  # Secondary trigger: scales out beyond podsWhenLive once connections exceed
+  # podsWhenLive * targetConnectionsPerPod. e.g. with podsWhenLive=2 and
+  # targetConnectionsPerPod=50: a 3rd pod is added when connections exceed 100.
+  - type: prometheus
+    metadata:
+      serverAddress: {{ .Values.autoscaling.keda.prometheusServerAddress }}
+      metricName: total_client_connections
+      threshold: {{ .Values.autoscaling.keda.targetConnectionsPerPod | quote }}
+      query: total_client_connections
+  {{- end }}
+{{- else }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -29,4 +71,5 @@ spec:
           type: Utilization
           averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
     {{- end }}
+{{- end }}
 {{- end }}

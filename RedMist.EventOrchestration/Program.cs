@@ -2,6 +2,7 @@ using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using NLog.Extensions.Logging;
+using Prometheus;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
@@ -73,6 +74,7 @@ public class Program
         }).AllowAnonymous();
 
         app.UseAuthorization();
+        app.UseMetricServer();
         app.MapControllers();
 
         await app.RunAsync();

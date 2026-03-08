@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using NLog.Extensions.Logging;
+using Prometheus;
 using RedMist.Backend.Shared;
-using RedMist.Backend.Shared.Extensions;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
@@ -63,8 +63,7 @@ public class Program
 
         builder.Services.AddHealthChecks()
             .AddRedis(redisConn, tags: ["cache", "redis"])
-            .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
-            .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 512, name: "Process Allocated Memory", tags: ["memory"]);
+            .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"]);
 
         builder.Services.AddTransient<EmailHelper>();
         builder.Services.AddHostedService<RelayLogBatchEmailService>();
@@ -113,6 +112,7 @@ public class Program
         app.UseCors();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseMetricServer();
         app.MapControllers();
         app.MapHub<RelayHub>("/hub");
         app.Run();

@@ -36,9 +36,25 @@ ingress:
 autoscaling:
   enabled: true
   minReplicas: 1
-  maxReplicas: 3
+  maxReplicas: 5
+  # Classic HPA (used when keda.enabled is false)
   targetCPUUtilizationPercentage: 90
   targetMemoryUtilizationPercentage: 80
+  # KEDA ScaledObject (recommended — enables event-driven scaling)
+  keda:
+    enabled: false
+    # Address of the Prometheus server in the cluster
+    prometheusServerAddress: http://prometheus-server.monitoring:9090
+    # Seconds to wait before scaling down after last event ends (default 5 minutes)
+    cooldownPeriod: 300
+    # Minimum pods to run while any live event is active. The live_events trigger
+    # is clamped to 1 regardless of event count, then multiplied by this value,
+    # so KEDA always targets exactly this many pods during an event.
+    podsWhenLive: 2
+    # Scale out one additional pod per N SignalR connections beyond podsWhenLive * N.
+    # e.g. podsWhenLive=2, targetConnectionsPerPod=50 → 3rd pod added at 101 connections.
+    # Leave empty to disable connection-based scale-out.
+    targetConnectionsPerPod: 50
 
 resources:
   requests:
@@ -50,6 +66,12 @@ resources:
 
 serviceAccount:
   create: false
+
+serviceMonitor:
+  # Enable a Prometheus ServiceMonitor so Prometheus scrapes the /metrics endpoint.
+  # Requires the Prometheus Operator (kube-prometheus-stack) to be installed.
+  enabled: false
+  interval: "15s"
 
 env:
   PathBase: "/status"

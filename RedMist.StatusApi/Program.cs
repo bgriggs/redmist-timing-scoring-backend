@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.OpenApi;
 using NLog.Extensions.Logging;
+using Prometheus;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Extensions;
 using RedMist.Backend.Shared.Hubs;
@@ -324,6 +325,7 @@ public class Program
         app.UseCors();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseMetricServer();
         app.MapControllers();
         app.MapHub<StatusHub>("/event-status", options =>
         {

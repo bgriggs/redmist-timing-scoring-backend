@@ -1,0 +1,16 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "redmist-relay-api.fullname" . }}
+  labels:
+    {{- include "redmist-relay-api.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "redmist-relay-api.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval | default "15s" }}
+{{- end }}

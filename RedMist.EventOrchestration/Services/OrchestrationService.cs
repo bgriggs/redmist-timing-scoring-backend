@@ -1,6 +1,7 @@
 ﻿using k8s;
 using k8s.Models;
 using Microsoft.EntityFrameworkCore;
+using Prometheus;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
@@ -14,9 +15,16 @@ namespace RedMist.EventOrchestration.Services;
 
 public class OrchestrationService : BackgroundService
 {
+    #region Metrics
+
+    private static readonly Gauge LiveEventsCount = Metrics.CreateGauge(Consts.LIVE_EVENTS_COUNT_KEY, "Number of currently live events");
+
+    #endregion
+
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly EventsChecker eventsChecker;
+    private readonly string redisFailoverName;
 
     private ILogger Logger { get; }
     private const string namespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
@@ -25,15 +33,18 @@ public class OrchestrationService : BackgroundService
     private readonly ContainerDetails eventProcessorContainerDetails;
     private readonly ContainerDetails controlLogContainerDetails;
     private readonly ContainerDetails loggerContainerDetails;
+    // Track last known Redis replica count to avoid unnecessary patches
+    private int lastRedisReplicas = -1;
 
 
     public OrchestrationService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux,
-        IDbContextFactory<TsContext> tsContext, EventsChecker eventsChecker)
+        IDbContextFactory<TsContext> tsContext, EventsChecker eventsChecker, IConfiguration configuration)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
         this.eventsChecker = eventsChecker;
+        redisFailoverName = configuration["Redis:FailoverName"] ?? "redis";
 
         // Get the current assembly version for container tags
         var version = GetAssemblyVersion();
@@ -117,6 +128,7 @@ public class OrchestrationService : BackgroundService
                 // Set live events first for running outside of K8s in debug where K8s calls will fail
                 var currentEvents = await eventsChecker.GetCurrentEventsAsync();
                 Logger.LogDebug("Found {eventCount} current events", currentEvents.Count);
+                LiveEventsCount.Set(currentEvents.Count);
 
                 // Update the live events in the database
                 await UpdateLiveEventsAsync(currentEvents);
@@ -127,6 +139,9 @@ public class OrchestrationService : BackgroundService
 
                 // Get currently active jobs in the namespace
                 var currentJobs = await GetJobsAsync(client, currentNamespace, stoppingToken);
+
+                // Scale Redis replicas based on whether any live event is active
+                await EnsureRedisReplicasAsync(client, currentNamespace, currentEvents.Count, stoppingToken);
 
                 // Check for expired events
                 var expiredEvents = currentEvents.Where(e => e.Timestamp < DateTime.UtcNow - eventTimeout).ToList();
@@ -560,6 +575,41 @@ public class OrchestrationService : BackgroundService
         else // Prod
         {
             return "rmkeys"; // Default key name
+        }
+    }
+
+    /// <summary>
+    /// Scales the RedisFailover CR replica count to match demand:
+    /// 1 replica when idle, 2 replicas while any live event is active.
+    /// Patches are skipped when the desired count already matches the last known state.
+    /// </summary>
+    private async Task EnsureRedisReplicasAsync(Kubernetes client, string ns, int liveEventCount, CancellationToken stoppingToken)
+    {
+        var desiredReplicas = liveEventCount > 0 ? 2 : 1;
+        if (desiredReplicas == lastRedisReplicas)
+        {
+            return;
+        }
+
+        try
+        {
+            var patchBody = new { spec = new { redis = new { replicas = desiredReplicas } } };
+            var patch = new V1Patch(JsonSerializer.Serialize(patchBody), V1Patch.PatchType.MergePatch);
+            await client.PatchNamespacedCustomObjectAsync(
+                patch,
+                "databases.spotahome.com", "v1", ns, "redisfailovers", redisFailoverName,
+                cancellationToken: stoppingToken);
+
+            Logger.LogInformation("Redis replicas scaled to {desired} (live events: {count})", desiredReplicas, liveEventCount);
+            lastRedisReplicas = desiredReplicas;
+        }
+        catch (k8s.Autorest.HttpOperationException ex) when (ex.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            Logger.LogWarning("RedisFailover '{name}' not found in namespace {ns} — Redis scaling skipped", redisFailoverName, ns);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to scale Redis replicas in namespace {ns}", ns);
         }
     }
 }

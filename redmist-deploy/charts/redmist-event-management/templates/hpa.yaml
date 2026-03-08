@@ -1,4 +1,30 @@
 {{- if .Values.autoscaling.enabled }}
+{{- if .Values.autoscaling.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "redmist-event-management.fullname" . }}
+  labels:
+    {{- include "redmist-event-management.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "redmist-event-management.fullname" . }}
+  minReplicaCount: {{ .Values.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.autoscaling.maxReplicas }}
+  cooldownPeriod: {{ .Values.autoscaling.keda.cooldownPeriod | default 300 }}
+  triggers:
+  # Scale to podsWhenActive when any relay is connected.
+  # sum() aggregates across all relay-api pods so the trigger
+  # works correctly when relay-api has multiple replicas.
+  - type: prometheus
+    metadata:
+      serverAddress: {{ .Values.autoscaling.keda.prometheusServerAddress }}
+      metricName: total_relay_connections
+      threshold: "1"
+      query: "clamp_max(sum(total_relay_connections), 1) * {{ .Values.autoscaling.keda.podsWhenActive }}"
+{{- else }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -29,4 +55,5 @@ spec:
           type: Utilization
           averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
     {{- end }}
+{{- end }}
 {{- end }}

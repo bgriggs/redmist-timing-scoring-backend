@@ -51,6 +51,8 @@ public class Consts
     public const string CONTROL_LOG_CONNECTIONS_KEY = "total_control_log_connections";
     public const string CAR_CONTROL_LOG_CONNECTIONS_KEY = "total_car_control_log_connections";
     public const string IN_CAR_CONNECTIONS_KEY = "total_in_car_connections";
+    public const string LIVE_EVENTS_COUNT_KEY = "live_events_count";
+    public const string RELAY_CONNECTIONS_KEY = "total_relay_connections";
 
     #endregion
 

@@ -13,15 +13,40 @@ global:
 # Override for all subcharts
 redmist-status-api:
   environment: prod
+  serviceMonitor:
+    enabled: true
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 5
+    keda:
+      enabled: true
+      prometheusServerAddress: http://prometheus-kube-prometheus-prometheus.monitoring:9090
+      cooldownPeriod: 300
+      podsWhenLive: 2
+      targetConnectionsPerPod: 50
 
-redmist-user-management:
-  environment: prod
-
-redmist-event-management:
-  environment: prod
+redmist-event-orchestration:
+  serviceMonitor:
+    enabled: true
 
 redmist-relay-api:
   environment: prod
+  serviceMonitor:
+    enabled: true
+
+redmist-event-management:
+  environment: prod
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    keda:
+      enabled: true
+      prometheusServerAddress: http://prometheus-kube-prometheus-prometheus.monitoring:9090
+      cooldownPeriod: 300
+      podsWhenActive: 2
+  serviceMonitor:
+    enabled: true
 
 # Redis configuration for production (using Redis Operator)
 redis:

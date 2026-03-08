@@ -36,4 +36,10 @@ rbac:
   # Specifies whether RBAC resources should be created
   create: true
 
+serviceMonitor:
+  # Enable a Prometheus ServiceMonitor so Prometheus scrapes the /metrics endpoint.
+  # Requires the Prometheus Operator (kube-prometheus-stack) to be installed.
+  enabled: false
+  interval: "15s"
+
 env:
