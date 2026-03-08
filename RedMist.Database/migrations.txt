@@ -1,3 +1,3 @@
 ﻿Default Project: RedMist.Database (Package Manager Console)
 Startup Project: RedMist.EventManagement
-Add-Migration DriverInfo -Context TsContext
+Add-Migration SponsorStatistics -Context TsContext

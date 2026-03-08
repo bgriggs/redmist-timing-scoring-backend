@@ -52,6 +52,12 @@ jobs:
           - name: "External Data Collection"
             dockerfile: "./RedMist.ExternalDataCollection/Dockerfile"
             image: "bigmission/redmist-external-data-collection"
+          - name: "Sponsor Data Rollup"
+            dockerfile: "./RedMist.SponsorDataRollup/Dockerfile"
+            image: "bigmission/redmist-sponsor-data-rollup"
+          - name: "Sponsor Reports"
+            dockerfile: "./RedMist.SponsorReports/Dockerfile"
+            image: "bigmission/redmist-sponsor-reports"
 
     steps:
       - name: Checkout code
@@ -100,3 +106,5 @@ jobs:
           echo "  - bigmission/redmist-control-log:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-event-logger:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-external-data-collection:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-sponsor-data-rollup:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-sponsor-reports:${{ needs.extract-version.outputs.version }}"

@@ -32,6 +32,9 @@ public class TsContext : DbContext
     public DbSet<Models.DriverInfo> DriverInfo { get; set; } = null!;
     public DbSet<SponsorTelemetryLog> SponsorTelemetryLogs { get; set; } = null!;
     public DbSet<Sponsor> Sponsors { get; set; } = null!;
+    public DbSet<SponsorStatistics> SponsorStatistics { get; set; } = null!;
+    public DbSet<EventSponsorStatistics> EventSponsorStatistics { get; set; } = null!;
+    public DbSet<SourceSponsorStatistics> SourceSponsorStatistics { get; set; } = null!;
 
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }

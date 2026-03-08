@@ -1,0 +1,5 @@
+apiVersion: v2
+name: redmist-sponsor-data-rollup
+description: Monthly CronJob that aggregates sponsor telemetry into statistics.
+type: application
+version: 0.1.0

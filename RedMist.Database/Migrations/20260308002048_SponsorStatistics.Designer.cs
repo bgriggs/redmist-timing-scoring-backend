@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RedMist.Database;
@@ -11,9 +12,11 @@ using RedMist.Database;
 namespace RedMist.Database.Migrations
 {
     [DbContext(typeof(TsContext))]
-    partial class TsContextModelSnapshot : ModelSnapshot
+    [Migration("20260308002048_SponsorStatistics")]
+    partial class SponsorStatistics
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -384,9 +387,6 @@ namespace RedMist.Database.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<bool>("SendMonthlyReport")
-                        .HasColumnType("boolean");
-
                     b.Property<DateOnly?>("SubscriptionEnd")
                         .HasColumnType("date");
 
@@ -422,12 +422,6 @@ namespace RedMist.Database.Migrations
 
                     b.Property<DateOnly>("Month")
                         .HasColumnType("date");
-
-                    b.Property<bool>("ReportProcessed")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("ReportProcessingSuccessful")
-                        .HasColumnType("boolean");
 
                     b.Property<int>("SponsorId")
                         .HasColumnType("integer");
