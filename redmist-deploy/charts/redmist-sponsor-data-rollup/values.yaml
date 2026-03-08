@@ -19,6 +19,10 @@ activeDeadlineSeconds: 3600
 restartPolicy: OnFailure
 backoffLimit: 3
 
+# Manual job trigger (used with helm template -s templates/manual-job.yaml)
+manualJob:
+  enabled: false
+
 resources:
   requests:
     cpu: "50m"
