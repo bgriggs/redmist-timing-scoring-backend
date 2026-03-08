@@ -23,9 +23,18 @@ public class EmailHelper
 
     public async Task SendEmailAsync(string subject, string bodyHtml, string to, string from)
     {
+        await SendEmailAsync(subject, bodyHtml, to, from, bcc: null);
+    }
+
+    public async Task SendEmailAsync(string subject, string bodyHtml, string to, string from, string? bcc)
+    {
         var message = new MimeMessage();
         message.From.Add(MailboxAddress.Parse(from));
         message.To.Add(MailboxAddress.Parse(to));
+        if (!string.IsNullOrWhiteSpace(bcc))
+        {
+            message.Bcc.Add(MailboxAddress.Parse(bcc));
+        }
         message.Subject = subject;
 
         var bodyBuilder = new BodyBuilder

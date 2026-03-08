@@ -1,0 +1,5 @@
+apiVersion: v2
+name: redmist-sponsor-reports
+description: Nightly CronJob that sends sponsor statistics report emails.
+type: application
+version: 0.1.0

@@ -1,0 +1,70 @@
+{{/*
+  Standalone Job for manually triggering the sponsor data rollup.
+  Uses a distinct name and labels so the CronJob controller does not
+  treat it as an "unexpected" job and delete it.
+  Auto-cleans up 10 minutes after completion (ttlSecondsAfterFinished).
+
+  Usage (from the umbrella chart directory):
+    helm template redmist-test . -f values.yaml -f values-test.yaml \
+      --set redmist-sponsor-data-rollup.manualJob.enabled=true \
+      -s charts/redmist-sponsor-data-rollup/templates/manual-job.yaml \
+      | kubectl apply -n timing-test -f -
+
+  Monitor:
+    kubectl logs -f -n timing-test -l manual-trigger=true
+
+  Cleanup (automatic after 10 min, or manual):
+    kubectl delete job -n timing-test -l manual-trigger=true
+*/}}
+{{- if .Values.manualJob.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: manual-sponsor-rollup-{{ .Release.Name }}
+  labels:
+    app.kubernetes.io/component: manual-sponsor-rollup
+    manual-trigger: "true"
+spec:
+  ttlSecondsAfterFinished: 600
+  activeDeadlineSeconds: {{ .Values.activeDeadlineSeconds }}
+  backoffLimit: {{ .Values.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: manual-sponsor-rollup
+        manual-trigger: "true"
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "redmist-sponsor-data-rollup.serviceAccountName" . }}
+      restartPolicy: Never
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          env:
+          {{- $env := merge (.Values.env | default dict) (.Values.global.env | default dict) -}}
+          {{ range $k, $v := $env }}
+            - name: {{ $k | quote }}
+              value: {{ $v | quote }}
+          {{- end }}
+          {{ range .Values.global.secrets }}
+            - name: {{ .env | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

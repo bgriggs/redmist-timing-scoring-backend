@@ -25,4 +25,5 @@ public class Sponsor
     public string Amount { get; set; } = string.Empty;
     public DateOnly SubscriptionStart { get; set; }
     public DateOnly? SubscriptionEnd { get; set; }
+    public bool SendMonthlyReport { get; set; }
 }

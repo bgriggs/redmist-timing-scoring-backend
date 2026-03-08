@@ -1,0 +1,35 @@
+image:
+  repository: bigmission/redmist-sponsor-reports
+  tag: latest
+  pullPolicy: Always
+
+# Runs at 3 AM UTC daily
+schedule: "0 3 * * *"
+
+# Prevent overlapping runs
+concurrencyPolicy: Forbid
+
+# Job history
+successfulJobsHistoryLimit: 3
+failedJobsHistoryLimit: 3
+
+# Job timeout (1 hour)
+activeDeadlineSeconds: 3600
+
+restartPolicy: OnFailure
+backoffLimit: 3
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "128Mi"
+  limits:
+    cpu: "200m"
+    memory: "512Mi"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+env:

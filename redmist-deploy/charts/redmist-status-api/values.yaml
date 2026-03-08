@@ -37,16 +37,16 @@ autoscaling:
   enabled: true
   minReplicas: 1
   maxReplicas: 3
-  targetCPUUtilizationPercentage: 85
-  targetMemoryUtilizationPercentage: 90
+  targetCPUUtilizationPercentage: 90
+  targetMemoryUtilizationPercentage: 80
 
 resources:
   requests:
-    cpu: "40m"
+    cpu: "75m"
     memory: "240Mi"
   limits:
-    cpu: "400m"
-    memory: "450Mi"
+    cpu: "300m"
+    memory: "380Mi"
 
 serviceAccount:
   create: false

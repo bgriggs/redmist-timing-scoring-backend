@@ -1,30 +1,33 @@
 # See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
-FROM mcr.microsoft.com/dotnet/runtime:10.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 # Install GSSAPI library required by Npgsql for PostgreSQL authentication negotiation
 RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
 USER $APP_UID
 WORKDIR /app
+EXPOSE 8080
+
 
 # This stage is used to build the service project
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["RedMist.DatabaseMigrationRunner/RedMist.DatabaseMigrationRunner.csproj", "RedMist.DatabaseMigrationRunner/"]
+COPY ["RedMist.SponsorDataRollup/RedMist.SponsorDataRollup.csproj", "RedMist.SponsorDataRollup/"]
 COPY ["RedMist.Database/RedMist.Database.csproj", "RedMist.Database/"]
-RUN dotnet restore "./RedMist.DatabaseMigrationRunner/RedMist.DatabaseMigrationRunner.csproj"
+COPY ["version", "version"]
+RUN dotnet restore "./RedMist.SponsorDataRollup/RedMist.SponsorDataRollup.csproj"
 COPY . .
-WORKDIR "/src/RedMist.DatabaseMigrationRunner"
-RUN dotnet build "./RedMist.DatabaseMigrationRunner.csproj" -c $BUILD_CONFIGURATION -o /app/build
+WORKDIR "/src/RedMist.SponsorDataRollup"
+RUN dotnet build "./RedMist.SponsorDataRollup.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./RedMist.DatabaseMigrationRunner.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./RedMist.SponsorDataRollup.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "RedMist.DatabaseMigrationRunner.dll"]
+ENTRYPOINT ["dotnet", "RedMist.SponsorDataRollup.dll"]
