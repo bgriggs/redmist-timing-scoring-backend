@@ -50,6 +50,7 @@ if ($Environment -eq "prod") {
 
 # Deploy with Helm
 helm upgrade --install $config.releaseName . `
+  --force-conflicts `
   -f values.yaml `
   -f $config.valuesFile `
   --set redmist-status-api.environment=$Environment `

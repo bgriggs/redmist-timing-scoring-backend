@@ -256,24 +256,29 @@ public class SponsorReportJob(
         await using var reg = stoppingToken.Register(() => tcs.TrySetCanceled(stoppingToken));
         lifetime.ApplicationStarted.Register(() => tcs.TrySetResult());
         await tcs.Task;
+        // Additional delay for K8s DNS/networking to fully stabilize
+        await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
         logger.LogInformation("Host started, beginning report job");
     }
 
     /// <summary>
     /// Creates a DbContext with retry logic for transient connection failures.
+    /// Uses an independent timeout so host shutdown doesn't cancel DB operations mid-connect.
     /// </summary>
     private async Task<TsContext> CreateDbContextWithRetryAsync(CancellationToken stoppingToken)
     {
         const int maxRetries = 5;
         for (int attempt = 1; ; attempt++)
         {
+            stoppingToken.ThrowIfCancellationRequested();
             try
             {
-                var context = await contextFactory.CreateDbContextAsync(stoppingToken);
-                await context.Database.CanConnectAsync(stoppingToken);
+                using var connectTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var context = await contextFactory.CreateDbContextAsync(connectTimeout.Token);
+                await context.Database.CanConnectAsync(connectTimeout.Token);
                 return context;
             }
-            catch (Exception ex) when (attempt < maxRetries && !stoppingToken.IsCancellationRequested)
+            catch (Exception ex) when (attempt < maxRetries)
             {
                 var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
                 logger.LogWarning(ex, "Database connection attempt {Attempt}/{MaxRetries} failed, retrying in {Delay}s", attempt, maxRetries, delay.TotalSeconds);
