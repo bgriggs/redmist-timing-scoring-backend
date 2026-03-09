@@ -14,6 +14,15 @@ ingress:
 
 autoscaling:
   enabled: false
+  minReplicas: 1
+  maxReplicas: 1
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+  # KEDA ScaledObject — scales to 0 when idle, 1 when any live event is active.
+  keda:
+    enabled: false
+    prometheusServerAddress: http://prometheus-server.monitoring:9090
+    cooldownPeriod: 300
 
 resources:
   requests:

@@ -91,6 +91,14 @@ redmist-event-management:
   serviceMonitor:
     enabled: true
 
+redmist-external-data-collection:
+  autoscaling:
+    enabled: true
+    keda:
+      enabled: true
+      prometheusServerAddress: http://prometheus-kube-prometheus-prometheus.monitoring:9090
+      cooldownPeriod: 300
+
 redmist-user-management:
   environment: test
   ingress:

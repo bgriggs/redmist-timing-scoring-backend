@@ -172,7 +172,7 @@ public class RelayHub : Hub
     }
 
     /// <summary>
-    /// Receives a message from an RMonitor relay.
+    /// Receives a Multiloop message from a relay.
     /// </summary>
     /// <param name="eventId">user selected event on the relay</param>
     /// <param name="sessionId">timing system run</param>

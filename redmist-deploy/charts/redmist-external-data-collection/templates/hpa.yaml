@@ -1,4 +1,32 @@
 {{- if .Values.autoscaling.enabled }}
+{{- if .Values.autoscaling.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "redmist-external-data-collection.fullname" . }}
+  labels:
+    {{- include "redmist-external-data-collection.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "redmist-external-data-collection.fullname" . }}
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  # Seconds to wait after the last active trigger before scaling back to zero.
+  # Keep this high enough to avoid repeated cold starts during brief event gaps.
+  cooldownPeriod: {{ .Values.autoscaling.keda.cooldownPeriod | default 300 }}
+  triggers:
+  # Scale to 1 when any live event is active, back to 0 when idle.
+  # live_events_count is published by event-orchestration (single replica),
+  # so sum() collapses any per-pod label variance into a single scalar for KEDA.
+  - type: prometheus
+    metadata:
+      serverAddress: {{ .Values.autoscaling.keda.prometheusServerAddress }}
+      metricName: live_events_count
+      threshold: "1"
+      query: "clamp_max(sum(live_events_count), 1)"
+{{- else }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -29,4 +57,5 @@ spec:
           type: Utilization
           averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
     {{- end }}
+{{- end }}
 {{- end }}
