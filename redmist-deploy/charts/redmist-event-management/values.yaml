@@ -41,6 +41,14 @@ autoscaling:
     # count stays fixed at this value regardless of how many relays are active.
     podsWhenActive: 2
 
+resources:
+  requests:
+    cpu: "50m"
+    memory: "150Mi"
+  limits:
+    cpu: "200m"
+    memory: "300Mi"
+
 serviceAccount:
   create: false
 

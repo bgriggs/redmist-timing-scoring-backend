@@ -16,4 +16,7 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["get", "list"]
+- apiGroups: ["databases.spotahome.com"]
+  resources: ["redisfailovers"]
+  verbs: ["get", "patch"]
 {{- end }}

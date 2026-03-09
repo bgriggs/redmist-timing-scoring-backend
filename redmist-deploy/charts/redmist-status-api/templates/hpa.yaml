@@ -20,25 +20,26 @@ spec:
   # Primary trigger: sourced from event-orchestration (always 1 replica), which avoids
   # the chicken-and-egg problem of querying a metric from the service being scaled.
   #
-  # clamp_max caps the metric at 1 regardless of how many simultaneous events are live,
-  # so the desired replica count is always exactly podsWhenLive when any event is active.
-  # With minReplicaCount=1, KEDA holds at 1 pod when the query returns 0 (no events).
+  # sum() collapses all per-pod/per-instance label combinations to a single scalar,
+  # which KEDA requires. clamp_max then caps at 1 so the result is always exactly
+  # podsWhenLive when any event is active, regardless of how many events are live.
   - type: prometheus
     metadata:
       serverAddress: {{ .Values.autoscaling.keda.prometheusServerAddress }}
       metricName: live_events_count
       threshold: "1"
-      query: "clamp_max(live_events_count, 1) * {{ .Values.autoscaling.keda.podsWhenLive }}"
+      query: "clamp_max(sum(live_events_count), 1) * {{ .Values.autoscaling.keda.podsWhenLive }}"
   {{- if .Values.autoscaling.keda.targetConnectionsPerPod }}
   # Secondary trigger: scales out beyond podsWhenLive once connections exceed
   # podsWhenLive * targetConnectionsPerPod. e.g. with podsWhenLive=2 and
   # targetConnectionsPerPod=50: a 3rd pod is added when connections exceed 100.
+  # sum() aggregates the per-pod gauges into a single total across all replicas.
   - type: prometheus
     metadata:
       serverAddress: {{ .Values.autoscaling.keda.prometheusServerAddress }}
       metricName: total_client_connections
       threshold: {{ .Values.autoscaling.keda.targetConnectionsPerPod | quote }}
-      query: total_client_connections
+      query: "sum(total_client_connections)"
   {{- end }}
 {{- else }}
 apiVersion: autoscaling/v2

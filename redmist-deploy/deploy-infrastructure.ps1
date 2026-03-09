@@ -17,6 +17,11 @@ param(
     # Skip Prometheus installation if you already have a Prometheus instance in the cluster.
     [switch]$SkipPrometheus,
 
+    # Grafana is bundled with kube-prometheus-stack but is NOT needed for KEDA.
+    # By default it is disabled to reduce the attack surface.
+    # Pass a strong password here to enable it (min 12 chars recommended).
+    [string]$GrafanaAdminPassword = "",
+
     # Skip Keycloak installation if it is already deployed on this cluster.
     [switch]$SkipKeycloak,
 
@@ -101,6 +106,24 @@ if ($LASTEXITCODE -ne 0) {
 if (-not $SkipPrometheus) {
     Write-Host "`nDeploying kube-prometheus-stack $PrometheusStackVersion..." -ForegroundColor Cyan
 
+    # Resolve Grafana configuration before installing.
+    # Grafana is disabled by default — it is not required for KEDA and its well-known
+    # default password (prom-operator) is a security risk on a shared cluster.
+    $grafanaArgs = @("--set", "grafana.enabled=false")
+    if (-not [string]::IsNullOrEmpty($GrafanaAdminPassword)) {
+        if ($GrafanaAdminPassword.Length -lt 12) {
+            Write-Host "❌ GrafanaAdminPassword must be at least 12 characters." -ForegroundColor Red
+            exit 1
+        }
+        $grafanaArgs = @(
+            "--set", "grafana.enabled=true",
+            "--set", "grafana.adminPassword=$GrafanaAdminPassword"
+        )
+        Write-Host "  Grafana will be enabled with the supplied admin password." -ForegroundColor Cyan
+    } else {
+        Write-Host "  Grafana disabled (pass -GrafanaAdminPassword to enable)." -ForegroundColor Cyan
+    }
+
     # kube-prometheus-stack ships very large CRDs that exceed Helm's default patch limit
     # and cause "unexpected EOF" / "context deadline exceeded" errors. The fix is to
     # apply the CRDs separately via kubectl server-side apply (which streams them
@@ -125,6 +148,7 @@ if (-not $SkipPrometheus) {
             --skip-crds `
             --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false `
             --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false `
+            @grafanaArgs `
             --wait `
             --timeout 10m
 
