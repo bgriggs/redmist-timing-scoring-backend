@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using Prometheus;
 using RedMist.Backend.Shared.Models;
+using RedMist.Backend.Shared.Utilities;
 using StackExchange.Redis;
 using System.Text.Json;
 
@@ -23,6 +24,9 @@ public class StatusHub : Hub
     #region Metrics
 
     public static Gauge ClientConnectionsCount { get; } = Metrics.CreateGauge(Consts.CLIENT_CONNECTIONS_KEY, "Total client connections");
+    public static Gauge ClientConnectionsByType { get; } = Metrics.CreateGauge(
+        "client_connections_by_type", "Client connections by application type",
+        new GaugeConfiguration { LabelNames = ["client_type"] });
 
     #endregion
 
@@ -50,6 +54,7 @@ public class StatusHub : Hub
     {
         await base.OnConnectedAsync();
         var clientId = GetClientId();
+        var clientType = ClientTypeHelper.ResolveClientType(clientId);
 
         try
         {
@@ -65,7 +70,8 @@ public class StatusHub : Hub
         }
 
         ClientConnectionsCount.Inc();
-        Logger.LogInformation("Client {id} connected: {ConnectionId}", clientId, Context.ConnectionId);
+        ClientConnectionsByType.WithLabels(clientType).Inc();
+        Logger.LogInformation("Client {id} ({type}) connected: {ConnectionId}", clientId, clientType, Context.ConnectionId);
     }
 
     /// <summary>
@@ -78,6 +84,7 @@ public class StatusHub : Hub
     {
         await base.OnDisconnectedAsync(exception);
         var clientId = GetClientId();
+        var clientType = ClientTypeHelper.ResolveClientType(clientId);
 
         try
         {
@@ -105,6 +112,7 @@ public class StatusHub : Hub
         }
 
         ClientConnectionsCount.Inc(-1);
+        ClientConnectionsByType.WithLabels(clientType).Dec();
         Logger.LogInformation("Client {id} disconnected: {ConnectionId}", clientId, Context.ConnectionId);
     }
 
@@ -449,6 +457,7 @@ public class StatusHub : Hub
 
             // Get the cache entry for this connectionId that would have been created in OnConnectedAsync
             var connJson = await cache.HashGetAsync(Consts.STATUS_CONNECTIONS, connectionId);
+            string? clientType = null;
             if (!connJson.IsNullOrEmpty)
             {
                 var conn = JsonSerializer.Deserialize<StatusConnection>(connJson.ToString());
@@ -457,16 +466,17 @@ public class StatusHub : Hub
                     // Update the connectionId with the eventId
                     conn.SubscribedEventId = eventId;
                     conn.InCarDriverConnection = inCarDriverConnection;
+                    clientType = ClientTypeHelper.ResolveClientType(conn.ClientId);
                     var updatedJson = JsonSerializer.Serialize(conn);
                     await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, connectionId, updatedJson);
                 }
             }
 
-            // Save off the connectionId in the event connections cache
+            // Save off the connectionId in the event connections cache with the client type
             if (eventId > 0)
             {
                 var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId);
-                await cache.HashSetAsync(connKey, connectionId, DateTime.UtcNow.ToString(), When.Always, CommandFlags.FireAndForget);
+                await cache.HashSetAsync(connKey, connectionId, clientType ?? "Web", When.Always, CommandFlags.FireAndForget);
             }
         }
         catch (Exception ex)

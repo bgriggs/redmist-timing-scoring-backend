@@ -147,7 +147,7 @@ public class RelayHub : Hub
         var telem = new RelayTelemetry
         {
             ServiceStatuses = await GetServiceStatusesAsync(eventId),
-            EventConnections = GetEventConnections()
+            EventConnections = await GetEventConnectionsAsync(eventId)
         };
         return telem;
     }
@@ -164,9 +164,31 @@ public class RelayHub : Hub
         return JsonSerializer.Deserialize<List<ServiceStatus>>(json.ToString()) ?? [];
     }
 
-    private List<EventConnectionStatus> GetEventConnections()
+    private static readonly HashSet<string> KnownClientTypes = ["iOS", "Android", "Web", "API"];
+
+    private async Task<List<EventConnectionStatus>> GetEventConnectionsAsync(int eventId)
     {
-        return new List<EventConnectionStatus>();
+        var cache = cacheMux.GetDatabase();
+        var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId);
+        var entries = await cache.HashGetAllAsync(connKey);
+
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            var clientType = entry.Value.ToString();
+            // Handle backward compatibility: entries written before this change stored timestamps
+            if (!KnownClientTypes.Contains(clientType))
+                clientType = "Web";
+
+            counts.TryGetValue(clientType, out int current);
+            counts[clientType] = current + 1;
+        }
+
+        return [.. counts.Select(kvp => new EventConnectionStatus
+        {
+            ClientApplication = kvp.Key,
+            Clients = kvp.Value
+        })];
     }
 
 
