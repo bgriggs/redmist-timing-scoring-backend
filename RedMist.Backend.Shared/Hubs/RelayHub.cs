@@ -141,6 +141,35 @@ public class RelayHub : Hub
         await cache.StreamAddAsync(streamId, Consts.RELAY_HEARTBEAT_TYPE, entryJson);
     }
 
+    public async Task<RelayTelemetry> SendHeartbeatV2(int eventId, string relayVersion)
+    {
+        await SendHeartbeat(eventId, relayVersion);
+        var telem = new RelayTelemetry
+        {
+            ServiceStatuses = await GetServiceStatusesAsync(eventId),
+            EventConnections = GetEventConnections()
+        };
+        return telem;
+    }
+
+    private async Task<List<ServiceStatus>> GetServiceStatusesAsync(int eventId)
+    {
+        var cache = cacheMux.GetDatabase();
+        var key = string.Format(Consts.EVENT_SERVICE_STATUSES, eventId);
+        var json = await cache.StringGetAsync(key);
+        if (json.IsNullOrEmpty)
+        {
+            return [];
+        }
+        return JsonSerializer.Deserialize<List<ServiceStatus>>(json.ToString()) ?? [];
+    }
+
+    private List<EventConnectionStatus> GetEventConnections()
+    {
+        return new List<EventConnectionStatus>();
+    }
+
+
     /// <summary>
     /// Receives a message from an RMonitor relay.
     /// </summary>

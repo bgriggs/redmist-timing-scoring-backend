@@ -7,6 +7,7 @@ using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.EventOrchestration.Models;
+using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
 using System.Reflection;
 using System.Text.Json;
@@ -121,6 +122,9 @@ public class OrchestrationService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Start pod status polling in the background
+        _ = PollPodStatusesAsync(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -339,6 +343,10 @@ public class OrchestrationService : BackgroundService
 
         // Remove the event entry from the cache that tracks connections
         await DisposeEventConnectionsAsync(eventEntry, stoppingToken);
+
+        // Remove the service statuses from cache
+        var serviceStatusKey = string.Format(Consts.EVENT_SERVICE_STATUSES, eventEntry.EventId);
+        await cache.KeyDeleteAsync(serviceStatusKey, CommandFlags.FireAndForget);
     }
 
     private async Task DisposeEventConnectionsAsync(RelayConnectionEventEntry eventEntry, CancellationToken stoppingToken)
@@ -576,6 +584,72 @@ public class OrchestrationService : BackgroundService
         {
             return "rmkeys"; // Default key name
         }
+    }
+
+    /// <summary>
+    /// Polls Kubernetes pod statuses every second and saves per-event service statuses to Redis.
+    /// Each entry has a 1-minute TTL as a safeguard in case cleanup is missed.
+    /// </summary>
+    private async Task PollPodStatusesAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                string currentNamespace = await GetCurrentNamespaceAsync(stoppingToken);
+                var config = KubernetesClientConfiguration.InClusterConfig();
+                using var client = new Kubernetes(config);
+
+                var pods = await client.ListNamespacedPodAsync(currentNamespace, labelSelector: "event_id", cancellationToken: stoppingToken);
+
+                var eventPodGroups = pods.Items
+                    .Where(p => p.Metadata?.Labels != null && p.Metadata.Labels.ContainsKey("event_id"))
+                    .GroupBy(p => p.Metadata.Labels["event_id"]);
+
+                var cache = cacheMux.GetDatabase();
+
+                foreach (var group in eventPodGroups)
+                {
+                    var statuses = new List<ServiceStatus>();
+
+                    foreach (var pod in group)
+                    {
+                        foreach (var container in pod.Spec.Containers)
+                        {
+                            var serviceName = ExtractServiceName(container.Image);
+                            var podPhase = pod.Status?.Phase ?? "Unknown";
+
+                            statuses.Add(new ServiceStatus
+                            {
+                                ServiceName = serviceName,
+                                Status = podPhase
+                            });
+                        }
+                    }
+
+                    var key = string.Format(Consts.EVENT_SERVICE_STATUSES, group.Key);
+                    var json = JsonSerializer.Serialize(statuses);
+                    await cache.StringSetAsync(key, json, TimeSpan.FromMinutes(1));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "Error polling pod statuses");
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+        }
+    }
+
+    /// <summary>
+    /// Extracts the service name from a container image string.
+    /// For example, "bigmission/redmist-event-processor:1.0" returns "redmist-event-processor".
+    /// </summary>
+    private static string ExtractServiceName(string image)
+    {
+        var nameWithTag = image.Contains('/') ? image[(image.LastIndexOf('/') + 1)..] : image;
+        var name = nameWithTag.Contains(':') ? nameWithTag[..nameWithTag.IndexOf(':')] : nameWithTag;
+        return name;
     }
 
     /// <summary>

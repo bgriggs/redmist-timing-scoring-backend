@@ -35,6 +35,7 @@ public class Consts
     public const string RELAY_LOG_BATCH = "relay-log-batch-{0}";
     public const string RELAY_LOG_BATCH_TRACKING = "relay-log-batch-tracking";
     public const string CAR_LAP_HISTORY = "car-lap-history-evt-{0}-car-{1}";
+    public const string EVENT_SERVICE_STATUSES = "evt-{0}-svc-statuses";
 
     #region External Metadata
     public const string EVENT_DRIVER_CHANGE_STREAM_FIELD = "drevt-{0}-999999";
