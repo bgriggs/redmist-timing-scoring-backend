@@ -17,7 +17,7 @@ public class SponsorReportJob(
     EmailHelper emailHelper,
     IHostApplicationLifetime lifetime) : BackgroundService
 {
-    private const string FROM_EMAIL = "support@redmist.racing";
+    private const string FROM_EMAIL = "Red Mist <support@redmist.racing>";
     private const string BCC_EMAIL = "brian@bigmissionmotorsports.com";
 
     private readonly ILogger logger = loggerFactory.CreateLogger<SponsorReportJob>();
@@ -66,7 +66,7 @@ public class SponsorReportJob(
 
             var eventNames = await context.Events
                 .AsNoTracking()
-                .Where(e => eventIds.Contains(e.Id))
+                .Where(e => eventIds.Contains(e.Id) && !e.IsSimulation)
                 .ToDictionaryAsync(e => e.Id, e => e.Name, stoppingToken);
 
             foreach (var stats in unprocessed)
@@ -163,7 +163,7 @@ public class SponsorReportJob(
             sb.AppendLine("<table>");
             sb.AppendLine("<tr><th>Event</th><th>Impressions</th><th>Viewable Impressions</th><th>Click-Throughs</th><th>Engagement Duration</th></tr>");
 
-            foreach (var e in stats.EventStatistics.OrderByDescending(e => e.Impressions))
+            foreach (var e in stats.EventStatistics.Where(e => e.EventId == 0 || eventNames.ContainsKey(e.EventId)).OrderByDescending(e => e.Impressions))
             {
                 var eventName = ResolveEventName(e.EventId, eventNames);
                 sb.AppendLine($"<tr><td>{eventName}</td><td>{e.Impressions:N0}</td><td>{e.ViewableImpressions:N0}</td><td>{e.ClickThroughs:N0}</td><td>{FormatDuration(e.EngagementDurationMs)}</td></tr>");
