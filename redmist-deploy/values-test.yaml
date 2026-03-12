@@ -49,7 +49,7 @@ global:
 redmist-status-api:
   environment: test
   serviceMonitor:
-    enabled: true
+    enabled: false
   autoscaling:
     minReplicas: 1
     maxReplicas: 5
@@ -66,12 +66,12 @@ redmist-status-api:
 
 redmist-event-orchestration:
   serviceMonitor:
-    enabled: true
+    enabled: false
 
 redmist-relay-api:
   environment: test
   serviceMonitor:
-    enabled: true
+    enabled: false
   ingress:
     tls: false
     annotations:
@@ -89,7 +89,7 @@ redmist-event-management:
       cooldownPeriod: 300
       podsWhenActive: 2
   serviceMonitor:
-    enabled: true
+    enabled: false
 
 redmist-external-data-collection:
   autoscaling:

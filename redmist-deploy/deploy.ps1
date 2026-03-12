@@ -48,6 +48,14 @@ if ($Environment -eq "prod") {
     }
 }
 
+# Ensure chart dependencies are present
+Write-Host "Fetching chart dependencies..." -ForegroundColor Cyan
+helm dependency build .
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ helm dependency build FAILED!" -ForegroundColor Red
+    exit 1
+}
+
 # Deploy with Helm
 helm upgrade --install $config.releaseName . `
   --force-conflicts `

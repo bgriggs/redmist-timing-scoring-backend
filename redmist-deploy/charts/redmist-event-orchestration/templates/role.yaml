@@ -7,6 +7,9 @@ metadata:
   labels:
     {{- include "redmist-event-orchestration.labels" . | nindent 4 }}
 rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list"]
 - apiGroups: ["batch"]
   resources: ["jobs"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
