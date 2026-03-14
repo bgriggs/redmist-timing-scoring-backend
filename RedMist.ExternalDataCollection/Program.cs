@@ -34,6 +34,7 @@ public class Program
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"])
             .AddProcessAllocatedMemoryHealthCheck(maximumMegabytesAllocated: 150, name: "Process Allocated Memory", tags: ["memory"]);
 
+        builder.Services.AddHybridCache();
         builder.Services.AddSingleton<EventsChecker>();
         builder.Services.AddRedMistSignalR(redisConn);
         builder.Services.AddHostedService<SentinelStatusService>();

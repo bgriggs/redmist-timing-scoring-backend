@@ -41,6 +41,7 @@ public class Program
             .AddRedis(redisConn, tags: ["cache", "redis"])
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"]);
 
+        builder.Services.AddHybridCache();
         builder.Services.AddSingleton<EventsChecker>();
         //builder.Services.AddHostedService<EventArchiveService>();
         builder.Services.AddHostedService<OrchestrationService>();

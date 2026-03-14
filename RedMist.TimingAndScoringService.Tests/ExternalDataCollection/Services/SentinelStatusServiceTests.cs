@@ -4,11 +4,14 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Utilities;
+using RedMist.Database;
 using RedMist.ExternalDataCollection.Clients;
 using RedMist.ExternalDataCollection.Services;
 using RedMist.TimingCommon.Models;
@@ -54,7 +57,7 @@ public class SentinelStatusServiceTests
             })
             .Build();
         
-        mockEventsChecker = new Mock<EventsChecker>(mockConnectionMultiplexer.Object);
+        mockEventsChecker = new Mock<EventsChecker>(MockBehavior.Loose, mockConnectionMultiplexer.Object, Mock.Of<IDbContextFactory<TsContext>>(), Mock.Of<HybridCache>());
         mockSentinelClient = new Mock<SentinelClient>(configuration);
         mockExternalTelemetryClient = new Mock<ExternalTelemetryClient>(configuration);
 

@@ -118,7 +118,7 @@ public class RelayHub : Hub
             return;
         }
 
-        Logger.LogTrace("Heartbeat received from relay {c} for event {eventId}", clientId, eventId);
+        Logger.LogTrace("Heartbeat received from relay {c} for event {eventId} version {version}", clientId, eventId, relayVersion);
 
         var cache = cacheMux.GetDatabase();
         var hashKey = new RedisKey(Consts.RELAY_EVENT_CONNECTIONS);
