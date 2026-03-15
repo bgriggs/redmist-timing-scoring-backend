@@ -22,7 +22,7 @@ public class GoogleSheetsControlLog : GoogleSheetsControlLogBase
         new SheetColumnMapping{ SheetColumn = "Other Notes", PropertyName = "OtherNotes", IsRequired = false },
     ];
 
-    protected override string CellRange => "A4:H1000";
+    protected override string CellRange => "A4:H500";
 
     public GoogleSheetsControlLog(ILoggerFactory loggerFactory, IConfiguration config, IDbContextFactory<TsContext> tsContext)
         : base(loggerFactory, config, tsContext)

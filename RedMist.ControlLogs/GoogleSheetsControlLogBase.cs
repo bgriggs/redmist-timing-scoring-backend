@@ -121,13 +121,39 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
             ApplicationName = "RedMist"
         });
 
+        // Verify the target sheet exists and get its exact name from the spreadsheet metadata
+        string? sheetName = paramParts.Length == 2 && !string.IsNullOrWhiteSpace(paramParts[1]) ? paramParts[1].Trim() : null;
+        if (sheetName != null)
+        {
+            try
+            {
+                var metaRequest = sheetsService.Spreadsheets.Get(paramParts[0]);
+                metaRequest.Fields = "sheets.properties.title";
+                var meta = await metaRequest.ExecuteAsync(stoppingToken);
+                var matchedSheet = meta.Sheets?.FirstOrDefault(s => string.Equals(s.Properties?.Title, sheetName, StringComparison.OrdinalIgnoreCase));
+                if (matchedSheet == null)
+                {
+                    var availableSheets = string.Join(", ", meta.Sheets?.Select(s => $"'{s.Properties?.Title}'") ?? []);
+                    Logger.LogError("Sheet '{SheetName}' not found in spreadsheet {SpreadsheetId}. Available sheets: {AvailableSheets}", sheetName, paramParts[0], availableSheets);
+                    return (false, []);
+                }
+                // Use the exact sheet name from the spreadsheet metadata
+                sheetName = matchedSheet.Properties.Title;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error retrieving spreadsheet metadata: {p}", parameter);
+                return (false, []);
+            }
+        }
+
         var request = sheetsService.Spreadsheets.Get(paramParts[0]);
         request.IncludeGridData = true;
 
         var range = CellRange;
-        if (paramParts.Length == 2 && !string.IsNullOrWhiteSpace(paramParts[1]))
+        if (sheetName != null)
         {
-            range = $"{paramParts[1]}!{range}";
+            range = $"'{sheetName}'!{range}";
         }
         request.Ranges = range;
 
