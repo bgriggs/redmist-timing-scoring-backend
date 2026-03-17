@@ -64,7 +64,7 @@ public abstract class EventControllerBase : ControllerBase
             .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
             .Where(s => s.o.ClientId == clientId && !s.e.IsDeleted)
             .OrderByDescending(s => s.e.StartDate)
-            .Select(s => new EventSummary { Id = s.e.Id, Name = s.e.Name, StartDate = s.e.StartDate, IsActive = s.e.IsActive, IsSimulation = s.e.IsSimulation, IsArchived = s.e.IsArchived })
+            .Select(s => new EventSummary { Id = s.e.Id, Name = s.e.Name, StartDate = s.e.StartDate, EndDate = s.e.EndDate, IsActive = s.e.IsActive, IsSimulation = s.e.IsSimulation, IsArchived = s.e.IsArchived })
             .ToListAsync();
 
         return dbEvents;

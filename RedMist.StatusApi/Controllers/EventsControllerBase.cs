@@ -195,6 +195,7 @@ public abstract class EventsControllerBase : ControllerBase
                    Schedule = g.Key.Schedule,
                    IsArchived = g.Key.IsArchived,
                    IsSimulation = g.Key.IsSimulation,
+                   HasResults = db.SessionResults.Any(sr => sr.EventId == g.Key.Id),
                }).ToListAsync();
 
         return summaries;
@@ -234,6 +235,7 @@ public abstract class EventsControllerBase : ControllerBase
                 IsLive = false,
                 IsSimulation = e.IsSimulation,
                 TrackName = e.TrackName,
+                HasResults = db1.SessionResults.Any(sr => sr.EventId == e.Id),
             })
             .Take(25)
             .ToListAsync();
@@ -249,6 +251,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <returns>The event details including sessions, organization info, and configuration, or null if not found.</returns>
     /// <response code="200">Returns the event details.</response>
     /// <response code="404">Event not found.</response>
+    [AllowAnonymous]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<Event>(StatusCodes.Status200OK)]
@@ -317,6 +320,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <param name="carNumber">The car number to retrieve lap data for.</param>
     /// <returns>A list of car positions representing each completed lap.</returns>
     /// <response code="200">Returns the list of lap positions for the car.</response>
+    [AllowAnonymous]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<CarPosition>>(StatusCodes.Status200OK)]
@@ -367,6 +371,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <param name="eventId">The unique identifier of the event.</param>
     /// <returns>A list of sessions associated with the event.</returns>
     /// <response code="200">Returns the list of sessions.</response>
+    [AllowAnonymous]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<Session>>(StatusCodes.Status200OK)]
@@ -392,6 +397,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// This endpoint communicates with the dedicated event processor service to retrieve live session data.
     /// The response is in MessagePack format for efficient serialization.
     /// </remarks>
+    [AllowAnonymous]
     [HttpGet]
     [Produces("application/x-msgpack")]
     [ProducesResponseType(typeof(SessionState), StatusCodes.Status200OK)]
@@ -508,6 +514,7 @@ public abstract class EventsControllerBase : ControllerBase
 
         return result;
     }
+
 #pragma warning disable CS0618
     /// <summary>
     /// Gets the current session state in legacy Payload format from the event processor service.
@@ -571,6 +578,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <remarks>
     /// Metadata is sourced from Orbits timing systems when available and configured by the organizer.
     /// </remarks>
+    [AllowAnonymous]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<CompetitorMetadata>(StatusCodes.Status200OK)]
@@ -620,6 +628,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <remarks>
     /// Control logs are only available if configured by the event organizer.
     /// </remarks>
+    [AllowAnonymous]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<ControlLogEntry>>(StatusCodes.Status200OK)]
@@ -651,6 +660,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <remarks>
     /// Control logs are only available if configured by the event organizer.
     /// </remarks>
+    [AllowAnonymous]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<ControlLogEntry>>(StatusCodes.Status200OK)]
@@ -678,6 +688,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <remarks>
     /// Useful for drivers/teams to see only penalties and incidents affecting their car.
     /// </remarks>
+    [AllowAnonymous]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<CarControlLogs>(StatusCodes.Status200OK)]
@@ -744,6 +755,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// <remarks>
     /// Flag types include Green, Yellow (caution), Red (stopped), White (final lap), Checkered (finished), and Black.
     /// </remarks>
+    [AllowAnonymous]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<FlagDuration>>(StatusCodes.Status200OK)]

@@ -18,7 +18,7 @@ namespace RedMist.Backend.Shared.Hubs;
 /// <para>Authentication: Required (Bearer token)</para>
 /// <para>This hub supports multiple subscription types including event updates, control logs, and in-car driver mode.</para>
 /// </remarks>
-[Authorize]
+//[Authorize]
 public class StatusHub : Hub
 {
     #region Metrics
@@ -120,14 +120,14 @@ public class StatusHub : Hub
     {
         if (Context.User == null)
         {
-            Logger.LogDebug("Invalid user context, ignoring message");
+            //Logger.LogDebug("Invalid user context, ignoring message");
             return null;
         }
 
-        var clientId = Context.User.Claims.First(c => c.Type == "azp").Value;
+        var clientId = Context.User.Claims.FirstOrDefault(c => c.Type == "azp")?.Value;
         if (clientId == null)
         {
-            Logger.LogDebug("Invalid client id, ignoring message");
+            //Logger.LogDebug("Invalid client id, ignoring message");
             return null;
         }
         return clientId;

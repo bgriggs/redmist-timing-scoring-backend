@@ -52,6 +52,7 @@ public class EventsController : EventsControllerBase
     /// <para>The SessionState object provides an improved data structure compared to V1's Payload format.</para>
     /// <para>Breaking change from V1: Returns SessionState instead of Payload.</para>
     /// </remarks>
+    [AllowAnonymous]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<SessionState>(StatusCodes.Status200OK)]
