@@ -12,8 +12,8 @@ namespace RedMist.UserManagement.Controllers.V1;
 public class OrganizationController : OrganizationControllerBase
 {
     public OrganizationController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, 
-        IConfiguration configuration, AssetsCdn assetsCdn)
-        : base(loggerFactory, tsContext, configuration, assetsCdn)
+        IConfiguration configuration, AssetsCdn assetsCdn, IHttpClientFactory httpClientFactory)
+        : base(loggerFactory, tsContext, configuration, assetsCdn, httpClientFactory)
     {
     }
 }

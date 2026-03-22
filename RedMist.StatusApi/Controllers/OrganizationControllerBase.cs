@@ -53,7 +53,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public virtual async Task<IActionResult> GetOrganizationIcon(int organizationId)
     {
-        Logger.LogTrace("GetOrganizationIcon for organization {organizationId}", organizationId);
+        Logger.LogTrace("{m} for organization {organizationId}", nameof(GetOrganizationIcon), organizationId);
 
         var cacheKey = $"org-icon-{organizationId}";
         var data = await hcache.GetOrCreateAsync(cacheKey,

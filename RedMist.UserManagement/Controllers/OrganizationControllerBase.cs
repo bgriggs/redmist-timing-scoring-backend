@@ -25,6 +25,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     protected readonly IDbContextFactory<TsContext> tsContext;
     protected readonly IConfiguration configuration;
     private readonly AssetsCdn assetsCdn;
+    private readonly IHttpClientFactory httpClientFactory;
     protected readonly string keycloakUrl;
     protected readonly string clientId;
     protected readonly string clientSecret;
@@ -39,14 +40,16 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// <param name="tsContext">Database context factory for timing and scoring data.</param>
     /// <param name="configuration">Application configuration containing Keycloak settings.</param>
     /// <param name="assetsCdn"></param>
+    /// <param name="httpClientFactory"></param>
     /// <exception cref="InvalidOperationException">Thrown when required Keycloak configuration is missing.</exception>
-    protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, 
-        IConfiguration configuration, AssetsCdn assetsCdn)
+    protected OrganizationControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
+        IConfiguration configuration, AssetsCdn assetsCdn, IHttpClientFactory httpClientFactory)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.configuration = configuration;
         this.assetsCdn = assetsCdn;
+        this.httpClientFactory = httpClientFactory;
 
         keycloakUrl = configuration["Keycloak:AuthServerUrl"] ?? throw new InvalidOperationException("Keycloak URL is not configured.");
         clientId = configuration["Keycloak:ClientId"] ?? throw new InvalidOperationException("Keycloak Client ID is not configured.");
@@ -161,11 +164,23 @@ public abstract class OrganizationControllerBase : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public virtual async Task<ActionResult<bool>> RelayClientNameExists(string name)
     {
-        Logger.LogMethodInfo("RelayClientNameExists {name}", name);
+        Logger.LogDebug("{m} {name}", name, nameof(RelayClientNameExists));
         var clientId = string.Format(Consts.RELAY_CLIENT_ID, name);
         var client = await LoadKeycloakClientAsync(clientId);
         return client != null;
     }
+
+    [HttpGet]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public virtual async Task<ActionResult<bool>> ApiClientNameExistsAsync(string name)
+    {
+        Logger.LogDebug("{m} {name}", name, nameof(ApiClientNameExistsAsync));
+        var clientId = string.Format(Consts.API_CLIENT_ID, name);
+        var client = await LoadKeycloakClientAsync(clientId);
+        return client != null;
+    }
+
+    private enum UserType { Organization, ApiUser }
 
     /// <summary>
     /// Creates a new organization for the authenticated user and provisions necessary infrastructure.
@@ -187,24 +202,59 @@ public abstract class OrganizationControllerBase : ControllerBase
     [HttpPost]
     [Produces("application/json")]
     [ProducesResponseType<int>(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public virtual async Task<ActionResult<int>> SaveNewOrganization(OrganizationDto newOrganization)
     {
-        Logger.LogMethodInfo("SaveNewOrganization {organization}", newOrganization.Name);
+        Logger.LogDebug("{m} {organization}", nameof(SaveNewOrganization), newOrganization.Name);
 
         var clientId = User.Identity?.Name;
         if (string.IsNullOrEmpty(clientId))
         {
-            return NotFound("Client ID not found in user claims.");
+            return Unauthorized("Client ID not found in user claims.");
         }
 
+        var id = await SaveNewUserAsync(UserType.Organization, newOrganization);
+
+        return Ok(id);
+    }
+
+    [HttpPost]
+    [Produces("application/json")]
+    [ProducesResponseType<int>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public virtual async Task<ActionResult<int>> SaveNewApiUserAsync(OrganizationDto newOrganization)
+    {
+        Logger.LogDebug("{m} {organization}", nameof(SaveNewApiUserAsync), newOrganization.Name);
+
+        var clientId = User.Identity?.Name;
+        if (string.IsNullOrEmpty(clientId))
+        {
+            return Unauthorized("Client ID not found in user claims.");
+        }
+
+        var id = await SaveNewUserAsync(UserType.Organization, newOrganization);
+
+        return Ok(id);
+    }
+
+
+    private async Task<int> SaveNewUserAsync(UserType type, OrganizationDto newOrganization)
+    {
         using var context = await tsContext.CreateDbContextAsync();
+
+        var clientId = string.Empty;
+        if (type == UserType.Organization)
+            clientId = string.Format(Consts.RELAY_CLIENT_ID, newOrganization.ShortName);
+        else if (type == UserType.ApiUser)
+            clientId = string.Format(Consts.API_CLIENT_ID, newOrganization.ShortName);
+        else
+            throw new InvalidOperationException("Invalid user type specified.");
 
         // Create a new organization
         var organization = new Organization
         {
             Name = newOrganization.Name,
-            ClientId = string.Format(Consts.RELAY_CLIENT_ID, newOrganization.ShortName),
+            ClientId = clientId,
             ShortName = newOrganization.ShortName,
             Website = newOrganization.Website,
             Logo = newOrganization.Logo,
@@ -220,7 +270,7 @@ public abstract class OrganizationControllerBase : ControllerBase
 
         context.Organizations.Add(organization);
         await context.SaveChangesAsync();
-        Logger.LogInformation("New organization created with ID {organizationId}", organization.Id);
+        Logger.LogInformation("New user created with ID {organizationId}", organization.Id);
 
         // Update organization logo in CDN if provided
         await UpdateLogoInCdnAsync(context, organization);
@@ -242,7 +292,7 @@ public abstract class OrganizationControllerBase : ControllerBase
         var relayClientId = await CreateRelayClientAsync(newOrganization.ShortName);
         Logger.LogInformation("Relay client created with ID {relayClientId}", relayClientId);
 
-        return Ok(organization.Id);
+        return organization.Id;
     }
 
     private async Task UpdateLogoInCdnAsync(TsContext context, Organization organization)
@@ -280,7 +330,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// </remarks>
     protected async Task<string?> CreateRelayClientAsync(string name)
     {
-        using HttpClient httpClient = await GetHttpClient();
+        using var httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
         var clientId = string.Format(Consts.RELAY_CLIENT_ID, name);
 
@@ -360,7 +410,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public virtual async Task<ActionResult> UpdateOrganization(OrganizationDto organizationDto)
     {
-        Logger.LogMethodInfo($"UpdateOrganization {organizationDto.Name}");
+        Logger.LogDebug($"{nameof(UpdateOrganization)} {organizationDto.Name}");
 
         // Ensure user is authorized for this organization
         if (!await ValidateUserOrganization(organizationDto.Id))
@@ -461,7 +511,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     protected async Task<HttpClient> GetHttpClient()
     {
         var token = await KeycloakServiceToken.RequestClientToken(keycloakUrl, realm, clientId, clientSecret);
-        var httpClient = new HttpClient();
+        var httpClient = httpClientFactory.CreateClient();
         httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
         return httpClient;
     }
@@ -473,7 +523,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// <returns>The Keycloak client representation, or null if not found.</returns>
     protected async Task<ClientRepresentation?> LoadKeycloakClientAsync(string clientName)
     {
-        using HttpClient httpClient = await GetHttpClient();
+        using var httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
         Logger.LogInformation("Checking for keycloak client with name: {clientName}", clientName);
         var clients = await keycloak.ClientsAll3Async(clientName, null, null, null, false, false, realm);
@@ -495,7 +545,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// <returns>The Keycloak role representation, or null if not found.</returns>
     protected async Task<RoleRepresentation?> LoadKeycloakRoleAsync(string name)
     {
-        using HttpClient httpClient = await GetHttpClient();
+        using var httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
         var roles = await keycloak.RolesAll2Async(null, null, null, name, realm);
         return roles.FirstOrDefault(r => r.Name == name);
@@ -511,7 +561,7 @@ public abstract class OrganizationControllerBase : ControllerBase
         var client = await LoadKeycloakClientAsync(name);
         if (client != null)
         {
-            using HttpClient httpClient = await GetHttpClient();
+            using var httpClient = await GetHttpClient();
             var keycloak = new KeycloakClient(keycloakUrl, httpClient);
             var secret = await keycloak.ClientSecretGETAsync(realm, client.Id);
             return secret.Value;
