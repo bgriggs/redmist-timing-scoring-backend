@@ -16,6 +16,8 @@ Please visit https://docs.redmist.racing/ for the full documentation.
 - Event Status Model: [SessionState](https://docs.redmist.racing/api/RedMist.TimingCommon.Models.SessionState.html). This is the data included for a real-time event/session.
 - Car Status Model: [CarPosition](https://docs.redmist.racing/api/RedMist.TimingCommon.Models.CarPosition.html). This is the data available for a car in an event/session.
 - Typescript Models: [Red Mist API Types](https://github.com/bgriggs/redmist-timing-common/tree/main/RedMist.TimingCommon/TypeScript/generated). These are the types used in the API, which can be used for client development.
+- Typescript Message Pack decoder: [Message Pack Decoder](https://github.com/bgriggs/redmist-timing-common/blob/main/RedMist.TimingCommon/TypeScript/generated/decode-functions.ts). This is a utility for decoding Message Pack data from the API.
+- Typescript JSON decoder: [JSON Decoder](https://github.com/bgriggs/redmist-timing-common/blob/main/RedMist.TimingCommon/TypeScript/generated/from-json-functions.ts) Allows using the models with full field names and comments.
 
 # Sample Projects Using the API
 Sample projects demonstrating how to interact with the Red Mist backend services can be found in [samples](https://github.com/bgriggs/redmist-timing-scoring-backend/tree/main/samples).
