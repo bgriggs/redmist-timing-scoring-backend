@@ -9,6 +9,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <Compile Include="..\RedMist.SampleProject\MessagePackRestSerializer.cs" Link="MessagePackRestSerializer.cs" />
 	  <Compile Include="..\RedMist.SampleProject\StatusClient.cs" Link="StatusClient.cs" />
 	  <Compile Include="..\RedMist.SampleProject\StatusSubscriptionClient.cs" Link="StatusSubscriptionClient.cs" />
 	</ItemGroup>

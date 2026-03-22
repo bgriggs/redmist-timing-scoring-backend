@@ -25,7 +25,7 @@ internal class StatusClient
         {
             Authenticator = new KeycloakServiceAuthenticator(string.Empty, authUrl, realm, clientId, clientSecret)
         };
-        restClient = new RestClient(options);
+        restClient = new RestClient(options, configureSerialization: s => s.UseSerializer(() => new MessagePackRestSerializer()));
 
         // Add default Accept header for all requests (MessagePack preferred, JSON fallback)
         restClient.AddDefaultHeader("Accept", "application/msgpack, application/json");
@@ -51,7 +51,13 @@ internal class StatusClient
     {
         var request = new RestRequest("GetCurrentSessionState", Method.Get);
         request.AddQueryParameter("eventId", eventId);
-        return await restClient.GetAsync<SessionState?>(request);
+        var response = await restClient.ExecuteAsync<SessionState?>(request);
+        if (!response.IsSuccessful)
+        {
+            var error = response.ErrorMessage ?? response.Content ?? response.StatusDescription;
+            throw new InvalidOperationException($"LoadEventStatusAsync failed ({(int)response.StatusCode}): {error}");
+        }
+        return response.Data;
     }
 
     public async Task<List<CarPosition>> LoadCarLapsAsync(int eventId, int sessionId, string carNumber)
