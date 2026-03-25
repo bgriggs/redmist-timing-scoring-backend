@@ -39,6 +39,20 @@ Write-Host "Deploying RedMist to $($Environment.ToUpper()) environment..." -Fore
 Write-Host "Container version: $Version" -ForegroundColor Cyan
 Write-Host "Namespace: $($config.namespace)" -ForegroundColor Cyan
 
+# Kubernetes context check
+$k8sContext = kubectl config current-context 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ Failed to get Kubernetes context. Is kubectl configured?" -ForegroundColor Red
+    exit 1
+}
+Write-Host "`nCurrent Kubernetes context: " -ForegroundColor Cyan -NoNewline
+Write-Host $k8sContext -ForegroundColor White
+$contextConfirm = Read-Host "Is this the correct context for '$Environment'? (yes/no)"
+if ($contextConfirm -ne "yes") {
+    Write-Host "Deployment cancelled. Switch context with: kubectl config use-context <context-name>" -ForegroundColor Yellow
+    exit 1
+}
+
 # Production safety check
 if ($Environment -eq "prod") {
     $confirm = Read-Host "Are you sure you want to deploy to PRODUCTION? (yes/no)"
