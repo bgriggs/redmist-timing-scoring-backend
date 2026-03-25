@@ -256,6 +256,34 @@ public abstract class OrganizationControllerBase : ControllerBase
 
         var id = await SaveNewUserAsync(UserType.ApiUser, newOrganization);
 
+        // Email user
+        var userEmail = User.FindFirstValue("preferred_username");
+        if (!string.IsNullOrEmpty(userEmail))
+        {
+            try
+            {
+                var apiClientId = string.Format(Consts.API_CLIENT_ID, newOrganization.ShortName);
+                var apiClientSecret = await LoadKeycloakServiceSecret(apiClientId);
+                var emailBody = $"""
+                    <html><body>
+                    <p>Thank you for registering with Red Mist. Here are credentials for accessing the API.</p>
+                    <p><strong>Client ID:</strong> {apiClientId}<br>
+                    <strong>Client Secret:</strong> {apiClientSecret}</p>
+                    <p><strong>Documentation:</strong> <a href="https://docs.redmist.racing/">here</a><br>
+                    <strong>Sample Projects:</strong> <a href="https://github.com/bgriggs/redmist-timing-scoring-backend/tree/main/samples">here</a></p>
+                    <p><strong>Join Discord:</strong> <a href="https://discord.gg/9m3unnqw5Z">here</a><br>
+                    <strong>Facebook:</strong> <a href="https://www.facebook.com/profile.php?id=61586424808299">here</a></p>
+                    </body></html>
+                    """;
+                var emailHelper = new EmailHelper(configuration);
+                await emailHelper.SendEmailAsync("Red Mist API Registration", emailBody, userEmail, "Red Mist <support@redmist.racing>", "brian@bigmissionmotorsports.com");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to send registration email to {email}", userEmail);
+            }
+        }
+
         return Ok(id);
     }
 
