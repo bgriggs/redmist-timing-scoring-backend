@@ -17,4 +17,7 @@ public class OrganizationDto
     public string? Website { get; set; }
 
     public byte[]? Logo { get; set; }
+
+    [MaxLength(255)]
+    public string ClientId { get; set; } = string.Empty;
 }

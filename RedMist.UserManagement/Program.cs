@@ -28,6 +28,7 @@ public class Program
             {
                 policy.AllowAnyOrigin();
                 policy.AllowAnyHeader();
+                policy.AllowAnyMethod();
             });
         });
 

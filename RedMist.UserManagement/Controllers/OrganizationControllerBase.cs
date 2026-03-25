@@ -7,6 +7,8 @@ using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.UserManagement.Models;
+using System.Security.Claims;
+using System.Text.RegularExpressions;
 
 namespace RedMist.UserManagement.Controllers;
 
@@ -90,7 +92,7 @@ public abstract class OrganizationControllerBase : ControllerBase
 
         var org = await context.Organizations
             .Where(o => o.Id == userOrganization.OrganizationId)
-            .Select(o => new { o.Id, o.Name, o.Website, o.Logo })
+            .Select(o => new { o.Id, o.Name, o.Website, o.Logo, o.ClientId })
             .FirstOrDefaultAsync();
 
         if (org == null)
@@ -109,7 +111,8 @@ public abstract class OrganizationControllerBase : ControllerBase
             Id = org.Id,
             Name = org.Name,
             Website = org.Website,
-            Logo = org.Logo ?? defaultLogo
+            Logo = org.Logo ?? defaultLogo,
+            ClientId = org.ClientId
         };
     }
 
@@ -164,6 +167,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public virtual async Task<ActionResult<bool>> RelayClientNameExists(string name)
     {
+        name = SanitizeName(name);
         Logger.LogDebug("{m} {name}", name, nameof(RelayClientNameExists));
         var clientId = string.Format(Consts.RELAY_CLIENT_ID, name);
         var client = await LoadKeycloakClientAsync(clientId);
@@ -174,13 +178,31 @@ public abstract class OrganizationControllerBase : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public virtual async Task<ActionResult<bool>> ApiClientNameExistsAsync(string name)
     {
+        name = SanitizeName(name);
         Logger.LogDebug("{m} {name}", name, nameof(ApiClientNameExistsAsync));
         var clientId = string.Format(Consts.API_CLIENT_ID, name);
         var client = await LoadKeycloakClientAsync(clientId);
         return client != null;
     }
 
-    private enum UserType { Organization, ApiUser }
+    /// <summary>
+    /// Sanitizes a name so it contains only lowercase alphanumeric characters and single dashes.
+    /// Spaces are converted to dashes, all other disallowed characters are removed,
+    /// consecutive dashes are collapsed, and leading/trailing dashes are trimmed.
+    /// </summary>
+    /// <param name="name">The raw name to sanitize.</param>
+    /// <returns>A sanitized name safe for use as a Keycloak client identifier.</returns>
+    protected static string SanitizeName(string name)
+    {
+        name = name.ToLowerInvariant();
+        name = name.Replace(' ', '-');
+        name = Regex.Replace(name, @"[^a-z0-9-]", string.Empty);
+        name = Regex.Replace(name, @"-{2,}", "-");
+        name = name.Trim('-');
+        return name;
+    }
+
+    protected enum UserType { Organization, ApiUser }
 
     /// <summary>
     /// Creates a new organization for the authenticated user and provisions necessary infrastructure.
@@ -232,7 +254,7 @@ public abstract class OrganizationControllerBase : ControllerBase
             return Unauthorized("Client ID not found in user claims.");
         }
 
-        var id = await SaveNewUserAsync(UserType.Organization, newOrganization);
+        var id = await SaveNewUserAsync(UserType.ApiUser, newOrganization);
 
         return Ok(id);
     }
@@ -258,8 +280,10 @@ public abstract class OrganizationControllerBase : ControllerBase
             ShortName = newOrganization.ShortName,
             Website = newOrganization.Website,
             Logo = newOrganization.Logo,
-            ControlLogType = "Default",
-            ControlLogParams = string.Empty
+            ControlLogType = string.Empty,
+            ControlLogParams = string.Empty,
+            RMonitorIp = "127.0.0.1",
+            RMonitorPort = 50000
         };
 
         // When there isn't data for an image, set to null to use default image
@@ -276,9 +300,10 @@ public abstract class OrganizationControllerBase : ControllerBase
         await UpdateLogoInCdnAsync(context, organization);
 
         // Add user to organization
+        var email = User.FindFirstValue("preferred_username") ?? throw new InvalidOperationException("preferred_username claim not found in user token.");
         var userOrganization = new UserOrganizationMapping
         {
-            Username = clientId,
+            Username = email,
             OrganizationId = organization.Id,
             Role = Consts.DEFAULT_ORGANIZATION_ROLE
         };
@@ -289,8 +314,15 @@ public abstract class OrganizationControllerBase : ControllerBase
 
         // Provision Keycloak relay client
         Logger.LogInformation("Creating Keycloak relay client for organization {organizationId}...", organization.Id);
-        var relayClientId = await CreateRelayClientAsync(newOrganization.ShortName);
-        Logger.LogInformation("Relay client created with ID {relayClientId}", relayClientId);
+        var result = await CreateKeycloakClientAsync(clientId, newOrganization.Name, type);
+        if (result)
+        {
+            Logger.LogInformation("Keycloak relay client created successfully for organization {organizationId}", organization.Id);
+        }
+        else
+        {
+            Logger.LogError("Failed to create Keycloak relay client for organization {organizationId}", organization.Id);
+        }
 
         return organization.Id;
     }
@@ -318,7 +350,6 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// <summary>
     /// Creates a Keycloak service account client for relay data ingestion.
     /// </summary>
-    /// <param name="name">The short name for the organization (used in client ID).</param>
     /// <returns>The Keycloak client ID, or null if creation failed.</returns>
     /// <remarks>
     /// <para>The relay client is configured with:</para>
@@ -328,16 +359,20 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// <item>OpenID Connect protocol</item>
     /// </list>
     /// </remarks>
-    protected async Task<string?> CreateRelayClientAsync(string name)
+    protected async Task<bool> CreateKeycloakClientAsync(string clientId, string userName, UserType type)
     {
+        if (userName.Length > 30)
+            userName = userName[..30];
+
         using var httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
-        var clientId = string.Format(Consts.RELAY_CLIENT_ID, name);
+        var desc = User.FindFirstValue("preferred_username") ?? string.Empty;
 
         var client = new ClientRepresentation
         {
             ClientId = clientId,
-            Name = "Relay Client",
+            Name = userName,
+            Description = desc,
             Enabled = true,
             Protocol = "openid-connect",
             PublicClient = false,
@@ -372,23 +407,26 @@ public abstract class OrganizationControllerBase : ControllerBase
         if (client == null)
         {
             Logger.LogError("Failed to create or load Keycloak client {clientId}", clientId);
-            return null;
+            return false;
         }
 
-        var relayRole = await LoadKeycloakRoleAsync("relay-svc");
-        if (relayRole != null)
+        if (type == UserType.Organization)
         {
-            Logger.LogInformation("Assigning relay role to service account user for client {clientId}", clientId);
-            var serviceAccountUserId = await keycloak.ServiceAccountUserAsync(realm, client.Id);
-            var roles = new List<RoleRepresentation> { relayRole };
-            await keycloak.RealmPOST5Async(roles, realm, serviceAccountUserId.Id);
-        }
-        else
-        {
-            Logger.LogWarning("Relay role relay-svc not found.");
+            var relayRole = await LoadKeycloakRoleAsync("relay-svc");
+            if (relayRole != null)
+            {
+                Logger.LogInformation("Assigning relay role to service account user for client {clientId}", clientId);
+                var serviceAccountUserId = await keycloak.ServiceAccountUserAsync(realm, client.Id);
+                var roles = new List<RoleRepresentation> { relayRole };
+                await keycloak.RealmPOST5Async(roles, realm, serviceAccountUserId.Id);
+            }
+            else
+            {
+                Logger.LogWarning("Relay role relay-svc not found.");
+            }
         }
 
-        return client?.Id;
+        return true;
     }
 
     /// <summary>
@@ -469,8 +507,8 @@ public abstract class OrganizationControllerBase : ControllerBase
         {
             return NotFound($"Organization with ID {organizationId} not found.");
         }
-        var clientId = string.Format(Consts.RELAY_CLIENT_ID, organization.ShortName);
-        var clientSecret = await LoadKeycloakServiceSecret(clientId);
+        
+        var clientSecret = await LoadKeycloakServiceSecret(organization.ClientId);
         if (clientSecret == null)
         {
             return NotFound($"Relay client secret for organization {organizationId} not found.");
@@ -478,9 +516,110 @@ public abstract class OrganizationControllerBase : ControllerBase
         return new RelayConnectionInfoDto
         {
             OrgId = organizationId,
-            ClientId = clientId,
+            ClientId = organization.ClientId,
             ClientSecret = clientSecret
         };
+    }
+
+    /// <summary>
+    /// Deletes the authenticated user's account, removing their organization mappings and their Keycloak identity.
+    /// If the user is the last member of an organization, that organization and all its events (soft-deleted) are also removed.
+    /// </summary>
+    /// <returns>No content on success.</returns>
+    /// <response code="200">Account deleted successfully.</response>
+    /// <response code="404">User identity or Keycloak subject claim not found in claims.</response>
+    [HttpDelete]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<IActionResult> DeleteUserAccount()
+    {
+        Logger.LogMethodEntry();
+        var username = User.Identity?.Name;
+        if (string.IsNullOrEmpty(username))
+        {
+            return NotFound("User identity not found in claims.");
+        }
+
+        var keycloakUserId = User.FindFirstValue("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier");
+        if (string.IsNullOrEmpty(keycloakUserId))
+        {
+            return NotFound("Keycloak user ID not found in claims.");
+        }
+
+        using var context = await tsContext.CreateDbContextAsync();
+
+        var userMappings = await context.UserOrganizationMappings
+            .Where(u => u.Username == username)
+            .ToListAsync();
+
+        var orgsToDelete = new List<int>();
+        foreach (var mapping in userMappings)
+        {
+            var otherUserCount = await context.UserOrganizationMappings
+                .CountAsync(u => u.OrganizationId == mapping.OrganizationId && u.Username != username);
+            if (otherUserCount == 0)
+            {
+                orgsToDelete.Add(mapping.OrganizationId);
+            }
+        }
+
+        if (orgsToDelete.Count > 0)
+        {
+            var eventsToDelete = await context.Events
+                .Where(e => orgsToDelete.Contains(e.OrganizationId) && !e.IsDeleted)
+                .ToListAsync();
+            foreach (var evt in eventsToDelete)
+            {
+                evt.IsDeleted = true;
+            }
+        }
+
+        context.UserOrganizationMappings.RemoveRange(userMappings);
+
+        var orgClientIds = new List<string>();
+        if (orgsToDelete.Count > 0)
+        {
+            var organizations = await context.Organizations
+                .Where(o => orgsToDelete.Contains(o.Id))
+                .ToListAsync();
+            orgClientIds.AddRange(organizations.Select(o => o.ClientId));
+            context.Organizations.RemoveRange(organizations);
+        }
+
+        await context.SaveChangesAsync();
+        Logger.LogInformation("User {username} database records deleted successfully", username);
+
+        try
+        {
+            using var httpClient = await GetHttpClient();
+            var keycloak = new KeycloakClient(keycloakUrl, httpClient);
+
+            // Delete any clients (API or relay)
+            foreach (var orgClientId in orgClientIds)
+            {
+                var clients = await keycloak.ClientsAll3Async(orgClientId, null, null, null, false, false, realm);
+                var kcClient = clients?.FirstOrDefault(c => c.ClientId == orgClientId);
+                if (kcClient != null)
+                {
+                    await keycloak.ClientsDELETE3Async(realm, kcClient.Id);
+                    Logger.LogInformation("Keycloak client {clientId} deleted for organization", orgClientId);
+                }
+                else
+                {
+                    Logger.LogWarning("Keycloak client {clientId} not found, skipping deletion", orgClientId);
+                }
+            }
+
+            // Delete the user
+            await keycloak.UsersDELETE3Async(realm, keycloakUserId);
+            Logger.LogInformation("User {username} deleted from Keycloak successfully", username);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete user {username} from Keycloak", username);
+        }
+
+        return Ok();
     }
 
     /// <summary>
