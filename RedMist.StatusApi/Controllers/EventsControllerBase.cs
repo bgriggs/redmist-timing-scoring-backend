@@ -29,6 +29,7 @@ namespace RedMist.StatusApi.Controllers;
 public abstract class EventsControllerBase : ControllerBase
 {
     private const string LIVE_EVENTS_KEY = "live-events";
+    private const string SESSIONS_KEY = "sessions:{0}"; // {0} = eventId
     protected readonly IDbContextFactory<TsContext> tsContext;
     protected readonly HybridCache hcache;
     protected readonly IConnectionMultiplexer cacheMux;
@@ -40,6 +41,18 @@ public abstract class EventsControllerBase : ControllerBase
     {
         Expiration = TimeSpan.FromMinutes(1),
         LocalCacheExpiration = TimeSpan.FromMinutes(1)
+    };
+
+    private static readonly HybridCacheEntryOptions sessionsCacheOptions = new()
+    {
+        Expiration = TimeSpan.FromSeconds(30),
+        LocalCacheExpiration = TimeSpan.FromSeconds(5)
+    };
+
+    private static readonly HybridCacheEntryOptions competitorMetadataCacheOptions = new()
+    {
+        Expiration = TimeSpan.FromMinutes(30),
+        LocalCacheExpiration = TimeSpan.FromMinutes(5)
     };
 
 
@@ -412,8 +425,14 @@ public abstract class EventsControllerBase : ControllerBase
     {
         var clientId = User.FindFirstValue("client_id");
         Logger.LogTrace("{m} for event {eventId}, clientId {clientId}", nameof(LoadSessions), eventId, clientId);
-        using var context = await tsContext.CreateDbContextAsync();
-        return await context.Sessions.Where(s => s.EventId == eventId).ToListAsync();
+        var key = string.Format(SESSIONS_KEY, eventId);
+        return await hcache.GetOrCreateAsync(key,
+            async cancel =>
+            {
+                using var context = await tsContext.CreateDbContextAsync();
+                return await context.Sessions.Where(s => s.EventId == eventId).ToListAsync(cancel);
+            },
+            sessionsCacheOptions);
     }
 
     /// <summary>
@@ -632,7 +651,8 @@ public abstract class EventsControllerBase : ControllerBase
     {
         var key = string.Format(Consts.COMPETITOR_METADATA, car, eventId);
         return await hcache.GetOrCreateAsync(key,
-            async cancel => await LoadDbCompetitorMetadata(eventId, car));
+            async cancel => await LoadDbCompetitorMetadata(eventId, car),
+            competitorMetadataCacheOptions);
     }
 
     /// <summary>
