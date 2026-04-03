@@ -5,13 +5,14 @@ using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.Memory;
 using RedMist.Backend.Shared;
 using RedMist.Database;
+using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
 using StackExchange.Redis;
 using System.Diagnostics;
+using System.Runtime.ConstrainedExecution;
 using System.Security.Claims;
 using System.Text.Json;
-using RedMist.TimingCommon.Extensions;
 
 namespace RedMist.StatusApi.Controllers;
 
@@ -330,16 +331,49 @@ public abstract class EventsControllerBase : ControllerBase
         Logger.LogTrace("{m} for event {eventId}, clientId {clientId}", nameof(LoadCarLaps), eventId, clientId);
         using var context = await tsContext.CreateDbContextAsync();
 
-        // Get the latest lap data for each unique lap ID
         var lapsData = await context.CarLapLogs
             .Where(lap => lap.EventId == eventId
                 && lap.SessionId == sessionId
                 && lap.CarNumber == carNumber
                 && lap.LapNumber > 0)
-            .GroupBy(lap => lap.Id)
-            .Select(g => g.OrderByDescending(x => x.Timestamp).First().LapData)
+            .OrderBy(lap => lap.LapNumber)
+            .Select(lap => lap.LapData)
             .ToListAsync();
 
+        return DeserializeCarPositions(lapsData);
+    }
+
+    /// <summary>
+    /// Loads completed lap data for all cars in a specified session.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="sessionId">The unique identifier of the session.</param>
+    /// <returns>A list of car positions representing each completed lap across all cars in the session.</returns>
+    /// <response code="200">Returns the list of lap positions for all cars.</response>
+    [AllowAnonymous]
+    [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
+    [ProducesResponseType<List<CarPosition>>(StatusCodes.Status200OK)]
+    public virtual async Task<List<CarPosition>> LoadSessionLaps(int eventId, int sessionId)
+    {
+        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} for event {eventId}, session {sessionId}, clientId {clientId}", nameof(LoadSessionLaps), eventId, sessionId, clientId);
+        using var context = await tsContext.CreateDbContextAsync();
+
+        var lapsData = await context.CarLapLogs
+            .Where(lap => lap.EventId == eventId
+                && lap.SessionId == sessionId
+                && lap.LapNumber > 0)
+            .OrderBy(lap => lap.CarNumber)
+            .ThenBy(lap => lap.LapNumber)
+            .Select(lap => lap.LapData)
+            .ToListAsync();
+
+        return DeserializeCarPositions(lapsData);
+    }
+
+    private List<CarPosition> DeserializeCarPositions(List<string> lapsData)
+    {
         var carPositions = new List<CarPosition>(lapsData.Count);
         foreach (var lapData in lapsData)
         {
@@ -356,10 +390,9 @@ public abstract class EventsControllerBase : ControllerBase
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Error deserializing car position data for event {eventId}, car {carNumber}", eventId, carNumber);
+                Logger.LogError(ex, "Error deserializing car position lap data");
             }
         }
-
         return carPositions;
     }
 
@@ -612,6 +645,24 @@ public abstract class EventsControllerBase : ControllerBase
     {
         using var db = await tsContext.CreateDbContextAsync();
         return await db.CompetitorMetadata.FirstOrDefaultAsync(x => x.EventId == eventId && x.CarNumber == car);
+    }
+
+    /// <summary>
+    /// Loads competitor metadata (driver/car information) for all cars in an event.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>Competitor metadata including driver name, car details, transponder info, etc., or null if not found.</returns>
+    /// <response code="200">Returns the competitor metadata.</response>
+    /// <remarks>
+    /// Metadata is sourced from Orbits timing systems when available and configured by the organizer.
+    /// </remarks>
+    [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
+    [ProducesResponseType<List<CompetitorMetadata>>(StatusCodes.Status200OK)]
+    public virtual async Task<List<CompetitorMetadata>> LoadEventCompetitorMetadata(int eventId)
+    {
+        using var db = await tsContext.CreateDbContextAsync();
+        return await db.CompetitorMetadata.Where(x => x.EventId == eventId).ToListAsync();
     }
 
     #endregion

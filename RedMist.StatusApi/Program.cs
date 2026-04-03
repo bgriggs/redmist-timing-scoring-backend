@@ -22,6 +22,9 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.ResponseCompression;
+using Npgsql;
+using System.IO.Compression;
 
 namespace RedMist.StatusApi;
 
@@ -185,7 +188,8 @@ public class Program
 
         AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
         string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new ArgumentNullException("SQL Connection");
-        builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
+        var npgsqlConnBuilder = new NpgsqlConnectionStringBuilder(sqlConn) { MinPoolSize = 3, MaxPoolSize = 10 };
+        builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(npgsqlConnBuilder.ConnectionString));
 
         string redisConn = $"{builder.Configuration["REDIS_SVC"]},password={builder.Configuration["REDIS_PW"]}";
 
@@ -255,6 +259,21 @@ public class Program
 
         builder.Services.AddHostedService<MetricsPublisher>();
 
+        builder.Services.AddResponseCompression(options =>
+        {
+            options.EnableForHttps = true;
+            options.Providers.Add<GzipCompressionProvider>();
+            options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+            [
+                "application/json",
+                "application/x-msgpack"
+            ]);
+        });
+        builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+        {
+            options.Level = CompressionLevel.Fastest;
+        });
+
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();
 
@@ -321,6 +340,22 @@ public class Program
             ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
         }).AllowAnonymous();
 
+        app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
+        {
+            var ex = ctx.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+            if (ex is NpgsqlException npgEx && npgEx.Message.Contains("connection pool", StringComparison.OrdinalIgnoreCase))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                ctx.Response.Headers.RetryAfter = "5";
+                await ctx.Response.WriteAsync("Service temporarily unavailable. Please retry.");
+            }
+            else
+            {
+                ctx.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            }
+        }));
+
+        app.UseResponseCompression();
         app.UseHttpsRedirection();
         app.UseCors();
         app.UseAuthentication();

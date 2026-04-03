@@ -145,6 +145,7 @@ public class TsContext : DbContext
         modelBuilder.Entity<Passing>().HasKey(p => new { p.OrganizationId, p.EventId, p.Id });
         modelBuilder.Entity<UIVersionInfo>().HasNoKey().ToTable("UIVersions");
         modelBuilder.Entity<Models.DriverInfo>().HasIndex(o => o.FlagtronicsId).IsUnique();
+        modelBuilder.Entity<CarLapLog>().HasIndex(l => new { l.EventId, l.SessionId, l.CarNumber, l.LapNumber });
     }
 }
 #pragma warning restore CS0618
