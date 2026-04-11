@@ -4,6 +4,7 @@ using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
 using Keycloak.AuthServices.Common;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using NLog.Extensions.Logging;
@@ -13,6 +14,7 @@ using RedMist.Backend.Shared.Utilities;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using StackExchange.Redis;
+using System.IO.Compression;
 using System.Reflection;
 
 namespace RedMist.EventManagement;
@@ -50,6 +52,16 @@ public class Program
         //});
 
         builder.Services.AddHttpClient();
+
+        builder.Services.AddResponseCompression(options =>
+        {
+            options.EnableForHttps = true;
+            options.Providers.Add<BrotliCompressionProvider>();
+            options.Providers.Add<GzipCompressionProvider>();
+            options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(["application/json", "application/x-msgpack"]);
+        });
+        builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
+        builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Fastest);
 
         builder.Services.AddControllersWithMessagePack();
 
@@ -188,6 +200,7 @@ public class Program
             ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
         }).AllowAnonymous();
 
+        app.UseResponseCompression();
         app.UseHttpsRedirection();
         app.UseCors();
         app.UseAuthentication();

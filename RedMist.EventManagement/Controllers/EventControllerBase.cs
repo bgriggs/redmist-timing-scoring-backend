@@ -2,9 +2,12 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.Database.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using StackExchange.Redis;
+using System.Runtime.CompilerServices;
 using System.Security.Claims;
 
 namespace RedMist.EventManagement.Controllers;
@@ -330,6 +333,24 @@ public abstract class EventControllerBase : ControllerBase
                 Logger.LogError(ex, "Error publishing event configuration change notification for event {EventId}", eventId);
                 throw;
             }
+        }
+    }
+
+    [HttpGet]
+    [Produces("application/json")]
+    [ProducesResponseType<IEnumerable<EventStatusLog>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public virtual async IAsyncEnumerable<EventStatusLog> LoadEventLogsAsync(int eventId, int? sessionId, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        Logger.LogMethodEntry();
+        await using var context = await tsContext.CreateDbContextAsync(cancellationToken);
+        await foreach (var log in context.EventStatusLogs
+            .Where(x => x.EventId == eventId && (!sessionId.HasValue || x.SessionId == sessionId.Value))
+            .OrderByDescending(x => x.Timestamp)
+            .AsAsyncEnumerable()
+            .WithCancellation(cancellationToken))
+        {
+            yield return log;
         }
     }
 }
