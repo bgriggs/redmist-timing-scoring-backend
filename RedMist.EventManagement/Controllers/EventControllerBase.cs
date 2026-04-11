@@ -340,10 +340,10 @@ public abstract class EventControllerBase : ControllerBase
     [Produces("application/json")]
     [ProducesResponseType<IEnumerable<EventStatusLog>>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public virtual async IAsyncEnumerable<EventStatusLog> LoadEventLogsAsync(int eventId, int? sessionId, int skip = 0, int take = 500, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public virtual async IAsyncEnumerable<EventStatusLog> LoadEventLogsAsync(int eventId, int? sessionId, int skip = 0, int take = 1000, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         Logger.LogMethodEntry();
-        var cappedTake = Math.Min(take, 2000);
+        var cappedTake = Math.Min(take, 10000);
         await using var context = await tsContext.CreateDbContextAsync(cancellationToken);
         await foreach (var log in context.EventStatusLogs
             .AsNoTracking()
