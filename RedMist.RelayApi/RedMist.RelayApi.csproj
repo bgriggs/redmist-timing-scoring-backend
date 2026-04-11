@@ -14,8 +14,8 @@
 	<ItemGroup>
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
 		<PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
-		<PackageReference Include="Keycloak.AuthServices.Authorization" Version="2.8.0" />
-		<PackageReference Include="Keycloak.AuthServices.Authentication" Version="2.8.0" />
+		<PackageReference Include="Keycloak.AuthServices.Authorization" Version="2.9.0" />
+		<PackageReference Include="Keycloak.AuthServices.Authentication" Version="2.9.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="9.0.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.System" Version="9.0.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />

@@ -23,10 +23,10 @@
 		<PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.System" Version="9.0.0" />
 		<PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
-		<PackageReference Include="Keycloak.AuthServices.Authorization" Version="2.8.0" />
-		<PackageReference Include="Keycloak.AuthServices.Authentication" Version="2.8.0" />
-		<PackageReference Include="StackExchange.Redis" Version="2.12.1" />
-		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.5" />
+		<PackageReference Include="Keycloak.AuthServices.Authorization" Version="2.9.0" />
+		<PackageReference Include="Keycloak.AuthServices.Authentication" Version="2.9.0" />
+		<PackageReference Include="StackExchange.Redis" Version="2.12.14" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
 		<PackageReference Include="MessagePack" Version="3.1.4" />
 		<PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.4" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.5">
