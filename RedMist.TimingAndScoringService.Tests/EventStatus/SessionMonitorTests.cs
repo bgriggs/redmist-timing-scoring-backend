@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Backend.Shared.Hubs;
+using RedMist.Backend.Shared.Services;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.LapData;
@@ -36,7 +37,7 @@ public class SessionMonitorTests
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
         var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object, dbMock.Object);
-        var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
+        var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor, new Mock<IMediator>().Object);
 
         // Create the debug session monitor with the SAME session context
         var sessionMonitor = new DebugSessionMonitor(1, dbMock.Object, sessionContext);
@@ -100,7 +101,7 @@ public class SessionMonitorTests
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
         var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object, dbMock.Object);
-        var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
+        var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor, new Mock<IMediator>().Object);
 
         // Create the debug session monitor with the SAME session context
         var sessionMonitor = new DebugSessionMonitor(1, dbMock.Object, sessionContext);
@@ -169,7 +170,7 @@ public class SessionMonitorTests
         var mockHubContext = new Mock<IHubContext<StatusHub>>();
         var resetProcessor = new ResetProcessor(sessionContext, mockHubContext.Object, mockLoggerFactory.Object);
         var startingPositionProcessor = new StartingPositionProcessor(sessionContext, mockLoggerFactory.Object, dbMock.Object);
-        var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor);
+        var rmonitorProcessor = new RMonitorDataProcessor(mockLoggerFactory.Object, sessionContext, resetProcessor, startingPositionProcessor, new Mock<IMediator>().Object);
 
         // Create the debug session monitor with the SAME session context
         var sessionMonitor = new DebugSessionMonitor(1, dbMock.Object, sessionContext);

@@ -1,4 +1,5 @@
-﻿using RedMist.EventProcessor.EventStatus.PipelineBlocks;
+﻿using RedMist.Backend.Shared.Services;
+using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.RMonitor.StateChanges;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
@@ -25,7 +26,17 @@ public class RMonitorDataProcessor
     private readonly SessionContext sessionContext;
     private readonly ResetProcessor resetProcessor;
     private readonly StartingPositionProcessor startingPositionProcessor;
+    private readonly IMediator mediator;
+    private readonly TimeProvider timeProvider;
     private const string STANDALONE_RESET_CMD = "$I, \"00:00:00\", \"0/0/0000\"";
+
+    // Missing car reset tracking
+    private static readonly TimeSpan InitialMissingCarThreshold = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan FirstResetBackoff = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan MaxResetBackoff = TimeSpan.FromHours(1);
+    private DateTimeOffset? firstMissingCarTime;
+    private DateTimeOffset lastForcedResetTime = DateTimeOffset.MinValue;
+    private TimeSpan currentResetBackoff = FirstResetBackoff;
 
     /// <summary>
     /// Callback to flush pending lap completions before reading lap history during mid-race reset.
@@ -35,12 +46,15 @@ public class RMonitorDataProcessor
 
 
     public RMonitorDataProcessor(ILoggerFactory loggerFactory, SessionContext sessionContext,
-        ResetProcessor resetProcessor, StartingPositionProcessor startingPositionProcessor)
+        ResetProcessor resetProcessor, StartingPositionProcessor startingPositionProcessor,
+        IMediator mediator, TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.sessionContext = sessionContext;
         this.resetProcessor = resetProcessor;
         this.startingPositionProcessor = startingPositionProcessor;
+        this.mediator = mediator;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
 
@@ -128,7 +142,15 @@ public class RMonitorDataProcessor
                     {
                         var cp = change.ApplyCarChange(sessionContext);
                         if (cp != null)
+                        {
                             carPatches.Add(cp);
+                            ResetMissingCarTracking();
+                        }
+                        else if (sessionContext.GetCarByNumber(change.Number) == null)
+                        {
+                            Logger.LogWarning("$G command for car {number} but car not found in session", change.Number);
+                            await CheckMissingCarResetAsync();
+                        }
                     }
                 }
                 else if (command.StartsWith("$H"))
@@ -139,7 +161,15 @@ public class RMonitorDataProcessor
                     {
                         var cp = change.ApplyCarChange(sessionContext);
                         if (cp != null)
+                        {
                             carPatches.Add(cp);
+                            ResetMissingCarTracking();
+                        }
+                        else if (sessionContext.GetCarByNumber(change.Number) == null)
+                        {
+                            Logger.LogWarning("$H command for car {number} but car not found in session", change.Number);
+                            await CheckMissingCarResetAsync();
+                        }
                     }
                 }
                 else if (command.StartsWith("$I"))
@@ -168,7 +198,15 @@ public class RMonitorDataProcessor
                     {
                         var cp = change.ApplyCarChange(sessionContext);
                         if (cp != null)
+                        {
                             carPatches.Add(cp);
+                            ResetMissingCarTracking();
+                        }
+                        else if (sessionContext.GetCarByNumber(change.Number) == null)
+                        {
+                            Logger.LogWarning("$J command for car {number} but car not found in session", change.Number);
+                            await CheckMissingCarResetAsync();
+                        }
                     }
                 }
                 else if (command.StartsWith("$COR"))
@@ -213,6 +251,56 @@ public class RMonitorDataProcessor
         }
 
         return new PatchUpdates([.. sessionPatches], [.. carPatches]);
+    }
+
+    /// <summary>
+    /// Checks if missing car commands have persisted long enough to warrant a forced relay reset,
+    /// using exponential backoff: 10s initial, then 60s, then doubling up to 1 hour.
+    /// </summary>
+    private async Task CheckMissingCarResetAsync()
+    {
+        var now = timeProvider.GetUtcNow();
+
+        // Start tracking missing car time if not already
+        firstMissingCarTime ??= now;
+
+        var elapsed = now - firstMissingCarTime.Value;
+        if (elapsed < InitialMissingCarThreshold)
+            return;
+
+        var timeSinceLastReset = now - lastForcedResetTime;
+        if (lastForcedResetTime != DateTimeOffset.MinValue && timeSinceLastReset < currentResetBackoff)
+            return;
+
+        Logger.LogWarning("Car update commands received for {elapsed:F1}s with no matching cars, sending forced relay reset (backoff: {backoff}s)",
+            elapsed.TotalSeconds, currentResetBackoff.TotalSeconds);
+
+        await mediator.Publish(new RelayResetRequest { EventId = sessionContext.EventId, ForceTimingDataReset = true });
+
+        // Update backoff: after first reset use 60s, then double up to 1 hour
+        if (lastForcedResetTime == DateTimeOffset.MinValue)
+        {
+            currentResetBackoff = FirstResetBackoff;
+        }
+        else
+        {
+            currentResetBackoff = TimeSpan.FromTicks(Math.Min(currentResetBackoff.Ticks * 2, MaxResetBackoff.Ticks));
+        }
+
+        lastForcedResetTime = now;
+    }
+
+    /// <summary>
+    /// Resets missing car tracking when a car update command succeeds (car was found).
+    /// </summary>
+    private void ResetMissingCarTracking()
+    {
+        if (firstMissingCarTime != null)
+        {
+            firstMissingCarTime = null;
+            lastForcedResetTime = DateTimeOffset.MinValue;
+            currentResetBackoff = FirstResetBackoff;
+        }
     }
 
     private CarPositionPatch? AddUpdateCompetitor(string regNum)

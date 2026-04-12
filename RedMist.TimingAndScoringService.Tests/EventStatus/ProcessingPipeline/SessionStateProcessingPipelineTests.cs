@@ -5,9 +5,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
-using Org.BouncyCastle.Asn1.X509;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
+using RedMist.Backend.Shared.Services;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
@@ -182,7 +182,7 @@ public class SessionStateProcessingPipelineTests
         // Create real processor instances for end-to-end testing
         _resetProcessor = new ResetProcessor(_sessionContext, _mockHubContext.Object, _mockLoggerFactory.Object);
         _startingPositionProcessor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object, _dbContextFactory);
-        _rMonitorProcessor = new RMonitorDataProcessor(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor);
+        _rMonitorProcessor = new RMonitorDataProcessor(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor, new Mock<IMediator>().Object);
         _multiloopProcessor = new MultiloopProcessor(_mockLoggerFactory.Object, _sessionContext);
         _pitProcessor = new PitProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _controlLogEnricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);

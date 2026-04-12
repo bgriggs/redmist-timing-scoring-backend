@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using RedMist.Backend.Shared.Hubs;
+using RedMist.Backend.Shared.Services;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.LapData;
@@ -24,6 +25,7 @@ public class RMonitorDataProcessorV2Tests
     private Mock<ILogger> _mockLogger = null!;
     private ResetProcessor _resetProcessor = null!;
     private Mock<IHubContext<StatusHub>> _mockHubContext = null!;
+    private Mock<IMediator> _mockMediator = null!;
     private StartingPositionProcessor _startingPositionProcessor = null!;
 
     [TestInitialize]
@@ -32,6 +34,7 @@ public class RMonitorDataProcessorV2Tests
         _mockLoggerFactory = new Mock<ILoggerFactory>();
         _mockLogger = new Mock<ILogger>();
         _mockHubContext = new Mock<IHubContext<StatusHub>>();
+        _mockMediator = new Mock<IMediator>();
 
         // Setup session context FIRST
         var config = new ConfigurationBuilder()
@@ -46,7 +49,7 @@ public class RMonitorDataProcessorV2Tests
 
         _resetProcessor = new ResetProcessor(_sessionContext, _mockHubContext.Object, _mockLoggerFactory.Object);
         _startingPositionProcessor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object, dbContextFactory);
-        _processor = new RMonitorDataProcessor(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor);
+        _processor = new RMonitorDataProcessor(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor, _mockMediator.Object);
     }
 
     [TestMethod]
