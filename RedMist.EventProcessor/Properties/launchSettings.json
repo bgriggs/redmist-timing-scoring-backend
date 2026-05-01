@@ -9,6 +9,16 @@
       "dotnetRunMessages": true,
       "applicationUrl": "http://0.0.0.0:5179"
     },
+    "K8s Debug": {
+      "commandName": "Project",
+      "launchUrl": "swagger",
+      "dotnetRunMessages": true,
+      "applicationUrl": "http://0.0.0.0:5179",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "POD_NAME": "debug-local"
+      }
+    },
     "Container (Dockerfile)": {
       "commandName": "Docker",
       "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}/swagger",

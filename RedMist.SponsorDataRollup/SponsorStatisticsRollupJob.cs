@@ -21,6 +21,37 @@ public class SponsorStatisticsRollupJob(
 
     private readonly ILogger logger = loggerFactory.CreateLogger<SponsorStatisticsRollupJob>();
 
+    private sealed class SponsorAggregate
+    {
+        public required int SponsorId { get; init; }
+        public int Impressions { get; set; }
+        public int ViewableImpressions { get; set; }
+        public int ClickThroughs { get; set; }
+        public long EngagementDurationMs { get; set; }
+        public Dictionary<int, EventAggregate> EventStatistics { get; } = [];
+        public Dictionary<string, SourceAggregate> SourceStatistics { get; } = new(StringComparer.Ordinal);
+    }
+
+    private sealed class EventAggregate
+    {
+        public required int SponsorId { get; init; }
+        public required int EventId { get; init; }
+        public int Impressions { get; set; }
+        public int ViewableImpressions { get; set; }
+        public int ClickThroughs { get; set; }
+        public long EngagementDurationMs { get; set; }
+    }
+
+    private sealed class SourceAggregate
+    {
+        public required int SponsorId { get; init; }
+        public required string Source { get; init; }
+        public int Impressions { get; set; }
+        public int ViewableImpressions { get; set; }
+        public int ClickThroughs { get; set; }
+        public long EngagementDurationMs { get; set; }
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Wait for the host to fully start before executing (K8s networking/DNS readiness)
@@ -47,63 +78,110 @@ public class SponsorStatisticsRollupJob(
                 .ToHashSetAsync(stoppingToken);
             logger.LogInformation("Loaded {Count} sponsors for ID lookup", sponsorIds.Count);
 
-            // Load previous month's telemetry logs
-            var telemetryLogs = await context.SponsorTelemetryLogs
+            // Stream previous month's telemetry logs and aggregate on the fly to avoid
+            // materializing the full result set and a second resolved copy in memory.
+            var sponsorAggregates = new Dictionary<int, SponsorAggregate>();
+            var unmatchedImageSamples = new HashSet<string>(StringComparer.Ordinal);
+            var unmatchedRowCount = 0;
+            var totalTelemetryRows = 0;
+
+            await foreach (var log in context.SponsorTelemetryLogs
                 .AsNoTracking()
                 .Where(t => t.Timestamp >= monthStart && t.Timestamp < monthEnd)
-                .ToListAsync(stoppingToken);
+                .Select(t => new
+                {
+                    t.ImageId,
+                    t.EventId,
+                    t.EventType,
+                    t.DurationMs,
+                    t.Source,
+                })
+                .AsAsyncEnumerable()
+                .WithCancellation(stoppingToken))
+            {
+                totalTelemetryRows++;
 
-            logger.LogInformation("Found {Count} telemetry log entries for {Month:yyyy-MM}", telemetryLogs.Count, month);
+                if (!int.TryParse(log.ImageId, out var sponsorId) || !sponsorIds.Contains(sponsorId))
+                {
+                    unmatchedRowCount++;
+                    if (unmatchedImageSamples.Count < 20)
+                    {
+                        unmatchedImageSamples.Add(log.ImageId);
+                    }
 
-            if (telemetryLogs.Count == 0)
+                    continue;
+                }
+
+                if (!sponsorAggregates.TryGetValue(sponsorId, out var aggregate))
+                {
+                    aggregate = new SponsorAggregate { SponsorId = sponsorId };
+                    sponsorAggregates.Add(sponsorId, aggregate);
+                }
+
+                ApplyEventType(aggregate, log.EventType, log.DurationMs);
+
+                var eventId = ParseEventId(log.EventId);
+                if (!aggregate.EventStatistics.TryGetValue(eventId, out var eventAggregate))
+                {
+                    eventAggregate = new EventAggregate
+                    {
+                        SponsorId = sponsorId,
+                        EventId = eventId,
+                    };
+                    aggregate.EventStatistics.Add(eventId, eventAggregate);
+                }
+
+                ApplyEventType(eventAggregate, log.EventType, log.DurationMs);
+
+                if (!aggregate.SourceStatistics.TryGetValue(log.Source, out var sourceAggregate))
+                {
+                    sourceAggregate = new SourceAggregate
+                    {
+                        SponsorId = sponsorId,
+                        Source = log.Source,
+                    };
+                    aggregate.SourceStatistics.Add(log.Source, sourceAggregate);
+                }
+
+                ApplyEventType(sourceAggregate, log.EventType, log.DurationMs);
+            }
+
+            logger.LogInformation("Found {Count} telemetry log entries for {Month:yyyy-MM}", totalTelemetryRows, month);
+
+            if (totalTelemetryRows == 0)
             {
                 logger.LogInformation("No telemetry data to process, exiting");
                 lifetime.StopApplication();
                 return;
             }
 
-            // Resolve SponsorId for each log entry by parsing ImageId as int
-            var resolvedLogs = new List<(SponsorTelemetryLog Log, int SponsorId)>();
-            var unmatchedImages = new HashSet<string>();
-
-            foreach (var log in telemetryLogs)
+            if (unmatchedRowCount > 0)
             {
-                if (int.TryParse(log.ImageId, out var sponsorId) && sponsorIds.Contains(sponsorId))
-                {
-                    resolvedLogs.Add((log, sponsorId));
-                }
-                else
-                {
-                    unmatchedImages.Add(log.ImageId);
-                }
+                logger.LogWarning("Could not resolve SponsorId for {Count} telemetry row(s). Sample ImageId values: {ImageIds}",
+                    unmatchedRowCount, string.Join(", ", unmatchedImageSamples));
             }
 
-            if (unmatchedImages.Count > 0)
+            if (sponsorAggregates.Count == 0)
             {
-                logger.LogWarning("Could not resolve SponsorId for {Count} distinct ImageId value(s): {ImageIds}",
-                    unmatchedImages.Count, string.Join(", ", unmatchedImages.Take(20)));
+                logger.LogInformation("No telemetry rows matched known sponsors, exiting");
+                lifetime.StopApplication();
+                return;
             }
 
-            // Group by SponsorId and build statistics
-            var sponsorGroups = resolvedLogs.GroupBy(r => r.SponsorId);
+            var existingStatistics = await context.SponsorStatistics
+                .Include(s => s.EventStatistics)
+                .Include(s => s.SourceStatistics)
+                .Where(s => s.Month == month && sponsorAggregates.Keys.Contains(s.SponsorId))
+                .ToDictionaryAsync(s => s.SponsorId, stoppingToken);
 
-            foreach (var sponsorGroup in sponsorGroups)
+            foreach (var aggregate in sponsorAggregates.Values)
             {
-                var sponsorId = sponsorGroup.Key;
-                var logs = sponsorGroup.Select(g => g.Log).ToList();
+                var sponsorId = aggregate.SponsorId;
 
                 // Check for existing record for this sponsor/month to support re-runs
-                var existing = await context.SponsorStatistics
-                    .Include(s => s.EventStatistics)
-                    .Include(s => s.SourceStatistics)
-                    .FirstOrDefaultAsync(s => s.SponsorId == sponsorId && s.Month == month, stoppingToken);
+                existingStatistics.TryGetValue(sponsorId, out var existing);
 
                 // Compute aggregated values
-                var impressions = logs.Count(l => l.EventType == IMPRESSION);
-                var viewableImpressions = logs.Count(l => l.EventType == VIEWABLE_IMPRESSION);
-                var clickThroughs = logs.Count(l => l.EventType == CLICK_THROUGH);
-                var engagementDurationMs = logs.Where(l => l.EventType == ENGAGEMENT_DURATION).Sum(l => (long)(l.DurationMs ?? 0));
-
                 SponsorStatistics stats;
 
                 if (existing != null)
@@ -115,10 +193,10 @@ public class SponsorStatisticsRollupJob(
                     context.SourceSponsorStatistics.RemoveRange(existing.SourceStatistics);
 
                     // Overwrite totals on existing record
-                    existing.Impressions = impressions;
-                    existing.ViewableImpressions = viewableImpressions;
-                    existing.ClickThroughs = clickThroughs;
-                    existing.EngagementDurationMs = engagementDurationMs;
+                    existing.Impressions = aggregate.Impressions;
+                    existing.ViewableImpressions = aggregate.ViewableImpressions;
+                    existing.ClickThroughs = aggregate.ClickThroughs;
+                    existing.EngagementDurationMs = aggregate.EngagementDurationMs;
                     existing.ReportProcessed = false;
                     existing.ReportProcessingSuccessful = false;
 
@@ -131,41 +209,39 @@ public class SponsorStatisticsRollupJob(
                     {
                         Month = month,
                         SponsorId = sponsorId,
-                        Impressions = impressions,
-                        ViewableImpressions = viewableImpressions,
-                        ClickThroughs = clickThroughs,
-                        EngagementDurationMs = engagementDurationMs,
+                        Impressions = aggregate.Impressions,
+                        ViewableImpressions = aggregate.ViewableImpressions,
+                        ClickThroughs = aggregate.ClickThroughs,
+                        EngagementDurationMs = aggregate.EngagementDurationMs,
                     };
                     context.SponsorStatistics.Add(stats);
                 }
 
                 // Level 2: Per-event statistics
-                var eventGroups = logs.GroupBy(l => ParseEventId(l.EventId));
-                foreach (var eventGroup in eventGroups)
+                foreach (var eventAggregate in aggregate.EventStatistics.Values)
                 {
                     stats.EventStatistics.Add(new EventSponsorStatistics
                     {
                         SponsorId = sponsorId,
-                        EventId = eventGroup.Key,
-                        Impressions = eventGroup.Count(l => l.EventType == IMPRESSION),
-                        ViewableImpressions = eventGroup.Count(l => l.EventType == VIEWABLE_IMPRESSION),
-                        ClickThroughs = eventGroup.Count(l => l.EventType == CLICK_THROUGH),
-                        EngagementDurationMs = eventGroup.Where(l => l.EventType == ENGAGEMENT_DURATION).Sum(l => (long)(l.DurationMs ?? 0)),
+                        EventId = eventAggregate.EventId,
+                        Impressions = eventAggregate.Impressions,
+                        ViewableImpressions = eventAggregate.ViewableImpressions,
+                        ClickThroughs = eventAggregate.ClickThroughs,
+                        EngagementDurationMs = eventAggregate.EngagementDurationMs,
                     });
                 }
 
                 // Level 3: Per-source statistics
-                var sourceGroups = logs.GroupBy(l => l.Source);
-                foreach (var sourceGroup in sourceGroups)
+                foreach (var sourceAggregate in aggregate.SourceStatistics.Values)
                 {
                     stats.SourceStatistics.Add(new SourceSponsorStatistics
                     {
                         SponsorId = sponsorId,
-                        Source = sourceGroup.Key,
-                        Impressions = sourceGroup.Count(l => l.EventType == IMPRESSION),
-                        ViewableImpressions = sourceGroup.Count(l => l.EventType == VIEWABLE_IMPRESSION),
-                        ClickThroughs = sourceGroup.Count(l => l.EventType == CLICK_THROUGH),
-                        EngagementDurationMs = sourceGroup.Where(l => l.EventType == ENGAGEMENT_DURATION).Sum(l => (long)(l.DurationMs ?? 0)),
+                        Source = sourceAggregate.Source,
+                        Impressions = sourceAggregate.Impressions,
+                        ViewableImpressions = sourceAggregate.ViewableImpressions,
+                        ClickThroughs = sourceAggregate.ClickThroughs,
+                        EngagementDurationMs = sourceAggregate.EngagementDurationMs,
                     });
                 }
 
@@ -175,7 +251,7 @@ public class SponsorStatisticsRollupJob(
             }
 
             await context.SaveChangesAsync(stoppingToken);
-            logger.LogInformation("Sponsor statistics rollup completed for {Month:yyyy-MM}. Processed {SponsorCount} sponsor(s)", month, sponsorGroups.Count());
+            logger.LogInformation("Sponsor statistics rollup completed for {Month:yyyy-MM}. Processed {SponsorCount} sponsor(s)", month, sponsorAggregates.Count);
         }
         catch (Exception ex)
         {
@@ -196,6 +272,63 @@ public class SponsorStatisticsRollupJob(
         if (string.IsNullOrWhiteSpace(eventId))
             return 0;
         return int.TryParse(eventId, out var id) && id > 0 ? id : 0;
+    }
+
+    private static void ApplyEventType(SponsorAggregate aggregate, string eventType, int? durationMs)
+    {
+        switch (eventType)
+        {
+            case IMPRESSION:
+                aggregate.Impressions++;
+                break;
+            case VIEWABLE_IMPRESSION:
+                aggregate.ViewableImpressions++;
+                break;
+            case CLICK_THROUGH:
+                aggregate.ClickThroughs++;
+                break;
+            case ENGAGEMENT_DURATION:
+                aggregate.EngagementDurationMs += durationMs ?? 0;
+                break;
+        }
+    }
+
+    private static void ApplyEventType(EventAggregate aggregate, string eventType, int? durationMs)
+    {
+        switch (eventType)
+        {
+            case IMPRESSION:
+                aggregate.Impressions++;
+                break;
+            case VIEWABLE_IMPRESSION:
+                aggregate.ViewableImpressions++;
+                break;
+            case CLICK_THROUGH:
+                aggregate.ClickThroughs++;
+                break;
+            case ENGAGEMENT_DURATION:
+                aggregate.EngagementDurationMs += durationMs ?? 0;
+                break;
+        }
+    }
+
+    private static void ApplyEventType(SourceAggregate aggregate, string eventType, int? durationMs)
+    {
+        switch (eventType)
+        {
+            case IMPRESSION:
+                aggregate.Impressions++;
+                break;
+            case VIEWABLE_IMPRESSION:
+                aggregate.ViewableImpressions++;
+                break;
+            case CLICK_THROUGH:
+                aggregate.ClickThroughs++;
+                break;
+            case ENGAGEMENT_DURATION:
+                aggregate.EngagementDurationMs += durationMs ?? 0;
+                break;
+        }
     }
 
     /// <summary>
