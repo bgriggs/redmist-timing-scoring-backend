@@ -461,7 +461,7 @@ public class StatusHub : Hub
             if (!connJson.IsNullOrEmpty)
             {
                 var conn = JsonSerializer.Deserialize<StatusConnection>(connJson.ToString());
-                if (conn != null && conn.ClientId != null)
+                if (conn != null)
                 {
                     // If the connection was previously subscribed to a different event, remove it from that event's connection cache
                     if (conn.SubscribedEventId > 0 && conn.SubscribedEventId != eventId)
@@ -470,10 +470,13 @@ public class StatusHub : Hub
                         await cache.HashDeleteAsync(oldConnKey, connectionId, CommandFlags.FireAndForget);
                     }
 
-                    // Update the connectionId with the eventId
+                    // Always update SubscribedEventId so OnDisconnectedAsync can clean up the event hash entry
                     conn.SubscribedEventId = eventId;
                     conn.InCarDriverConnection = inCarDriverConnection;
-                    clientType = ClientTypeHelper.ResolveClientType(conn.ClientId);
+                    if (conn.ClientId != null)
+                    {
+                        clientType = ClientTypeHelper.ResolveClientType(conn.ClientId);
+                    }
                     var updatedJson = JsonSerializer.Serialize(conn);
                     await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, connectionId, updatedJson);
                 }
