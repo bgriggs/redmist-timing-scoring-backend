@@ -98,10 +98,13 @@ public class Program
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             {
-                if (httpContext.Request.Path.StartsWithSegments("/event-status") ||
+                var path = httpContext.Request.Path;
+                if (path.StartsWithSegments("/event-status") ||
+                    path.StartsWithSegments("/SponsorTelemetry") ||
+                    path.StartsWithSegments("/v1/SponsorTelemetry") ||
                     httpContext.User.Identity?.IsAuthenticated == true)
                 {
-                    return RateLimitPartition.GetNoLimiter("authenticated-or-signalr");
+                    return RateLimitPartition.GetNoLimiter("authenticated-signalr-or-sponsor-telemetry");
                 }
 
                 return RateLimitPartition.GetTokenBucketLimiter(
