@@ -1,5 +1,5 @@
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview AS base
 # Install GSSAPI library required by Npgsql for PostgreSQL authentication negotiation
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libgssapi-krb5-2t64 && rm -rf /var/lib/apt/lists/*
 USER $APP_UID
@@ -8,7 +8,7 @@ EXPOSE 80
 
 
 # This stage is used to build the service project
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 COPY ["RedMist.EventProcessor/RedMist.EventProcessor.csproj", "RedMist.EventProcessor/"]
