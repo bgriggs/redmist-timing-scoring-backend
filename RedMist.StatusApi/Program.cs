@@ -92,16 +92,37 @@ public class Program
         //    options.GlobalPermitLimit = 30;
         //});
 
-        // Sponsor telemetry rate limiting (per IP)
+        // Rate limiting
         builder.Services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+            {
+                if (httpContext.Request.Path.StartsWithSegments("/event-status") ||
+                    httpContext.User.Identity?.IsAuthenticated == true)
+                {
+                    return RateLimitPartition.GetNoLimiter("authenticated-or-signalr");
+                }
+
+                return RateLimitPartition.GetTokenBucketLimiter(
+                    httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = 15,
+                        ReplenishmentPeriod = TimeSpan.FromSeconds(2),
+                        TokensPerPeriod = 1,
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
+            });
+
             options.AddFixedWindowLimiter("swagger", config =>
             {
-                config.PermitLimit = 10;
+                config.PermitLimit = 3;
                 config.Window = TimeSpan.FromMinutes(1);
                 config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-                config.QueueLimit = 5;
+                config.QueueLimit = 0;
             });
             options.AddPolicy("sponsor-telemetry", httpContext =>
                 RateLimitPartition.GetTokenBucketLimiter(
@@ -291,9 +312,6 @@ public class Program
             app.UsePathBase(pathBase);
         }
 
-        //// Apply rate limiting middleware (must be after UsePathBase, before endpoints)
-        app.UseRateLimiter();
-
         // Enable Swagger in all environments
         app.UseSwagger(c =>
         {
@@ -359,6 +377,7 @@ public class Program
         app.UseHttpsRedirection();
         app.UseCors();
         app.UseAuthentication();
+        app.UseRateLimiter();
         app.UseAuthorization();
         app.UseMetricServer();
         app.MapControllers();
