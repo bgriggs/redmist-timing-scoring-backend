@@ -99,12 +99,13 @@ public class Program
                     return RateLimitPartition.GetNoLimiter("signalr-or-sponsor-telemetry");
                 }
 
+                var clientIp = GetClientIp(httpContext);
+
                 if (httpContext.User.Identity?.IsAuthenticated == true)
                 {
                     var authenticatedKey = httpContext.User.FindFirst("sub")?.Value
                         ?? httpContext.User.Identity?.Name
-                        ?? httpContext.Connection.RemoteIpAddress?.ToString()
-                        ?? "authenticated-unknown";
+                        ?? clientIp;
 
                     return RateLimitPartition.GetTokenBucketLimiter(
                         $"authenticated:{authenticatedKey}",
@@ -119,10 +120,8 @@ public class Program
                         });
                 }
 
-                var anonymousClientIp = GetClientIp(httpContext);
-
                 return RateLimitPartition.GetTokenBucketLimiter(
-                    $"anonymous:{anonymousClientIp}",
+                    $"anonymous:{clientIp}",
                     _ => new TokenBucketRateLimiterOptions
                     {
                         TokenLimit = 12,
@@ -141,6 +140,7 @@ public class Program
                 config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
                 config.QueueLimit = 0;
             });
+
             options.AddPolicy("sponsor-telemetry", httpContext =>
             {
                 var clientIp = GetClientIp(httpContext);
