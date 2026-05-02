@@ -125,18 +125,30 @@ public class Program
                             AutoReplenishment = true
                         });
                 }
-                return RateLimitPartition.GetNoLimiter("signalr-or-sponsor-telemetry");
-                //return RateLimitPartition.GetTokenBucketLimiter(
-                //    $"anonymous:{httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
-                //    _ => new TokenBucketRateLimiterOptions
-                //    {
-                //        TokenLimit = 10,
-                //        ReplenishmentPeriod = TimeSpan.FromSeconds(2),
-                //        TokensPerPeriod = 1,
-                //        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                //        QueueLimit = 10,
-                //        AutoReplenishment = true
-                //    });
+
+                var remoteIpAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                var xForwardedFor = httpContext.Request.Headers["X-Forwarded-For"].ToString();
+                var cfConnectingIp = httpContext.Request.Headers["CF-Connecting-IP"].ToString();
+                var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("RateLimiting");
+
+                logger.LogInformation(
+                    "Anonymous rate limit request path={Path} remoteIp={RemoteIpAddress} xForwardedFor={XForwardedFor} cfConnectingIp={CfConnectingIp}",
+                    path,
+                    remoteIpAddress,
+                    string.IsNullOrWhiteSpace(xForwardedFor) ? "<none>" : xForwardedFor,
+                    string.IsNullOrWhiteSpace(cfConnectingIp) ? "<none>" : cfConnectingIp);
+
+                return RateLimitPartition.GetTokenBucketLimiter(
+                    $"anonymous:{remoteIpAddress}",
+                    _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = 50,
+                        ReplenishmentPeriod = TimeSpan.FromSeconds(2),
+                        TokensPerPeriod = 1,
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 10,
+                        AutoReplenishment = true
+                    });
             });
 
             options.AddFixedWindowLimiter("swagger", config =>
