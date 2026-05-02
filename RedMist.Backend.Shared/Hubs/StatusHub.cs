@@ -463,6 +463,13 @@ public class StatusHub : Hub
                 var conn = JsonSerializer.Deserialize<StatusConnection>(connJson.ToString());
                 if (conn != null && conn.ClientId != null)
                 {
+                    // If the connection was previously subscribed to a different event, remove it from that event's connection cache
+                    if (conn.SubscribedEventId > 0 && conn.SubscribedEventId != eventId)
+                    {
+                        var oldConnKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, conn.SubscribedEventId);
+                        await cache.HashDeleteAsync(oldConnKey, connectionId, CommandFlags.FireAndForget);
+                    }
+
                     // Update the connectionId with the eventId
                     conn.SubscribedEventId = eventId;
                     conn.InCarDriverConnection = inCarDriverConnection;

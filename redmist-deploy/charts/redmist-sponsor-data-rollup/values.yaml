@@ -26,10 +26,10 @@ manualJob:
 resources:
   requests:
     cpu: "150m"
-    memory: "600Mi"
+    memory: "300Mi"
   limits:
     cpu: "300m"
-    memory: "950Mi"
+    memory: "550Mi"
 
 serviceAccount:
   create: true
