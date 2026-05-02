@@ -126,17 +126,17 @@ public class Program
                         });
                 }
 
-                return RateLimitPartition.GetTokenBucketLimiter(
-                    $"anonymous:{httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
-                    _ => new TokenBucketRateLimiterOptions
-                    {
-                        TokenLimit = 10,
-                        ReplenishmentPeriod = TimeSpan.FromSeconds(2),
-                        TokensPerPeriod = 1,
-                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                        QueueLimit = 10,
-                        AutoReplenishment = true
-                    });
+                //return RateLimitPartition.GetTokenBucketLimiter(
+                //    $"anonymous:{httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
+                //    _ => new TokenBucketRateLimiterOptions
+                //    {
+                //        TokenLimit = 10,
+                //        ReplenishmentPeriod = TimeSpan.FromSeconds(2),
+                //        TokensPerPeriod = 1,
+                //        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                //        QueueLimit = 10,
+                //        AutoReplenishment = true
+                //    });
             });
 
             options.AddFixedWindowLimiter("swagger", config =>
