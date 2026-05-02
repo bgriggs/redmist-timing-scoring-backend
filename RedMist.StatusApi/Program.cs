@@ -85,13 +85,6 @@ public class Program
                 };
             });
 
-        //// Configure Rate Limiting with default settings for Swagger
-        //builder.Services.AddRedMistRateLimiting(options =>
-        //{
-        //    options.SwaggerPermitLimit = 5;
-        //    options.GlobalPermitLimit = 30;
-        //});
-
         // Rate limiting
         builder.Services.AddRateLimiter(options =>
         {
@@ -126,27 +119,17 @@ public class Program
                         });
                 }
 
-                var remoteIpAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-                var xForwardedFor = httpContext.Request.Headers["X-Forwarded-For"].ToString();
-                var cfConnectingIp = httpContext.Request.Headers["CF-Connecting-IP"].ToString();
-                var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("RateLimiting");
-
-                logger.LogInformation(
-                    "Anonymous rate limit request path={Path} remoteIp={RemoteIpAddress} xForwardedFor={XForwardedFor} cfConnectingIp={CfConnectingIp}",
-                    path,
-                    remoteIpAddress,
-                    string.IsNullOrWhiteSpace(xForwardedFor) ? "<none>" : xForwardedFor,
-                    string.IsNullOrWhiteSpace(cfConnectingIp) ? "<none>" : cfConnectingIp);
+                var anonymousClientIp = GetClientIp(httpContext);
 
                 return RateLimitPartition.GetTokenBucketLimiter(
-                    $"anonymous:{remoteIpAddress}",
+                    $"anonymous:{anonymousClientIp}",
                     _ => new TokenBucketRateLimiterOptions
                     {
-                        TokenLimit = 50,
+                        TokenLimit = 12,
                         ReplenishmentPeriod = TimeSpan.FromSeconds(2),
                         TokensPerPeriod = 1,
                         QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                        QueueLimit = 10,
+                        QueueLimit = 6,
                         AutoReplenishment = true
                     });
             });
@@ -154,13 +137,16 @@ public class Program
             options.AddFixedWindowLimiter("swagger", config =>
             {
                 config.PermitLimit = 3;
-                config.Window = TimeSpan.FromMinutes(1);
+                config.Window = TimeSpan.FromSeconds(15);
                 config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
                 config.QueueLimit = 0;
             });
             options.AddPolicy("sponsor-telemetry", httpContext =>
-                RateLimitPartition.GetTokenBucketLimiter(
-                    httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            {
+                var clientIp = GetClientIp(httpContext);
+
+                return RateLimitPartition.GetTokenBucketLimiter(
+                    $"sponsor-telemetry:{clientIp}",
                     _ => new TokenBucketRateLimiterOptions
                     {
                         TokenLimit = 60,
@@ -169,7 +155,8 @@ public class Program
                         QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                         QueueLimit = 5,
                         AutoReplenishment = true
-                    }));
+                    });
+            });
         });
 
         // Sponsor telemetry background queue
@@ -423,5 +410,21 @@ public class Program
             options.Transports = HttpTransportType.WebSockets;
         }).RequireCors();
         app.Run();
+    }
+
+    private static string GetClientIp(HttpContext httpContext)
+    {
+        var remoteIpAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var xForwardedFor = httpContext.Request.Headers["X-Forwarded-For"].ToString();
+        var cfConnectingIp = httpContext.Request.Headers["CF-Connecting-IP"].ToString();
+        var forwardedForIp = string.IsNullOrWhiteSpace(xForwardedFor)
+            ? null
+            : xForwardedFor.Split(',', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+
+        return !string.IsNullOrWhiteSpace(cfConnectingIp)
+            ? cfConnectingIp
+            : !string.IsNullOrWhiteSpace(forwardedForIp)
+                ? forwardedForIp
+                : remoteIpAddress;
     }
 }
