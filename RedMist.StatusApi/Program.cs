@@ -101,21 +101,40 @@ public class Program
                 var path = httpContext.Request.Path;
                 if (path.StartsWithSegments("/event-status") ||
                     path.StartsWithSegments("/SponsorTelemetry") ||
-                    path.StartsWithSegments("/v1/SponsorTelemetry") ||
-                    httpContext.User.Identity?.IsAuthenticated == true)
+                    path.StartsWithSegments("/v1/SponsorTelemetry"))
                 {
-                    return RateLimitPartition.GetNoLimiter("authenticated-signalr-or-sponsor-telemetry");
+                    return RateLimitPartition.GetNoLimiter("signalr-or-sponsor-telemetry");
+                }
+
+                if (httpContext.User.Identity?.IsAuthenticated == true)
+                {
+                    var authenticatedKey = httpContext.User.FindFirst("sub")?.Value
+                        ?? httpContext.User.Identity?.Name
+                        ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                        ?? "authenticated-unknown";
+
+                    return RateLimitPartition.GetTokenBucketLimiter(
+                        $"authenticated:{authenticatedKey}",
+                        _ => new TokenBucketRateLimiterOptions
+                        {
+                            TokenLimit = 20,
+                            ReplenishmentPeriod = TimeSpan.FromSeconds(0.25),
+                            TokensPerPeriod = 1,
+                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                            QueueLimit = 10,
+                            AutoReplenishment = true
+                        });
                 }
 
                 return RateLimitPartition.GetTokenBucketLimiter(
-                    httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    $"anonymous:{httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
                     _ => new TokenBucketRateLimiterOptions
                     {
-                        TokenLimit = 15,
+                        TokenLimit = 10,
                         ReplenishmentPeriod = TimeSpan.FromSeconds(2),
                         TokensPerPeriod = 1,
                         QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                        QueueLimit = 0,
+                        QueueLimit = 10,
                         AutoReplenishment = true
                     });
             });
