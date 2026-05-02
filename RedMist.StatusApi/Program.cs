@@ -125,7 +125,7 @@ public class Program
                             AutoReplenishment = true
                         });
                 }
-
+                return RateLimitPartition.GetNoLimiter("signalr-or-sponsor-telemetry");
                 //return RateLimitPartition.GetTokenBucketLimiter(
                 //    $"anonymous:{httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
                 //    _ => new TokenBucketRateLimiterOptions
