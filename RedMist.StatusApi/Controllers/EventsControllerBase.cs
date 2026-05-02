@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.Memory;
@@ -450,6 +451,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// The response is in MessagePack format for efficient serialization.
     /// </remarks>
     [AllowAnonymous]
+    [EnableRateLimiting("current-session-polling")]
     [HttpGet]
     [Produces("application/x-msgpack")]
     [ProducesResponseType(typeof(SessionState), StatusCodes.Status200OK)]
@@ -532,6 +534,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// This endpoint retrieves the current SessionState from the event processor service
     /// and returns it as JSON for easy consumption by web clients.
     /// </remarks>
+    [EnableRateLimiting("current-session-polling")]
     [HttpGet]
     [Produces("application/json")]
     [ProducesResponseType(typeof(SessionState), StatusCodes.Status200OK)]
@@ -581,6 +584,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// This endpoint retrieves the current SessionState from the event processor service
     /// and converts it to the legacy Payload format for backward compatibility.
     /// </remarks>
+    [EnableRateLimiting("current-session-polling")]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType(typeof(Payload), StatusCodes.Status200OK)]

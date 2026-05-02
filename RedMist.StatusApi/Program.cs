@@ -3,11 +3,17 @@ using HealthChecks.UI.Client;
 using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
 using Keycloak.AuthServices.Common;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.OpenApi;
 using NLog.Extensions.Logging;
+using Npgsql;
 using Prometheus;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Extensions;
@@ -16,15 +22,9 @@ using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.StatusApi.Services;
 using StackExchange.Redis;
+using System.IO.Compression;
 using System.Reflection;
 using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.Http.Connections;
-using Microsoft.AspNetCore.ResponseCompression;
-using Npgsql;
-using System.IO.Compression;
 
 namespace RedMist.StatusApi;
 
@@ -94,9 +94,20 @@ public class Program
                 var path = httpContext.Request.Path;
                 if (path.StartsWithSegments("/event-status") ||
                     path.StartsWithSegments("/SponsorTelemetry") ||
-                    path.StartsWithSegments("/v1/SponsorTelemetry"))
+                    path.StartsWithSegments("/v1/SponsorTelemetry") ||
+                    // Exclude current session polling endpoints from global rate limiter to prevent queueing of real-time updates that can get
+                    // out of sync from the delta subscription updates. These endpoints have their own dedicated rate limiter.
+                    path.StartsWithSegments("/Events/GetCurrentSessionState") ||
+                    path.StartsWithSegments("/Events/GetCurrentSessionStateJson") ||
+                    path.StartsWithSegments("/Events/GetCurrentLegacySessionPayload") ||
+                    path.StartsWithSegments("/v1/Events/GetCurrentSessionState") ||
+                    path.StartsWithSegments("/v1/Events/GetCurrentSessionStateJson") ||
+                    path.StartsWithSegments("/v1/Events/GetCurrentLegacySessionPayload") ||
+                    path.StartsWithSegments("/v2/Events/GetCurrentSessionState") ||
+                    path.StartsWithSegments("/v2/Events/GetCurrentSessionStateJson") ||
+                    path.StartsWithSegments("/v2/Events/GetCurrentLegacySessionPayload"))
                 {
-                    return RateLimitPartition.GetNoLimiter("signalr-or-sponsor-telemetry");
+                    return RateLimitPartition.GetNoLimiter("excluded-from-global-rate-limiter");
                 }
 
                 var clientIp = GetClientIp(httpContext);
@@ -139,6 +150,26 @@ public class Program
                 config.Window = TimeSpan.FromSeconds(15);
                 config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
                 config.QueueLimit = 0;
+            });
+
+            options.AddPolicy("current-session-polling", httpContext =>
+            {
+                var partitionKey = httpContext.User.Identity?.IsAuthenticated == true
+                    ? $"authenticated:{httpContext.User.FindFirst("sub")?.Value ?? httpContext.User.Identity?.Name ?? GetClientIp(httpContext)}"
+                    : $"anonymous:{GetClientIp(httpContext)}";
+
+                return RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey,
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 1,
+                        Window = httpContext.User.Identity?.IsAuthenticated == true
+                            ? TimeSpan.FromSeconds(0.9)
+                            : TimeSpan.FromSeconds(3),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
             });
 
             options.AddPolicy("sponsor-telemetry", httpContext =>
