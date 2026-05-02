@@ -35,7 +35,7 @@ public class StatusAggregatorService : BackgroundService
         "Approximate memory size of control log cache in bytes");
 
 
-    public StatusAggregatorService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, 
+    public StatusAggregatorService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux,
         IConfiguration configuration, IDbContextFactory<TsContext> tsContext, IControlLogFactory controlLogFactory,
         IHubContext<StatusHub> hubContext)
     {
@@ -80,7 +80,7 @@ public class StatusAggregatorService : BackgroundService
                 var estimatedSizeBytes = EstimateCacheSize(entries);
                 CacheSizeBytes.Set(estimatedSizeBytes);
 
-                Logger.LogInformation("Total entries: {count}, requests: {r}, failures: {f}, cache size: {size} bytes", 
+                Logger.LogInformation("Total entries: {count}, requests: {r}, failures: {f}, cache size: {size} bytes",
                     entries.Count, requestCounter.Value, failureCounter.Value, estimatedSizeBytes);
                 await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
             }
@@ -144,17 +144,17 @@ public class StatusAggregatorService : BackgroundService
         Logger.LogInformation("Updating cache with car penalties...");
         var carLogCacheKey = string.Format(Consts.CONTROL_LOG_CAR_PENALTIES, eventId);
         var carPenalties = await controlLogCache.GetPenaltiesAsync(stoppingToken);
-        
+
         // Get current penalty car numbers to track which ones should remain
         var activePenaltyCarNumbers = carPenalties.Keys.ToHashSet();
-        
+
         var carPenaltyEntries = new List<HashEntry>();
         foreach (var carPenalty in carPenalties)
         {
             var penaltyJson = JsonSerializer.Serialize(new CarPenalty(carPenalty.Value.Warnings, carPenalty.Value.Laps, carPenalty.Value.BlackFlags));
             carPenaltyEntries.Add(new HashEntry(carPenalty.Key, penaltyJson));
         }
-        
+
         if (carPenaltyEntries.Count > 0)
         {
             await cache.HashSetAsync(carLogCacheKey, [.. carPenaltyEntries], CommandFlags.FireAndForget);
@@ -183,24 +183,24 @@ public class StatusAggregatorService : BackgroundService
         try
         {
             var cache = cacheMux.GetDatabase();
-            
+
             // Get existing car cache keys by scanning with pattern
             var existingCarKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var pattern = string.Format(Consts.CONTROL_LOG_CAR, eventId, "*");
-            
+
             Logger.LogDebug("Scanning Redis for keys matching pattern: {pattern}", pattern);
-            
+
             try
             {
                 var server = cacheMux.GetServer(cacheMux.GetEndPoints().First());
                 var keys = server.Keys(pattern: pattern, pageSize: 1000);
-                
+
                 foreach (var key in keys)
                 {
                     // Extract car number from the key pattern: control-log-evt-{eventId}-car-{carNumber}
                     var keyStr = key.ToString();
                     Logger.LogTrace("Found cache key: {key}", keyStr);
-                    
+
                     var expectedPrefix = $"control-log-evt-{eventId}-car-";
                     if (keyStr.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase))
                     {
@@ -212,7 +212,7 @@ public class StatusAggregatorService : BackgroundService
                         }
                     }
                 }
-                
+
                 Logger.LogDebug("Found {count} existing car cache entries", existingCarKeys.Count);
             }
             catch (Exception ex)
@@ -225,7 +225,7 @@ public class StatusAggregatorService : BackgroundService
             if (removedCars.Count != 0)
             {
                 Logger.LogInformation("Removing cache entries for {count} inactive cars: {removedCars}", removedCars.Count, string.Join(", ", removedCars));
-                
+
                 foreach (var removedCar in removedCars)
                 {
                     // Remove individual car control log cache entry
@@ -243,25 +243,25 @@ public class StatusAggregatorService : BackgroundService
             }
             else
             {
-                Logger.LogDebug("No inactive car cache entries to remove. Active: {activeCount}, Existing: {existingCount}", 
+                Logger.LogDebug("No inactive car cache entries to remove. Active: {activeCount}, Existing: {existingCount}",
                     activeCarNumbers.Count, existingCarKeys.Count);
             }
-            
+
             // Clean up stale penalty entries - check ALL existing penalty entries, not just removed cars
             var carLogCacheKey = string.Format(Consts.CONTROL_LOG_CAR_PENALTIES, eventId);
             var existingPenaltyEntries = await cache.HashKeysAsync(carLogCacheKey);
             var existingPenaltyCarNumbers = existingPenaltyEntries.Select(entry => entry.ToString()).ToList();
-            
-            Logger.LogDebug("Found {count} existing penalty entries: {cars}", 
+
+            Logger.LogDebug("Found {count} existing penalty entries: {cars}",
                 existingPenaltyCarNumbers.Count, string.Join(", ", existingPenaltyCarNumbers));
-            
+
             var stalePenaltyCars = existingPenaltyCarNumbers
                 .Except(activePenaltyCarNumbers, StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            
+
             if (stalePenaltyCars.Count != 0)
             {
-                Logger.LogInformation("Removing {count} stale penalty entries for cars: {stalePenaltyCars}", 
+                Logger.LogInformation("Removing {count} stale penalty entries for cars: {stalePenaltyCars}",
                     stalePenaltyCars.Count, string.Join(", ", stalePenaltyCars));
                 foreach (var stalePenaltyCar in stalePenaltyCars)
                 {
@@ -272,14 +272,14 @@ public class StatusAggregatorService : BackgroundService
                     }
                     else
                     {
-                        Logger.LogWarning("Failed to remove penalty entry for car {carNumber} from {cacheKey} (entry may not exist)", 
+                        Logger.LogWarning("Failed to remove penalty entry for car {carNumber} from {cacheKey} (entry may not exist)",
                             stalePenaltyCar, carLogCacheKey);
                     }
                 }
             }
             else
             {
-                Logger.LogDebug("No stale penalty entries to remove. Active penalties: {activeCount}, Existing penalties: {existingCount}", 
+                Logger.LogDebug("No stale penalty entries to remove. Active penalties: {activeCount}, Existing penalties: {existingCount}",
                     activePenaltyCarNumbers.Count, existingPenaltyCarNumbers.Count);
             }
         }
@@ -302,19 +302,14 @@ public class StatusAggregatorService : BackgroundService
         {
             if (!string.IsNullOrEmpty(connectionDestination))
             {
-                Logger.LogTrace("ControlLogNotification: full list to client {g}", connectionDestination);
-                await hubContext.Clients.Client(connectionDestination).SendAsync("ReceiveControlLog", logs, cancellationToken);
+                string grpKeyEvent = $"{connectionDestination}-cl";
+                Logger.LogTrace("ControlLogNotification: full subscriptions of event {c} group {g}", eventId, grpKeyEvent);
+                await hubContext.Clients.Group(grpKeyEvent).SendAsync("ReceiveControlLog", logs, cancellationToken);
             }
             else if (!string.IsNullOrEmpty(carNumber))
             {
                 string grpKey = $"{eventId}-{carNumber}";
                 Logger.LogTrace("ControlLogNotification: car {c} group {g}", carNumber, grpKey);
-                await hubContext.Clients.Group(grpKey).SendAsync("ReceiveControlLog", logs, cancellationToken);
-            }
-            else
-            {
-                string grpKey = $"{eventId}-cl";
-                Logger.LogTrace("ControlLogNotification: full subscriptions of event {c} group {g}", eventId, grpKey);
                 await hubContext.Clients.Group(grpKey).SendAsync("ReceiveControlLog", logs, cancellationToken);
             }
         }
