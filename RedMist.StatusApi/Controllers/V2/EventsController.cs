@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.Memory;
 using RedMist.Database;
+using RedMist.StatusApi.Filters;
 using RedMist.TimingCommon;
 using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
@@ -53,6 +54,7 @@ public class EventsController : EventsControllerBase
     /// <para>Breaking change from V1: Returns SessionState instead of Payload.</para>
     /// </remarks>
     [AllowAnonymous]
+    [RequireEventAccessCode]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<SessionState>(StatusCodes.Status200OK)]
@@ -137,11 +139,13 @@ public class EventsController : EventsControllerBase
                 Id = e.Id,
                 OrganizationId = e.OrganizationId,
                 OrganizationName = o.Name,
-                EventName = e.Name,
+                EventName = e.HideName ? string.Empty : e.Name,
                 EventDate = e.StartDate.ToString("yyyy-MM-dd"),
                 IsLive = false,
                 IsSimulation = e.IsSimulation,
                 IsArchived = e.IsArchived,
+                IsPrivate = e.IsPrivate,
+                HideName = e.HideName,
                 TrackName = e.TrackName,
             })
             .Skip(offset)

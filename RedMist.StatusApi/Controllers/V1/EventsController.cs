@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.Memory;
 using RedMist.Database;
+using RedMist.StatusApi.Filters;
 using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
@@ -55,6 +56,7 @@ public class EventsController : EventsControllerBase
     /// <para>The Payload object contains event status, car positions, entries, and flag information.</para>
     /// <para>For V2 API, use the V2 endpoint which returns SessionState format.</para>
     /// </remarks>
+    [RequireEventAccessCode]
     [HttpGet]
     [Produces("application/json")]
     [ProducesResponseType<Payload>(StatusCodes.Status200OK)]

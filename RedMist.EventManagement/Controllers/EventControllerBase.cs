@@ -9,6 +9,7 @@ using RedMist.TimingCommon.Models.Configuration;
 using StackExchange.Redis;
 using System.Runtime.CompilerServices;
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 
 namespace RedMist.EventManagement.Controllers;
 
@@ -24,6 +25,8 @@ namespace RedMist.EventManagement.Controllers;
 [Authorize]
 public abstract class EventControllerBase : ControllerBase
 {
+    private static readonly Regex AccessCodePattern = new("^[0-9]{1,7}$", RegexOptions.Compiled);
+
     protected readonly IDbContextFactory<TsContext> tsContext;
     protected readonly IConnectionMultiplexer cacheMux;
     protected ILogger Logger { get; }
@@ -121,6 +124,9 @@ public abstract class EventControllerBase : ControllerBase
     public virtual async Task<ActionResult<int>> SaveNewEvent(Event newEvent)
     {
         Logger.LogTrace("SaveNewEvent {event}", newEvent.Name);
+        if (newEvent.IsPrivate && !IsAccessCodeValid(newEvent.AccessCode))
+            return BadRequest("AccessCode must be 1-7 digits when IsPrivate is true.");
+
         var clientId = User.FindFirstValue("client_id");
         using var context = await tsContext.CreateDbContextAsync();
         var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
@@ -129,6 +135,8 @@ public abstract class EventControllerBase : ControllerBase
         newEvent.OrganizationId = org.Id;
         newEvent.IsSimulation = clientId?.StartsWith("api") ?? true;
         newEvent.EnableSourceDataLogging = !newEvent.IsSimulation;
+        if (!newEvent.IsPrivate)
+            newEvent.AccessCode = null;
         context.Events.Add(newEvent);
         await context.SaveChangesAsync();
 
@@ -159,6 +167,9 @@ public abstract class EventControllerBase : ControllerBase
     public virtual async Task<IActionResult> UpdateEvent(Event @event)
     {
         Logger.LogTrace("UpdateEvent {event}", @event.Name);
+        if (@event.IsPrivate && !IsAccessCodeValid(@event.AccessCode))
+            return BadRequest("AccessCode must be 1-7 digits when IsPrivate is true.");
+
         var clientId = User.FindFirstValue("client_id");
         using var context = await tsContext.CreateDbContextAsync();
         var org = await context.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
@@ -182,6 +193,9 @@ public abstract class EventControllerBase : ControllerBase
             dbEvent.LoopsMetadata = @event.LoopsMetadata;
             dbEvent.IsSimulation = @event.IsSimulation;
             dbEvent.IsArchived = @event.IsArchived;
+            dbEvent.IsPrivate = @event.IsPrivate;
+            dbEvent.HideName = @event.HideName;
+            dbEvent.AccessCode = @event.IsPrivate ? @event.AccessCode : null;
             // Force to simulation if client is an API client rather than relay for an actual organization
             dbEvent.IsSimulation = @event.IsSimulation || (clientId?.StartsWith("api") ?? true);
 
@@ -193,6 +207,9 @@ public abstract class EventControllerBase : ControllerBase
 
         return Ok();
     }
+
+    private static bool IsAccessCodeValid(string? accessCode)
+        => !string.IsNullOrEmpty(accessCode) && AccessCodePattern.IsMatch(accessCode);
 
     /// <summary>
     /// Sets an event as the active event for the organization.
@@ -311,6 +328,10 @@ public abstract class EventControllerBase : ControllerBase
                 var fieldName = $"{Consts.EVENT_CONFIGURATION_CHANGED}-{eventId}-999999";
 
                 await cache.StreamAddAsync(streamKey, fieldName, eventId.ToString());
+
+                // Drop the cached access record so StatusApi instances re-read the current IsPrivate/AccessCode.
+                await cache.KeyDeleteAsync(string.Format(Consts.EVENT_ACCESS, eventId), CommandFlags.FireAndForget);
+
                 Logger.LogDebug("Published event configuration change notification for event {EventId}", eventId);
                 return;
             }

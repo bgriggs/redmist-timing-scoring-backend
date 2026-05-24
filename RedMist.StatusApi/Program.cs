@@ -18,6 +18,7 @@ using Prometheus;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Extensions;
 using RedMist.Backend.Shared.Hubs;
+using RedMist.Backend.Shared.Services;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.StatusApi.Services;
@@ -290,6 +291,7 @@ public class Program
 
         builder.Services.AddRedMistSignalR(redisConn);
         builder.Services.AddSingleton<Controllers.V2.EventsController>();
+        builder.Services.AddSingleton<IEventAccessValidator, EventAccessValidator>();
 
         builder.Services.AddMemoryCache();
         builder.Services.AddHttpClient("EventProcessor", client =>

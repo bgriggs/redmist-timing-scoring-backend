@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using Prometheus;
 using RedMist.Backend.Shared.Models;
+using RedMist.Backend.Shared.Services;
 using RedMist.Backend.Shared.Utilities;
 using StackExchange.Redis;
 using System.Text.Json;
@@ -31,6 +32,7 @@ public class StatusHub : Hub
     #endregion
 
     private readonly IConnectionMultiplexer cacheMux;
+    private readonly IEventAccessValidator accessValidator;
 
     private ILogger Logger { get; }
 
@@ -39,10 +41,23 @@ public class StatusHub : Hub
     /// </summary>
     /// <param name="loggerFactory">Factory to create loggers for this hub.</param>
     /// <param name="cacheMux">Redis connection multiplexer for caching and pub/sub.</param>
-    public StatusHub(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux)
+    /// <param name="accessValidator">Validator for per-event access codes (private events).</param>
+    public StatusHub(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IEventAccessValidator accessValidator)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
+        this.accessValidator = accessValidator;
+    }
+
+    private async Task EnsureAccessAsync(int eventId, string? accessCode)
+    {
+        if (eventId <= 0)
+            return;
+        if (!await accessValidator.ValidateAsync(eventId, accessCode, Context.ConnectionAborted))
+        {
+            Logger.LogWarning("Access code rejected for event {eventId} from {connectionId}", eventId, Context.ConnectionId);
+            throw new HubException("Access code required or invalid for this event.");
+        }
     }
 
     /// <summary>
@@ -153,7 +168,7 @@ public class StatusHub : Hub
     /// </example>
     public async Task SubscribeToEvent(int eventId)
     {
-        await SubscribeToEventV2(eventId);
+        await SubscribeToEventV2(eventId, null);
     }
 
     /// <summary>
@@ -176,19 +191,25 @@ public class StatusHub : Hub
     /// Subscribes the client to receive real-time updates for a specific event using V2 protocol.
     /// </summary>
     /// <param name="eventId">The unique identifier of the event to subscribe to.</param>
+    /// <param name="accessCode">Required for private events; pass <c>null</c> for public events.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <remarks>
     /// <para>Version: V2</para>
     /// <para>This version uses an improved subscription model with enhanced data structures.</para>
+    /// <para>Throws <see cref="HubException"/> if the event is private and the access code is missing or wrong.</para>
     /// </remarks>
     /// <example>
     /// JavaScript:
     /// <code>
-    /// await connection.invoke('SubscribeToEventV2', 123);
+    /// await connection.invoke('SubscribeToEventV2', 123, null);
+    /// // Or for a private event:
+    /// await connection.invoke('SubscribeToEventV2', 123, '1234567');
     /// </code>
     /// </example>
-    public async Task SubscribeToEventV2(int eventId)
+    public async Task SubscribeToEventV2(int eventId, string? accessCode = null)
     {
+        await EnsureAccessAsync(eventId, accessCode);
+
         var connectionId = Context.ConnectionId;
         var subKey = string.Format(Consts.EVENT_SUB_V2, eventId);
 
@@ -254,6 +275,7 @@ public class StatusHub : Hub
     /// Control logs include race control decisions, penalties, and incident reports.
     /// </summary>
     /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="accessCode">Required for private events; pass <c>null</c> for public events.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <remarks>
     /// Control logs are only available if configured by the event organizer.
@@ -264,8 +286,9 @@ public class StatusHub : Hub
     /// await connection.invoke('SubscribeToControlLogs', 123);
     /// </code>
     /// </example>
-    public async Task SubscribeToControlLogs(int eventId)
+    public async Task SubscribeToControlLogs(int eventId, string? accessCode = null)
     {
+        await EnsureAccessAsync(eventId, accessCode);
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-cl";
         await Groups.AddToGroupAsync(connectionId, grpKey);
@@ -297,6 +320,7 @@ public class StatusHub : Hub
     /// </summary>
     /// <param name="eventId">The unique identifier of the event.</param>
     /// <param name="carNum">The car number to subscribe to.</param>
+    /// <param name="accessCode">Required for private events; pass <c>null</c> for public events.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <remarks>
     /// Useful for drivers or teams who only want to see control log entries affecting their car.
@@ -307,8 +331,9 @@ public class StatusHub : Hub
     /// await connection.invoke('SubscribeToCarControlLogs', 123, '42');
     /// </code>
     /// </example>
-    public async Task SubscribeToCarControlLogs(int eventId, string carNum)
+    public async Task SubscribeToCarControlLogs(int eventId, string carNum, string? accessCode = null)
     {
+        await EnsureAccessAsync(eventId, accessCode);
         var connectionId = Context.ConnectionId;
         var grpKey = $"{eventId}-{carNum}";
         await Groups.AddToGroupAsync(connectionId, grpKey);
@@ -345,6 +370,7 @@ public class StatusHub : Hub
     /// </summary>
     /// <param name="eventId">The unique identifier of the event.</param>
     /// <param name="car">The car number/identifier for the in-car view.</param>
+    /// <param name="accessCode">Required for private events; pass <c>null</c> for public events.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <remarks>
     /// <para>Version: V1 (Legacy)</para>
@@ -362,8 +388,9 @@ public class StatusHub : Hub
     /// await connection.invoke('SubscribeToInCarDriverEvent', 123, '42');
     /// </code>
     /// </example>
-    public async Task SubscribeToInCarDriverEvent(int eventId, string car)
+    public async Task SubscribeToInCarDriverEvent(int eventId, string car, string? accessCode = null)
     {
+        await EnsureAccessAsync(eventId, accessCode);
         var connectionId = Context.ConnectionId;
         var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB, eventId, car);
         await Groups.AddToGroupAsync(connectionId, grpKey);
@@ -400,6 +427,7 @@ public class StatusHub : Hub
     /// </summary>
     /// <param name="eventId">The unique identifier of the event.</param>
     /// <param name="car">The car number/identifier for the in-car view.</param>
+    /// <param name="accessCode">Required for private events; pass <c>null</c> for public events.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <remarks>
     /// <para>Version: V2</para>
@@ -411,8 +439,9 @@ public class StatusHub : Hub
     /// await connection.invoke('SubscribeToInCarDriverEventV2', 123, '42');
     /// </code>
     /// </example>
-    public async Task SubscribeToInCarDriverEventV2(int eventId, string car)
+    public async Task SubscribeToInCarDriverEventV2(int eventId, string car, string? accessCode = null)
     {
+        await EnsureAccessAsync(eventId, accessCode);
         var connectionId = Context.ConnectionId;
         var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB_V2, eventId, car);
         await Groups.AddToGroupAsync(connectionId, grpKey);
