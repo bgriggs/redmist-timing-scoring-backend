@@ -3,9 +3,13 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Database;
-using RedMist.Database.Extensions;
 
 namespace RedMist.StatusApi.Controllers;
+
+/// <summary>
+/// Lightweight representation of an organization returned by the Status API.
+/// </summary>
+public record OrganizationSummary(int Id, string Name, string? Website);
 
 /// <summary>
 /// Base controller for Organization-related operations.
@@ -33,6 +37,31 @@ public abstract class OrganizationControllerBase : ControllerBase
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.hcache = hcache;
+    }
+
+    /// <summary>
+    /// Retrieves a list of all organizations.
+    /// </summary>
+    /// <returns>A list of organization summaries.</returns>
+    /// <response code="200">Returns the list of organizations.</response>
+    [HttpGet]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public virtual async Task<ActionResult<List<OrganizationSummary>>> GetOrganizations()
+    {
+        Logger.LogTrace("{m}", nameof(GetOrganizations));
+
+        var organizations = await hcache.GetOrCreateAsync("org-list",
+            async _ =>
+            {
+                using var context = await tsContext.CreateDbContextAsync(_);
+                return await context.Organizations
+                    .Where(o => o.ClientId.StartsWith("relay-"))
+                    .Select(o => new OrganizationSummary(o.Id, o.Name, o.Website))
+                    .ToListAsync(cancellationToken: _);
+            },
+            new HybridCacheEntryOptions { Expiration = TimeSpan.FromMinutes(30) });
+
+        return Ok(organizations);
     }
 
     /// <summary>
