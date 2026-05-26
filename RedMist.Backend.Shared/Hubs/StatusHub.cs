@@ -168,7 +168,7 @@ public class StatusHub : Hub
     /// </example>
     public async Task SubscribeToEvent(int eventId)
     {
-        await SubscribeToEventV2(eventId, null);
+        await SubscribeToEventV2WithCode(eventId, null);
     }
 
     /// <summary>
@@ -201,12 +201,30 @@ public class StatusHub : Hub
     /// <example>
     /// JavaScript:
     /// <code>
-    /// await connection.invoke('SubscribeToEventV2', 123, null);
-    /// // Or for a private event:
-    /// await connection.invoke('SubscribeToEventV2', 123, '1234567');
+    /// await connection.invoke('SubscribeToEventV2', 123);
     /// </code>
     /// </example>
-    public async Task SubscribeToEventV2(int eventId, string? accessCode = null)
+    public async Task SubscribeToEventV2(int eventId)
+    {
+        await SubscribeToEventV2WithCode(eventId, null);
+    }
+
+    /// <summary>
+    /// Subscribes the client to receive V2 updates for a specific event using an access code.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event to subscribe to.</param>
+    /// <param name="accessCode">The access code for private events.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Version: V2
+    /// </remarks>
+    /// <example>
+    /// JavaScript:
+    /// <code>
+    /// await connection.invoke('SubscribeToEventV2WithCode', 123, '1234567');
+    /// </code>
+    /// </example>
+    public async Task SubscribeToEventV2WithCode(int eventId, string? accessCode)
     {
         await EnsureAccessAsync(eventId, accessCode);
 

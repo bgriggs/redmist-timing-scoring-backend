@@ -24,7 +24,7 @@ internal sealed class MessagePackRestSerializer : IRestSerializer, ISerializer, 
     // IDeserializer
     public T? Deserialize<T>(RestResponse response)
     {
-        if (response.RawBytes is { Length: > 0 })
+        if (response.IsSuccessful && response.RawBytes is { Length: > 0 })
             return MessagePackSerializer.Deserialize<T>(response.RawBytes);
         return default;
     }
