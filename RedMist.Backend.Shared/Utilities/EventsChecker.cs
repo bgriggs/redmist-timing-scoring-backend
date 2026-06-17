@@ -12,7 +12,8 @@ namespace RedMist.Backend.Shared.Utilities;
 /// </summary>
 /// <remarks>This class is typically used to query the state of relay connections and their associated events in
 /// real time. It relies on the provided Redis cache to obtain up-to-date information about active relay connections.
-/// Events that are archived or have an end date older than 24 hours are excluded.
+/// Archived events are excluded. Liveness otherwise follows the relay heartbeat; the orchestrator's stale-heartbeat
+/// timeout (not an event end date) is responsible for tearing down events that are no longer receiving relay data.
 /// Thread safety depends on the underlying implementation of the connection multiplexer.</remarks>
 /// <param name="cacheMux">The connection multiplexer used to access the Redis cache containing relay event connection data. Cannot be null.</param>
 /// <param name="tsContext">The database context factory used to query event details.</param>
@@ -27,7 +28,7 @@ public class EventsChecker(IConnectionMultiplexer cacheMux, IDbContextFactory<Ts
 
     /// <summary>
     /// Based on active signalR connections of relays, get the current events for those relays.
-    /// Events that are archived or have an end date older than 24 hours are excluded.
+    /// Archived events are excluded.
     /// </summary>
     /// <returns></returns>
     public virtual async Task<List<RelayConnectionEventEntry>> GetCurrentEventsAsync()
@@ -54,7 +55,7 @@ public class EventsChecker(IConnectionMultiplexer cacheMux, IDbContextFactory<Ts
     }
 
     /// <summary>
-    /// Checks whether an event is active by verifying it is not archived and its end date is within the last 24 hours.
+    /// Checks whether an event is active by verifying it exists and is not archived.
     /// </summary>
     private async Task<bool> IsEventActiveAsync(int eventId)
     {
@@ -66,7 +67,7 @@ public class EventsChecker(IConnectionMultiplexer cacheMux, IDbContextFactory<Ts
                 var ev = await db.Events
                     .AsNoTracking()
                     .Where(e => e.Id == eventId)
-                    .Select(e => new { e.IsArchived, e.EndDate })
+                    .Select(e => new { e.IsArchived })
                     .FirstOrDefaultAsync(cancel);
                 return ev;
             },
@@ -76,9 +77,6 @@ public class EventsChecker(IConnectionMultiplexer cacheMux, IDbContextFactory<Ts
             return false;
 
         if (cachedEvent.IsArchived)
-            return false;
-
-        if (cachedEvent.EndDate < DateTime.UtcNow.AddHours(-24))
             return false;
 
         return true;

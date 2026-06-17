@@ -191,7 +191,6 @@ public class StatusHub : Hub
     /// Subscribes the client to receive real-time updates for a specific event using V2 protocol.
     /// </summary>
     /// <param name="eventId">The unique identifier of the event to subscribe to.</param>
-    /// <param name="accessCode">Required for private events; pass <c>null</c> for public events.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <remarks>
     /// <para>Version: V2</para>

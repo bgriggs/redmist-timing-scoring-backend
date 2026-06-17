@@ -162,24 +162,13 @@ public class EventsCheckerTests
     }
 
     [TestMethod]
-    public async Task GetCurrentEventsAsync_EndDateOlderThan24Hours_IsExcluded()
+    public async Task GetCurrentEventsAsync_OldEndDateWithLiveRelay_IsIncluded()
     {
+        // Regression: a long-running event whose EndDate is in the past (e.g. a date-only
+        // value) must stay live as long as the relay is heartbeating. Liveness no longer
+        // keys off EndDate; the orchestrator's stale-heartbeat timeout handles teardown.
         var eventId = 30;
-        await SeedEventAsync(eventId, isArchived: false, endDate: DateTime.UtcNow.AddHours(-25));
-
-        SetupRedisEntries(new RelayConnectionEventEntry { ConnectionId = "conn1", EventId = eventId, OrganizationId = 1 });
-
-        var checker = CreateChecker();
-        var result = await checker.GetCurrentEventsAsync();
-
-        Assert.IsEmpty(result);
-    }
-
-    [TestMethod]
-    public async Task GetCurrentEventsAsync_EndDateExactly24HoursAgo_IsIncluded()
-    {
-        var eventId = 31;
-        await SeedEventAsync(eventId, isArchived: false, endDate: DateTime.UtcNow.AddHours(-23));
+        await SeedEventAsync(eventId, isArchived: false, endDate: DateTime.UtcNow.AddHours(-48));
 
         SetupRedisEntries(new RelayConnectionEventEntry { ConnectionId = "conn1", EventId = eventId, OrganizationId = 1 });
 
@@ -187,10 +176,11 @@ public class EventsCheckerTests
         var result = await checker.GetCurrentEventsAsync();
 
         Assert.HasCount(1, result);
+        Assert.AreEqual(eventId, result[0].EventId);
     }
 
     [TestMethod]
-    public async Task GetCurrentEventsAsync_ArchivedAndExpiredEvent_IsExcluded()
+    public async Task GetCurrentEventsAsync_ArchivedEventWithOldEndDate_IsExcluded()
     {
         var eventId = 40;
         await SeedEventAsync(eventId, isArchived: true, endDate: DateTime.UtcNow.AddHours(-48));
@@ -220,27 +210,28 @@ public class EventsCheckerTests
     #region Multiple Events
 
     [TestMethod]
-    public async Task GetCurrentEventsAsync_MixedEvents_ReturnsOnlyActive()
+    public async Task GetCurrentEventsAsync_MixedEvents_ExcludesOnlyArchived()
     {
         var activeEventId = 100;
         var archivedEventId = 101;
-        var expiredEventId = 102;
+        var oldEndDateEventId = 102;
 
         await SeedEventAsync(activeEventId, isArchived: false, endDate: DateTime.UtcNow.AddHours(-1));
         await SeedEventAsync(archivedEventId, isArchived: true, endDate: DateTime.UtcNow.AddHours(-1));
-        await SeedEventAsync(expiredEventId, isArchived: false, endDate: DateTime.UtcNow.AddHours(-48));
+        // Past EndDate but not archived: stays live because the relay is connected.
+        await SeedEventAsync(oldEndDateEventId, isArchived: false, endDate: DateTime.UtcNow.AddHours(-48));
 
         SetupRedisEntries(
             new RelayConnectionEventEntry { ConnectionId = "conn1", EventId = activeEventId, OrganizationId = 1 },
             new RelayConnectionEventEntry { ConnectionId = "conn2", EventId = archivedEventId, OrganizationId = 1 },
-            new RelayConnectionEventEntry { ConnectionId = "conn3", EventId = expiredEventId, OrganizationId = 1 }
+            new RelayConnectionEventEntry { ConnectionId = "conn3", EventId = oldEndDateEventId, OrganizationId = 1 }
         );
 
         var checker = CreateChecker();
         var result = await checker.GetCurrentEventsAsync();
 
-        Assert.HasCount(1, result);
-        Assert.AreEqual(activeEventId, result[0].EventId);
+        Assert.HasCount(2, result);
+        CollectionAssert.AreEquivalent(new[] { activeEventId, oldEndDateEventId }, result.Select(r => r.EventId).ToList());
     }
 
     [TestMethod]
