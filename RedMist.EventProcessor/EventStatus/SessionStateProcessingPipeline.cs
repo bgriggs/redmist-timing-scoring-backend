@@ -13,6 +13,8 @@ using RedMist.EventProcessor.EventStatus.Video;
 using RedMist.EventProcessor.EventStatus.X2;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
+using RedMist.TimingCommon.Models.Mappers;
+using System.Text.Json;
 
 namespace RedMist.EventProcessor.EventStatus;
 
@@ -284,6 +286,12 @@ public class SessionStateProcessingPipeline
                         if (projectedPatch != null)
                             allAppliedChanges.AddRange(new PatchUpdates([], [projectedPatch]));
                     }
+                    else if (message.Type == Backend.Shared.Consts.EXTERNAL_PATCH_TYPE)
+                    {
+                        var externalChanges = ProcessExternal(message);
+                        if (externalChanges != null)
+                            allAppliedChanges.Add(externalChanges);
+                    }
                 }
 
                 // ** Phase 3: Client Notification (outside the lock) **
@@ -297,6 +305,56 @@ public class SessionStateProcessingPipeline
         {
             Logger.LogError(ex, "Error processing message sequentially: {MessageType}", message.Type);
             _pipelineErrors.WithLabels("sequential_processor", ex.GetType().Name).Inc();
+        }
+    }
+
+    /// <summary>
+    /// Applies a batch of pre-formed patches from an external timing source. The source has already
+    /// done all protocol parsing and produced RedMist patches, so this only applies them to the
+    /// session state and surfaces them for client notification — no source-specific parsing and no
+    /// position/gap re-enrichment (the external source computes those itself).
+    /// </summary>
+    private PatchUpdates? ProcessExternal(TimingMessage message)
+    {
+        try
+        {
+            var batch = JsonSerializer.Deserialize<ExternalPatchBatch>(message.Data);
+            if (batch == null)
+                return null;
+
+            var sessionPatches = new List<SessionStatePatch>();
+            foreach (var sp in batch.SessionPatches)
+            {
+                SessionStateMapper.ApplyPatch(sp, sessionContext.SessionState);
+                sessionPatches.Add(sp);
+            }
+
+            var carPatches = new List<CarPositionPatch>();
+            foreach (var cp in batch.CarPatches)
+            {
+                if (string.IsNullOrWhiteSpace(cp.Number))
+                    continue;
+
+                var car = sessionContext.GetCarByNumber(cp.Number);
+                if (car != null)
+                {
+                    CarPositionMapper.ApplyPatch(cp, car);
+                }
+                else
+                {
+                    // New car: materialise from the patch and register it in the context.
+                    sessionContext.UpdateCars([CarPositionMapper.PatchToEntity(cp)]);
+                }
+                carPatches.Add(cp);
+            }
+
+            return new PatchUpdates([.. sessionPatches], [.. carPatches]);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing external patch batch");
+            _pipelineErrors.WithLabels("external", ex.GetType().Name).Inc();
+            return null;
         }
     }
 

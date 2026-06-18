@@ -20,6 +20,7 @@ public class Consts
     public const string EVENT_X2_PASSINGS_STREAM_FIELD = "x2pass-{0}-{1}";
     public const string EVENT_FLAGS_STREAM_FIELD = "flags-{0}-{1}";
     public const string EVENT_LAP_COMPLETED_STREAM_FIELD = "lapcompleted-{0}-{1}";
+    public const string EVENT_EXTERNAL_STREAM_FIELD = "external-{0}-{1}";
     public const string EVENT_COMPETITORS = "competitors-{0}-999999";
     public const string RELAY_GROUP_PREFIX = "relay-event-{0}";
     public const string CLIENT_ID = "ts-client-{0}";
@@ -74,6 +75,12 @@ public class Consts
     public const string EVENT_SESSION_CHANGED = EVENT_SESSION_CHANGED_TYPE + "-{0}-{1}";
     public const string LAP_TYPE = "laps";
     public const string RELAY_HEARTBEAT_TYPE = "relayhb";
+
+    /// <summary>
+    /// Pre-formed patches from an external timing source (see EVENT_EXTERNAL_STREAM_FIELD).
+    /// The pipeline applies these without source-specific parsing.
+    /// </summary>
+    public const string EXTERNAL_PATCH_TYPE = "external";
 
     #endregion
 }
