@@ -18,6 +18,65 @@ public class ControlLogCacheTests
     private static readonly Regex LapPenaltyRegex = new(@"(\d+)\s+(Lap|Laps)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex BlackFlagRegex = new(@".*Drive Through Penalty.*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    #region Bucket assembly + full log
+
+    private static ControlLogEntry E(int order, string ts, string car1 = "", string car2 = "", string note = "") =>
+        new() { OrderId = order, Timestamp = DateTime.Parse(ts).ToUniversalTime(), Car1 = car1, Car2 = car2, Note = note };
+
+    [TestMethod]
+    public void BuildCarBuckets_BlankCar2_DoesNotDuplicateIntoNoCarBucket()
+    {
+        // Announcement-style: every entry has a blank Car2; some have no car at all. The old code filed
+        // every entry into the "" bucket via the Car2 grouping, triplicating the log.
+        var logs = new List<ControlLogEntry>
+        {
+            E(1, "2026-06-05T21:19:46Z", note: "CODE 60"),       // no car
+            E(2, "2026-06-05T21:21:05Z", note: "GREEN FLAG"),    // no car
+            E(3, "2026-06-05T21:31:31Z", car1: "134"),
+            E(4, "2026-06-05T21:35:45Z", car1: "94"),
+        };
+
+        var buckets = ControlLogCache.BuildCarBuckets(logs);
+
+        Assert.AreEqual(2, buckets[string.Empty].Count, "no-car bucket holds only the two car-less entries");
+        Assert.AreEqual(1, buckets["134"].Count);
+        Assert.AreEqual(1, buckets["94"].Count);
+        // Every entry appears exactly once across all buckets — no duplication.
+        Assert.AreEqual(logs.Count, buckets.Values.SelectMany(x => x).Distinct().Count());
+        Assert.AreEqual(logs.Count, buckets.Values.Sum(b => b.Count));
+    }
+
+    [TestMethod]
+    public void BuildCarBuckets_TwoCarIncident_FiledUnderBothCars()
+    {
+        var entry = E(1, "2026-06-05T21:00:00Z", car1: "5", car2: "9");
+        var buckets = ControlLogCache.BuildCarBuckets([entry]);
+
+        Assert.IsTrue(buckets.ContainsKey("5"));
+        Assert.IsTrue(buckets.ContainsKey("9"));
+        Assert.IsFalse(buckets.ContainsKey(string.Empty));
+        Assert.AreSame(entry, buckets["5"].Single());
+        Assert.AreSame(entry, buckets["9"].Single());
+    }
+
+    [TestMethod]
+    public void BuildFullLog_SortsNewestFirst_AndDeDuplicatesTwoCarIncident()
+    {
+        var noCar = E(1, "2026-06-05T21:00:00Z", note: "CODE 60");
+        var car134 = E(2, "2026-06-05T21:30:00Z", car1: "134");
+        var twoCar = E(3, "2026-06-05T22:00:00Z", car1: "5", car2: "9"); // sits in buckets 5 and 9
+
+        var buckets = ControlLogCache.BuildCarBuckets([noCar, car134, twoCar]);
+        var full = ControlLogCache.BuildFullLog(buckets);
+
+        // Each incident appears once (the two-car entry is de-duped across its two buckets) ...
+        Assert.HasCount(3, full);
+        // ... and the list is newest-first by timestamp.
+        CollectionAssert.AreEqual(new[] { 3, 2, 1 }, full.Select(e => e.OrderId).ToList());
+    }
+
+    #endregion
+
     #region Original Working Tests (Static Method Tests)
 
     [TestMethod]

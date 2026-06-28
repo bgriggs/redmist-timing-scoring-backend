@@ -3,8 +3,12 @@ param(
     [Parameter(Mandatory=$true)]
     [ValidateSet("dev", "test", "prod")]
     [string]$Environment,
-    
-    [string]$Version = "latest"
+
+    [string]$Version = "latest",
+
+    # Optional extra Helm values file layered last (e.g. an external timing-source overlay). Kept generic
+    # so deployment-specific overlays can be supplied at call time without naming them in this script.
+    [string]$ExternalValues = ""
 )
 
 # Environment-specific configuration
@@ -70,11 +74,23 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# Optional extra values overlay, layered last so it wins over the environment file.
+$extraValues = @()
+if ($ExternalValues) {
+    if (-not (Test-Path $ExternalValues)) {
+        Write-Host "❌ ExternalValues file not found: $ExternalValues" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Including extra values overlay: $ExternalValues" -ForegroundColor Cyan
+    $extraValues = @('-f', $ExternalValues)
+}
+
 # Deploy with Helm
 helm upgrade --install $config.releaseName . `
   --force-conflicts `
   -f values.yaml `
   -f $config.valuesFile `
+  @extraValues `
   --set redmist-status-api.environment=$Environment `
   --set redmist-user-management.environment=$Environment `
   --set redmist-event-management.environment=$Environment `

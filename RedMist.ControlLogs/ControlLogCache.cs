@@ -55,47 +55,11 @@ public class ControlLogCache : IDisposable
                 Logger.LogDebug("Control log loaded for event {eventId} with {Count} entries", eventId, logsList.Count);
                 //Logger.LogInformation("LoadControlLogAsync in {t}ms", sw.ElapsedMilliseconds);
                 var oldLogs = controlLogCache.ToDictionary(x => x.Key, x => x.Value);
-                var car1Grp = logsList.GroupBy(x => x.Car1);
-                var car2Grp = logsList.GroupBy(x => x.Car2);
 
                 controlLogCache.Clear();
-                foreach (var l in car1Grp)
+                foreach (var (car, entries) in BuildCarBuckets(logsList))
                 {
-                    if (l.Key != null)
-                    {
-                        controlLogCache[l.Key.ToLower()] = [.. l];
-                    }
-                }
-
-                foreach (var l in car2Grp)
-                {
-                    if (l.Key != null)
-                    {
-                        if (!controlLogCache.TryGetValue(l.Key.ToLower(), out List<ControlLogEntry>? value))
-                        {
-                            controlLogCache[l.Key.ToLower()] = [.. l];
-                        }
-                        else
-                        {
-                            value.AddRange(l);
-                        }
-                    }
-                }
-
-                // Entries not associated with a car
-                foreach (var entry in logEntries.logs)
-                {
-                    if (string.IsNullOrWhiteSpace(entry.Car1) && string.IsNullOrWhiteSpace(entry.Car2))
-                    {
-                        if (!controlLogCache.TryGetValue(string.Empty, out List<ControlLogEntry>? value))
-                        {
-                            controlLogCache[string.Empty] = [entry];
-                        }
-                        else
-                        {
-                            value.Add(entry);
-                        }
-                    }
+                    controlLogCache[car] = entries;
                 }
 
                 // Determine the number of penalties (laps and warnings)
@@ -211,12 +175,65 @@ public class ControlLogCache : IDisposable
         await cacheLock.WaitAsync();
         try
         {
-            return [.. controlLogCache.Values.SelectMany(x => x)];
+            return BuildFullLog(controlLogCache);
         }
         finally
         {
             cacheLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Flattens the per-car buckets into the full event log: an entry can sit in more than one bucket (a
+    /// two-car incident is filed under both cars), so de-duplicate by reference, then return newest-first
+    /// by timestamp — the buckets are otherwise concatenated in arbitrary (dictionary) order.
+    /// </summary>
+    public static List<ControlLogEntry> BuildFullLog(IReadOnlyDictionary<string, List<ControlLogEntry>> buckets)
+        => [.. buckets.Values.SelectMany(x => x).Distinct().OrderByDescending(x => x.Timestamp)];
+
+    /// <summary>
+    /// Groups entries into per-car buckets keyed by lower-cased car number: each entry is filed under its
+    /// <see cref="ControlLogEntry.Car1"/> and, for a two-car incident, its <see cref="ControlLogEntry.Car2"/>;
+    /// entries naming no car go in the empty-string bucket. Blank car values never create a car bucket —
+    /// doing so previously filed every entry (whose Car2 is blank) into the no-car bucket via the Car2
+    /// grouping, duplicating the entire log.
+    /// </summary>
+    public static Dictionary<string, List<ControlLogEntry>> BuildCarBuckets(IEnumerable<ControlLogEntry> logs)
+    {
+        var list = logs as IReadOnlyList<ControlLogEntry> ?? [.. logs];
+        var buckets = new Dictionary<string, List<ControlLogEntry>>();
+
+        // File under the first car.
+        foreach (var g in list.GroupBy(x => x.Car1))
+        {
+            if (!string.IsNullOrWhiteSpace(g.Key))
+                buckets[g.Key.ToLower()] = [.. g];
+        }
+
+        // Also file under the second car (a two-car incident shows for both cars).
+        foreach (var g in list.GroupBy(x => x.Car2))
+        {
+            if (string.IsNullOrWhiteSpace(g.Key))
+                continue;
+            if (!buckets.TryGetValue(g.Key.ToLower(), out var value))
+                buckets[g.Key.ToLower()] = [.. g];
+            else
+                value.AddRange(g);
+        }
+
+        // Entries with neither car go in the empty-string (event-wide) bucket.
+        foreach (var entry in list)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Car1) && string.IsNullOrWhiteSpace(entry.Car2))
+            {
+                if (!buckets.TryGetValue(string.Empty, out var value))
+                    buckets[string.Empty] = [entry];
+                else
+                    value.Add(entry);
+            }
+        }
+
+        return buckets;
     }
 
     /// <summary>
