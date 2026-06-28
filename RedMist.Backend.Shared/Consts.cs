@@ -27,6 +27,7 @@ public class Consts
     public static readonly string[] PRACTICE_QUAL_TERMS = ["Practice", "Qualifying", "Qual"];
     public const string COMPETITOR_METADATA = "cm-{0}-evt-{1}";
     public const string EVENT_PAYLOAD = "evt-{0}-payload";
+    public const string TRACK_MAP_KEY = "track-map-{0}";
     public const string IN_CAR_EVENT_SUB = "in-car-evt-{0}-car-{1}";
     public const string IN_CAR_EVENT_SUB_V2 = "in-car-evt-{0}-car-{1}v2";
     public const string IN_CAR_DATA = "in-car-data-{0}-{1}";

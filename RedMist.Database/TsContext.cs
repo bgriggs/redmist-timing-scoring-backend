@@ -35,6 +35,7 @@ public class TsContext : DbContext
     public DbSet<SponsorStatistics> SponsorStatistics { get; set; } = null!;
     public DbSet<EventSponsorStatistics> EventSponsorStatistics { get; set; } = null!;
     public DbSet<SourceSponsorStatistics> SourceSponsorStatistics { get; set; } = null!;
+    public DbSet<TrackMapRecord> TrackMaps { get; set; } = null!;
 
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }
@@ -137,6 +138,16 @@ public class TsContext : DbContext
         var controlLogsProperty = modelBuilder.Entity<SessionResult>().Property(o => o.ControlLogs);
         controlLogsProperty.HasConversion(controlLogConverter!);
         controlLogsProperty.HasColumnType("jsonb");
+
+        // Track map (one per event); the learned map is stored as JSONB.
+        modelBuilder.Entity<TrackMapRecord>().HasKey(t => t.EventId);
+        modelBuilder.Entity<TrackMapRecord>().Property(t => t.EventId).ValueGeneratedNever();
+        var trackMapConverter = new ValueConverter<TrackMap, string>(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<TrackMap>(v, (JsonSerializerOptions?)null) ?? new TrackMap());
+        var trackMapProperty = modelBuilder.Entity<TrackMapRecord>().Property(t => t.Map);
+        trackMapProperty.HasConversion(trackMapConverter!);
+        trackMapProperty.HasColumnType("jsonb");
 
         // Configure TimingCommon models
         modelBuilder.Entity<Session>().HasKey(s => new { s.Id, s.EventId });

@@ -40,6 +40,8 @@ public class SessionStateProcessingPipeline
     private readonly VideoEnricher videoEnricher;
     private readonly FastestPaceEnricher fastestPaceEnricher;
     private readonly ProjectedLapTimeEnricher projectedLapTimeEnricher;
+    private readonly TrackMapService trackMapService;
+    private readonly GpsProjectedLapTimeEnricher gpsProjectedLapTimeEnricher;
     private readonly StaleCarEnricher staleCarEnricher;
     private readonly UpdateConsolidator updateConsolidator;
 
@@ -81,6 +83,8 @@ public class SessionStateProcessingPipeline
         VideoEnricher videoEnricher,
         FastestPaceEnricher fastestPaceEnricher,
         ProjectedLapTimeEnricher projectedLapTimeEnricher,
+        TrackMapService trackMapService,
+        GpsProjectedLapTimeEnricher gpsProjectedLapTimeEnricher,
         StaleCarEnricher staleCarEnricher,
         UpdateConsolidator updateConsolidator)
     {
@@ -101,6 +105,8 @@ public class SessionStateProcessingPipeline
         this.videoEnricher = videoEnricher;
         this.fastestPaceEnricher = fastestPaceEnricher;
         this.projectedLapTimeEnricher = projectedLapTimeEnricher;
+        this.trackMapService = trackMapService;
+        this.gpsProjectedLapTimeEnricher = gpsProjectedLapTimeEnricher;
         this.staleCarEnricher = staleCarEnricher;
         this.updateConsolidator = updateConsolidator;
 
@@ -349,6 +355,31 @@ public class SessionStateProcessingPipeline
                     sessionContext.UpdateCars([CarPositionMapper.PatchToEntity(cp)]);
                 }
                 carPatches.Add(cp);
+            }
+
+            // GPS-based projected lap time. Corrected positions carried by this batch feed the track-map
+            // learner and refine each moving car's projected lap time. This is new enrichment the external
+            // source doesn't compute, so it runs here even though ProcessExternal otherwise skips re-enrichment.
+            var gpsCars = carPatches
+                .Where(cp => (cp.Latitude != null || cp.Longitude != null) && !string.IsNullOrWhiteSpace(cp.Number))
+                .Select(cp => cp.Number!)
+                .Distinct();
+            var hadGps = false;
+            foreach (var cn in gpsCars)
+            {
+                if (!hadGps)
+                {
+                    await trackMapService.EnsureLoadedAsync(sessionContext.CancellationToken);
+                    hadGps = true;
+                }
+                var car = sessionContext.GetCarByNumber(cn);
+                if (car?.Latitude is double lat && car.Longitude is double lon)
+                {
+                    await trackMapService.AddSampleAsync(cn, lat, lon, car.LastLapCompleted, sessionContext.CancellationToken);
+                    var gpsPatch = await gpsProjectedLapTimeEnricher.ProcessCarAsync(car);
+                    if (gpsPatch != null)
+                        carPatches.Add(gpsPatch);
+                }
             }
 
             // Log completed laps. The external branch otherwise bypasses the lap processor that the

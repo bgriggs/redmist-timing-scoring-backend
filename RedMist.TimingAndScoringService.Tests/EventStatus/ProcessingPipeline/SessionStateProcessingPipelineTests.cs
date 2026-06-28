@@ -62,6 +62,8 @@ public class SessionStateProcessingPipelineTests
     private VideoEnricher _videoEnricher = null!;
     private FastestPaceEnricher _fastestPaceEnricher = null!;
     private ProjectedLapTimeEnricher _projectedLapTimeEnricher = null!;
+    private TrackMapService _trackMapService = null!;
+    private GpsProjectedLapTimeEnricher _gpsProjectedLapTimeEnricher = null!;
     private StaleCarEnricher _staleCarEnricher = null!;
     private UpdateConsolidator _updateConsolidator = null!;
     private StatusAggregator _statusAggregator = null!;
@@ -202,6 +204,8 @@ public class SessionStateProcessingPipelineTests
         _videoEnricher = new VideoEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _fastestPaceEnricher = new FastestPaceEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
         _projectedLapTimeEnricher = new ProjectedLapTimeEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
+        _trackMapService = new TrackMapService(_sessionContext, _dbContextFactory, _mockConnectionMultiplexer.Object, _mockLoggerFactory.Object, _timeProvider);
+        _gpsProjectedLapTimeEnricher = new GpsProjectedLapTimeEnricher(_mockLoggerFactory.Object, _trackMapService, _sessionContext, _projectedLapTimeEnricher, _timeProvider);
         _staleCarEnricher = new StaleCarEnricher(_mockLoggerFactory.Object, _sessionContext);
         _statusAggregator = new StatusAggregator(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
@@ -225,6 +229,8 @@ public class SessionStateProcessingPipelineTests
             _videoEnricher,
             _fastestPaceEnricher,
             _projectedLapTimeEnricher,
+            _trackMapService,
+            _gpsProjectedLapTimeEnricher,
             _staleCarEnricher,
             _updateConsolidator
         );
