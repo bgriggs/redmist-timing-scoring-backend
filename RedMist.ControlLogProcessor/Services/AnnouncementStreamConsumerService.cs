@@ -125,10 +125,7 @@ public class AnnouncementStreamConsumerService : BackgroundService
         if (latest is null)
             return;
 
-        var entries = new List<ControlLogEntry>(latest.Count);
-        foreach (var announcement in latest)
-            entries.AddRange(AnnouncementControlLogParser.Parse(announcement.Timestamp, announcement.Text));
-
+        var entries = AnnouncementControlLogParser.ParseAll(latest);
         store.Set(entries);
         Logger.LogDebug("Updated announcement control log store: {a} announcements -> {e} entries", latest.Count, entries.Count);
     }

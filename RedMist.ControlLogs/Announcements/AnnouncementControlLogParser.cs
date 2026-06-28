@@ -12,6 +12,11 @@ namespace RedMist.ControlLogs.Announcements;
 /// One entry is emitted per involved car (each with that car in <see cref="ControlLogEntry.Car1"/>),
 /// so per-car logs and penalty counts are correct for any number of cars. A message naming no car
 /// (CODE 60, GREEN, etc.) produces a single car-less entry that surfaces only in the event-wide log.
+///
+/// <see cref="ParseAll"/> numbers the whole set chronologically: announcements are ordered oldest to
+/// newest by timestamp and the n-th message gets <see cref="ControlLogEntry.OrderId"/> = n (1-based),
+/// shared by all of that message's per-car entries. Use it rather than <see cref="Parse"/> when feeding
+/// the store, since a single announcement has no ordering context of its own.
 /// </summary>
 public static class AnnouncementControlLogParser
 {
@@ -25,8 +30,39 @@ public static class AnnouncementControlLogParser
 
     private static readonly Regex Number = new(@"\d+", RegexOptions.Compiled);
 
+    // A turn/corner reference: "Turn" (any case) then a number with an optional trailing letter, e.g.
+    // "TURN 12", "Turn 10A". Non-numeric turns ("TURN Pit Entry") and a bare "TURN " are not corners.
+    private static readonly Regex TurnNumber = new(@"\bTurn\s+(\d+[A-Za-z]?)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
-    /// Parses one announcement into per-car control log entries. Returns empty for blank text.
+    /// Parses an ordered set of announcements into per-car control log entries, numbering them
+    /// chronologically: announcements are sorted oldest to newest by timestamp and the n-th message gets
+    /// <see cref="ControlLogEntry.OrderId"/> = n (1-based), shared across that message's per-car entries.
+    /// </summary>
+    public static List<ControlLogEntry> ParseAll(IEnumerable<Announcement> announcements)
+    {
+        var ordered = announcements
+            .Where(a => a is not null)
+            .OrderBy(a => a.Timestamp)
+            .ToList();
+
+        var result = new List<ControlLogEntry>();
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            var orderId = i + 1; // 1-based: the oldest message is 1
+            foreach (var entry in Parse(ordered[i].Timestamp, ordered[i].Text))
+            {
+                entry.OrderId = orderId;
+                result.Add(entry);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Parses one announcement into per-car control log entries. Returns empty for blank text. The
+    /// entries' <see cref="ControlLogEntry.OrderId"/> is left at 0 — chronological numbering needs the
+    /// full set, so callers feeding the store use <see cref="ParseAll"/>.
     /// </summary>
     public static IEnumerable<ControlLogEntry> Parse(DateTime timestamp, string? text)
     {
@@ -81,42 +117,21 @@ public static class AnnouncementControlLogParser
         return "Note";
     }
 
+    // OrderId is assigned by ParseAll from the chronological position; left 0 here.
     private static ControlLogEntry Build(DateTime timestamp, string text, string car, string status, string penaltyAction) => new()
     {
-        OrderId = StableOrderId(timestamp, car, text),
         Timestamp = timestamp,
         Car1 = car,
         Note = text,
+        Corner = ExtractCorner(text),
         Status = status,
         PenaltyAction = penaltyAction,
     };
 
     /// <summary>
-    /// A deterministic id for change detection: the same (timestamp, car, text) always yields the same
-    /// value, and distinct announcements differ (timestamp disambiguates repeated text such as "CODE 60").
-    /// FNV-1a so it is stable regardless of process or runtime hash randomization.
+    /// The turn/corner named in the message (e.g. "10", "10A"), upper-cased, or empty when none is named
+    /// or the turn isn't numeric (e.g. "TURN Pit Entry"). Uses the first turn reference in the text.
     /// </summary>
-    private static int StableOrderId(DateTime timestamp, string car, string text)
-    {
-        unchecked
-        {
-            const uint offset = 2166136261;
-            const uint prime = 16777619;
-            var hash = offset;
-            void Mix(string s)
-            {
-                foreach (var ch in s)
-                {
-                    hash ^= ch;
-                    hash *= prime;
-                }
-                hash ^= '|';
-                hash *= prime;
-            }
-            Mix(timestamp.Ticks.ToString());
-            Mix(car);
-            Mix(text);
-            return (int)(hash & 0x7FFFFFFF);
-        }
-    }
+    public static string ExtractCorner(string text)
+        => TurnNumber.Match(text) is { Success: true } m ? m.Groups[1].Value.ToUpperInvariant() : string.Empty;
 }

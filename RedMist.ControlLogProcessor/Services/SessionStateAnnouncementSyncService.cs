@@ -109,10 +109,7 @@ public class SessionStateAnnouncementSyncService : BackgroundService
         if (state?.Announcements is not { Count: > 0 } announcements)
             return true;
 
-        var entries = new List<ControlLogEntry>(announcements.Count);
-        foreach (var announcement in announcements)
-            entries.AddRange(AnnouncementControlLogParser.Parse(announcement.Timestamp, announcement.Text));
-
+        var entries = AnnouncementControlLogParser.ParseAll(announcements);
         store.Set(entries);
         Logger.LogDebug("Synced announcement control log from full state: {a} announcements -> {e} entries", announcements.Count, entries.Count);
         return true;
