@@ -17,6 +17,7 @@ public class TsContext : DbContext
     public DbSet<TimingCommon.Models.Configuration.Event> Events { get; set; } = null!;
     public DbSet<Session> Sessions { get; set; } = null!;
     public DbSet<EventStatusLog> EventStatusLogs { get; set; } = null!;
+    public DbSet<ExternalMessageLog> ExternalMessageLogs { get; set; } = null!;
     public DbSet<CarLapLog> CarLapLogs { get; set; } = null!;
     public DbSet<CarLastLap> CarLastLaps { get; set; } = null!;
     public DbSet<GoogleSheetsConfig> GoogleSheetsConfigs { get; set; } = null!;
@@ -157,6 +158,7 @@ public class TsContext : DbContext
         modelBuilder.Entity<UIVersionInfo>().HasNoKey().ToTable("UIVersions");
         modelBuilder.Entity<Models.DriverInfo>().HasIndex(o => o.FlagtronicsId).IsUnique();
         modelBuilder.Entity<CarLapLog>().HasIndex(l => new { l.EventId, l.SessionId, l.CarNumber, l.LapNumber });
+        modelBuilder.Entity<ExternalMessageLog>().HasIndex(l => new { l.EventId, l.SessionId });
     }
 }
 #pragma warning restore CS0618

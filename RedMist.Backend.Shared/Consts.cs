@@ -6,6 +6,16 @@ public class Consts
     public const string STATUS_CHANNEL_PREFIX = "event-status";
     public const string EVENT_STATUS_STREAM_KEY = "evt-st-{0}";
     public const string EVENT_PROCESSOR_LOGGING_STREAM_KEY = "evt-proc-log-{0}";
+    /// <summary>
+    /// Logging-only stream carrying opaque raw messages from an external timing source. Consumed by
+    /// the EventLogger (ExternalMessageLogConsumer) and persisted to ExternalMessageLog; not read by
+    /// the live event processor.
+    /// </summary>
+    public const string EVENT_EXTERNAL_LOG_STREAM_KEY = "evt-ext-log-{0}";
+    /// <summary>Stream field for external raw messages: type-eventId-sessionId (opaque payload).</summary>
+    public const string EVENT_EXTERNAL_LOG_STREAM_FIELD = "extmsg-{0}-{1}";
+    /// <summary>Field/type tag for external raw messages (see EVENT_EXTERNAL_LOG_STREAM_FIELD).</summary>
+    public const string EXTERNAL_MESSAGE_TYPE = "extmsg";
     public const string RELAY_EVENT_CONNECTIONS = "relay-evt-conns";
     public const string STATUS_EVENT_CONNECTIONS = "st-evt-{0}-conns";
     public const string STATUS_CONNECTIONS = "st-conns";

@@ -37,6 +37,7 @@ public class Program
 
         builder.Services.AddHostedService<LogConsumerService>();
         builder.Services.AddHostedService<EventProcessLogger>();
+        builder.Services.AddHostedService<ExternalMessageLogConsumer>();
 
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();
