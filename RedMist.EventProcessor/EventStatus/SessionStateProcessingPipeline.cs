@@ -288,7 +288,7 @@ public class SessionStateProcessingPipeline
                     }
                     else if (message.Type == Backend.Shared.Consts.EXTERNAL_PATCH_TYPE)
                     {
-                        var externalChanges = ProcessExternal(message);
+                        var externalChanges = await ProcessExternal(message);
                         if (externalChanges != null)
                             allAppliedChanges.Add(externalChanges);
                     }
@@ -313,8 +313,11 @@ public class SessionStateProcessingPipeline
     /// done all protocol parsing and produced RedMist patches, so this only applies them to the
     /// session state and surfaces them for client notification — no source-specific parsing and no
     /// position/gap re-enrichment (the external source computes those itself).
+    ///
+    /// Lap and flag logging are not skipped, though: completed laps and flag transitions carried by the
+    /// patches are forwarded to the same lap/flag processors the RMonitor path uses so they persist.
     /// </summary>
-    private PatchUpdates? ProcessExternal(TimingMessage message)
+    private async Task<PatchUpdates?> ProcessExternal(TimingMessage message)
     {
         try
         {
@@ -346,6 +349,33 @@ public class SessionStateProcessingPipeline
                     sessionContext.UpdateCars([CarPositionMapper.PatchToEntity(cp)]);
                 }
                 carPatches.Add(cp);
+            }
+
+            // Log completed laps. The external branch otherwise bypasses the lap processor that the
+            // RMonitor path runs, so externally-sourced laps would never be persisted.
+            var lapCompletionNumbers = carPatches
+                .Where(cp => cp.LastLapCompleted != null && !string.IsNullOrWhiteSpace(cp.Number))
+                .Select(cp => cp.Number)
+                .ToList();
+            if (lapCompletionNumbers.Count > 0)
+            {
+                var cars = sessionContext.SessionState.CarPositions
+                    .Where(c => lapCompletionNumbers.Contains(c.Number))
+                    .ToList();
+                // The external source carries the flag on the session, not per car; stamp it on so the
+                // lap log records the flag in force when the lap completed (as the RMonitor path does).
+                foreach (var c in cars)
+                    c.TrackFlag = sessionContext.SessionState.CurrentFlag;
+                await lapProcessor.ProcessAsync(cars);
+            }
+
+            // Log flag transitions. The external source supplies the full flag-duration list (from its
+            // own flags channel); forward it to the flag processor so it persists to the flag log.
+            var flagDurations = sessionPatches.LastOrDefault(sp => sp.FlagDurations != null)?.FlagDurations;
+            if (flagDurations != null)
+            {
+                await flagProcessor.ProcessFlags(
+                    sessionContext.SessionState.SessionId, flagDurations, sessionContext.CancellationToken);
             }
 
             return new PatchUpdates([.. sessionPatches], [.. carPatches]);

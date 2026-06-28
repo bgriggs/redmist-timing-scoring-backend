@@ -555,6 +555,55 @@ public class SessionStateProcessingPipelineTests
     }
 
     [TestMethod]
+    public async Task ExternalPatch_LogsCompletedLapsAndFlags_Test()
+    {
+        // Arrange: an external timing-source patch batch carrying a completed lap and a flag transition.
+        _sessionContext.SessionState.SessionId = 10;
+        var flagStart = new DateTime(2026, 6, 6, 12, 0, 0, DateTimeKind.Utc);
+        var batch = new ExternalPatchBatch
+        {
+            EventId = 1,
+            SessionId = 10,
+            SessionPatches =
+            [
+                new SessionStatePatch
+                {
+                    CurrentFlag = Flags.Green,
+                    FlagDurations = [new FlagDuration { Flag = Flags.Green, StartTime = flagStart, EndTime = null }],
+                }
+            ],
+            CarPatches =
+            [
+                new CarPositionPatch { Number = "58", LastLapCompleted = 1, LastLapTime = "00:01:58.064" }
+            ],
+        };
+        var tm = new TimingMessage(RedMist.Backend.Shared.Consts.EXTERNAL_PATCH_TYPE,
+            JsonSerializer.Serialize(batch), 1, DateTime.UtcNow);
+
+        // Act
+        await _pipeline.PostAsync(tm);
+
+        // Assert flags: persisted synchronously to the flag log.
+        using (var ctx = _dbContextFactory.CreateDbContext())
+        {
+            var dbFlags = ctx.FlagLog.Where(f => f.SessionId == 10).ToList();
+            Assert.HasCount(1, dbFlags);
+            Assert.AreEqual(Flags.Green, dbFlags[0].Flag);
+            Assert.AreEqual(flagStart, dbFlags[0].StartTime);
+        }
+
+        // Assert laps: buffered ~1s for pit correlation, then drained by the background task.
+        _timeProvider.Advance(TimeSpan.FromSeconds(2));
+        for (int i = 0; i < 50 && !_redisLapCapture.HasLap("58", 1); i++)
+            await Task.Delay(100, TestContext.CancellationTokenSource.Token);
+
+        Assert.IsTrue(_redisLapCapture.HasLap("58", 1), "Car 58 lap 1 should be logged from the external patch");
+        var lap = _redisLapCapture.GetLatestLapForCar("58");
+        Assert.IsNotNull(lap);
+        Assert.AreEqual((int)Flags.Green, lap!.Log.Flag); // lap stamped with the session flag
+    }
+
+    [TestMethod]
     public async Task RMonitor_MissingLap1And2_Test()
     {
         // Arrange
