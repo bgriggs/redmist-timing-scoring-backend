@@ -7,6 +7,7 @@ using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.ControlLogProcessor.Services;
 using RedMist.ControlLogs;
+using RedMist.ControlLogs.Announcements;
 using RedMist.Database;
 using StackExchange.Redis;
 
@@ -36,8 +37,12 @@ public class Program
             .AddRedis(redisConn, tags: ["cache", "redis"])
             .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"]);
 
+        // Shared between the announcement stream consumer (writer) and the control log poll (reader,
+        // via ControlLogFactory -> AnnouncementControlLog), so it must be a singleton.
+        builder.Services.AddSingleton<IAnnouncementControlLogStore, AnnouncementControlLogStore>();
         builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
         builder.Services.AddHostedService<StatusAggregatorService>();
+        builder.Services.AddHostedService<AnnouncementStreamConsumerService>();
 
         builder.Services.AddRedMistSignalR(redisConn);
 
