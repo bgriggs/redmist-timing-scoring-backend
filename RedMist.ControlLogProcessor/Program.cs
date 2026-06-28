@@ -41,8 +41,11 @@ public class Program
         // via ControlLogFactory -> AnnouncementControlLog), so it must be a singleton.
         builder.Services.AddSingleton<IAnnouncementControlLogStore, AnnouncementControlLogStore>();
         builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
+        // Used by SessionStateAnnouncementSyncService to call the event processor's /status/GetStatus.
+        builder.Services.AddHttpClient("EventProcessor", c => c.Timeout = TimeSpan.FromSeconds(15));
         builder.Services.AddHostedService<StatusAggregatorService>();
         builder.Services.AddHostedService<AnnouncementStreamConsumerService>();
+        builder.Services.AddHostedService<SessionStateAnnouncementSyncService>();
 
         builder.Services.AddRedMistSignalR(redisConn);
 
