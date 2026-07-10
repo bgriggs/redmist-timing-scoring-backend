@@ -62,6 +62,8 @@ public class SessionStateProcessingPipelineTests
     private VideoEnricher _videoEnricher = null!;
     private FastestPaceEnricher _fastestPaceEnricher = null!;
     private ProjectedLapTimeEnricher _projectedLapTimeEnricher = null!;
+    private TrackMapService _trackMapService = null!;
+    private GpsProjectedLapTimeEnricher _gpsProjectedLapTimeEnricher = null!;
     private StaleCarEnricher _staleCarEnricher = null!;
     private UpdateConsolidator _updateConsolidator = null!;
     private StatusAggregator _statusAggregator = null!;
@@ -202,6 +204,8 @@ public class SessionStateProcessingPipelineTests
         _videoEnricher = new VideoEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _fastestPaceEnricher = new FastestPaceEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
         _projectedLapTimeEnricher = new ProjectedLapTimeEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
+        _trackMapService = new TrackMapService(_sessionContext, _dbContextFactory, _mockConnectionMultiplexer.Object, _mockLoggerFactory.Object, _timeProvider);
+        _gpsProjectedLapTimeEnricher = new GpsProjectedLapTimeEnricher(_mockLoggerFactory.Object, _trackMapService, _sessionContext, _projectedLapTimeEnricher, _timeProvider);
         _staleCarEnricher = new StaleCarEnricher(_mockLoggerFactory.Object, _sessionContext);
         _statusAggregator = new StatusAggregator(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
@@ -225,6 +229,8 @@ public class SessionStateProcessingPipelineTests
             _videoEnricher,
             _fastestPaceEnricher,
             _projectedLapTimeEnricher,
+            _trackMapService,
+            _gpsProjectedLapTimeEnricher,
             _staleCarEnricher,
             _updateConsolidator
         );
@@ -552,6 +558,55 @@ public class SessionStateProcessingPipelineTests
 
         // Assert
         Assert.AreEqual("GP2", _sessionContext.SessionState.CarPositions.Single(c => c.Number == "55").Class);
+    }
+
+    [TestMethod]
+    public async Task ExternalPatch_LogsCompletedLapsAndFlags_Test()
+    {
+        // Arrange: an external timing-source patch batch carrying a completed lap and a flag transition.
+        _sessionContext.SessionState.SessionId = 10;
+        var flagStart = new DateTime(2026, 6, 6, 12, 0, 0, DateTimeKind.Utc);
+        var batch = new ExternalPatchBatch
+        {
+            EventId = 1,
+            SessionId = 10,
+            SessionPatches =
+            [
+                new SessionStatePatch
+                {
+                    CurrentFlag = Flags.Green,
+                    FlagDurations = [new FlagDuration { Flag = Flags.Green, StartTime = flagStart, EndTime = null }],
+                }
+            ],
+            CarPatches =
+            [
+                new CarPositionPatch { Number = "58", LastLapCompleted = 1, LastLapTime = "00:01:58.064" }
+            ],
+        };
+        var tm = new TimingMessage(RedMist.Backend.Shared.Consts.EXTERNAL_PATCH_TYPE,
+            JsonSerializer.Serialize(batch), 1, DateTime.UtcNow);
+
+        // Act
+        await _pipeline.PostAsync(tm);
+
+        // Assert flags: persisted synchronously to the flag log.
+        using (var ctx = _dbContextFactory.CreateDbContext())
+        {
+            var dbFlags = ctx.FlagLog.Where(f => f.SessionId == 10).ToList();
+            Assert.HasCount(1, dbFlags);
+            Assert.AreEqual(Flags.Green, dbFlags[0].Flag);
+            Assert.AreEqual(flagStart, dbFlags[0].StartTime);
+        }
+
+        // Assert laps: buffered ~1s for pit correlation, then drained by the background task.
+        _timeProvider.Advance(TimeSpan.FromSeconds(2));
+        for (int i = 0; i < 50 && !_redisLapCapture.HasLap("58", 1); i++)
+            await Task.Delay(100, TestContext.CancellationTokenSource.Token);
+
+        Assert.IsTrue(_redisLapCapture.HasLap("58", 1), "Car 58 lap 1 should be logged from the external patch");
+        var lap = _redisLapCapture.GetLatestLapForCar("58");
+        Assert.IsNotNull(lap);
+        Assert.AreEqual((int)Flags.Green, lap!.Log.Flag); // lap stamped with the session flag
     }
 
     [TestMethod]

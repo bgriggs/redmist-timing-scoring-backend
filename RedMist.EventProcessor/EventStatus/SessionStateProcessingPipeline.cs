@@ -13,6 +13,8 @@ using RedMist.EventProcessor.EventStatus.Video;
 using RedMist.EventProcessor.EventStatus.X2;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
+using RedMist.TimingCommon.Models.Mappers;
+using System.Text.Json;
 
 namespace RedMist.EventProcessor.EventStatus;
 
@@ -38,6 +40,8 @@ public class SessionStateProcessingPipeline
     private readonly VideoEnricher videoEnricher;
     private readonly FastestPaceEnricher fastestPaceEnricher;
     private readonly ProjectedLapTimeEnricher projectedLapTimeEnricher;
+    private readonly TrackMapService trackMapService;
+    private readonly GpsProjectedLapTimeEnricher gpsProjectedLapTimeEnricher;
     private readonly StaleCarEnricher staleCarEnricher;
     private readonly UpdateConsolidator updateConsolidator;
 
@@ -79,6 +83,8 @@ public class SessionStateProcessingPipeline
         VideoEnricher videoEnricher,
         FastestPaceEnricher fastestPaceEnricher,
         ProjectedLapTimeEnricher projectedLapTimeEnricher,
+        TrackMapService trackMapService,
+        GpsProjectedLapTimeEnricher gpsProjectedLapTimeEnricher,
         StaleCarEnricher staleCarEnricher,
         UpdateConsolidator updateConsolidator)
     {
@@ -99,6 +105,8 @@ public class SessionStateProcessingPipeline
         this.videoEnricher = videoEnricher;
         this.fastestPaceEnricher = fastestPaceEnricher;
         this.projectedLapTimeEnricher = projectedLapTimeEnricher;
+        this.trackMapService = trackMapService;
+        this.gpsProjectedLapTimeEnricher = gpsProjectedLapTimeEnricher;
         this.staleCarEnricher = staleCarEnricher;
         this.updateConsolidator = updateConsolidator;
 
@@ -284,6 +292,12 @@ public class SessionStateProcessingPipeline
                         if (projectedPatch != null)
                             allAppliedChanges.AddRange(new PatchUpdates([], [projectedPatch]));
                     }
+                    else if (message.Type == Backend.Shared.Consts.EXTERNAL_PATCH_TYPE)
+                    {
+                        var externalChanges = await ProcessExternal(message);
+                        if (externalChanges != null)
+                            allAppliedChanges.Add(externalChanges);
+                    }
                 }
 
                 // ** Phase 3: Client Notification (outside the lock) **
@@ -297,6 +311,111 @@ public class SessionStateProcessingPipeline
         {
             Logger.LogError(ex, "Error processing message sequentially: {MessageType}", message.Type);
             _pipelineErrors.WithLabels("sequential_processor", ex.GetType().Name).Inc();
+        }
+    }
+
+    /// <summary>
+    /// Applies a batch of pre-formed patches from an external timing source. The source has already
+    /// done all protocol parsing and produced RedMist patches, so this only applies them to the
+    /// session state and surfaces them for client notification — no source-specific parsing and no
+    /// position/gap re-enrichment (the external source computes those itself).
+    ///
+    /// Lap and flag logging are not skipped, though: completed laps and flag transitions carried by the
+    /// patches are forwarded to the same lap/flag processors the RMonitor path uses so they persist.
+    /// </summary>
+    private async Task<PatchUpdates?> ProcessExternal(TimingMessage message)
+    {
+        try
+        {
+            var batch = JsonSerializer.Deserialize<ExternalPatchBatch>(message.Data);
+            if (batch == null)
+                return null;
+
+            var sessionPatches = new List<SessionStatePatch>();
+            foreach (var sp in batch.SessionPatches)
+            {
+                SessionStateMapper.ApplyPatch(sp, sessionContext.SessionState);
+                sessionPatches.Add(sp);
+            }
+
+            var carPatches = new List<CarPositionPatch>();
+            foreach (var cp in batch.CarPatches)
+            {
+                if (string.IsNullOrWhiteSpace(cp.Number))
+                    continue;
+
+                var car = sessionContext.GetCarByNumber(cp.Number);
+                if (car != null)
+                {
+                    CarPositionMapper.ApplyPatch(cp, car);
+                }
+                else
+                {
+                    // New car: materialise from the patch and register it in the context.
+                    sessionContext.UpdateCars([CarPositionMapper.PatchToEntity(cp)]);
+                }
+                carPatches.Add(cp);
+            }
+
+            // GPS-based projected lap time. Corrected positions carried by this batch feed the track-map
+            // learner and refine each moving car's projected lap time. This is new enrichment the external
+            // source doesn't compute, so it runs here even though ProcessExternal otherwise skips re-enrichment.
+            var gpsCars = carPatches
+                .Where(cp => (cp.Latitude != null || cp.Longitude != null) && !string.IsNullOrWhiteSpace(cp.Number))
+                .Select(cp => cp.Number!)
+                .Distinct();
+            var hadGps = false;
+            foreach (var cn in gpsCars)
+            {
+                if (!hadGps)
+                {
+                    await trackMapService.EnsureLoadedAsync(sessionContext.CancellationToken);
+                    hadGps = true;
+                }
+                var car = sessionContext.GetCarByNumber(cn);
+                if (car?.Latitude is double lat && car.Longitude is double lon)
+                {
+                    await trackMapService.AddSampleAsync(cn, lat, lon, car.LastLapCompleted, sessionContext.CancellationToken);
+                    var gpsPatch = await gpsProjectedLapTimeEnricher.ProcessCarAsync(car);
+                    if (gpsPatch != null)
+                        carPatches.Add(gpsPatch);
+                }
+            }
+
+            // Log completed laps. The external branch otherwise bypasses the lap processor that the
+            // RMonitor path runs, so externally-sourced laps would never be persisted.
+            var lapCompletionNumbers = carPatches
+                .Where(cp => cp.LastLapCompleted != null && !string.IsNullOrWhiteSpace(cp.Number))
+                .Select(cp => cp.Number)
+                .ToList();
+            if (lapCompletionNumbers.Count > 0)
+            {
+                var cars = sessionContext.SessionState.CarPositions
+                    .Where(c => lapCompletionNumbers.Contains(c.Number))
+                    .ToList();
+                // The external source carries the flag on the session, not per car; stamp it on so the
+                // lap log records the flag in force when the lap completed (as the RMonitor path does).
+                foreach (var c in cars)
+                    c.TrackFlag = sessionContext.SessionState.CurrentFlag;
+                await lapProcessor.ProcessAsync(cars);
+            }
+
+            // Log flag transitions. The external source supplies the full flag-duration list (from its
+            // own flags channel); forward it to the flag processor so it persists to the flag log.
+            var flagDurations = sessionPatches.LastOrDefault(sp => sp.FlagDurations != null)?.FlagDurations;
+            if (flagDurations != null)
+            {
+                await flagProcessor.ProcessFlags(
+                    sessionContext.SessionState.SessionId, flagDurations, sessionContext.CancellationToken);
+            }
+
+            return new PatchUpdates([.. sessionPatches], [.. carPatches]);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing external patch batch");
+            _pipelineErrors.WithLabels("external", ex.GetType().Name).Inc();
+            return null;
         }
     }
 

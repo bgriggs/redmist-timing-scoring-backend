@@ -6,6 +6,16 @@ public class Consts
     public const string STATUS_CHANNEL_PREFIX = "event-status";
     public const string EVENT_STATUS_STREAM_KEY = "evt-st-{0}";
     public const string EVENT_PROCESSOR_LOGGING_STREAM_KEY = "evt-proc-log-{0}";
+    /// <summary>
+    /// Logging-only stream carrying opaque raw messages from an external timing source. Consumed by
+    /// the EventLogger (ExternalMessageLogConsumer) and persisted to ExternalMessageLog; not read by
+    /// the live event processor.
+    /// </summary>
+    public const string EVENT_EXTERNAL_LOG_STREAM_KEY = "evt-ext-log-{0}";
+    /// <summary>Stream field for external raw messages: type-eventId-sessionId (opaque payload).</summary>
+    public const string EVENT_EXTERNAL_LOG_STREAM_FIELD = "extmsg-{0}-{1}";
+    /// <summary>Field/type tag for external raw messages (see EVENT_EXTERNAL_LOG_STREAM_FIELD).</summary>
+    public const string EXTERNAL_MESSAGE_TYPE = "extmsg";
     public const string RELAY_EVENT_CONNECTIONS = "relay-evt-conns";
     public const string STATUS_EVENT_CONNECTIONS = "st-evt-{0}-conns";
     public const string STATUS_CONNECTIONS = "st-conns";
@@ -20,12 +30,14 @@ public class Consts
     public const string EVENT_X2_PASSINGS_STREAM_FIELD = "x2pass-{0}-{1}";
     public const string EVENT_FLAGS_STREAM_FIELD = "flags-{0}-{1}";
     public const string EVENT_LAP_COMPLETED_STREAM_FIELD = "lapcompleted-{0}-{1}";
+    public const string EVENT_EXTERNAL_STREAM_FIELD = "external-{0}-{1}";
     public const string EVENT_COMPETITORS = "competitors-{0}-999999";
     public const string RELAY_GROUP_PREFIX = "relay-event-{0}";
     public const string CLIENT_ID = "ts-client-{0}";
     public static readonly string[] PRACTICE_QUAL_TERMS = ["Practice", "Qualifying", "Qual"];
     public const string COMPETITOR_METADATA = "cm-{0}-evt-{1}";
     public const string EVENT_PAYLOAD = "evt-{0}-payload";
+    public const string TRACK_MAP_KEY = "track-map-{0}";
     public const string IN_CAR_EVENT_SUB = "in-car-evt-{0}-car-{1}";
     public const string IN_CAR_EVENT_SUB_V2 = "in-car-evt-{0}-car-{1}v2";
     public const string IN_CAR_DATA = "in-car-data-{0}-{1}";
@@ -74,6 +86,12 @@ public class Consts
     public const string EVENT_SESSION_CHANGED = EVENT_SESSION_CHANGED_TYPE + "-{0}-{1}";
     public const string LAP_TYPE = "laps";
     public const string RELAY_HEARTBEAT_TYPE = "relayhb";
+
+    /// <summary>
+    /// Pre-formed patches from an external timing source (see EVENT_EXTERNAL_STREAM_FIELD).
+    /// The pipeline applies these without source-specific parsing.
+    /// </summary>
+    public const string EXTERNAL_PATCH_TYPE = "external";
 
     #endregion
 }

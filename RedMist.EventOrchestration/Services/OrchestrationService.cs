@@ -34,6 +34,9 @@ public class OrchestrationService : BackgroundService
     private readonly ContainerDetails eventProcessorContainerDetails;
     private readonly ContainerDetails controlLogContainerDetails;
     private readonly ContainerDetails loggerContainerDetails;
+    // Source container for events whose timing data comes from an external source.
+    // Image is supplied via configuration (helm values) so no source-specific name lives here.
+    private readonly ContainerDetails? externalSourceContainerDetails;
     // Track last known Redis replica count to avoid unnecessary patches
     private int lastRedisReplicas = -1;
 
@@ -58,6 +61,19 @@ public class OrchestrationService : BackgroundService
         loggerContainerDetails = new(
             "bigmission/redmist-event-logger", version, "{0}-evt-{1}-logger", false,
             "55m", "90Mi", "400m", "550Mi");
+
+        // Optional external-source container; only configured deployments can run external events.
+        var externalImage = configuration["ExternalSource:Image"];
+        if (!string.IsNullOrWhiteSpace(externalImage))
+        {
+            externalSourceContainerDetails = new(
+                externalImage, configuration["ExternalSource:Version"] ?? version,
+                "{0}-evt-{1}-external-source", false,
+                configuration["ExternalSource:CpuRequest"] ?? "60m",
+                configuration["ExternalSource:MemoryRequest"] ?? "128Mi",
+                configuration["ExternalSource:CpuLimit"] ?? "300m",
+                configuration["ExternalSource:MemoryLimit"] ?? "512Mi");
+        }
 
         Logger.LogInformation("OrchestrationService initialized with version {version}", version);
     }
@@ -398,6 +414,20 @@ public class OrchestrationService : BackgroundService
         // Check for event processor job
         var epJobName = string.Format(eventProcessorContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
         await EnsureJobRunningAsync(client, ns, jobs, epJobName, evt.EventId, eventDefinition.Name, org.Id, org.Name, eventProcessorContainerDetails, stoppingToken);
+
+        // Events whose data comes from an external source need that source's container started too.
+        if (eventDefinition.TimingSource == TimingSource.External)
+        {
+            if (externalSourceContainerDetails is null)
+            {
+                Logger.LogWarning("Event {eventId} uses an external timing source but no external source image is configured.", evt.EventId);
+            }
+            else
+            {
+                var extJobName = string.Format(externalSourceContainerDetails.JobFormat, org.ShortName.ToLower(), evt.EventId);
+                await EnsureJobRunningAsync(client, ns, jobs, extJobName, evt.EventId, eventDefinition.Name, org.Id, org.Name, externalSourceContainerDetails, stoppingToken);
+            }
+        }
     }
 
     /// <summary>

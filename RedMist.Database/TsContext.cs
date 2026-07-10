@@ -17,6 +17,7 @@ public class TsContext : DbContext
     public DbSet<TimingCommon.Models.Configuration.Event> Events { get; set; } = null!;
     public DbSet<Session> Sessions { get; set; } = null!;
     public DbSet<EventStatusLog> EventStatusLogs { get; set; } = null!;
+    public DbSet<ExternalMessageLog> ExternalMessageLogs { get; set; } = null!;
     public DbSet<CarLapLog> CarLapLogs { get; set; } = null!;
     public DbSet<CarLastLap> CarLastLaps { get; set; } = null!;
     public DbSet<GoogleSheetsConfig> GoogleSheetsConfigs { get; set; } = null!;
@@ -35,6 +36,7 @@ public class TsContext : DbContext
     public DbSet<SponsorStatistics> SponsorStatistics { get; set; } = null!;
     public DbSet<EventSponsorStatistics> EventSponsorStatistics { get; set; } = null!;
     public DbSet<SourceSponsorStatistics> SourceSponsorStatistics { get; set; } = null!;
+    public DbSet<TrackMapRecord> TrackMaps { get; set; } = null!;
 
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }
@@ -138,6 +140,16 @@ public class TsContext : DbContext
         controlLogsProperty.HasConversion(controlLogConverter!);
         controlLogsProperty.HasColumnType("jsonb");
 
+        // Track map (one per event); the learned map is stored as JSONB.
+        modelBuilder.Entity<TrackMapRecord>().HasKey(t => t.EventId);
+        modelBuilder.Entity<TrackMapRecord>().Property(t => t.EventId).ValueGeneratedNever();
+        var trackMapConverter = new ValueConverter<TrackMap, string>(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<TrackMap>(v, (JsonSerializerOptions?)null) ?? new TrackMap());
+        var trackMapProperty = modelBuilder.Entity<TrackMapRecord>().Property(t => t.Map);
+        trackMapProperty.HasConversion(trackMapConverter!);
+        trackMapProperty.HasColumnType("jsonb");
+
         // Configure TimingCommon models
         modelBuilder.Entity<Session>().HasKey(s => new { s.Id, s.EventId });
         modelBuilder.Entity<CompetitorMetadata>().HasKey(c => new { c.EventId, c.CarNumber });
@@ -146,6 +158,7 @@ public class TsContext : DbContext
         modelBuilder.Entity<UIVersionInfo>().HasNoKey().ToTable("UIVersions");
         modelBuilder.Entity<Models.DriverInfo>().HasIndex(o => o.FlagtronicsId).IsUnique();
         modelBuilder.Entity<CarLapLog>().HasIndex(l => new { l.EventId, l.SessionId, l.CarNumber, l.LapNumber });
+        modelBuilder.Entity<ExternalMessageLog>().HasIndex(l => new { l.EventId, l.SessionId });
     }
 }
 #pragma warning restore CS0618

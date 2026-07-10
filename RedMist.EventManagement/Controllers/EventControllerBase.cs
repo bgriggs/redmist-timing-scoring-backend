@@ -137,6 +137,9 @@ public abstract class EventControllerBase : ControllerBase
         newEvent.EnableSourceDataLogging = !newEvent.IsSimulation;
         if (!newEvent.IsPrivate)
             newEvent.AccessCode = null;
+        // TimingSource + ExternalConfig persist as-is; external config only applies to external sources.
+        if (newEvent.TimingSource != TimingCommon.Models.TimingSource.External)
+            newEvent.ExternalConfig = null;
         context.Events.Add(newEvent);
         await context.SaveChangesAsync();
 
@@ -196,6 +199,8 @@ public abstract class EventControllerBase : ControllerBase
             dbEvent.IsPrivate = @event.IsPrivate;
             dbEvent.HideName = @event.HideName;
             dbEvent.AccessCode = @event.IsPrivate ? @event.AccessCode : null;
+            dbEvent.TimingSource = @event.TimingSource;
+            dbEvent.ExternalConfig = @event.TimingSource == TimingCommon.Models.TimingSource.External ? @event.ExternalConfig : null;
             // Force to simulation if client is an API client rather than relay for an actual organization
             dbEvent.IsSimulation = @event.IsSimulation || (clientId?.StartsWith("api") ?? true);
 
