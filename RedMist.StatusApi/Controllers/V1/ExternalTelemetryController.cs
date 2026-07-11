@@ -284,7 +284,8 @@ public class ExternalTelemetryController : Controller
         foreach (var eventId in eventIds)
         {
             var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
-            await cache.StreamAddAsync(streamId, field, json);
+            await cache.StreamAddAsync(streamId, field, json,
+                maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
         }
     }
 

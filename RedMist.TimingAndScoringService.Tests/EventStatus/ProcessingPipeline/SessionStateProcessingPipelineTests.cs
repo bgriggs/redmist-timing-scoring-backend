@@ -127,12 +127,12 @@ public class SessionStateProcessingPipelineTests
             It.IsAny<RedisKey>(),
             It.IsAny<RedisValue>(),
             It.IsAny<RedisValue>(),
-            null,  // messageId default
-            null,  // maxLength default
-            false, // useApproximateMaxLength default
-            null,  // limit default
-            default(StreamTrimMode),  // trimMode default
-            CommandFlags.None)) // flags default
+            It.IsAny<RedisValue?>(),
+            It.IsAny<long?>(),
+            It.IsAny<bool>(),
+            It.IsAny<long?>(),
+            It.IsAny<StreamTrimMode>(),
+            It.IsAny<CommandFlags>()))
             .Callback<RedisKey, RedisValue, RedisValue, RedisValue?, long?, bool, long?, StreamTrimMode, CommandFlags>(
                 (key, field, value, messageId, maxLength, useApproximateMaxLength, limit, trimMode, flags) =>
             {

@@ -332,7 +332,8 @@ public abstract class EventControllerBase : ControllerBase
                 var streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
                 var fieldName = $"{Consts.EVENT_CONFIGURATION_CHANGED}-{eventId}-999999";
 
-                await cache.StreamAddAsync(streamKey, fieldName, eventId.ToString());
+                await cache.StreamAddAsync(streamKey, fieldName, eventId.ToString(),
+                    maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
 
                 // Drop the cached access record so StatusApi instances re-read the current IsPrivate/AccessCode.
                 await cache.KeyDeleteAsync(string.Format(Consts.EVENT_ACCESS, eventId), CommandFlags.FireAndForget);

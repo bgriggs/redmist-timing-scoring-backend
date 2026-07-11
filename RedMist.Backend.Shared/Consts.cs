@@ -5,7 +5,15 @@ public class Consts
     public const string EVENT_SUB_V2 = "evt{0}-sub";
     public const string STATUS_CHANNEL_PREFIX = "event-status";
     public const string EVENT_STATUS_STREAM_KEY = "evt-st-{0}";
+    /// <summary>
+    /// Approximate MAXLEN every producer passes when adding to the event status stream. Redis never
+    /// trims a stream on consumption, so without a write-time cap a long event grows the stream until
+    /// Redis is OOM-killed. Sized to give consumer groups roughly an hour of catch-up at peak traffic.
+    /// </summary>
+    public const int EVENT_STATUS_STREAM_MAX_LENGTH = 10000;
     public const string EVENT_PROCESSOR_LOGGING_STREAM_KEY = "evt-proc-log-{0}";
+    /// <summary>Approximate MAXLEN for the processor logging stream (see EVENT_STATUS_STREAM_MAX_LENGTH).</summary>
+    public const int EVENT_PROCESSOR_LOGGING_STREAM_MAX_LENGTH = 2000;
     /// <summary>
     /// Logging-only stream carrying opaque raw messages from an external timing source. Consumed by
     /// the EventLogger (ExternalMessageLogConsumer) and persisted to ExternalMessageLog; not read by

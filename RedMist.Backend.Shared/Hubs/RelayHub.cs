@@ -138,7 +138,8 @@ public class RelayHub : Hub
 
         // Also log to event processor stream
         var streamId = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, eventId);
-        await cache.StreamAddAsync(streamId, Consts.RELAY_HEARTBEAT_TYPE, entryJson);
+        await cache.StreamAddAsync(streamId, Consts.RELAY_HEARTBEAT_TYPE, entryJson,
+            maxLength: Consts.EVENT_PROCESSOR_LOGGING_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
     }
 
     public async Task<RelayTelemetry> SendHeartbeatV2(int eventId, string relayVersion)
@@ -213,7 +214,8 @@ public class RelayHub : Hub
             var cache = cacheMux.GetDatabase();
 
             // Send the command to the service responsible for the specific event
-            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_RMON_STREAM_FIELD, eventId, sessionId), command);
+            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_RMON_STREAM_FIELD, eventId, sessionId), command,
+                maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
 
             // Add the connection to the relay group for this event
             var connectionId = Context.ConnectionId;
@@ -243,7 +245,8 @@ public class RelayHub : Hub
             var cache = cacheMux.GetDatabase();
 
             // Send the command to the service responsible for the specific event
-            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_MULTILOOP_STREAM_FIELD, eventId, sessionId), command);
+            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_MULTILOOP_STREAM_FIELD, eventId, sessionId), command,
+                maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
 
             // Add the connection to the relay group for this event
             var connectionId = Context.ConnectionId;
@@ -347,7 +350,8 @@ public class RelayHub : Hub
                 var sJson = JsonSerializer.Serialize(s);
                 var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
                 var cache = cacheMux.GetDatabase();
-                await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_SESSION_CHANGED, eventId, sessionId), sJson);
+                await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_SESSION_CHANGED, eventId, sessionId), sJson,
+                    maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
             }
             else
             {
@@ -391,7 +395,8 @@ public class RelayHub : Hub
         {
             var json = JsonSerializer.Serialize(chunk);
             // Send the command to the service responsible for the specific event
-            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_PASSINGS_STREAM_FIELD, eventId, sessionId), json);
+            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_PASSINGS_STREAM_FIELD, eventId, sessionId), json,
+                maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
         }
     }
 
@@ -436,7 +441,8 @@ public class RelayHub : Hub
         var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
         var cache = cacheMux.GetDatabase();
         var json = JsonSerializer.Serialize(loops);
-        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_LOOPS_STREAM_FIELD, eventId), json);
+        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_LOOPS_STREAM_FIELD, eventId), json,
+            maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
     }
 
     /// <summary>
@@ -459,7 +465,8 @@ public class RelayHub : Hub
         var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
         var cache = cacheMux.GetDatabase();
         var json = JsonSerializer.Serialize(flags);
-        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_FLAGS_STREAM_FIELD, eventId, sessionId), json);
+        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_FLAGS_STREAM_FIELD, eventId, sessionId), json,
+            maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
     }
 
     /// <summary>
@@ -492,7 +499,8 @@ public class RelayHub : Hub
         var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
         var cache = cacheMux.GetDatabase();
         var json = JsonSerializer.Serialize(competitors);
-        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_COMPETITORS, eventId), json);
+        await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_COMPETITORS, eventId), json,
+            maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
 
         // Save the metadata to the database
         await SaveCompetitorMetadata(eventId, competitors);

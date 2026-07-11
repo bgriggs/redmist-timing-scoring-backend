@@ -234,7 +234,8 @@ public class LapProcessor : IDisposable
             var lapCompleted = new LapCompleted(carNumber, position.LastLapCompleted, position.Class ?? string.Empty, _timeProvider.GetUtcNow().UtcDateTime);
             var lapJson = JsonSerializer.Serialize(lapCompleted);
             var lapStreamField = string.Format(Consts.EVENT_LAP_COMPLETED_STREAM_FIELD, eventId, sessionId);
-            await cache.StreamAddAsync(statusStreamId, lapStreamField, lapJson);
+            await cache.StreamAddAsync(statusStreamId, lapStreamField, lapJson,
+                maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
 
             // Invoke the lap completed event for testing hooks - this is null in production
             OnLapCompleted?.Invoke(position);
@@ -255,7 +256,8 @@ public class LapProcessor : IDisposable
         // Post the lap logs to Redis for logger service to consume
         var json = JsonSerializer.Serialize(lapLogs);
         var logStreamId = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, eventId);
-        await cache.StreamAddAsync(logStreamId, Consts.LAP_TYPE, json);
+        await cache.StreamAddAsync(logStreamId, Consts.LAP_TYPE, json,
+            maxLength: Consts.EVENT_PROCESSOR_LOGGING_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
     }
 
     /// <summary>

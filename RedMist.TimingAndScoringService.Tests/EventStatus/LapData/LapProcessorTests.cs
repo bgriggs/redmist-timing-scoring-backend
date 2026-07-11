@@ -90,12 +90,12 @@ public class LapProcessorTests
             It.IsAny<RedisKey>(),
             It.IsAny<RedisValue>(),
             It.IsAny<RedisValue>(),
-            null,
-            null,
-            false,
-            null,
-            default(StreamTrimMode),
-            CommandFlags.None))
+            It.IsAny<RedisValue?>(),
+            It.IsAny<long?>(),
+            It.IsAny<bool>(),
+            It.IsAny<long?>(),
+            It.IsAny<StreamTrimMode>(),
+            It.IsAny<CommandFlags>()))
             .Callback<RedisKey, RedisValue, RedisValue, RedisValue?, long?, bool, long?, StreamTrimMode, CommandFlags>(
                 (key, field, value, messageId, maxLength, useApproximateMaxLength, limit, trimMode, flags) =>
                 {
@@ -913,12 +913,12 @@ public class LapProcessorTests
             It.IsAny<RedisKey>(),
             It.IsAny<RedisValue>(),
             It.IsAny<RedisValue>(),
-            null,
-            null,
-            false,
-            null,
-            default(StreamTrimMode),
-            CommandFlags.None))
+            It.IsAny<RedisValue?>(),
+            It.IsAny<long?>(),
+            It.IsAny<bool>(),
+            It.IsAny<long?>(),
+            It.IsAny<StreamTrimMode>(),
+            It.IsAny<CommandFlags>()))
             .ThrowsAsync(new RedisException("Connection failed"));
 
         var car1 = CreateTestCarPosition("1", 1);
