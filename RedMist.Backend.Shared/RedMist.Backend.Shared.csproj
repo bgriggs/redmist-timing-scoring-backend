@@ -18,11 +18,11 @@
 
 	<ItemGroup>
 		<PackageReference Include="BunnyCDN.Net.Storage" Version="1.0.4" />
-		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.7.0" />
-		<PackageReference Include="StackExchange.Redis" Version="3.0.11" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.8.0" />
+		<PackageReference Include="StackExchange.Redis" Version="3.0.17" />
 		<PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
-		<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.9" />
-		<PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.9" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.10" />
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.10" />
 		<PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.8" />
 		<PackageReference Include="MailKit" Version="4.17.0" />
 	</ItemGroup>
