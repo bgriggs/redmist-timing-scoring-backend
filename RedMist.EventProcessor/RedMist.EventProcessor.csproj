@@ -36,7 +36,7 @@
 		<PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
 		<PackageReference Include="Keycloak.AuthServices.Authentication" Version="3.0.0" />
 		<PackageReference Include="BigMission.TestHelpers" Version="3.0.8" />
-		<PackageReference Include="BigMission.Shared" Version="1.0.7" />
+		<PackageReference Include="BigMission.Shared" Version="1.0.8" />
 	</ItemGroup>
 
 	<ItemGroup>
