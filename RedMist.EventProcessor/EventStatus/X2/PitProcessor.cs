@@ -105,6 +105,12 @@ public class PitProcessor
             return null;
         }
 
+        if (sessionContext.IsFlagtronicsPitActive)
+        {
+            // Flagtronics in-car pit data is active and takes precedence over X2 loop data
+            return null;
+        }
+
         // Check for session change and clear out old data
         if (lastSessionId != sessionContext.SessionState.SessionId)
         {
@@ -210,6 +216,12 @@ public class PitProcessor
 
     public CarPositionPatch? ProcessCar(string number)
     {
+        if (sessionContext.IsFlagtronicsPitActive)
+        {
+            // Flagtronics in-car pit data is active and takes precedence over X2 loop data
+            return null;
+        }
+
         var loopMetadata = GetLoopMetadata();
         var change = new PitStateUpdate(
                 number,

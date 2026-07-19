@@ -15,6 +15,7 @@ using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.DriverInformation;
 using RedMist.EventProcessor.EventStatus.FlagData;
+using RedMist.EventProcessor.EventStatus.Flagtronics;
 using RedMist.EventProcessor.EventStatus.InCarDriverMode;
 using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.Multiloop;
@@ -108,6 +109,7 @@ public class Program
         builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(7), LocalCacheExpiration = TimeSpan.FromDays(7) });
         builder.Services.AddSingleton<SessionContext>();
         builder.Services.AddSingleton<MultiloopProcessor>();
+        builder.Services.AddSingleton<FlagtronicsProcessor>();
         builder.Services.AddSingleton<RMonitorDataProcessor>();
         builder.Services.AddSingleton<PitProcessor>();
         builder.Services.AddSingleton<FlagProcessor>();

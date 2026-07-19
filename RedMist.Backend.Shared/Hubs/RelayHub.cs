@@ -256,6 +256,34 @@ public class RelayHub : Hub
     }
 
     /// <summary>
+    /// Receives Flagtronics Vehicle Info records from a relay: a JSON array of per-car
+    /// objects forwarded verbatim from the Flagtronics v3.0 vehicleinfo feed.
+    /// </summary>
+    /// <param name="eventId">user selected event on the relay</param>
+    /// <param name="sessionId">timing system session</param>
+    /// <param name="data">JSON array of Flagtronics vehicle records</param>
+    public async Task SendFlagtronics(int eventId, int sessionId, string data)
+    {
+        Logger.LogTrace("RX-FT: e:{evt} s:{ses} len:{len}", eventId, sessionId, data.Length);
+        if (eventId > 0)
+        {
+            // Security note: not checking that the event/session is valid for the user explicitly here for performance. Security is ensured by the
+            // check in SendSessionChange that the event/session is committed to the database only when it passes the security check.
+            var streamId = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
+            var cache = cacheMux.GetDatabase();
+
+            // Send the data to the service responsible for the specific event
+            await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_FLAGTRONICS_STREAM_FIELD, eventId, sessionId), data,
+                maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
+
+            // Add the connection to the relay group for this event
+            var connectionId = Context.ConnectionId;
+            var groupName = string.Format(Consts.RELAY_GROUP_PREFIX, eventId);
+            await SafeAddToRelayGroupAsync(connectionId, groupName);
+        }
+    }
+
+    /// <summary>
     /// Reduces the number of relay group adds by keeping a local copy. When there are
     /// multiple instance of this service, there may occasional duplications of group adds.
     /// </summary>

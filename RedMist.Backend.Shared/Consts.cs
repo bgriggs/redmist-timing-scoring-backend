@@ -39,6 +39,7 @@ public class Consts
     public const string EVENT_FLAGS_STREAM_FIELD = "flags-{0}-{1}";
     public const string EVENT_LAP_COMPLETED_STREAM_FIELD = "lapcompleted-{0}-{1}";
     public const string EVENT_EXTERNAL_STREAM_FIELD = "external-{0}-{1}";
+    public const string EVENT_FLAGTRONICS_STREAM_FIELD = "ftcar-{0}-{1}";
     public const string EVENT_COMPETITORS = "competitors-{0}-999999";
     public const string RELAY_GROUP_PREFIX = "relay-event-{0}";
     public const string CLIENT_ID = "ts-client-{0}";
@@ -100,6 +101,12 @@ public class Consts
     /// The pipeline applies these without source-specific parsing.
     /// </summary>
     public const string EXTERNAL_PATCH_TYPE = "external";
+
+    /// <summary>
+    /// Flagtronics Vehicle Info records relayed verbatim from the in-car FT200 feed
+    /// (see EVENT_FLAGTRONICS_STREAM_FIELD). Payload is a JSON array of per-car objects.
+    /// </summary>
+    public const string FLAGTRONICS_TYPE = "ftcar";
 
     #endregion
 }

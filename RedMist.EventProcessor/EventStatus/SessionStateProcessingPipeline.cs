@@ -1,6 +1,7 @@
 ﻿using Prometheus;
 using RedMist.EventProcessor.EventStatus.DriverInformation;
 using RedMist.EventProcessor.EventStatus.FlagData;
+using RedMist.EventProcessor.EventStatus.Flagtronics;
 using RedMist.EventProcessor.EventStatus.InCarDriverMode;
 using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.Multiloop;
@@ -44,6 +45,7 @@ public class SessionStateProcessingPipeline
     private readonly GpsProjectedLapTimeEnricher gpsProjectedLapTimeEnricher;
     private readonly StaleCarEnricher staleCarEnricher;
     private readonly UpdateConsolidator updateConsolidator;
+    private readonly FlagtronicsProcessor flagtronicsProcessor;
 
     // Metrics for pipeline performance
     private readonly PipelineMetrics _overallProcessorMetrics = new("sequential_processor");
@@ -86,7 +88,8 @@ public class SessionStateProcessingPipeline
         TrackMapService trackMapService,
         GpsProjectedLapTimeEnricher gpsProjectedLapTimeEnricher,
         StaleCarEnricher staleCarEnricher,
-        UpdateConsolidator updateConsolidator)
+        UpdateConsolidator updateConsolidator,
+        FlagtronicsProcessor flagtronicsProcessor)
     {
         sessionContext = context;
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -109,6 +112,7 @@ public class SessionStateProcessingPipeline
         this.gpsProjectedLapTimeEnricher = gpsProjectedLapTimeEnricher;
         this.staleCarEnricher = staleCarEnricher;
         this.updateConsolidator = updateConsolidator;
+        this.flagtronicsProcessor = flagtronicsProcessor;
 
         // Wire up flush of pending laps for mid-race reset handling
         rMonitorDataProcessorV2.FlushPendingLaps = () => lapProcessor.FlushPendingLapsAsync();
@@ -184,6 +188,13 @@ public class SessionStateProcessingPipeline
                                 if (pitPatch != null)
                                 {
                                     pitPatches.Add(pitPatch);
+                                }
+
+                                // Re-apply Flagtronics in-car state when it is the active pit source
+                                var ftPatch = flagtronicsProcessor.ProcessCar(cn ?? string.Empty);
+                                if (ftPatch != null)
+                                {
+                                    pitPatches.Add(ftPatch);
                                 }
                             }
                             allAppliedChanges.Add(new PatchUpdates([], [.. pitPatches]));
@@ -298,6 +309,12 @@ public class SessionStateProcessingPipeline
                         if (externalChanges != null)
                             allAppliedChanges.Add(externalChanges);
                     }
+                    else if (message.Type == Backend.Shared.Consts.FLAGTRONICS_TYPE)
+                    {
+                        var flagtronicsChanges = await ProcessFlagtronics(message);
+                        if (flagtronicsChanges != null)
+                            allAppliedChanges.Add(flagtronicsChanges);
+                    }
                 }
 
                 // ** Phase 3: Client Notification (outside the lock) **
@@ -360,27 +377,7 @@ public class SessionStateProcessingPipeline
             // GPS-based projected lap time. Corrected positions carried by this batch feed the track-map
             // learner and refine each moving car's projected lap time. This is new enrichment the external
             // source doesn't compute, so it runs here even though ProcessExternal otherwise skips re-enrichment.
-            var gpsCars = carPatches
-                .Where(cp => (cp.Latitude != null || cp.Longitude != null) && !string.IsNullOrWhiteSpace(cp.Number))
-                .Select(cp => cp.Number!)
-                .Distinct();
-            var hadGps = false;
-            foreach (var cn in gpsCars)
-            {
-                if (!hadGps)
-                {
-                    await trackMapService.EnsureLoadedAsync(sessionContext.CancellationToken);
-                    hadGps = true;
-                }
-                var car = sessionContext.GetCarByNumber(cn);
-                if (car?.Latitude is double lat && car.Longitude is double lon)
-                {
-                    await trackMapService.AddSampleAsync(cn, lat, lon, car.LastLapCompleted, sessionContext.CancellationToken);
-                    var gpsPatch = await gpsProjectedLapTimeEnricher.ProcessCarAsync(car);
-                    if (gpsPatch != null)
-                        carPatches.Add(gpsPatch);
-                }
-            }
+            await ApplyGpsEnrichmentAsync(carPatches);
 
             // Log completed laps. The external branch otherwise bypasses the lap processor that the
             // RMonitor path runs, so externally-sourced laps would never be persisted.
@@ -416,6 +413,63 @@ public class SessionStateProcessingPipeline
             Logger.LogError(ex, "Error processing external patch batch");
             _pipelineErrors.WithLabels("external", ex.GetType().Name).Inc();
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Applies Flagtronics vehicle records: per-car GPS, in-car pit state, flags, and driver
+    /// source. Unlike the external lane, the primary timing source stays authoritative for
+    /// laps and positions; Flagtronics only supplements/overrides its specific domains.
+    /// </summary>
+    private async Task<PatchUpdates?> ProcessFlagtronics(TimingMessage message)
+    {
+        try
+        {
+            var updates = flagtronicsProcessor.Process(message);
+            if (updates == null)
+                return null;
+
+            // GPS positions feed the track-map learner and GPS-projected lap timing,
+            // the same enrichment the external patch lane receives.
+            var carPatches = updates.CarPatches.ToList();
+            await ApplyGpsEnrichmentAsync(carPatches);
+
+            return new PatchUpdates(updates.SessionPatches, [.. carPatches]);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing Flagtronics vehicle data");
+            _pipelineErrors.WithLabels("flagtronics", ex.GetType().Name).Inc();
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Feeds patched GPS positions to the track-map learner and refines the projected lap
+    /// time of each moving car, appending any resulting patches to the list.
+    /// </summary>
+    private async Task ApplyGpsEnrichmentAsync(List<CarPositionPatch> carPatches)
+    {
+        var gpsCars = carPatches
+            .Where(cp => (cp.Latitude != null || cp.Longitude != null) && !string.IsNullOrWhiteSpace(cp.Number))
+            .Select(cp => cp.Number!)
+            .Distinct();
+        var hadGps = false;
+        foreach (var cn in gpsCars)
+        {
+            if (!hadGps)
+            {
+                await trackMapService.EnsureLoadedAsync(sessionContext.CancellationToken);
+                hadGps = true;
+            }
+            var car = sessionContext.GetCarByNumber(cn);
+            if (car?.Latitude is double lat && car.Longitude is double lon)
+            {
+                await trackMapService.AddSampleAsync(cn, lat, lon, car.LastLapCompleted, sessionContext.CancellationToken);
+                var gpsPatch = await gpsProjectedLapTimeEnricher.ProcessCarAsync(car);
+                if (gpsPatch != null)
+                    carPatches.Add(gpsPatch);
+            }
         }
     }
 

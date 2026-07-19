@@ -35,6 +35,13 @@ public class SessionContext
 
     public virtual bool IsMultiloopActive { get; set; }
 
+    /// <summary>
+    /// True once Flagtronics vehicle data is flowing for this event. Flagtronics in-car pit
+    /// detection is higher fidelity than loop-based X2 pit data, so X2 pit processing is
+    /// suppressed while this is set.
+    /// </summary>
+    public virtual bool IsFlagtronicsPitActive { get; set; }
+
     private readonly Dictionary<string, CarPosition> numberToCarPositionLookup = [];
     private readonly Dictionary<uint, string> transponderToNumberLookup = [];
 

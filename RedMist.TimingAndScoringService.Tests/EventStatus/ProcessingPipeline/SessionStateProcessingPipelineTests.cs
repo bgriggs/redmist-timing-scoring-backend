@@ -13,6 +13,7 @@ using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.DriverInformation;
 using RedMist.EventProcessor.EventStatus.FlagData;
+using RedMist.EventProcessor.EventStatus.Flagtronics;
 using RedMist.EventProcessor.EventStatus.InCarDriverMode;
 using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.Multiloop;
@@ -66,6 +67,7 @@ public class SessionStateProcessingPipelineTests
     private GpsProjectedLapTimeEnricher _gpsProjectedLapTimeEnricher = null!;
     private StaleCarEnricher _staleCarEnricher = null!;
     private UpdateConsolidator _updateConsolidator = null!;
+    private FlagtronicsProcessor _flagtronicsProcessor = null!;
     private StatusAggregator _statusAggregator = null!;
     private StartingPositionProcessor _startingPositionProcessor = null!;
     private Mock<IConnectionMultiplexer> _mockConnectionMultiplexer = null!;
@@ -209,6 +211,7 @@ public class SessionStateProcessingPipelineTests
         _staleCarEnricher = new StaleCarEnricher(_mockLoggerFactory.Object, _sessionContext);
         _statusAggregator = new StatusAggregator(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
+        _flagtronicsProcessor = new FlagtronicsProcessor(_mockLoggerFactory.Object, _sessionContext);
     }
 
     private void CreatePipeline()
@@ -232,7 +235,8 @@ public class SessionStateProcessingPipelineTests
             _trackMapService,
             _gpsProjectedLapTimeEnricher,
             _staleCarEnricher,
-            _updateConsolidator
+            _updateConsolidator,
+            _flagtronicsProcessor
         );
     }
 
@@ -255,6 +259,48 @@ public class SessionStateProcessingPipelineTests
 
         // Assert
         Assert.IsEmpty(_sessionContext.SessionState.CarPositions);
+    }
+
+    [TestMethod]
+    public async Task Flagtronics_VehicleData_AppliedThroughPipeline_Test()
+    {
+        // Arrange
+        _sessionContext.UpdateCars([new CarPosition { Number = "42", TransponderId = 1042 }]);
+        var json = """[{ "carNumber": "42", "speed": 88, "lat": 36.5841, "lon": -121.7539, "pitActive": true, "pitDuration": "00:01:30.000", "carFlag": "Blue", "driverSource": "blePuck" }]""";
+
+        // Act
+        var tm = new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow);
+        await _pipeline.PostAsync(tm);
+
+        // Assert
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitActive);
+        var car = _sessionContext.GetCarByNumber("42");
+        Assert.IsNotNull(car);
+        Assert.AreEqual(36.5841, car!.Latitude);
+        Assert.AreEqual(-121.7539, car.Longitude);
+        Assert.AreEqual(88, car.SpeedMph);
+        Assert.IsTrue(car.IsInPit);
+        Assert.IsTrue(car.IsEnteredPit);
+        Assert.AreEqual(90000, car.PitDurationMs);
+        Assert.AreEqual(Flags.Blue, car.LocalFlag);
+        Assert.AreEqual("blePuck", car.DriverSource);
+    }
+
+    [TestMethod]
+    public async Task Flagtronics_X2PitSuppressed_AfterFlagtronicsData_Test()
+    {
+        // Arrange
+        _sessionContext.UpdateCars([new CarPosition { Number = "42", TransponderId = 1042 }]);
+        var ftJson = """[{ "carNumber": "42", "pitActive": true }]""";
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, ftJson, 1, DateTime.UtcNow));
+
+        // Act: X2 passing that would normally clear pit state is suppressed
+        var passingJson = """[{ "TransponderId": 1042, "IsInPit": false, "LoopId": 1 }]""";
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, passingJson, 1, DateTime.UtcNow));
+
+        // Assert
+        var car = _sessionContext.GetCarByNumber("42");
+        Assert.IsTrue(car!.IsInPit);
     }
 
     [TestMethod]
