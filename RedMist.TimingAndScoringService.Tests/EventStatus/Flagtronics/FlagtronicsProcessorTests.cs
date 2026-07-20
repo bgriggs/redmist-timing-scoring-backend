@@ -258,6 +258,37 @@ public class FlagtronicsProcessorTests
 
     #endregion
 
+    #region Real feed data (captured from api-dev1.flagtronics.com, 2026-07-20)
+
+    [TestMethod]
+    public void Process_RealVehicleRecord_MapsAllConsumedFields()
+    {
+        _sessionContext.UpdateCars([new CarPosition { Number = "23", TransponderId = 23 }]);
+
+        // Car in an enforced pit zone: stopped speed sentinel, null localFlag (zone >= 128), pit stop in progress
+        var result = Process("""[{"carNumber": "23", "ft200DeviceId": 20003022, "class": ["B"], "teamName": "Team 23", "speed": 254, "lat": 36.5593572, "lon": -79.2102957, "carFlag": "Green", "localFlag": null, "fullCourseFlag": "Green", "flaggingZone": 130, "timingZone": 130, "driverId": 70000221, "driverName": "Driver 23-1", "driverSource": "blePuck", "currentLapNumber": 299, "lastLapTime": "00:02:08.000", "bestLapTime": "00:02:07.000", "pitEntryTime": "2026-07-20T17:00:01Z", "pitDuration": "00:03:02.000", "pitActive": true, "enforced": true, "speedViolation": false}]""");
+
+        Assert.IsNotNull(result);
+        var car = _sessionContext.GetCarByNumber("23")!;
+        Assert.IsTrue(car.IsInPit);
+        Assert.IsTrue(car.IsEnteredPit);
+        Assert.AreEqual(0, car.SpeedMph); // 254 = stopped
+        Assert.AreEqual(36.5593572, car.Latitude);
+        Assert.AreEqual(-79.2102957, car.Longitude);
+        Assert.IsTrue(car.PitSpeedEnforced);
+        Assert.IsFalse(car.SpeedViolation);
+        Assert.AreEqual(130, car.FlaggingZone);
+        Assert.AreEqual(Flags.Green, car.LocalFlag);
+        Assert.AreEqual("blePuck", car.DriverSource);
+        Assert.AreEqual(new DateTime(2026, 7, 20, 17, 0, 1, DateTimeKind.Utc), car.PitEntryTime);
+        Assert.AreEqual(182000, car.PitDurationMs);
+        // Lap fields stay owned by the primary timing source
+        Assert.AreEqual(0, car.LastLapCompleted);
+        Assert.IsNull(car.BestTime);
+    }
+
+    #endregion
+
     #region X2 pit precedence
 
     [TestMethod]
