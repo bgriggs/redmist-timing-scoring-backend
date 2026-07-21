@@ -398,7 +398,7 @@ public class RMonitorDataProcessor
     private ISessionStateChange ProcessF(string data)
     {
         Heartbeat.ProcessF(data);
-        return new HeartbeatStateUpdate(Heartbeat);
+        return new HeartbeatStateUpdate(Heartbeat, SuppressFlag: sessionContext.IsFlagtronicsFlagActive);
     }
 
     #endregion

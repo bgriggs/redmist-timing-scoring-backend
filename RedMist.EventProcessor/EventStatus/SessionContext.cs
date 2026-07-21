@@ -42,6 +42,13 @@ public class SessionContext
     /// </summary>
     public virtual bool IsFlagtronicsPitActive { get; set; }
 
+    /// <summary>
+    /// True while Flagtronics is supplying a usable full-course flag, which takes precedence
+    /// over the RMonitor heartbeat flag. Cleared when the station reports no usable flag
+    /// (None/Blank/NoSignal) so the timing system flag takes over again.
+    /// </summary>
+    public virtual bool IsFlagtronicsFlagActive { get; set; }
+
     private readonly Dictionary<string, CarPosition> numberToCarPositionLookup = [];
     private readonly Dictionary<uint, string> transponderToNumberLookup = [];
 

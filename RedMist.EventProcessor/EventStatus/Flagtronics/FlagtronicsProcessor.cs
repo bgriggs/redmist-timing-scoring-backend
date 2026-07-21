@@ -44,6 +44,7 @@ public class FlagtronicsProcessor
                 lastSessionId, sessionContext.SessionState.SessionId);
             lastVehicles.Clear();
             carLapsWithPitStops.Clear();
+            sessionContext.IsFlagtronicsFlagActive = false;
             lastSessionId = sessionContext.SessionState.SessionId;
         }
 
@@ -88,10 +89,42 @@ public class FlagtronicsProcessor
             }
         }
 
-        if (patches.Count == 0)
+        var sessionPatches = new List<SessionStatePatch>();
+        var flagPatch = ProcessFullCourseFlag(vehicles);
+        if (flagPatch != null)
+            sessionPatches.Add(flagPatch);
+
+        if (patches.Count == 0 && sessionPatches.Count == 0)
             return null;
 
-        return new PatchUpdates([], [.. patches]);
+        return new PatchUpdates([.. sessionPatches], [.. patches]);
+    }
+
+    /// <summary>
+    /// The Flagtronics full-course flag takes precedence over the RMonitor heartbeat flag
+    /// while usable. Flags mapping to Unknown (None/Blank/NoSignal or future names) release
+    /// precedence so the timing system flag takes over again.
+    /// </summary>
+    private SessionStatePatch? ProcessFullCourseFlag(List<FlagtronicsVehicle> vehicles)
+    {
+        var fullCourseFlag = vehicles.LastOrDefault(v => !string.IsNullOrEmpty(v.FullCourseFlag))?.FullCourseFlag;
+        if (fullCourseFlag == null)
+            return null;
+
+        var flag = fullCourseFlag.FlagtronicsToFlag();
+        if (flag == Flags.Unknown)
+        {
+            sessionContext.IsFlagtronicsFlagActive = false;
+            return null;
+        }
+
+        sessionContext.IsFlagtronicsFlagActive = true;
+        if (sessionContext.SessionState.CurrentFlag == flag)
+            return null;
+
+        var patch = new SessionStatePatch { CurrentFlag = flag };
+        SessionStateMapper.ApplyPatch(patch, sessionContext.SessionState);
+        return patch;
     }
 
     /// <summary>

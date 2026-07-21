@@ -225,6 +225,76 @@ public class FlagtronicsProcessorTests
 
     #endregion
 
+    #region Full-course flag precedence
+
+    [TestMethod]
+    public void Process_FullCourseFlag_SetsSessionCurrentFlag()
+    {
+        var result = Process("""[{ "carNumber": "42", "pitActive": false, "fullCourseFlag": "Yellow" }]""");
+
+        Assert.IsNotNull(result);
+        Assert.IsTrue(_sessionContext.IsFlagtronicsFlagActive);
+        Assert.AreEqual(Flags.Yellow, _sessionContext.SessionState.CurrentFlag);
+        Assert.IsTrue(result.SessionPatches.Any(sp => sp.CurrentFlag == Flags.Yellow));
+    }
+
+    [TestMethod]
+    public void Process_FullCourseFlagUnchanged_NoSessionPatch()
+    {
+        Process("""[{ "carNumber": "42", "pitActive": false, "fullCourseFlag": "Green" }]""");
+        var result = Process("""[{ "carNumber": "42", "pitActive": false, "speed": 50, "fullCourseFlag": "Green" }]""");
+
+        Assert.IsNotNull(result);
+        Assert.IsEmpty(result.SessionPatches);
+        Assert.AreEqual(Flags.Green, _sessionContext.SessionState.CurrentFlag);
+    }
+
+    [TestMethod]
+    public void Process_FullCourseFlagNoSignal_ReleasesPrecedence()
+    {
+        Process("""[{ "carNumber": "42", "pitActive": false, "fullCourseFlag": "Yellow" }]""");
+        Assert.IsTrue(_sessionContext.IsFlagtronicsFlagActive);
+
+        Process("""[{ "carNumber": "42", "pitActive": false, "speed": 50, "fullCourseFlag": "NoSignal" }]""");
+
+        Assert.IsFalse(_sessionContext.IsFlagtronicsFlagActive);
+        // Last known flag is retained until the timing system takes over again
+        Assert.AreEqual(Flags.Yellow, _sessionContext.SessionState.CurrentFlag);
+    }
+
+    [TestMethod]
+    public void HeartbeatFlag_Suppressed_WhileFlagtronicsFlagActive()
+    {
+        Process("""[{ "carNumber": "42", "pitActive": false, "fullCourseFlag": "Yellow" }]""");
+
+        var heartbeat = new EventProcessor.EventStatus.RMonitor.Heartbeat();
+        heartbeat.ProcessF("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
+        var update = new EventProcessor.EventStatus.RMonitor.StateChanges.HeartbeatStateUpdate(
+            heartbeat, SuppressFlag: _sessionContext.IsFlagtronicsFlagActive);
+
+        var patch = update.GetChanges(_sessionContext.SessionState);
+
+        Assert.IsNotNull(patch);
+        Assert.IsNull(patch.CurrentFlag); // flag suppressed
+        Assert.AreEqual(14, patch.LapsToGo); // other heartbeat fields still applied
+    }
+
+    [TestMethod]
+    public void HeartbeatFlag_Applied_WhenFlagtronicsNotActive()
+    {
+        var heartbeat = new EventProcessor.EventStatus.RMonitor.Heartbeat();
+        heartbeat.ProcessF("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
+        var update = new EventProcessor.EventStatus.RMonitor.StateChanges.HeartbeatStateUpdate(
+            heartbeat, SuppressFlag: _sessionContext.IsFlagtronicsFlagActive);
+
+        var patch = update.GetChanges(_sessionContext.SessionState);
+
+        Assert.IsNotNull(patch);
+        Assert.AreEqual(Flags.Green, patch.CurrentFlag);
+    }
+
+    #endregion
+
     #region Reset re-apply
 
     [TestMethod]

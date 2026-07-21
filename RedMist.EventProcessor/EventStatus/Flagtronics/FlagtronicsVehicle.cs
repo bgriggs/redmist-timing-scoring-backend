@@ -43,6 +43,12 @@ public class FlagtronicsVehicle
     public string? CarFlag { get; set; }
 
     /// <summary>
+    /// Full-course flag state.
+    /// </summary>
+    [JsonPropertyName("fullCourseFlag")]
+    public string? FullCourseFlag { get; set; }
+
+    /// <summary>
     /// 1-127 on-track, 0 = uninitialized, 128+ = pit/paddock/reserved ranges.
     /// </summary>
     [JsonPropertyName("flaggingZone")]

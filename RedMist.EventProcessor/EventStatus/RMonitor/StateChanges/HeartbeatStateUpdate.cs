@@ -1,8 +1,12 @@
-﻿using RedMist.TimingCommon.Models;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.EventProcessor.EventStatus.RMonitor.StateChanges;
 
-public record HeartbeatStateUpdate(Heartbeat Heartbeat) : ISessionStateChange
+/// <param name="Heartbeat">Parsed $F heartbeat.</param>
+/// <param name="SuppressFlag">
+/// Skip the flag portion of the heartbeat, e.g. while Flagtronics is the active flag source.
+/// </param>
+public record HeartbeatStateUpdate(Heartbeat Heartbeat, bool SuppressFlag = false) : ISessionStateChange
 {
     public SessionStatePatch? GetChanges(SessionState state)
     {
@@ -16,9 +20,13 @@ public record HeartbeatStateUpdate(Heartbeat Heartbeat) : ISessionStateChange
             patch.LocalTimeOfDay = Heartbeat.TimeOfDay;
         if (state.RunningRaceTime != Heartbeat.RaceTime)
             patch.RunningRaceTime = Heartbeat.RaceTime;
-        var f = Heartbeat.FlagStatus.ToFlag();
-        if (state.CurrentFlag != f)
-            patch.CurrentFlag = f;
+
+        if (!SuppressFlag)
+        {
+            var f = Heartbeat.FlagStatus.ToFlag();
+            if (state.CurrentFlag != f)
+                patch.CurrentFlag = f;
+        }
 
         return patch;
     }
