@@ -1,6 +1,5 @@
 using Asp.Versioning;
 using HealthChecks.UI.Client;
-using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
 using Keycloak.AuthServices.Common;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -123,7 +122,7 @@ public class Program
                         $"authenticated:{authenticatedKey}",
                         _ => new TokenBucketRateLimiterOptions
                         {
-                            TokenLimit = 20,
+                            TokenLimit = 30,
                             ReplenishmentPeriod = TimeSpan.FromSeconds(0.25),
                             TokensPerPeriod = 1,
                             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
@@ -136,8 +135,8 @@ public class Program
                     $"anonymous:{clientIp}",
                     _ => new TokenBucketRateLimiterOptions
                     {
-                        TokenLimit = 12,
-                        ReplenishmentPeriod = TimeSpan.FromSeconds(2),
+                        TokenLimit = 30,
+                        ReplenishmentPeriod = TimeSpan.FromSeconds(1.1),
                         TokensPerPeriod = 1,
                         QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                         QueueLimit = 6,
