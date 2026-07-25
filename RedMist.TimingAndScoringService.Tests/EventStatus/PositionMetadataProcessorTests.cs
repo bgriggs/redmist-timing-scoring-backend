@@ -749,9 +749,17 @@ public class PositionMetadataProcessorTests
     [TestMethod]
     public void GetTimeFormat_MinutesFormat_Test()
     {
-        var timeWithMinutes = new TimeSpan(0, 2, 30, 500); // 2 minutes, 30.5 seconds
+        var timeWithMinutes = new TimeSpan(0, 0, 2, 30, 500); // 2 minutes, 30.5 seconds
         var format = PositionMetadataProcessor.GetTimeFormat(timeWithMinutes);
         Assert.AreEqual(@"m\:ss\.fff", format);
+    }
+
+    [TestMethod]
+    public void GetTimeFormat_HoursFormat_Test()
+    {
+        var timeWithHours = new TimeSpan(0, 1, 0, 5, 250); // 1 hour, 5.25 seconds
+        var format = PositionMetadataProcessor.GetTimeFormat(timeWithHours);
+        Assert.AreEqual(@"h\:mm\:ss\.fff", format, "The minutes component is zero but the hours must still be kept");
     }
 
     [TestMethod]
