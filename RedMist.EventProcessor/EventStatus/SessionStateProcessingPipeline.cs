@@ -463,10 +463,13 @@ public class SessionStateProcessingPipeline
     /// </summary>
     private async Task ApplyGpsEnrichmentAsync(List<CarPositionPatch> carPatches)
     {
+        // Materialize before the loop: the loop appends projected-lap patches to carPatches,
+        // which would otherwise invalidate this lazy query mid-enumeration.
         var gpsCars = carPatches
             .Where(cp => (cp.Latitude != null || cp.Longitude != null) && !string.IsNullOrWhiteSpace(cp.Number))
             .Select(cp => cp.Number!)
-            .Distinct();
+            .Distinct()
+            .ToList();
         var hadGps = false;
         foreach (var cn in gpsCars)
         {

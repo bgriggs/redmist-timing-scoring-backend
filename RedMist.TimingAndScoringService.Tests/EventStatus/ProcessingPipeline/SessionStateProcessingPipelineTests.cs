@@ -287,6 +287,46 @@ public class SessionStateProcessingPipelineTests
     }
 
     [TestMethod]
+    public async Task Flagtronics_MultipleGpsCars_GpsEnrichmentDoesNotThrow_Test()
+    {
+        // Regression: ApplyGpsEnrichmentAsync appends projected-lap patches to carPatches while
+        // enumerating a lazy query built over that same list. With two GPS cars where the first
+        // yields a projection, the mid-loop append invalidated the enumeration ("Collection was
+        // modified") and the second car was never enriched. Prime the history fallback so the
+        // first car produces a projection, then verify both cars get a projected lap time.
+        _sessionContext.UpdateCars(
+        [
+            new CarPosition { Number = "41", TransponderId = 1041 },
+            new CarPosition { Number = "42", TransponderId = 1042 },
+        ]);
+        _sessionContext.SessionState.CurrentFlag = Flags.Green;
+        foreach (var number in new[] { "41", "42" })
+        {
+            for (var lap = 1; lap <= 3; lap++)
+            {
+                await _carLapHistoryService.AddLapAsync(new CarPosition
+                {
+                    Number = number,
+                    LastLapCompleted = lap,
+                    LastLapTime = "00:01:30.000",
+                    TrackFlag = Flags.Green,
+                    LapIncludedPit = false,
+                });
+            }
+        }
+
+        var json = """
+            [{ "carNumber": "41", "speed": 80, "lat": 36.5841, "lon": -121.7539, "pitActive": false },
+             { "carNumber": "42", "speed": 80, "lat": 36.5842, "lon": -121.7540, "pitActive": false }]
+            """;
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow));
+
+        // Both cars enriched: the second would be 0 if enrichment threw after the first.
+        Assert.IsTrue(_sessionContext.GetCarByNumber("41")!.ProjectedLapTimeMs > 0);
+        Assert.IsTrue(_sessionContext.GetCarByNumber("42")!.ProjectedLapTimeMs > 0);
+    }
+
+    [TestMethod]
     public async Task Flagtronics_X2PitSuppressed_AfterFlagtronicsData_Test()
     {
         // Arrange
