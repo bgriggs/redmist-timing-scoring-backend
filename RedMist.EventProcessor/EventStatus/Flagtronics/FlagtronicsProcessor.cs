@@ -29,6 +29,14 @@ public class FlagtronicsProcessor
     /// the whole field sits in pit zones before ever running a lap.
     /// </summary>
     private readonly HashSet<string> carsSeenOnTrack = [];
+
+    /// <summary>
+    /// Cars whose latched pitActive has been proven stuck by a start/finish crossing while
+    /// they had no usable GPS to self-correct. While a car is here and still has no GPS, its
+    /// pitActive is treated as false. Cleared when GPS returns (zone becomes authoritative)
+    /// or pitActive resets. See <see cref="NotifyLapCompleted"/>.
+    /// </summary>
+    private readonly HashSet<string> pitActiveSuppressed = [];
     private int lastSessionId = -1;
 
     /// <summary>
@@ -65,6 +73,7 @@ public class FlagtronicsProcessor
             lastVehicles.Clear();
             carLapsWithPitStops.Clear();
             carsSeenOnTrack.Clear();
+            pitActiveSuppressed.Clear();
             sessionContext.IsFlagtronicsFlagActive = false;
             lastSessionId = sessionContext.SessionState.SessionId;
         }
@@ -171,6 +180,37 @@ public class FlagtronicsProcessor
         return null;
     }
 
+    /// <summary>
+    /// Fallback for the residual no-GPS case: a completed lap means the car crossed the main
+    /// start/finish line and is physically on track, so it cannot be in the pit. When the car
+    /// has no usable GPS to self-correct a latched in-car pitActive, this clears the frozen
+    /// pit state and suppresses the stuck flag until GPS returns or the device resets.
+    /// Called by the pipeline when a car's completed-lap count advances. No-op when GPS is
+    /// available (the flagging zone already handles those cars) or the car is not stuck in pit.
+    /// </summary>
+    public CarPositionPatch? NotifyLapCompleted(string number)
+    {
+        if (!lastVehicles.TryGetValue(number, out var vehicle))
+            return null;
+
+        // Match BuildPatch's no-GPS branch exactly: this fallback exists only for cars whose
+        // pit state cannot be resolved from a flagging zone. A lat/lon without a zone still
+        // cannot place the car in pit vs on track, so zone validity is the right test.
+        bool hasValidZone = vehicle.FlaggingZone is int fz && fz >= 1;
+        if (hasValidZone || !vehicle.PitActive)
+            return null;
+
+        var car = sessionContext.GetCarByNumber(number);
+        if (car == null || !car.IsInPit)
+            return null;
+
+        // Stuck pitActive with no GPS, yet the car just completed a lap: it is out on track.
+        pitActiveSuppressed.Add(number);
+        var patch = new CarPositionPatch { Number = number, IsInPit = false };
+        CarPositionMapper.ApplyPatch(patch, car);
+        return patch;
+    }
+
     private CarPositionPatch BuildPatch(FlagtronicsVehicle vehicle, CarPosition car, bool deriveEdges)
     {
         var patch = new CarPositionPatch { Number = car.Number };
@@ -184,15 +224,17 @@ public class FlagtronicsProcessor
         //   - pit/paddock zone (128+): in pit, regardless of pitActive (fixes late/missed
         //     indication), unless reported at racing speed, which means a GPS glitch tagged an
         //     on-track car to a pit zone for a tick - those defer to pitActive.
-        //   - zone 0 (uninitialized/no-GPS) or missing: no position info, defer to pitActive.
-        // Limitation: with no usable zone, a latched pitActive cannot be corrected here (there
-        // is no independent position signal); a timing-loop crossing would be needed to catch
-        // that residual case.
+        //   - zone 0 (uninitialized/no-GPS) or missing: no position info, defer to pitActive,
+        //     unless a start/finish crossing has proven the flag stuck (see NotifyLapCompleted).
         var realSpeed = vehicle.Speed is int sp && sp < FlagtronicsVehicle.SPEED_STOPPED ? sp : (int?)null;
+        bool hasValidZone = vehicle.FlaggingZone is int fz && fz >= 1;
         bool inPit;
-        if (vehicle.FlaggingZone is int fz && fz >= 1)
+        if (hasValidZone)
         {
-            if (fz <= MAX_ON_TRACK_ZONE)
+            // Position is known and authoritative, so any earlier stuck-flag suppression is moot.
+            pitActiveSuppressed.Remove(vehicle.CarNumber);
+            int zone = vehicle.FlaggingZone!.Value;
+            if (zone <= MAX_ON_TRACK_ZONE)
                 inPit = false;
             else if (realSpeed is int rs && rs >= PIT_ZONE_GLITCH_SPEED_MPH)
                 inPit = vehicle.PitActive; // pit zone at racing speed: GPS glitch, trust the flag
@@ -201,17 +243,21 @@ public class FlagtronicsProcessor
         }
         else
         {
-            inPit = vehicle.PitActive;
+            // No usable GPS: defer to pitActive, unless a lap completion proved it stuck.
+            if (!vehicle.PitActive)
+                pitActiveSuppressed.Remove(vehicle.CarNumber);
+            inPit = vehicle.PitActive && !pitActiveSuppressed.Contains(vehicle.CarNumber);
         }
 
-        bool onTrackZone = vehicle.FlaggingZone is int z && z >= 1 && z <= MAX_ON_TRACK_ZONE;
+        bool onTrackZone = hasValidZone && vehicle.FlaggingZone!.Value <= MAX_ON_TRACK_ZONE;
         if (onTrackZone)
             carsSeenOnTrack.Add(vehicle.CarNumber);
 
-        // A stuck pitActive (true while physically on track) reports a runaway pit duration
-        // and a bogus entry time; only its being overridden here lets us recognize and drop
-        // those. A clean exit (pitActive already false) still carries the real final duration.
-        bool stuckOverride = vehicle.PitActive && onTrackZone;
+        // Whenever pitActive is true but the car resolved as not in the pit (on-track zone or a
+        // suppressed stuck flag), its reported pit duration runs away and its entry time is
+        // bogus, so those fields are not applied. A clean exit (pitActive false) still carries
+        // the real final duration.
+        bool stuckOverride = vehicle.PitActive && !inPit;
 
         // Pit state: inPit is the level; entry/exit edges are derived from the transition
         bool wasInPit = car.IsInPit;
@@ -248,6 +294,12 @@ public class FlagtronicsProcessor
 
         if (vehicle.FlaggingZone != null && car.FlaggingZone != vehicle.FlaggingZone)
             patch.FlaggingZone = vehicle.FlaggingZone;
+
+        // GPS fix present when the zone is valid or a non-zero position is reported. Drives
+        // the no-GPS lap-completion fallback and lets clients show a GPS dropout.
+        bool hasGps = hasValidZone || (vehicle.Lat is double gpsLat && vehicle.Lon is double gpsLon && (gpsLat != 0 || gpsLon != 0));
+        if (car.HasGps != hasGps)
+            patch.HasGps = hasGps;
 
         // Track laps that included a pit stop, mirroring the X2 loop behavior. Exclude the
         // pre-race grid/pit staging, where the whole field sits in pit zones (inPit by zone,

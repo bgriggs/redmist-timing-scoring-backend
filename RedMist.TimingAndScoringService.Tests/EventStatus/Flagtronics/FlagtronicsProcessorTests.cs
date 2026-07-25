@@ -274,6 +274,71 @@ public class FlagtronicsProcessorTests
 
     #endregion
 
+    #region HasGps and no-GPS lap-completion fallback
+
+    [TestMethod]
+    public void Process_HasGps_TrueWithZone_FalseWithout()
+    {
+        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 5, "speed": 40 }]""");
+        Assert.IsTrue(_sessionContext.GetCarByNumber("42")!.HasGps);
+
+        // Zone 0 and no position => no GPS fix.
+        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 0 }]""");
+        Assert.IsFalse(_sessionContext.GetCarByNumber("42")!.HasGps);
+    }
+
+    [TestMethod]
+    public void Process_HasGps_TrueFromLatLonWithoutZone()
+    {
+        Process("""[{ "carNumber": "42", "pitActive": false, "lat": 36.5, "lon": -121.7 }]""");
+        Assert.IsTrue(_sessionContext.GetCarByNumber("42")!.HasGps);
+    }
+
+    [TestMethod]
+    public void NotifyLapCompleted_NoGpsStuckPit_ClearsAndSuppresses()
+    {
+        // Car is in the pit with no GPS (zone 0) and a stuck pitActive.
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 0 }]""");
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Assert.IsTrue(car.IsInPit);
+
+        // A completed lap proves it crossed S/F on track: clear the frozen pit state.
+        var patch = _processor.NotifyLapCompleted("42");
+        Assert.IsNotNull(patch);
+        Assert.IsFalse(car.IsInPit);
+
+        // The stuck flag stays suppressed: further no-GPS ticks do not re-set IsInPit.
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 0 }]""");
+        Assert.IsFalse(car.IsInPit);
+    }
+
+    [TestMethod]
+    public void NotifyLapCompleted_WithGps_NoOp()
+    {
+        // GPS present (pit zone): the zone is authoritative, so the fallback does nothing.
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 10 }]""");
+        Assert.IsTrue(_sessionContext.GetCarByNumber("42")!.IsInPit);
+
+        var patch = _processor.NotifyLapCompleted("42");
+        Assert.IsNull(patch);
+        Assert.IsTrue(_sessionContext.GetCarByNumber("42")!.IsInPit);
+    }
+
+    [TestMethod]
+    public void NotifyLapCompleted_SuppressionClearedWhenGpsReturns()
+    {
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 0 }]""");
+        _processor.NotifyLapCompleted("42");
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Assert.IsFalse(car.IsInPit);
+
+        // GPS returns and shows a real pit zone: suppression clears and pit shows again.
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 5 }]""");
+        Assert.IsTrue(car.IsInPit);
+    }
+
+    #endregion
+
     #region Flags and driver source
 
     [TestMethod]

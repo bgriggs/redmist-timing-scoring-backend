@@ -172,6 +172,19 @@ public class SessionStateProcessingPipeline
 
                                 // Run check for changes to driver mode and send updates to cars
                                 await driverModeProcessor.ProcessAsync(sessionContext.CancellationToken);
+
+                                // Fallback: a completed lap means the car crossed the main S/F line
+                                // on track. If Flagtronics reports it stuck in the pit with no GPS to
+                                // self-correct, clear the frozen pit state.
+                                var ftLapPatches = new List<CarPositionPatch>();
+                                foreach (var cn in carNumbers)
+                                {
+                                    var ftLapPatch = flagtronicsProcessor.NotifyLapCompleted(cn ?? string.Empty);
+                                    if (ftLapPatch != null)
+                                        ftLapPatches.Add(ftLapPatch);
+                                }
+                                if (ftLapPatches.Count > 0)
+                                    allAppliedChanges.Add(new PatchUpdates([], [.. ftLapPatches]));
                             }
 
                             // Apply pit data in case of reset
