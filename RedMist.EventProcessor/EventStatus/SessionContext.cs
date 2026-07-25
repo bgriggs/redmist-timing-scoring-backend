@@ -43,11 +43,28 @@ public class SessionContext
     public virtual bool IsFlagtronicsPitActive { get; set; }
 
     /// <summary>
-    /// True while Flagtronics is supplying a usable full-course flag, which takes precedence
-    /// over the RMonitor heartbeat flag. Cleared when the station reports no usable flag
-    /// (None/Blank/NoSignal) so the timing system flag takes over again.
+    /// Latest overall track flag reported by the RMonitor timing system. RMonitor is the
+    /// authoritative source for the overall flag; see <see cref="GetEffectiveTrackFlag"/>.
     /// </summary>
-    public virtual bool IsFlagtronicsFlagActive { get; set; }
+    public virtual Flags RMonitorTrackFlag { get; set; }
+
+    /// <summary>
+    /// Latest full-course flag reported by Flagtronics (Unknown when none/unusable). Used
+    /// only to upgrade an RMonitor Yellow to Purple; see <see cref="GetEffectiveTrackFlag"/>.
+    /// </summary>
+    public virtual Flags FlagtronicsFullCourseFlag { get; set; }
+
+    /// <summary>
+    /// The overall track flag. RMonitor is authoritative; the single Flagtronics override is
+    /// that RMonitor cannot represent a purple (slow-zone) full-course condition, so when
+    /// RMonitor shows Yellow and Flagtronics reports Purple, the flag is upgraded to Purple35.
+    /// </summary>
+    public Flags GetEffectiveTrackFlag()
+    {
+        if (RMonitorTrackFlag == Flags.Yellow && FlagtronicsFullCourseFlag == Flags.Purple35)
+            return Flags.Purple35;
+        return RMonitorTrackFlag;
+    }
 
     private readonly Dictionary<string, CarPosition> numberToCarPositionLookup = [];
     private readonly Dictionary<uint, string> transponderToNumberLookup = [];
@@ -181,6 +198,11 @@ public class SessionContext
                 SessionId = sessionId,
                 SessionName = sessionName
             };
+
+            // Reset the track-flag sources so a stale flag from the prior session cannot leak
+            // into the fresh CurrentFlag before the new session's first heartbeat/feed arrives.
+            RMonitorTrackFlag = Flags.Unknown;
+            FlagtronicsFullCourseFlag = Flags.Unknown;
         }
     }
 

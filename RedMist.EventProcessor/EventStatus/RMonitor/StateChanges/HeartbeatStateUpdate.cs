@@ -3,10 +3,11 @@ using RedMist.TimingCommon.Models;
 namespace RedMist.EventProcessor.EventStatus.RMonitor.StateChanges;
 
 /// <param name="Heartbeat">Parsed $F heartbeat.</param>
-/// <param name="SuppressFlag">
-/// Skip the flag portion of the heartbeat, e.g. while Flagtronics is the active flag source.
+/// <param name="TrackFlag">
+/// The overall track flag to apply, already resolved against any Flagtronics override. When
+/// null, the heartbeat's own parsed flag is used (the plain RMonitor case).
 /// </param>
-public record HeartbeatStateUpdate(Heartbeat Heartbeat, bool SuppressFlag = false) : ISessionStateChange
+public record HeartbeatStateUpdate(Heartbeat Heartbeat, Flags? TrackFlag = null) : ISessionStateChange
 {
     public SessionStatePatch? GetChanges(SessionState state)
     {
@@ -21,12 +22,9 @@ public record HeartbeatStateUpdate(Heartbeat Heartbeat, bool SuppressFlag = fals
         if (state.RunningRaceTime != Heartbeat.RaceTime)
             patch.RunningRaceTime = Heartbeat.RaceTime;
 
-        if (!SuppressFlag)
-        {
-            var f = Heartbeat.FlagStatus.ToFlag();
-            if (state.CurrentFlag != f)
-                patch.CurrentFlag = f;
-        }
+        var f = TrackFlag ?? Heartbeat.FlagStatus.ToFlag();
+        if (state.CurrentFlag != f)
+            patch.CurrentFlag = f;
 
         return patch;
     }

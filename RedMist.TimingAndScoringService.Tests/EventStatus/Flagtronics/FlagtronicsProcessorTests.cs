@@ -366,24 +366,54 @@ public class FlagtronicsProcessorTests
 
     #endregion
 
-    #region Full-course flag precedence
+    #region Overall flag precedence (RMonitor authoritative; Flagtronics Purple override)
 
-    [TestMethod]
-    public void Process_FullCourseFlag_SetsSessionCurrentFlag()
+    private static EventProcessor.EventStatus.RMonitor.StateChanges.HeartbeatStateUpdate HeartbeatUpdate(
+        SessionContext ctx, string flagStatus)
     {
-        var result = Process("""[{ "carNumber": "42", "pitActive": false, "fullCourseFlag": "Yellow" }]""");
-
-        Assert.IsNotNull(result);
-        Assert.IsTrue(_sessionContext.IsFlagtronicsFlagActive);
-        Assert.AreEqual(Flags.Yellow, _sessionContext.SessionState.CurrentFlag);
-        Assert.IsTrue(result.SessionPatches.Any(sp => sp.CurrentFlag == Flags.Yellow));
+        var heartbeat = new EventProcessor.EventStatus.RMonitor.Heartbeat();
+        heartbeat.ProcessF($"$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"{flagStatus}\"");
+        ctx.RMonitorTrackFlag = heartbeat.FlagStatus.ToFlag();
+        return new EventProcessor.EventStatus.RMonitor.StateChanges.HeartbeatStateUpdate(
+            heartbeat, ctx.GetEffectiveTrackFlag());
     }
 
     [TestMethod]
-    public void Process_FullCourseFlagUnchanged_NoSessionPatch()
+    public void Process_FullCourseFlagAlone_DoesNotDriveOverallFlag()
     {
-        Process("""[{ "carNumber": "42", "pitActive": false, "fullCourseFlag": "Green" }]""");
-        var result = Process("""[{ "carNumber": "42", "pitActive": false, "speed": 50, "fullCourseFlag": "Green" }]""");
+        // With no RMonitor flag yet, a Flagtronics full-course flag does not set the overall
+        // flag - RMonitor is authoritative. (Speed included only to produce a car patch.)
+        var result = Process("""[{ "carNumber": "42", "pitActive": false, "speed": 50, "fullCourseFlag": "Yellow" }]""");
+
+        Assert.IsNotNull(result);
+        Assert.IsEmpty(result.SessionPatches);
+        Assert.AreEqual(Flags.Yellow, _sessionContext.FlagtronicsFullCourseFlag);
+        Assert.AreEqual(Flags.Unknown, _sessionContext.SessionState.CurrentFlag);
+    }
+
+    [TestMethod]
+    public void Process_Purple_UpgradesRMonitorYellow()
+    {
+        // RMonitor is showing Yellow.
+        _sessionContext.RMonitorTrackFlag = Flags.Yellow;
+        _sessionContext.SessionState.CurrentFlag = Flags.Yellow;
+
+        // Flagtronics reports Purple: upgrade the overall flag to Purple35.
+        var result = Process("""[{ "carNumber": "42", "pitActive": false, "fullCourseFlag": "Purple" }]""");
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(Flags.Purple35, _sessionContext.SessionState.CurrentFlag);
+        Assert.IsTrue(result.SessionPatches.Any(sp => sp.CurrentFlag == Flags.Purple35));
+    }
+
+    [TestMethod]
+    public void Process_Purple_WithoutRMonitorYellow_NoOverride()
+    {
+        // RMonitor is Green: Purple does not override anything but a Yellow.
+        _sessionContext.RMonitorTrackFlag = Flags.Green;
+        _sessionContext.SessionState.CurrentFlag = Flags.Green;
+
+        var result = Process("""[{ "carNumber": "42", "pitActive": false, "speed": 50, "fullCourseFlag": "Purple" }]""");
 
         Assert.IsNotNull(result);
         Assert.IsEmpty(result.SessionPatches);
@@ -391,47 +421,52 @@ public class FlagtronicsProcessorTests
     }
 
     [TestMethod]
-    public void Process_FullCourseFlagNoSignal_ReleasesPrecedence()
+    public void Process_PurpleReleased_WhenFlagtronicsLeavesPurple()
     {
-        Process("""[{ "carNumber": "42", "pitActive": false, "fullCourseFlag": "Yellow" }]""");
-        Assert.IsTrue(_sessionContext.IsFlagtronicsFlagActive);
+        _sessionContext.RMonitorTrackFlag = Flags.Yellow;
+        _sessionContext.SessionState.CurrentFlag = Flags.Yellow;
+        Process("""[{ "carNumber": "42", "pitActive": false, "fullCourseFlag": "Purple" }]""");
+        Assert.AreEqual(Flags.Purple35, _sessionContext.SessionState.CurrentFlag);
 
-        Process("""[{ "carNumber": "42", "pitActive": false, "speed": 50, "fullCourseFlag": "NoSignal" }]""");
-
-        Assert.IsFalse(_sessionContext.IsFlagtronicsFlagActive);
-        // Last known flag is retained until the timing system takes over again
+        // Flagtronics no longer purple: fall back to the RMonitor Yellow.
+        Process("""[{ "carNumber": "42", "pitActive": false, "fullCourseFlag": "FCYellow" }]""");
         Assert.AreEqual(Flags.Yellow, _sessionContext.SessionState.CurrentFlag);
     }
 
     [TestMethod]
-    public void HeartbeatFlag_Suppressed_WhileFlagtronicsFlagActive()
+    public void Heartbeat_AppliesRMonitorFlag_WithoutFlagtronics()
     {
-        Process("""[{ "carNumber": "42", "pitActive": false, "fullCourseFlag": "Yellow" }]""");
-
-        var heartbeat = new EventProcessor.EventStatus.RMonitor.Heartbeat();
-        heartbeat.ProcessF("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
-        var update = new EventProcessor.EventStatus.RMonitor.StateChanges.HeartbeatStateUpdate(
-            heartbeat, SuppressFlag: _sessionContext.IsFlagtronicsFlagActive);
-
-        var patch = update.GetChanges(_sessionContext.SessionState);
-
-        Assert.IsNotNull(patch);
-        Assert.IsNull(patch.CurrentFlag); // flag suppressed
-        Assert.AreEqual(14, patch.LapsToGo); // other heartbeat fields still applied
-    }
-
-    [TestMethod]
-    public void HeartbeatFlag_Applied_WhenFlagtronicsNotActive()
-    {
-        var heartbeat = new EventProcessor.EventStatus.RMonitor.Heartbeat();
-        heartbeat.ProcessF("$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"");
-        var update = new EventProcessor.EventStatus.RMonitor.StateChanges.HeartbeatStateUpdate(
-            heartbeat, SuppressFlag: _sessionContext.IsFlagtronicsFlagActive);
-
+        var update = HeartbeatUpdate(_sessionContext, "Green ");
         var patch = update.GetChanges(_sessionContext.SessionState);
 
         Assert.IsNotNull(patch);
         Assert.AreEqual(Flags.Green, patch.CurrentFlag);
+        Assert.AreEqual(14, patch.LapsToGo);
+    }
+
+    [TestMethod]
+    public void Heartbeat_UpgradesYellowToPurple_WhileFlagtronicsPurple()
+    {
+        _sessionContext.FlagtronicsFullCourseFlag = Flags.Purple35;
+
+        var update = HeartbeatUpdate(_sessionContext, "Yellow");
+        var patch = update.GetChanges(_sessionContext.SessionState);
+
+        // RMonitor Yellow heartbeat does not revert an active Purple override.
+        Assert.IsNotNull(patch);
+        Assert.AreEqual(Flags.Purple35, patch.CurrentFlag);
+    }
+
+    [TestMethod]
+    public void Heartbeat_YellowStaysYellow_WhenFlagtronicsNotPurple()
+    {
+        _sessionContext.FlagtronicsFullCourseFlag = Flags.Yellow;
+
+        var update = HeartbeatUpdate(_sessionContext, "Yellow");
+        var patch = update.GetChanges(_sessionContext.SessionState);
+
+        Assert.IsNotNull(patch);
+        Assert.AreEqual(Flags.Yellow, patch.CurrentFlag);
     }
 
     #endregion

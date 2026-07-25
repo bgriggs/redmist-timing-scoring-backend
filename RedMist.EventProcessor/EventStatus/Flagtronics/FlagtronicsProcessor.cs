@@ -74,7 +74,7 @@ public class FlagtronicsProcessor
             carLapsWithPitStops.Clear();
             carsSeenOnTrack.Clear();
             pitActiveSuppressed.Clear();
-            sessionContext.IsFlagtronicsFlagActive = false;
+            sessionContext.FlagtronicsFullCourseFlag = Flags.Unknown;
             lastSessionId = sessionContext.SessionState.SessionId;
         }
 
@@ -131,9 +131,11 @@ public class FlagtronicsProcessor
     }
 
     /// <summary>
-    /// The Flagtronics full-course flag takes precedence over the RMonitor heartbeat flag
-    /// while usable. Flags mapping to Unknown (None/Blank/NoSignal or future names) release
-    /// precedence so the timing system flag takes over again.
+    /// Records the Flagtronics full-course flag and applies the effective overall track flag.
+    /// RMonitor is authoritative for the overall flag; the only Flagtronics override is that
+    /// RMonitor cannot represent a purple full-course condition, so an RMonitor Yellow is
+    /// upgraded to Purple35 while Flagtronics reports Purple (see
+    /// <see cref="SessionContext.GetEffectiveTrackFlag"/>).
     /// </summary>
     private SessionStatePatch? ProcessFullCourseFlag(List<FlagtronicsVehicle> vehicles)
     {
@@ -141,18 +143,13 @@ public class FlagtronicsProcessor
         if (fullCourseFlag == null)
             return null;
 
-        var flag = fullCourseFlag.FlagtronicsToFlag();
-        if (flag == Flags.Unknown)
-        {
-            sessionContext.IsFlagtronicsFlagActive = false;
-            return null;
-        }
+        sessionContext.FlagtronicsFullCourseFlag = fullCourseFlag.FlagtronicsToFlag();
 
-        sessionContext.IsFlagtronicsFlagActive = true;
-        if (sessionContext.SessionState.CurrentFlag == flag)
+        var effective = sessionContext.GetEffectiveTrackFlag();
+        if (sessionContext.SessionState.CurrentFlag == effective)
             return null;
 
-        var patch = new SessionStatePatch { CurrentFlag = flag };
+        var patch = new SessionStatePatch { CurrentFlag = effective };
         SessionStateMapper.ApplyPatch(patch, sessionContext.SessionState);
         return patch;
     }
