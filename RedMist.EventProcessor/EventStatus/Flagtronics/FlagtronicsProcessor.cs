@@ -22,7 +22,27 @@ public class FlagtronicsProcessor
     /// </summary>
     private readonly Dictionary<string, FlagtronicsVehicle> lastVehicles = [];
     private readonly Dictionary<string, HashSet<int>> carLapsWithPitStops = [];
+
+    /// <summary>
+    /// Cars seen on the racing surface (on-track flagging zone) at least once this session.
+    /// Used to distinguish a genuine mid-race pit stop from pre-race grid/pit staging, where
+    /// the whole field sits in pit zones before ever running a lap.
+    /// </summary>
+    private readonly HashSet<string> carsSeenOnTrack = [];
     private int lastSessionId = -1;
+
+    /// <summary>
+    /// Flagging zones 1-127 are on the racing surface; 128+ are pit/paddock ranges;
+    /// 0 is uninitialized/no-GPS.
+    /// </summary>
+    private const int MAX_ON_TRACK_ZONE = 127;
+
+    /// <summary>
+    /// A pit/paddock flagging zone reported at or above this speed is treated as a GPS glitch
+    /// (a car physically on the adjacent track momentarily mis-tagged to a pit zone) rather
+    /// than real pit presence. Pit lanes run well below this; only on-track racing exceeds it.
+    /// </summary>
+    private const int PIT_ZONE_GLITCH_SPEED_MPH = 80;
 
 
     public FlagtronicsProcessor(ILoggerFactory loggerFactory, SessionContext sessionContext)
@@ -44,6 +64,7 @@ public class FlagtronicsProcessor
                 lastSessionId, sessionContext.SessionState.SessionId);
             lastVehicles.Clear();
             carLapsWithPitStops.Clear();
+            carsSeenOnTrack.Clear();
             sessionContext.IsFlagtronicsFlagActive = false;
             lastSessionId = sessionContext.SessionState.SessionId;
         }
@@ -154,27 +175,70 @@ public class FlagtronicsProcessor
     {
         var patch = new CarPositionPatch { Number = car.Number };
 
-        // Pit state: pitActive is the level; entry/exit edges are derived from the transition
+        // The in-car pitActive flag is unreliable in both directions: on some devices it
+        // latches true after a stop and never resets (freezing IsInPit while the car is back
+        // racing), and it also lags or misses pit entry (indication off / late). The flagging
+        // zone is an independent GPS-derived signal for the car's physical location and is the
+        // authoritative pit-presence source when available:
+        //   - on-track zone (1-127): not in pit, regardless of pitActive (clears a stuck flag)
+        //   - pit/paddock zone (128+): in pit, regardless of pitActive (fixes late/missed
+        //     indication), unless reported at racing speed, which means a GPS glitch tagged an
+        //     on-track car to a pit zone for a tick - those defer to pitActive.
+        //   - zone 0 (uninitialized/no-GPS) or missing: no position info, defer to pitActive.
+        // Limitation: with no usable zone, a latched pitActive cannot be corrected here (there
+        // is no independent position signal); a timing-loop crossing would be needed to catch
+        // that residual case.
+        var realSpeed = vehicle.Speed is int sp && sp < FlagtronicsVehicle.SPEED_STOPPED ? sp : (int?)null;
+        bool inPit;
+        if (vehicle.FlaggingZone is int fz && fz >= 1)
+        {
+            if (fz <= MAX_ON_TRACK_ZONE)
+                inPit = false;
+            else if (realSpeed is int rs && rs >= PIT_ZONE_GLITCH_SPEED_MPH)
+                inPit = vehicle.PitActive; // pit zone at racing speed: GPS glitch, trust the flag
+            else
+                inPit = true;
+        }
+        else
+        {
+            inPit = vehicle.PitActive;
+        }
+
+        bool onTrackZone = vehicle.FlaggingZone is int z && z >= 1 && z <= MAX_ON_TRACK_ZONE;
+        if (onTrackZone)
+            carsSeenOnTrack.Add(vehicle.CarNumber);
+
+        // A stuck pitActive (true while physically on track) reports a runaway pit duration
+        // and a bogus entry time; only its being overridden here lets us recognize and drop
+        // those. A clean exit (pitActive already false) still carries the real final duration.
+        bool stuckOverride = vehicle.PitActive && onTrackZone;
+
+        // Pit state: inPit is the level; entry/exit edges are derived from the transition
         bool wasInPit = car.IsInPit;
-        if (car.IsInPit != vehicle.PitActive)
-            patch.IsInPit = vehicle.PitActive;
+        if (car.IsInPit != inPit)
+            patch.IsInPit = inPit;
 
         if (deriveEdges)
         {
-            bool entered = vehicle.PitActive && !wasInPit;
-            bool exited = !vehicle.PitActive && wasInPit;
+            bool entered = inPit && !wasInPit;
+            bool exited = !inPit && wasInPit;
             if (car.IsEnteredPit != entered)
                 patch.IsEnteredPit = entered;
             if (car.IsExitedPit != exited)
                 patch.IsExitedPit = exited;
         }
 
-        if (vehicle.PitEntryTime != null && car.PitEntryTime != vehicle.PitEntryTime)
+        // Apply pit entry time / duration except when overriding a stuck pitActive, whose
+        // reported duration runs away and whose entry time is bogus.
+        if (!stuckOverride && vehicle.PitEntryTime != null && car.PitEntryTime != vehicle.PitEntryTime)
             patch.PitEntryTime = vehicle.PitEntryTime;
 
-        var pitDurationMs = ParseDurationMs(vehicle.PitDuration);
-        if (pitDurationMs != null && car.PitDurationMs != pitDurationMs)
-            patch.PitDurationMs = pitDurationMs;
+        if (!stuckOverride)
+        {
+            var pitDurationMs = ParseDurationMs(vehicle.PitDuration);
+            if (pitDurationMs != null && car.PitDurationMs != pitDurationMs)
+                patch.PitDurationMs = pitDurationMs;
+        }
 
         if (car.PitSpeedEnforced != vehicle.Enforced)
             patch.PitSpeedEnforced = vehicle.Enforced;
@@ -185,8 +249,11 @@ public class FlagtronicsProcessor
         if (vehicle.FlaggingZone != null && car.FlaggingZone != vehicle.FlaggingZone)
             patch.FlaggingZone = vehicle.FlaggingZone;
 
-        // Track laps that included a pit stop, mirroring the X2 loop behavior
-        if (vehicle.PitActive)
+        // Track laps that included a pit stop, mirroring the X2 loop behavior. Exclude the
+        // pre-race grid/pit staging, where the whole field sits in pit zones (inPit by zone,
+        // pitActive false) before ever turning a lap, so it does not tag the first lap: only
+        // count when the device itself reports pitActive or the car has already run on track.
+        if (inPit && (vehicle.PitActive || carsSeenOnTrack.Contains(vehicle.CarNumber)))
         {
             if (!carLapsWithPitStops.TryGetValue(vehicle.CarNumber, out var laps))
             {

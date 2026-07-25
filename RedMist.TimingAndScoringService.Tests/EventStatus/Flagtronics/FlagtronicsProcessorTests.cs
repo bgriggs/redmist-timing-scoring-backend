@@ -196,6 +196,82 @@ public class FlagtronicsProcessorTests
         Assert.IsTrue(car.LapIncludedPit);
     }
 
+    [TestMethod]
+    public void Process_StuckPitActive_ClearedByOnTrackZone()
+    {
+        // Car enters the pit (pit zone, pitActive true)
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 10 }]""");
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Assert.IsTrue(car.IsInPit);
+
+        // Device leaves pitActive latched true, but the car is back on the racing surface at
+        // speed: the on-track flagging zone overrides the stuck flag and clears IsInPit.
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 5, "speed": 90 }]""");
+        Assert.IsFalse(car.IsInPit);
+        Assert.IsTrue(car.IsExitedPit);
+    }
+
+    [TestMethod]
+    public void Process_PitZoneWithoutPitActive_IndicatesInPit()
+    {
+        // pitActive lags/misses entry, but the car is physically in the pit-entry lane zone:
+        // location drives the indication so it is not off or late.
+        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 145, "speed": 30 }]""");
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Assert.IsTrue(car.IsInPit);
+        Assert.IsTrue(car.IsEnteredPit);
+    }
+
+    [TestMethod]
+    public void Process_PitZoneAtRacingSpeed_TreatedAsGlitch()
+    {
+        // A pit-zone reading at racing speed with pitActive false is a GPS glitch (an on-track
+        // car momentarily mis-tagged) and must not flip the car into the pit.
+        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 129, "speed": 95 }]""");
+        Assert.IsFalse(_sessionContext.GetCarByNumber("42")!.IsInPit);
+    }
+
+    [TestMethod]
+    public void Process_StuckPitActiveOnTrack_DoesNotMarkLapAsPit()
+    {
+        // Stuck pitActive while racing must not tag the lap as a pit lap.
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 5, "speed": 90 }]""");
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Assert.IsFalse(car.IsInPit);
+        Assert.IsFalse(car.LapIncludedPit);
+    }
+
+    [TestMethod]
+    public void Process_StuckPitActiveOnTrack_DoesNotApplyRunawayDuration()
+    {
+        // Real pit stop reports a duration.
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "pitDuration": "00:01:00.000" }]""");
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Assert.AreEqual(60000, car.PitDurationMs);
+
+        // Stuck pitActive while on track reports a runaway duration - it must be ignored.
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 5, "speed": 90, "pitDuration": "48:00:00.000" }]""");
+        Assert.IsFalse(car.IsInPit);
+        Assert.AreEqual(60000, car.PitDurationMs);
+    }
+
+    [TestMethod]
+    public void Process_PreGridStaging_ShownInPitButLapNotTagged()
+    {
+        // Pre-race: car sits in a paddock/pit zone with pitActive false, never having run a
+        // lap. It shows in pit (it physically is), but the lap is not tagged as a pit lap.
+        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 161, "speed": 0 }]""");
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Assert.IsTrue(car.IsInPit);
+        Assert.IsFalse(car.LapIncludedPit);
+
+        // Once the car has run on track, a subsequent pit stop is tagged normally.
+        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 5, "speed": 80 }]""");
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 10 }]""");
+        Assert.IsTrue(car.IsInPit);
+        Assert.IsTrue(car.LapIncludedPit);
+    }
+
     #endregion
 
     #region Flags and driver source
