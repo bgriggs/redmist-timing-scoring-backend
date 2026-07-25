@@ -6,6 +6,7 @@ using Moq;
 using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
+using RedMist.EventProcessor.EventStatus.Flagtronics;
 using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.X2;
 using RedMist.EventProcessor.Tests.Utilities;
@@ -58,6 +59,7 @@ public class LapProcessorTests
             _sessionContext,
             _mockConnectionMultiplexer.Object,
             _pitProcessor,
+            new FlagtronicsProcessor(_mockLoggerFactory.Object, _sessionContext, _timeProvider),
             _carLapHistoryService,
             _timeProvider);
     }
@@ -558,6 +560,7 @@ public class LapProcessorTests
             _sessionContext,
             _mockConnectionMultiplexer.Object,
             _pitProcessor,
+            new FlagtronicsProcessor(_mockLoggerFactory.Object, _sessionContext, _timeProvider),
             _carLapHistoryService,
             _timeProvider);
 
@@ -855,6 +858,7 @@ public class LapProcessorTests
             _sessionContext,
             _mockConnectionMultiplexer.Object,
             _pitProcessor,
+            new FlagtronicsProcessor(_mockLoggerFactory.Object, _sessionContext, _timeProvider),
             _carLapHistoryService,
             _timeProvider);
 
@@ -874,6 +878,7 @@ public class LapProcessorTests
             _sessionContext,
             _mockConnectionMultiplexer.Object,
             _pitProcessor,
+            new FlagtronicsProcessor(_mockLoggerFactory.Object, _sessionContext, _timeProvider),
             _carLapHistoryService,
             _timeProvider);
 
@@ -1108,6 +1113,7 @@ public class LapProcessorTests
             _sessionContext,
             _mockConnectionMultiplexer.Object,
             _pitProcessor,
+            new FlagtronicsProcessor(_mockLoggerFactory.Object, _sessionContext, _timeProvider),
             _carLapHistoryService,
             _timeProvider);
 

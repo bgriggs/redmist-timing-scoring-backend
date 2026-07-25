@@ -3,6 +3,7 @@ using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using RedMist.Database.Models;
+using RedMist.EventProcessor.EventStatus.Flagtronics;
 using RedMist.EventProcessor.EventStatus.X2;
 using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
@@ -21,6 +22,7 @@ public class LapProcessor : IDisposable
     private readonly SessionContext sessionContext;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly PitProcessor pitProcessor;
+    private readonly FlagtronicsProcessor flagtronicsProcessor;
     private readonly ICarLapHistoryService carLapHistoryService;
     private readonly TimeProvider _timeProvider;
     private readonly Dictionary<string, CarPosition> lastCarPositionLookup = [];
@@ -36,14 +38,16 @@ public class LapProcessor : IDisposable
 
 
     public LapProcessor(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
-        SessionContext sessionContext, IConnectionMultiplexer cacheMux, PitProcessor pitProcessor, 
-        ICarLapHistoryService carLapHistoryService, TimeProvider? timeProvider = null)
+        SessionContext sessionContext, IConnectionMultiplexer cacheMux, PitProcessor pitProcessor,
+        FlagtronicsProcessor flagtronicsProcessor, ICarLapHistoryService carLapHistoryService,
+        TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.sessionContext = sessionContext;
         this.cacheMux = cacheMux;
         this.pitProcessor = pitProcessor;
+        this.flagtronicsProcessor = flagtronicsProcessor;
         this.carLapHistoryService = carLapHistoryService;
         _timeProvider = timeProvider ?? TimeProvider.System;
 
@@ -224,8 +228,11 @@ public class LapProcessor : IDisposable
         {
             //Logger.LogTrace("Car {n} completed lap {l} in event {e}. Logging...", carNumber, position.LastLapCompleted, eventId);
 
-            // Update pit stops - this will set LapIncludedPit if the lap included a pit stop
+            // Update pit stops - this will set LapIncludedPit if the lap included a pit stop.
+            // Flagtronics runs second and only acts when it is the active pit source, matching
+            // the precedence the pit processors already use for live state.
             pitProcessor?.UpdateCarPositionForLogging(position);
+            flagtronicsProcessor?.UpdateCarPositionForLogging(position);
 
             // Add the lap to the rolling window history in Redis
             await carLapHistoryService.AddLapAsync(position);

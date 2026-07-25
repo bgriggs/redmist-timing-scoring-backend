@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.SignalR;
+﻿using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Configuration;
@@ -200,8 +200,9 @@ public class SessionStateProcessingPipelineTests
             _mockConnectionMultiplexer.Object,
             _sessionContext);
         _positionEnricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
+        _flagtronicsProcessor = new FlagtronicsProcessor(_mockLoggerFactory.Object, _sessionContext, _timeProvider);
         // Use the existing _carLapHistoryService from SetupSessionContext instead of creating a new one
-        _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor, _carLapHistoryService, _timeProvider);
+        _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor, _flagtronicsProcessor, _carLapHistoryService, _timeProvider);
         _driverEnricher = new DriverEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _videoEnricher = new VideoEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _fastestPaceEnricher = new FastestPaceEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
@@ -211,7 +212,6 @@ public class SessionStateProcessingPipelineTests
         _staleCarEnricher = new StaleCarEnricher(_mockLoggerFactory.Object, _sessionContext);
         _statusAggregator = new StatusAggregator(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
-        _flagtronicsProcessor = new FlagtronicsProcessor(_mockLoggerFactory.Object, _sessionContext);
     }
 
     private void CreatePipeline()
@@ -268,9 +268,10 @@ public class SessionStateProcessingPipelineTests
         _sessionContext.UpdateCars([new CarPosition { Number = "42", TransponderId = 1042 }]);
         var json = """[{ "carNumber": "42", "speed": 88, "lat": 36.5841, "lon": -121.7539, "pitActive": true, "pitDuration": "00:01:30.000", "carFlag": "Blue", "driverSource": "blePuck" }]""";
 
-        // Act
-        var tm = new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow);
-        await _pipeline.PostAsync(tm);
+        // Act - the pit state debounce needs the reading to persist across the confirm window
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow));
+        _timeProvider.Advance(TimeSpan.FromSeconds(11));
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow));
 
         // Assert
         Assert.IsTrue(_sessionContext.IsFlagtronicsPitActive);
@@ -332,6 +333,8 @@ public class SessionStateProcessingPipelineTests
         // Arrange
         _sessionContext.UpdateCars([new CarPosition { Number = "42", TransponderId = 1042 }]);
         var ftJson = """[{ "carNumber": "42", "pitActive": true }]""";
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, ftJson, 1, DateTime.UtcNow));
+        _timeProvider.Advance(TimeSpan.FromSeconds(11));
         await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, ftJson, 1, DateTime.UtcNow));
 
         // Act: X2 passing that would normally clear pit state is suppressed
