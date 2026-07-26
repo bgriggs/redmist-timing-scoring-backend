@@ -405,14 +405,25 @@ public class SessionStateProcessingPipeline
                 carPatches.Add(cp);
             }
 
-            // GPS-based projected lap time. Corrected positions carried by this batch feed the track-map
-            // learner and refine each moving car's projected lap time. This is new enrichment the external
-            // source doesn't compute, so it runs here even though ProcessExternal otherwise skips re-enrichment.
-            // The external source positions cars itself, so its fixes are not judged by the health
-            // of any in-car link. Note it carries no counterpart to the Flagtronics "still
-            // reporting" signal: a car whose position has not changed may simply be absent from the
-            // batch, so a parked car's position ages out rather than being held. That errs toward
-            // the time-based projection instead of showing a position that may have gone stale.
+            // Corrected positions carried by this batch feed the track-map learner and each car's
+            // position around the lap. This is new enrichment the external source does not compute,
+            // so it runs here even though ProcessExternal otherwise skips re-enrichment. Its fixes
+            // are not judged by the health of any in-car link - the source positions cars itself.
+            //
+            // A car that has not moved carries no coordinates of its own, so the batch as a whole
+            // stands in for it: if anything in it carried a position, the source is demonstrably
+            // still positioning, and every car it mentions counts as reporting. When no car in the
+            // batch carries one, the position feed itself has gone quiet and positions are left to
+            // age out - which is indistinguishable from every car having parked, so it errs toward
+            // the time-based projection rather than holding positions that may have gone stale.
+            if (carPatches.Any(cp => (cp.Latitude ?? 0) != 0 || (cp.Longitude ?? 0) != 0))
+            {
+                gpsLapPositionEnricher.MarkSeen(carPatches
+                    .Select(cp => cp.Number)
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Distinct()!, confirmed: false);
+            }
+
             await ApplyGpsEnrichmentAsync(carPatches, fromInCarTelemetry: false);
 
             // Log completed laps. The external branch otherwise bypasses the lap processor that the
@@ -473,7 +484,7 @@ public class SessionStateProcessingPipeline
             // separately - a car sitting still is not the same as one that has gone off the air,
             // and neither is one whose device is talking while its GPS is dead.
             var carPatches = updates?.CarPatches.ToList() ?? [];
-            gpsLapPositionEnricher.MarkSeen(flagtronicsProcessor.CarsWithUsableFix);
+            gpsLapPositionEnricher.MarkSeen(flagtronicsProcessor.CarsWithUsableFix, confirmed: true);
             await ApplyGpsEnrichmentAsync(carPatches, fromInCarTelemetry: true);
 
             var sessionPatches = updates?.SessionPatches ?? [];

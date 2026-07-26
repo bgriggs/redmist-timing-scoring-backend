@@ -418,6 +418,66 @@ public class SessionStateProcessingPipelineTests
         Assert.AreEqual(25, _sessionContext.GetCarByNumber("41")!.LapPositionPercent!.Value, 2);
     }
 
+    private TimingMessage ExternalBatch(params CarPositionPatch[] patches)
+    {
+        var batch = new RedMist.TimingCommon.Models.ExternalPatchBatch { CarPatches = [.. patches] };
+        return new TimingMessage(Backend.Shared.Consts.EXTERNAL_PATCH_TYPE,
+            System.Text.Json.JsonSerializer.Serialize(batch), 1, DateTime.UtcNow);
+    }
+
+    [TestMethod]
+    public async Task External_StationaryCarInAMovingField_KeepsItsPosition_Test()
+    {
+        // The external source carries no per-car "still reporting" flag, so a parked car's own
+        // patches say nothing. Another car's position in the same batch proves the source is still
+        // positioning, which is what keeps the parked one alive.
+        await GivenStoredTrackMapAsync();
+        _sessionContext.UpdateCars(
+        [
+            new CarPosition { Number = "41", TransponderId = 1041 },
+            new CarPosition { Number = "42", TransponderId = 1042 },
+        ]);
+
+        var (parkedLat, parkedLon) = CircleTrack.Point(0.25);
+        await _pipeline.PostAsync(ExternalBatch(
+            new CarPositionPatch { Number = "41", Latitude = parkedLat, Longitude = parkedLon },
+            new CarPositionPatch { Number = "42", Latitude = CircleTrack.Point(0.5).lat, Longitude = CircleTrack.Point(0.5).lon }));
+        Assert.AreEqual(25, _sessionContext.GetCarByNumber("41")!.LapPositionPercent!.Value, 2);
+
+        // Car 41 sits still and reports no coordinates; car 42 keeps moving.
+        for (int i = 0; i < 4; i++)
+        {
+            _timeProvider.Advance(TimeSpan.FromSeconds(4));
+            var (movingLat, movingLon) = CircleTrack.Point(0.5 + i * 0.05);
+            await _pipeline.PostAsync(ExternalBatch(
+                new CarPositionPatch { Number = "41", LastLapCompleted = 3 },
+                new CarPositionPatch { Number = "42", Latitude = movingLat, Longitude = movingLon }));
+        }
+
+        Assert.AreEqual(25, _sessionContext.GetCarByNumber("41")!.LapPositionPercent!.Value, 2);
+    }
+
+    [TestMethod]
+    public async Task External_PositionFeedStops_RetiresPositions_Test()
+    {
+        // Timing patches keep arriving but nothing in them carries a position: the position feed
+        // has gone quiet and the last known places must not be left on screen.
+        await GivenStoredTrackMapAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041 }]);
+
+        var (lat, lon) = CircleTrack.Point(0.25);
+        await _pipeline.PostAsync(ExternalBatch(new CarPositionPatch { Number = "41", Latitude = lat, Longitude = lon }));
+        Assert.AreEqual(25, _sessionContext.GetCarByNumber("41")!.LapPositionPercent!.Value, 2);
+
+        for (int i = 0; i < 4; i++)
+        {
+            _timeProvider.Advance(TimeSpan.FromSeconds(4));
+            await _pipeline.PostAsync(ExternalBatch(new CarPositionPatch { Number = "41", LastLapCompleted = 3 + i }));
+        }
+
+        Assert.AreEqual(CarPosition.InvalidTrackPosition, _sessionContext.GetCarByNumber("41")!.LapPositionPercent);
+    }
+
     [TestMethod]
     public async Task Gps_SourceGoesDownEntirely_PositionIsRetiredByTheTimingHeartbeat_Test()
     {

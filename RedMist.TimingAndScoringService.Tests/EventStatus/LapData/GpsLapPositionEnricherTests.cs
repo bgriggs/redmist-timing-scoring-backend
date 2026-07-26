@@ -628,7 +628,7 @@ public class GpsLapPositionEnricherTests
         for (int i = 0; i < 4; i++)
         {
             _timeProvider.Advance(TimeSpan.FromSeconds(4));
-            _enricher.MarkSeen(["5"]);
+            _enricher.MarkSeen(["5"], confirmed: true);
             Assert.AreEqual(0, _enricher.ExpireStalePositions().Count);
         }
 

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
@@ -64,6 +64,222 @@ public class FlagtronicsProcessorTests
         _time.Advance(TimeSpan.FromSeconds(11));
         return Process(json);
     }
+
+    #region Impossible jumps
+
+    // Road Atlanta start/finish, and points a known distance east of it.
+    private const double BaseLat = 34.1500;
+    private const double BaseLon = -83.8160;
+
+    private static string At(double eastMeters, int speed = 80)
+    {
+        var lon = BaseLon + eastMeters / (6_371_000.0 * Math.Cos(BaseLat * Math.PI / 180.0)) * (180.0 / Math.PI);
+        return $$"""[{ "carNumber": "42", "speed": {{speed}}, "lat": {{BaseLat.ToString(System.Globalization.CultureInfo.InvariantCulture)}}, "lon": {{lon.ToString("F8", System.Globalization.CultureInfo.InvariantCulture)}} }]""";
+    }
+
+    [TestMethod]
+    public void Teleport_PlausibleMovement_IsApplied()
+    {
+        Process(At(0));
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(60));
+
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Assert.AreEqual(BaseLon + 60 / (6_371_000.0 * Math.Cos(BaseLat * Math.PI / 180.0)) * (180.0 / Math.PI),
+            car.Longitude!.Value, 1e-6, "A car doing 60 m in a second is just a fast car");
+    }
+
+    [TestMethod]
+    public void Teleport_ImpossibleJump_KeepsTheLastKnownPosition()
+    {
+        Process(At(0));
+        var before = _sessionContext.GetCarByNumber("42")!.Longitude;
+
+        // 900 m in one second is 2,000 mph. The car is still where it was.
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(900));
+
+        Assert.AreEqual(before, _sessionContext.GetCarByNumber("42")!.Longitude);
+    }
+
+    [TestMethod]
+    public void Teleport_ImpossibleJump_IsExcludedFromUsableFixes()
+    {
+        Process(At(0));
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(900));
+
+        Assert.AreEqual(0, _processor.CarsWithUsableFix.Count);
+    }
+
+    [TestMethod]
+    public void Teleport_AllowanceScalesWithTheGap()
+    {
+        // The same 900 m jump is ordinary progress when the car has been out of contact for 20 s.
+        Process(At(0));
+        _time.Advance(TimeSpan.FromSeconds(20));
+        Process(At(900));
+
+        var expected = BaseLon + 900 / (6_371_000.0 * Math.Cos(BaseLat * Math.PI / 180.0)) * (180.0 / Math.PI);
+        Assert.AreEqual(expected, _sessionContext.GetCarByNumber("42")!.Longitude!.Value, 1e-6);
+    }
+
+    [TestMethod]
+    public void Teleport_SustainedRelocation_IsAdoptedRatherThanPinningTheCarForever()
+    {
+        // A car really can change place without driving there - recovered on a truck, a device
+        // reset. Without an escape hatch it would be stuck at its old position for the session.
+        Process(At(0));
+
+        for (int i = 0; i < 3; i++)
+        {
+            _time.Advance(TimeSpan.FromSeconds(1));
+            Process(At(900));
+        }
+
+        var expected = BaseLon + 900 / (6_371_000.0 * Math.Cos(BaseLat * Math.PI / 180.0)) * (180.0 / Math.PI);
+        Assert.AreEqual(expected, _sessionContext.GetCarByNumber("42")!.Longitude!.Value, 1e-6,
+            "A relocation that persists is the genuine article");
+    }
+
+    [TestMethod]
+    public void Teleport_RecoveryAfterAGlitch_ResumesFromTheGoodPosition()
+    {
+        Process(At(0));
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(900));                      // rejected
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(60));                       // back where it should be
+
+        var expected = BaseLon + 60 / (6_371_000.0 * Math.Cos(BaseLat * Math.PI / 180.0)) * (180.0 / Math.PI);
+        Assert.AreEqual(expected, _sessionContext.GetCarByNumber("42")!.Longitude!.Value, 1e-6);
+    }
+
+    [TestMethod]
+    public void Teleport_OtherFieldsOnTheRecordStillApply()
+    {
+        // A bad fix says nothing about the pit flag or the speed reported alongside it.
+        Process(At(0));
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process("""[{ "carNumber": "42", "speed": 45, "lat": 34.1500, "lon": -83.8060, "flaggingZone": 12 }]""");
+
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Assert.AreEqual(45, car.SpeedMph);
+        Assert.AreEqual(12, car.FlaggingZone);
+    }
+
+    [TestMethod]
+    public void Teleport_ReplayAfterAReset_DoesNotReinstateTheRejectedPosition()
+    {
+        // The last record is replayed onto the car after a timing-system reset, and it runs on
+        // every RMonitor message - so replaying a rejected position would undo the rejection within
+        // a second and leave the car exactly where it was refused.
+        Process(At(0));
+        var before = _sessionContext.GetCarByNumber("42")!.Longitude;
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(900));
+
+        _processor.ProcessCar("42");
+
+        Assert.AreEqual(before, _sessionContext.GetCarByNumber("42")!.Longitude);
+    }
+
+    [TestMethod]
+    public void Teleport_ReplayOfAnAcceptedPosition_StillApplies()
+    {
+        Process(At(0));
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(60));
+        var expected = _sessionContext.GetCarByNumber("42")!.Longitude;
+
+        _sessionContext.GetCarByNumber("42")!.Longitude = null;
+        _processor.ProcessCar("42");
+
+        Assert.AreEqual(expected, _sessionContext.GetCarByNumber("42")!.Longitude);
+    }
+
+    [TestMethod]
+    public void Teleport_AlternatingStaleAndTruePosition_IsNotPinnedForever()
+    {
+        // A device re-acquiring can flip between a cached position and its real one. Each accepted
+        // cached reading would reset a consecutive-rejection counter, so the escape hatch would
+        // never fire and the car would sit at the stale position for the session.
+        Process(At(0));
+        for (int i = 0; i < 4; i++)
+        {
+            _time.Advance(TimeSpan.FromSeconds(1));
+            Process(At(900));   // true position, rejected as a jump
+            _time.Advance(TimeSpan.FromSeconds(1));
+            Process(At(0));     // cached stale position, accepted - but the car has not moved
+        }
+
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(900));
+        var expected = BaseLon + 900 / (6_371_000.0 * Math.Cos(BaseLat * Math.PI / 180.0)) * (180.0 / Math.PI);
+        Assert.AreEqual(expected, _sessionContext.GetCarByNumber("42")!.Longitude!.Value, 1e-6,
+            "Standing still must not keep resetting the escape hatch");
+    }
+
+    [TestMethod]
+    public void Teleport_AdoptsOnTheThirdReading()
+    {
+        Process(At(0));
+        var startLon = _sessionContext.GetCarByNumber("42")!.Longitude;
+
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(900));
+        Assert.AreEqual(startLon, _sessionContext.GetCarByNumber("42")!.Longitude, "first jump rejected");
+
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(900));
+        Assert.AreEqual(startLon, _sessionContext.GetCarByNumber("42")!.Longitude, "second jump rejected");
+
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(900));
+        var expected = BaseLon + 900 / (6_371_000.0 * Math.Cos(BaseLat * Math.PI / 180.0)) * (180.0 / Math.PI);
+        Assert.AreEqual(expected, _sessionContext.GetCarByNumber("42")!.Longitude!.Value, 1e-6,
+            "third adopted");
+    }
+
+    [TestMethod]
+    public void Teleport_PositionlessRecordMidRun_DoesNotResetTheCount()
+    {
+        Process(At(0));
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(900));                                                   // rejection 1
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process("""[{ "carNumber": "42", "speed": 40, "flaggingZone": 12 }]""");  // no coordinates
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(900));                                                   // rejection 2
+        _time.Advance(TimeSpan.FromSeconds(1));
+        Process(At(900));                                                   // adopted
+
+        var expected = BaseLon + 900 / (6_371_000.0 * Math.Cos(BaseLat * Math.PI / 180.0)) * (180.0 / Math.PI);
+        Assert.AreEqual(expected, _sessionContext.GetCarByNumber("42")!.Longitude!.Value, 1e-6);
+    }
+
+    [TestMethod]
+    public void Teleport_SessionChange_ForgetsWhereTheCarWas()
+    {
+        Process(At(0));
+
+        _sessionContext.SessionState.SessionId = 99;
+        Process(At(5000));
+
+        var expected = BaseLon + 5000 / (6_371_000.0 * Math.Cos(BaseLat * Math.PI / 180.0)) * (180.0 / Math.PI);
+        Assert.AreEqual(expected, _sessionContext.GetCarByNumber("42")!.Longitude!.Value, 1e-6,
+            "A new session starts from wherever the car now is");
+    }
+
+    [TestMethod]
+    public void Teleport_FirstFixForACar_IsAlwaysAccepted()
+    {
+        Process(At(5000));
+
+        Assert.IsNotNull(_sessionContext.GetCarByNumber("42")!.Longitude);
+    }
+
+    #endregion
 
     #region Cars with a usable fix
 

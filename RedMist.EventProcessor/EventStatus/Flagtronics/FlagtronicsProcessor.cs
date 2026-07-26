@@ -1,4 +1,5 @@
 using RedMist.EventProcessor.Models;
+using RedMist.TimingCommon.LapTiming;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Mappers;
 using System.Text.Json;
@@ -56,6 +57,19 @@ public class FlagtronicsProcessor
     /// it has to say.
     /// </summary>
     private readonly List<string> carsWithUsableFix = [];
+
+    /// <summary>
+    /// The last position accepted for each car, and how many readings since have been rejected as
+    /// impossible jumps away from it. See <see cref="IsTeleport"/>.
+    /// </summary>
+    private readonly Dictionary<string, (double Lat, double Lon, DateTimeOffset At, int Rejected)> lastAcceptedFix = [];
+
+    /// <summary>
+    /// Cars whose record in <see cref="lastVehicles"/> had its position rejected. That record is
+    /// replayed after a timing-system reset, and replaying its coordinates would put the car right
+    /// back where the rejection had just refused to put it.
+    /// </summary>
+    private readonly HashSet<string> lastRecordPositionRejected = [];
     private int lastSessionId = -1;
 
     /// <summary>
@@ -99,6 +113,29 @@ public class FlagtronicsProcessor
     /// entry time and pitActive flag are discarded along with the duration.
     /// </summary>
     private static readonly TimeSpan MaxPitDuration = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// Faster than any car on any track this serves, used to bound how far one can have travelled
+    /// between readings. Measured over a live race, implied speeds sit at 28 m/s median and 59 m/s
+    /// at the 90th percentile, then jump to 167 m/s at the 99th and 1597 m/s at the worst - real
+    /// motion and nonsense separate cleanly well below this.
+    /// </summary>
+    private const double MaxTrackSpeedMetersPerSecond = 90.0; // ~200 mph
+
+    /// <summary>
+    /// Added to the travel allowance to absorb GPS scatter when a car has barely moved, and the
+    /// coarseness of the interval between readings.
+    /// </summary>
+    private const double TeleportSlackMeters = 50.0;
+
+    /// <summary>
+    /// How many readings may be rejected before the next one is adopted regardless. A car really
+    /// can change place without driving there - recovered on a truck, a device reset, a fix
+    /// re-acquired after a long outage - and without this it would be pinned to a position it left
+    /// long ago for the rest of the session. Real glitches come in ones and twos over a live race,
+    /// so a relocation that keeps being reported is the genuine article.
+    /// </summary>
+    private const int MaxConsecutiveTeleportRejections = 2;
 
     private readonly TimeProvider timeProvider;
 
@@ -144,6 +181,8 @@ public class FlagtronicsProcessor
             pitActiveSuppressed.Clear();
             committedPitState.Clear();
             pendingPitState.Clear();
+            lastAcceptedFix.Clear();
+            lastRecordPositionRejected.Clear();
             sessionContext.FlagtronicsFullCourseFlag = Flags.Unknown;
             lastSessionId = sessionContext.SessionState.SessionId;
         }
@@ -172,7 +211,14 @@ public class FlagtronicsProcessor
                 continue;
 
             lastVehicles[vehicle.CarNumber] = vehicle;
-            var faulted = IsPositionFaulted(vehicle);
+            // Evaluated once per record: it advances the per-car anchor it judges against.
+            var teleported = IsTeleport(vehicle, timeProvider.GetUtcNow());
+            if (teleported)
+                lastRecordPositionRejected.Add(vehicle.CarNumber);
+            else
+                lastRecordPositionRejected.Remove(vehicle.CarNumber);
+
+            var faulted = teleported || IsPositionFaulted(vehicle);
             signalTracker?.RecordTick(vehicle.CarNumber, faulted);
 
             var car = sessionContext.GetCarByNumber(vehicle.CarNumber);
@@ -192,7 +238,7 @@ public class FlagtronicsProcessor
             if (!faulted && carriesPosition)
                 carsWithUsableFix.Add(vehicle.CarNumber);
 
-            var patch = BuildPatch(vehicle, car, isLiveTick: true);
+            var patch = BuildPatch(vehicle, car, isLiveTick: true, positionUsable: !teleported);
             if (CarPositionMapper.GetChangedProperties(patch).Length > 1)
             {
                 CarPositionMapper.ApplyPatch(patch, car);
@@ -252,7 +298,10 @@ public class FlagtronicsProcessor
         if (car == null)
             return null;
 
-        var patch = BuildPatch(vehicle, car, isLiveTick: false);
+        // The stored record is replayed as-is, so a position that was rejected when it arrived stays
+        // rejected here - otherwise the replay would reinstate it moments later.
+        var patch = BuildPatch(vehicle, car, isLiveTick: false,
+            positionUsable: !lastRecordPositionRejected.Contains(number));
         if (CarPositionMapper.GetChangedProperties(patch).Length > 1)
         {
             CarPositionMapper.ApplyPatch(patch, car);
@@ -306,7 +355,19 @@ public class FlagtronicsProcessor
         return patch;
     }
 
-    private CarPositionPatch BuildPatch(FlagtronicsVehicle vehicle, CarPosition car, bool isLiveTick)
+    /// <param name="vehicle">The record to map onto the car.</param>
+    /// <param name="car">Current state, which the patch is diffed against.</param>
+    /// <param name="isLiveTick">
+    /// False when replaying a stored record after a reset, which must not derive pit entry/exit
+    /// edges or advance the pit debounce.
+    /// </param>
+    /// <param name="positionUsable">
+    /// False when the record's coordinates were rejected as an impossible jump, in which case the
+    /// car keeps the last position it was actually seen at. Everything else on the record still
+    /// applies - a bad fix does not invalidate the pit flag or the speed alongside it.
+    /// </param>
+    private CarPositionPatch BuildPatch(FlagtronicsVehicle vehicle, CarPosition car, bool isLiveTick,
+        bool positionUsable = true)
     {
         var patch = new CarPositionPatch { Number = car.Number };
 
@@ -437,8 +498,9 @@ public class FlagtronicsProcessor
                 patch.LapIncludedPit = lapIncludedPit;
         }
 
-        // GPS: a bad (0,0) reading is ignored rather than replacing the last good position
-        if (vehicle.Lat is double lat && vehicle.Lon is double lon && (lat != 0 || lon != 0))
+        // GPS: a bad (0,0) reading is ignored rather than replacing the last good position, as is
+        // one the car cannot have reached since it was last seen.
+        if (positionUsable && vehicle.Lat is double lat && vehicle.Lon is double lon && (lat != 0 || lon != 0))
         {
             if (car.Latitude != lat)
                 patch.Latitude = lat;
@@ -542,6 +604,52 @@ public class FlagtronicsProcessor
         {
             return carLapsWithPitStops.TryGetValue(carNumber, out var laps) && laps.Contains(lapNumber);
         }
+    }
+
+    /// <summary>
+    /// Whether a reading places the car somewhere it cannot have reached since it was last seen.
+    /// A device that briefly reports a position hundreds of meters away is not describing a car
+    /// that moved: left alone those readings are written to the car as its position, fed to the
+    /// track-map learner as part of the racing line, and counted as clean signal.
+    ///
+    /// Called exactly once per record, since it advances the per-car state it judges against.
+    /// </summary>
+    private bool IsTeleport(FlagtronicsVehicle vehicle, DateTimeOffset now)
+    {
+        if (vehicle.Lat is not double lat || vehicle.Lon is not double lon || (lat == 0 && lon == 0))
+            return false;
+
+        if (!lastAcceptedFix.TryGetValue(vehicle.CarNumber, out var last))
+        {
+            lastAcceptedFix[vehicle.CarNumber] = (lat, lon, now, 0);
+            return false;
+        }
+
+        // Whole seconds are the finest the feed is observed at, so treat anything shorter as a
+        // second rather than shrinking the allowance towards zero on same-tick readings.
+        var elapsed = Math.Max(1.0, (now - last.At).TotalSeconds);
+        var travelled = TrackGeometry.DistanceMeters(last.Lat, last.Lon, lat, lon);
+        if (travelled <= elapsed * MaxTrackSpeedMetersPerSecond + TeleportSlackMeters)
+        {
+            // Accepting a reading only clears the run when the car has actually moved on. A device
+            // alternating between a stale cached position and its true one would otherwise reset
+            // the count on every other reading and never reach the escape hatch, pinning the car to
+            // the stale position indefinitely.
+            var moved = travelled > TeleportSlackMeters;
+            lastAcceptedFix[vehicle.CarNumber] = (lat, lon, now, moved ? 0 : last.Rejected);
+            return false;
+        }
+
+        if (last.Rejected >= MaxConsecutiveTeleportRejections)
+        {
+            Logger.LogDebug("Car {car} keeps reporting a position it cannot have reached; adopting it after {count} rejections.",
+                vehicle.CarNumber, last.Rejected);
+            lastAcceptedFix[vehicle.CarNumber] = (lat, lon, now, 0);
+            return false;
+        }
+
+        lastAcceptedFix[vehicle.CarNumber] = (last.Lat, last.Lon, last.At, last.Rejected + 1);
+        return true;
     }
 
     /// <summary>

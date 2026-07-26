@@ -46,6 +46,14 @@ public class GpsLapPositionEnricher
     private static readonly TimeSpan FixTimeout = TimeSpan.FromSeconds(10);
 
     /// <summary>
+    /// Longest a position may be held on the strength of second-hand evidence alone - a source that
+    /// is demonstrably still positioning other cars, rather than this car reporting a fix of its
+    /// own. That inference cannot tell a parked car from one the source has quietly stopped
+    /// positioning, so it is allowed to cover an ordinary stop and no more.
+    /// </summary>
+    private static readonly TimeSpan UnconfirmedFixCeiling = TimeSpan.FromSeconds(60);
+
+    /// <summary>
     /// How far off the centerline a position may sit and still be believed. Covers track width plus
     /// GPS error; beyond it the car is in a paddock, on an access road, or the fix is junk.
     /// </summary>
@@ -93,6 +101,8 @@ public class GpsLapPositionEnricher
     private sealed class CarTrackState
     {
         public DateTime LastFixUtc;
+        /// <summary>When this car itself last reported a position, as opposed to being inferred live.</summary>
+        public DateTime LastConfirmedFixUtc;
         public DateTime LastEmitUtc;
         /// <summary>Last position believed to be on the racing surface, and when it was taken.</summary>
         public double? LastDistanceAlongMeters;
@@ -135,6 +145,7 @@ public class GpsLapPositionEnricher
         if (!carStates.TryGetValue(car.Number, out var state))
             carStates[car.Number] = state = new CarTrackState();
         state.LastFixUtc = now;
+        state.LastConfirmedFixUtc = now;
 
         // A lap rollover is a sighting of the start/finish line and is worth the snap even when the
         // throttle would otherwise skip this update - they are rare and the calibration depends on them.
@@ -180,7 +191,14 @@ public class GpsLapPositionEnricher
     /// produces no position change, and so would look indistinguishable from one that had dropped
     /// off the air entirely.
     /// </summary>
-    public void MarkSeen(IEnumerable<string> carNumbers)
+    /// <param name="carNumbers">Cars the source is still reporting.</param>
+    /// <param name="confirmed">
+    /// True when each car's own record carried a position, which is direct evidence about that car.
+    /// False when it is inferred from the batch as a whole still carrying positions - good enough to
+    /// cover a parked car, but it cannot distinguish one the source has stopped positioning, so it
+    /// only holds a position for <see cref="UnconfirmedFixCeiling"/>.
+    /// </param>
+    public void MarkSeen(IEnumerable<string> carNumbers, bool confirmed)
     {
         ResetOnSessionChange();
 
@@ -192,6 +210,8 @@ public class GpsLapPositionEnricher
             if (!carStates.TryGetValue(number, out var state))
                 carStates[number] = state = new CarTrackState();
             state.LastFixUtc = now;
+            if (confirmed)
+                state.LastConfirmedFixUtc = now;
         }
     }
 
@@ -215,7 +235,7 @@ public class GpsLapPositionEnricher
                 continue;
             if (state.PublishedPercent == CarPosition.InvalidTrackPosition)
                 continue;
-            if (now - state.LastFixUtc < FixTimeout)
+            if (now - state.LastFixUtc < FixTimeout && now - state.LastConfirmedFixUtc < UnconfirmedFixCeiling)
                 continue;
 
             Logger.LogDebug("No GPS for car {car} in {seconds:F0}s; retiring its track position.",
