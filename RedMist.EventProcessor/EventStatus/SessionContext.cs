@@ -36,13 +36,6 @@ public class SessionContext
     public virtual bool IsMultiloopActive { get; set; }
 
     /// <summary>
-    /// True once Flagtronics vehicle data is flowing for this event. Flagtronics in-car pit
-    /// detection is higher fidelity than loop-based X2 pit data, so X2 pit processing is
-    /// suppressed while this is set.
-    /// </summary>
-    public virtual bool IsFlagtronicsPitActive { get; set; }
-
-    /// <summary>
     /// Fewest signal bars at which a car's Flagtronics in-car pit data is still applied. At two
     /// bars or fewer the car falls back to X2 loop data.
     ///
@@ -54,25 +47,43 @@ public class SessionContext
 
     /// <summary>
     /// Whether Flagtronics in-car pit data should drive this particular car's pit state. False
-    /// when the feed is absent, when the car has no in-car device (<see cref="CarPosition.SignalBars"/>
-    /// null), or when its telemetry has degraded past <see cref="MIN_TRUSTED_PIT_SIGNAL_BARS"/> -
-    /// in which case X2 loop data takes the car back.
+    /// when the car has no in-car device (<see cref="CarPosition.SignalBars"/> null), and false
+    /// once its telemetry degrades past <see cref="MIN_TRUSTED_PIT_SIGNAL_BARS"/> - in which case
+    /// X2 loop data takes the car back.
     ///
     /// This is per car rather than per event on purpose: device failures are individual and
     /// intermittent. In the reference race one car's device degraded for the last five hours
     /// while the rest of the field stayed clean, and another failed for a single hour and
-    /// recovered. It also covers the whole feed dying, since every car then goes stale and drops
-    /// to zero bars.
+    /// recovered. Bars alone also cover an event with no in-car equipment at all, and the whole
+    /// feed dying, since every car then goes stale and drops to zero.
     /// </summary>
     public virtual bool IsFlagtronicsPitTrusted(string? carNumber)
     {
-        if (!IsFlagtronicsPitActive || string.IsNullOrEmpty(carNumber))
+        if (string.IsNullOrEmpty(carNumber))
             return false;
 
         return flagtronicsPitOwners.TryGetValue(carNumber, out var owned) && owned;
     }
 
     private readonly Dictionary<string, bool> flagtronicsPitOwners = [];
+
+    /// <summary>
+    /// Cars allowed to change pit-state owner despite currently being shown in the pit.
+    /// </summary>
+    private readonly HashSet<string> pitOwnershipHoldReleased = [];
+
+    /// <summary>
+    /// Lifts the in-pit hold on changing a car's pit-state owner. Called when the car completes a
+    /// lap: crossing start/finish proves it is on track, so the mid-stop protection no longer
+    /// applies. Without this, a car whose telemetry stopped while it was shown in the pit would
+    /// keep its owner forever - that owner has nothing left to say and the other source is not
+    /// allowed to take over, so the car would sit in the pit for the rest of the session.
+    /// </summary>
+    public virtual void ReleasePitOwnershipHold(string? carNumber)
+    {
+        if (!string.IsNullOrEmpty(carNumber))
+            pitOwnershipHoldReleased.Add(carNumber);
+    }
 
     /// <summary>
     /// Reassesses which source owns each car's pit state, from the telemetry health published as
@@ -88,12 +99,6 @@ public class SessionContext
     /// </summary>
     public virtual void UpdatePitOwnership()
     {
-        if (!IsFlagtronicsPitActive)
-        {
-            flagtronicsPitOwners.Clear();
-            return;
-        }
-
         foreach (var car in SessionState.CarPositions)
         {
             if (string.IsNullOrEmpty(car.Number))
@@ -102,9 +107,22 @@ public class SessionContext
             // Null bars mean no in-car device, and null >= n is false, which is the wanted answer.
             bool eligible = car.SignalBars >= MIN_TRUSTED_PIT_SIGNAL_BARS;
             if (!flagtronicsPitOwners.TryGetValue(car.Number, out var owned))
+            {
                 flagtronicsPitOwners[car.Number] = eligible;
-            else if (owned != eligible && !car.IsInPit)
+                continue;
+            }
+
+            if (owned == eligible)
+            {
+                pitOwnershipHoldReleased.Remove(car.Number);
+                continue;
+            }
+
+            if (!car.IsInPit || pitOwnershipHoldReleased.Contains(car.Number))
+            {
                 flagtronicsPitOwners[car.Number] = eligible;
+                pitOwnershipHoldReleased.Remove(car.Number);
+            }
         }
     }
 
@@ -270,6 +288,7 @@ public class SessionContext
             RMonitorTrackFlag = Flags.Unknown;
             FlagtronicsFullCourseFlag = Flags.Unknown;
             flagtronicsPitOwners.Clear();
+            pitOwnershipHoldReleased.Clear();
         }
     }
 

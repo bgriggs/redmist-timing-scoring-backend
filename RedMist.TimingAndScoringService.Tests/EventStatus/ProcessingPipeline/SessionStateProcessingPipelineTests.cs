@@ -277,7 +277,6 @@ public class SessionStateProcessingPipelineTests
         await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow));
 
         // Assert
-        Assert.IsTrue(_sessionContext.IsFlagtronicsPitActive);
         var car = _sessionContext.GetCarByNumber("42");
         Assert.IsNotNull(car);
         Assert.AreEqual(36.5841, car!.Latitude);

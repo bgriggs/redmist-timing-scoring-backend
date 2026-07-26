@@ -151,9 +151,6 @@ public class FlagtronicsProcessor
         if (vehicles == null || vehicles.Count == 0)
             return null;
 
-        // Flagtronics data is flowing: in-car pit detection takes precedence over X2 loop data
-        sessionContext.IsFlagtronicsPitActive = true;
-
         var patches = new List<CarPositionPatch>();
         foreach (var vehicle in vehicles)
         {

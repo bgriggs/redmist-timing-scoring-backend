@@ -185,6 +185,10 @@ public class SessionStateProcessingPipeline
                                     var ftLapPatch = flagtronicsProcessor.NotifyLapCompleted(cn ?? string.Empty);
                                     if (ftLapPatch != null)
                                         ftLapPatches.Add(ftLapPatch);
+
+                                    // The car is demonstrably on track, so the in-pit hold on
+                                    // changing its pit-state owner no longer applies.
+                                    sessionContext.ReleasePitOwnershipHold(cn);
                                 }
                                 if (ftLapPatches.Count > 0)
                                     allAppliedChanges.Add(new PatchUpdates([], [.. ftLapPatches]));

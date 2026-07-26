@@ -79,7 +79,6 @@ public class FlagtronicsProcessorTests
     {
         var result = _processor.Process(new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "[]", 1, DateTime.UtcNow));
         Assert.IsNull(result);
-        Assert.IsFalse(_sessionContext.IsFlagtronicsPitActive);
     }
 
     [TestMethod]
@@ -89,10 +88,12 @@ public class FlagtronicsProcessorTests
     }
 
     [TestMethod]
-    public void Process_VehicleData_SetsFlagtronicsPitActive()
+    public void Process_VehicleData_EstablishesPitOwnershipForAHealthyCar()
     {
         Process("""[{ "carNumber": "42", "pitActive": false }]""");
-        Assert.IsTrue(_sessionContext.IsFlagtronicsPitActive);
+        _sessionContext.UpdatePitOwnership();
+
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("42"));
     }
 
     [TestMethod]
@@ -395,6 +396,26 @@ public class FlagtronicsProcessorTests
     }
 
     [TestMethod]
+    public void PitOwnershipHold_IsLiftedByACompletedLap()
+    {
+        var car = _sessionContext.GetCarByNumber("42")!;
+        ProcessSettled("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 5 }]""");
+        Assert.IsTrue(car.IsInPit);
+
+        // Telemetry stops while the car is shown in the pit. Without an escape hatch the owner
+        // could never change and the car would sit in the pit for the rest of the session.
+        car.SignalBars = CarPosition.MinSignalBars;
+        _sessionContext.UpdatePitOwnership();
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("42"), "held while in pit");
+
+        // The car is scored across start/finish, which proves it is on track.
+        _sessionContext.ReleasePitOwnershipHold("42");
+        _sessionContext.UpdatePitOwnership();
+
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"), "a completed lap lifts the hold");
+    }
+
+    [TestMethod]
     public void PitTrustBoundary_IsInclusiveOfTheFloor()
     {
         // Pins >= against >. Two bars or fewer was wrong more often than right in the reference
@@ -414,10 +435,11 @@ public class FlagtronicsProcessorTests
     [TestMethod]
     public void CarWithNoDevice_IsNeverTrustedForPit()
     {
-        _sessionContext.IsFlagtronicsPitActive = true;
-
-        // Null bars mean no in-car device at all, which is not something to trust.
+        // Null bars mean no in-car device at all, which is not something to trust. This is also
+        // what makes an event with no in-car equipment fall to X2 without any separate flag.
         _sessionContext.GetCarByNumber("42")!.SignalBars = null;
+        _sessionContext.UpdatePitOwnership();
+
         Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"));
     }
 
@@ -876,7 +898,6 @@ public class FlagtronicsProcessorTests
 
         Process("""[{ "carNumber": "42", "pitActive": true }]""");
         _sessionContext.UpdatePitOwnership();
-        Assert.IsTrue(_sessionContext.IsFlagtronicsPitActive);
 
         // Healthy device: Flagtronics owns this car, so X2 stands down for it.
         Assert.IsNull(pitProcessor.ProcessCar("42"));
