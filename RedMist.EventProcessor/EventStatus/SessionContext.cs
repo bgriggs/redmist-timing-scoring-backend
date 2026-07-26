@@ -43,15 +43,14 @@ public class SessionContext
     public virtual bool IsFlagtronicsPitActive { get; set; }
 
     /// <summary>
-    /// Fewest signal bars at which a car's Flagtronics in-car pit data is still applied. Below
-    /// this the car falls back to X2 loop data, so only zero and one bars hand over.
+    /// Fewest signal bars at which a car's Flagtronics in-car pit data is still applied. At two
+    /// bars or fewer the car falls back to X2 loop data.
     ///
-    /// In a live 8 hour race, pit episodes beginning at two bars or fewer were spurious 296 times
-    /// against 118 genuine, while at full bars the ratio inverts (343 genuine to 118 spurious).
-    /// That evidence covers the two-bar bucket as well, so a floor of 3 is defensible; 2 is the
-    /// conservative end, handing over only when telemetry is nearly gone.
+    /// Measured over a live 8 hour race: pit episodes beginning at two bars or fewer were
+    /// spurious 296 times against 118 genuine, so that bucket is wrong more often than it is
+    /// right. At full bars the ratio inverts, 343 genuine to 118 spurious.
     /// </summary>
-    public const int MIN_TRUSTED_PIT_SIGNAL_BARS = 2;
+    public const int MIN_TRUSTED_PIT_SIGNAL_BARS = 3;
 
     /// <summary>
     /// Whether Flagtronics in-car pit data should drive this particular car's pit state. False

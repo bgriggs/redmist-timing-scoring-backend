@@ -395,6 +395,23 @@ public class FlagtronicsProcessorTests
     }
 
     [TestMethod]
+    public void PitTrustBoundary_IsInclusiveOfTheFloor()
+    {
+        // Pins >= against >. Two bars or fewer was wrong more often than right in the reference
+        // race, so the floor itself must be trusted and one below it must not be.
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 5, "speed": 80 }]""");
+
+        car.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS;
+        _sessionContext.UpdatePitOwnership();
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("42"), "the floor is trusted");
+
+        car.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS - 1;
+        _sessionContext.UpdatePitOwnership();
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"), "one below the floor is not");
+    }
+
+    [TestMethod]
     public void CarWithNoDevice_IsNeverTrustedForPit()
     {
         _sessionContext.IsFlagtronicsPitActive = true;
