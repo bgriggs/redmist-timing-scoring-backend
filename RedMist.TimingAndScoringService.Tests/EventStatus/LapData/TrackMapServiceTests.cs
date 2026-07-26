@@ -115,6 +115,67 @@ public class TrackMapServiceTests
         Assert.IsNull(_service.CurrentMap);
     }
 
+    #region Declared track length
+
+    [TestMethod]
+    public async Task AddSample_MapMatchingTheDeclaredLength_IsAccepted()
+    {
+        _service.DeclaredLapLengthMeters = CircleTrack.Circumference;
+
+        await CircleTrack.FeedFullLapAsync(_service);
+
+        Assert.IsNotNull(_service.CurrentMap);
+    }
+
+    [TestMethod]
+    public async Task AddSample_MapAtOddsWithTheDeclaredLength_IsDiscarded()
+    {
+        // Laps can agree with each other and still be wrong together - a feed reporting lap counts
+        // consistently late gives every buffer two laps. The declared length is the only thing that
+        // can tell, and a map the event would otherwise be stuck with is thrown away.
+        _service.DeclaredLapLengthMeters = CircleTrack.Circumference * 2;
+
+        await CircleTrack.FeedFullLapAsync(_service);
+
+        Assert.IsNull(_service.CurrentMap);
+    }
+
+    [TestMethod]
+    public async Task AddSample_DiscardedMap_DoesNotPersist()
+    {
+        _service.DeclaredLapLengthMeters = CircleTrack.Circumference * 2;
+
+        await CircleTrack.FeedFullLapAsync(_service);
+
+        await using var db = _dbContextFactory.CreateDbContext();
+        Assert.IsNull(db.TrackMaps.FirstOrDefault(t => t.EventId == EventId));
+    }
+
+    [TestMethod]
+    public async Task AddSample_NoDeclaredLength_LearnsAsBefore()
+    {
+        // External-source events have no declared length; the GPS has to stand on its own there.
+        Assert.IsNull(_service.DeclaredLapLengthMeters);
+
+        await CircleTrack.FeedFullLapAsync(_service);
+
+        Assert.IsNotNull(_service.CurrentMap);
+    }
+
+    [TestMethod]
+    public async Task AddSample_ChordCuttingUndershoot_IsStillAccepted()
+    {
+        // A polyline through sampled fixes cuts every corner, so a learned map reads short against
+        // the declared figure. That is expected, not a disagreement.
+        _service.DeclaredLapLengthMeters = CircleTrack.Circumference * 1.10;
+
+        await CircleTrack.FeedFullLapAsync(_service);
+
+        Assert.IsNotNull(_service.CurrentMap);
+    }
+
+    #endregion
+
     #region Start/finish calibration
 
     /// <summary>Feeds crossings clustered around a point a tenth of the way along the path.</summary>

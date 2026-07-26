@@ -61,6 +61,21 @@ public class TrackMapService
     public TrackMap? CurrentMap => currentMap;
 
     /// <summary>
+    /// The lap length the timing system declares for this track, when it declares one. Corroborating
+    /// laps against each other cannot tell a circuit from one whose every buffer covers two laps -
+    /// a feed reporting lap counts consistently late produces exactly that, and the doubled laps
+    /// agree with each other perfectly. Only something outside the GPS can settle it.
+    /// </summary>
+    public double? DeclaredLapLengthMeters { get; set; }
+
+    /// <summary>
+    /// How far a learned map may sit from the declared length. Generous, because a polyline through
+    /// sampled fixes cuts every corner and reads short, and the declared figure is its own
+    /// measurement - but nowhere near enough to admit a map covering two laps.
+    /// </summary>
+    private const double DeclaredLengthTolerance = 0.25;
+
+    /// <summary>
     /// True once the map's start/finish line has been located. Until then a position on the map can
     /// be measured, but not reliably expressed as a distance into the lap.
     /// </summary>
@@ -133,11 +148,21 @@ public class TrackMapService
     }
 
     /// <summary>
-    /// Feeds a corrected GPS position for a car into the map learner. Once a car completes a clean lap a
-    /// map is built, persisted, and published; subsequent samples are ignored while a map exists.
+    /// Feeds a corrected GPS position for a car into the map learner. Once a car has turned two
+    /// clean laps that agree on the track's length a map is built, persisted, and published;
+    /// subsequent samples are ignored while a map exists.
     /// </summary>
+    /// <param name="carNumber">Car the sample belongs to.</param>
+    /// <param name="latitude">Sample latitude in decimal degrees.</param>
+    /// <param name="longitude">Sample longitude in decimal degrees.</param>
+    /// <param name="completedLaps">The car's completed-lap count when the sample was taken.</param>
+    /// <param name="onTrack">
+    /// Whether the car was on the racing surface. Pit and paddock positions are not the racing line,
+    /// and a lap containing them is not a lap of the track.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the persist and publish that follow a completed map.</param>
     public async Task AddSampleAsync(string carNumber, double latitude, double longitude, int completedLaps,
-        CancellationToken cancellationToken = default)
+        bool onTrack, CancellationToken cancellationToken = default)
     {
         if (currentMap != null || string.IsNullOrEmpty(carNumber))
             return;
@@ -145,13 +170,25 @@ public class TrackMapService
         if (!builders.TryGetValue(carNumber, out var builder))
             builders[carNumber] = builder = new TrackMapBuilder(sessionContext.EventId);
 
-        builder.AddSample(latitude, longitude, completedLaps);
+        builder.AddSample(latitude, longitude, completedLaps, onTrack);
         if (!builder.IsComplete)
             return;
 
         var map = builder.Build(sessionContext.SessionState.SessionId, timeProvider.GetUtcNow().UtcDateTime);
         if (map == null)
             return;
+
+        if (DeclaredLapLengthMeters is double declared && declared > 0
+            && Math.Abs(map.TotalLengthMeters - declared) / declared > DeclaredLengthTolerance)
+        {
+            // Learned from laps that agree with each other but not with the track. Start that car
+            // over rather than persisting a map the event is then stuck with.
+            Logger.LogWarning(
+                "Discarding a {len:F0} m map learned for event {event} from car {car}: the timing system declares {declared:F0} m",
+                map.TotalLengthMeters, sessionContext.EventId, carNumber, declared);
+            builders.Remove(carNumber);
+            return;
+        }
 
         currentMap = map;
         builders.Clear();

@@ -31,23 +31,27 @@ internal static class CircleTrack
     }
 
     /// <summary>
-    /// Feeds the service a partial join-in lap (discarded) plus one full lap, so it learns and exposes a
-    /// map. Uses car "9" as the map source.
+    /// Feeds the service a partial join-in lap (discarded) plus the two agreeing full laps the
+    /// builder needs before it trusts a length, so it learns and exposes a map. Uses car "9" as the
+    /// map source.
     /// </summary>
     public static async Task FeedFullLapAsync(TrackMapService service)
     {
         for (int i = 0; i < 15; i++)
         {
             var (lat, lon) = Point((double)i / 90);
-            await service.AddSampleAsync("9", lat, lon, 0);
+            await service.AddSampleAsync("9", lat, lon, 0, onTrack: true);
         }
-        for (int i = 0; i < 90; i++)
+        foreach (var lap in new[] { 1, 2 })
         {
-            var (lat, lon) = Point((double)i / 90);
-            await service.AddSampleAsync("9", lat, lon, 1);
+            for (int i = 0; i < 90; i++)
+            {
+                var (lat, lon) = Point((double)i / 90);
+                await service.AddSampleAsync("9", lat, lon, lap, onTrack: true);
+            }
         }
-        var (lat2, lon2) = Point(0);
-        await service.AddSampleAsync("9", lat2, lon2, 2);
+        var (closeLat, closeLon) = Point(0);
+        await service.AddSampleAsync("9", closeLat, closeLon, 3, onTrack: true);
     }
 
     /// <summary>

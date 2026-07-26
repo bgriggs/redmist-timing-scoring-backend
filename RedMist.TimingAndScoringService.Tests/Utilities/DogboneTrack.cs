@@ -53,22 +53,26 @@ internal static class DogboneTrack
     }
 
     /// <summary>
-    /// Feeds the service a partial join-in lap (discarded) plus one full lap, so it learns and
-    /// exposes a map. Uses car "9" as the map source.
+    /// Feeds the service a partial join-in lap (discarded) plus the two agreeing full laps the
+    /// builder needs before it trusts a length, so it learns and exposes a map. Uses car "9" as the
+    /// map source.
     /// </summary>
     public static async Task FeedFullLapAsync(TrackMapService service)
     {
         for (double d = 0; d < 200; d += 10)
         {
             var (lat, lon) = AtDistance(d);
-            await service.AddSampleAsync("9", lat, lon, 0);
+            await service.AddSampleAsync("9", lat, lon, 0, onTrack: true);
         }
-        for (double d = 0; d < TotalLength; d += 10)
+        foreach (var lap in new[] { 1, 2 })
         {
-            var (lat, lon) = AtDistance(d);
-            await service.AddSampleAsync("9", lat, lon, 1);
+            for (double d = 0; d < TotalLength; d += 10)
+            {
+                var (lat, lon) = AtDistance(d);
+                await service.AddSampleAsync("9", lat, lon, lap, onTrack: true);
+            }
         }
         var (closeLat, closeLon) = AtDistance(0);
-        await service.AddSampleAsync("9", closeLat, closeLon, 2);
+        await service.AddSampleAsync("9", closeLat, closeLon, 3, onTrack: true);
     }
 }

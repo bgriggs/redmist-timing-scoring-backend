@@ -29,6 +29,9 @@ public class SessionStateProcessingPipeline
 
     // Processor instances
     private readonly RMonitorDataProcessor rMonitorProcessor;
+
+    /// <summary>RMonitor declares its track length in miles.</summary>
+    private const double MetersPerMile = 1609.344;
     private readonly MultiloopProcessor multiloopProcessor;
     private readonly PitProcessor pitProcessor;
     private readonly FlagProcessor flagProcessor;
@@ -154,6 +157,11 @@ public class SessionStateProcessingPipeline
                     {
                         var rmonitorChanges = await _rmonitorMetrics.TrackAsync(() =>
                             rMonitorProcessor.ProcessAsync(message, sessionContext));
+
+                        // The timing system declares the track's length; it is the only measure of
+                        // the circuit that does not come from the GPS being checked against it.
+                        if (rMonitorProcessor.TrackLength > 0)
+                            trackMapService.DeclaredLapLengthMeters = rMonitorProcessor.TrackLength * MetersPerMile;
                         if (rmonitorChanges != null)
                             allAppliedChanges.AddRange(rmonitorChanges);
 
@@ -529,7 +537,12 @@ public class SessionStateProcessingPipeline
                 var car = sessionContext.GetCarByNumber(cn);
                 if (car?.Latitude is double lat && car.Longitude is double lon)
                 {
-                    await trackMapService.AddSampleAsync(cn, lat, lon, car.LastLapCompleted, sessionContext.CancellationToken);
+                    // Only the racing surface describes the racing line: a lap through the pits or
+                    // across the paddock traces geometry the track does not have.
+                    var onTrack = !car.IsInPit
+                        && !(car.FlaggingZone is int zone && zone > FlagtronicsProcessor.MAX_ON_TRACK_ZONE);
+                    await trackMapService.AddSampleAsync(cn, lat, lon, car.LastLapCompleted, onTrack,
+                        sessionContext.CancellationToken);
                     var gpsPatch = await gpsLapPositionEnricher.ProcessCarAsync(car, fromInCarTelemetry);
                     if (gpsPatch != null)
                         carPatches.Add(gpsPatch);
