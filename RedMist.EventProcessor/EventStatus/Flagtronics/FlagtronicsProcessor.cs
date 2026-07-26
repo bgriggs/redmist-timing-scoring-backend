@@ -94,11 +94,16 @@ public class FlagtronicsProcessor
     private readonly TimeProvider timeProvider;
 
 
-    public FlagtronicsProcessor(ILoggerFactory loggerFactory, SessionContext sessionContext, TimeProvider? timeProvider = null)
+    private readonly TelemetrySignalTracker? signalTracker;
+
+
+    public FlagtronicsProcessor(ILoggerFactory loggerFactory, SessionContext sessionContext,
+        TimeProvider? timeProvider = null, TelemetrySignalTracker? signalTracker = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.sessionContext = sessionContext;
         this.timeProvider = timeProvider ?? TimeProvider.System;
+        this.signalTracker = signalTracker;
     }
 
 
@@ -149,6 +154,7 @@ public class FlagtronicsProcessor
                 continue;
 
             lastVehicles[vehicle.CarNumber] = vehicle;
+            signalTracker?.RecordTick(vehicle.CarNumber, IsPositionFaulted(vehicle));
 
             var car = sessionContext.GetCarByNumber(vehicle.CarNumber);
             if (car == null)
@@ -508,6 +514,28 @@ public class FlagtronicsProcessor
         {
             return carLapsWithPitStops.TryGetValue(carNumber, out var laps) && laps.Contains(lapNumber);
         }
+    }
+
+    /// <summary>
+    /// Whether a record carries something that cannot be true of a car being tracked properly,
+    /// for <see cref="CarPosition.SignalBars"/>. Three position-domain faults, all observed in
+    /// production: no usable fix at all, the bad-GPS sentinel speed, and a pit/paddock zone
+    /// reported at racing speed - a car doing 118 mph is not in the pit lane, so that reading
+    /// places the car somewhere it cannot be. Pit-domain faults are excluded on purpose; see
+    /// <see cref="TelemetrySignalTracker"/>.
+    /// </summary>
+    private static bool IsPositionFaulted(FlagtronicsVehicle vehicle)
+    {
+        bool hasValidZone = vehicle.FlaggingZone is int fz && fz >= 1;
+        bool hasPosition = vehicle.Lat is double lat && vehicle.Lon is double lon && (lat != 0 || lon != 0);
+        if (!hasValidZone && !hasPosition)
+            return true;
+
+        if (vehicle.Speed == FlagtronicsVehicle.SPEED_BAD_GPS)
+            return true;
+
+        return hasValidZone && vehicle.FlaggingZone!.Value > MAX_ON_TRACK_ZONE
+            && vehicle.Speed is int sp && sp < FlagtronicsVehicle.SPEED_STOPPED && sp >= PIT_ZONE_GLITCH_SPEED_MPH;
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-using BigMission.TestHelpers;
+﻿using BigMission.TestHelpers;
 using HealthChecks.UI.Client;
 using Keycloak.AuthServices.Authentication;
 using Keycloak.AuthServices.Authorization;
@@ -109,6 +109,7 @@ public class Program
         builder.Services.AddHybridCache(o => o.DefaultEntryOptions = new HybridCacheEntryOptions { Expiration = TimeSpan.FromDays(7), LocalCacheExpiration = TimeSpan.FromDays(7) });
         builder.Services.AddSingleton<SessionContext>();
         builder.Services.AddSingleton<MultiloopProcessor>();
+        builder.Services.AddSingleton<TelemetrySignalTracker>();
         builder.Services.AddSingleton<FlagtronicsProcessor>();
         builder.Services.AddSingleton<RMonitorDataProcessor>();
         builder.Services.AddSingleton<PitProcessor>();
