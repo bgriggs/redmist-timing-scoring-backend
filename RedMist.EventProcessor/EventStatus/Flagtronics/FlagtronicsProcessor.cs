@@ -47,6 +47,15 @@ public class FlagtronicsProcessor
     /// </summary>
     private readonly Dictionary<string, bool> committedPitState = [];
     private readonly Dictionary<string, (bool State, DateTimeOffset Since, DateTimeOffset LastSeen, int Lap)> pendingPitState = [];
+
+    /// <summary>
+    /// Cars in the message just processed whose record carried real coordinates and was not
+    /// faulted. A car reporting an unchanged position produces no patch at all, so consumers that
+    /// need to tell "still reporting a good fix" from "gone off the air" cannot infer it from the
+    /// patches alone. A device talking to us while its GPS is dead is not a fix, however much else
+    /// it has to say.
+    /// </summary>
+    private readonly List<string> carsWithUsableFix = [];
     private int lastSessionId = -1;
 
     /// <summary>
@@ -60,7 +69,7 @@ public class FlagtronicsProcessor
     /// Flagging zones 1-127 are on the racing surface; 128+ are pit/paddock ranges;
     /// 0 is uninitialized/no-GPS.
     /// </summary>
-    private const int MAX_ON_TRACK_ZONE = 127;
+    public const int MAX_ON_TRACK_ZONE = 127;
 
     /// <summary>
     /// A pit/paddock flagging zone reported at or above this speed is treated as a GPS glitch
@@ -107,8 +116,17 @@ public class FlagtronicsProcessor
     }
 
 
+    /// <summary>
+    /// Cars whose most recent record carried a usable position, whether or not it had changed.
+    /// </summary>
+    public IReadOnlyList<string> CarsWithUsableFix => carsWithUsableFix;
+
     public PatchUpdates? Process(TimingMessage message)
     {
+        // Cleared before anything else, so that every early return below leaves it empty instead of
+        // leaving the previous message's cars looking like current reports.
+        carsWithUsableFix.Clear();
+
         if (message.Type != Backend.Shared.Consts.FLAGTRONICS_TYPE)
             return null;
 
@@ -154,7 +172,8 @@ public class FlagtronicsProcessor
                 continue;
 
             lastVehicles[vehicle.CarNumber] = vehicle;
-            signalTracker?.RecordTick(vehicle.CarNumber, IsPositionFaulted(vehicle));
+            var faulted = IsPositionFaulted(vehicle);
+            signalTracker?.RecordTick(vehicle.CarNumber, faulted);
 
             var car = sessionContext.GetCarByNumber(vehicle.CarNumber);
             if (car == null)
@@ -163,6 +182,15 @@ public class FlagtronicsProcessor
                 // full-state resend once the timing feed registers it.
                 continue;
             }
+
+            // Faulted is not the same test as usable here. A record carrying a flagging zone but no
+            // coordinates is not faulted - the zone alone locates the car well enough to judge its
+            // signal by - yet there is nothing in it to position from, and treating it as a fix
+            // would keep a dead-GPS device's last known position alive indefinitely.
+            var carriesPosition = vehicle.Lat is double vehicleLat && vehicle.Lon is double vehicleLon
+                && (vehicleLat != 0 || vehicleLon != 0);
+            if (!faulted && carriesPosition)
+                carsWithUsableFix.Add(vehicle.CarNumber);
 
             var patch = BuildPatch(vehicle, car, isLiveTick: true);
             if (CarPositionMapper.GetChangedProperties(patch).Length > 1)

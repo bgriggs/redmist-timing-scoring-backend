@@ -1,4 +1,6 @@
 using RedMist.EventProcessor.EventStatus.LapData;
+using RedMist.TimingCommon.LapTiming;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.EventProcessor.Tests.Utilities;
 
@@ -46,5 +48,30 @@ internal static class CircleTrack
         }
         var (lat2, lon2) = Point(0);
         await service.AddSampleAsync("9", lat2, lon2, 2);
+    }
+
+    /// <summary>
+    /// A ready-made map of the circle, calibrated with its start/finish line on the path origin, for
+    /// tests that need one already in the database rather than learned from a live feed.
+    /// </summary>
+    public static TrackMap BuildCalibratedMap(int eventId, int sessionId = 1, int points = 90)
+    {
+        var map = new TrackMap { EventId = eventId, SessionId = sessionId, StartFinishOffsetMeters = 0 };
+        double cumulative = 0;
+        for (int i = 0; i < points; i++)
+        {
+            var (lat, lon) = Point((double)i / points);
+            if (i > 0)
+            {
+                var (prevLat, prevLon) = Point((double)(i - 1) / points);
+                cumulative += TrackGeometry.DistanceMeters(prevLat, prevLon, lat, lon);
+            }
+            map.Points.Add(new TrackMapPoint { Latitude = lat, Longitude = lon, CumulativeDistanceMeters = cumulative });
+        }
+
+        var (lastLat, lastLon) = Point((double)(points - 1) / points);
+        var (firstLat, firstLon) = Point(0);
+        map.TotalLengthMeters = cumulative + TrackGeometry.DistanceMeters(lastLat, lastLon, firstLat, firstLon);
+        return map;
     }
 }

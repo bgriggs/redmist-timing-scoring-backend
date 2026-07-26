@@ -122,7 +122,7 @@ public class Program
         builder.Services.AddSingleton<FastestPaceEnricher>();
         builder.Services.AddSingleton<ProjectedLapTimeEnricher>();
         builder.Services.AddSingleton<TrackMapService>();
-        builder.Services.AddSingleton<GpsProjectedLapTimeEnricher>();
+        builder.Services.AddSingleton<GpsLapPositionEnricher>();
         builder.Services.AddSingleton<StaleCarEnricher>();
         builder.Services.AddSingleton<DriverEnricher>();
         builder.Services.AddSingleton<UpdateConsolidator>();

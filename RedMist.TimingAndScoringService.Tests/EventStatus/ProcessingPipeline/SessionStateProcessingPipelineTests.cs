@@ -64,7 +64,7 @@ public class SessionStateProcessingPipelineTests
     private FastestPaceEnricher _fastestPaceEnricher = null!;
     private ProjectedLapTimeEnricher _projectedLapTimeEnricher = null!;
     private TrackMapService _trackMapService = null!;
-    private GpsProjectedLapTimeEnricher _gpsProjectedLapTimeEnricher = null!;
+    private GpsLapPositionEnricher _gpsLapPositionEnricher = null!;
     private StaleCarEnricher _staleCarEnricher = null!;
     private UpdateConsolidator _updateConsolidator = null!;
     private FlagtronicsProcessor _flagtronicsProcessor = null!;
@@ -210,7 +210,7 @@ public class SessionStateProcessingPipelineTests
         _fastestPaceEnricher = new FastestPaceEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
         _projectedLapTimeEnricher = new ProjectedLapTimeEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
         _trackMapService = new TrackMapService(_sessionContext, _dbContextFactory, _mockConnectionMultiplexer.Object, _mockLoggerFactory.Object, _timeProvider);
-        _gpsProjectedLapTimeEnricher = new GpsProjectedLapTimeEnricher(_mockLoggerFactory.Object, _trackMapService, _sessionContext, _projectedLapTimeEnricher, _timeProvider);
+        _gpsLapPositionEnricher = new GpsLapPositionEnricher(_mockLoggerFactory.Object, _trackMapService, _sessionContext, _timeProvider);
         _staleCarEnricher = new StaleCarEnricher(_mockLoggerFactory.Object, _sessionContext);
         _statusAggregator = new StatusAggregator(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
@@ -235,7 +235,7 @@ public class SessionStateProcessingPipelineTests
             _fastestPaceEnricher,
             _projectedLapTimeEnricher,
             _trackMapService,
-            _gpsProjectedLapTimeEnricher,
+            _gpsLapPositionEnricher,
             _staleCarEnricher,
             _updateConsolidator,
             _flagtronicsProcessor,
@@ -293,31 +293,16 @@ public class SessionStateProcessingPipelineTests
     [TestMethod]
     public async Task Flagtronics_MultipleGpsCars_GpsEnrichmentDoesNotThrow_Test()
     {
-        // Regression: ApplyGpsEnrichmentAsync appends projected-lap patches to carPatches while
+        // Regression: ApplyGpsEnrichmentAsync appends track-position patches to carPatches while
         // enumerating a lazy query built over that same list. With two GPS cars where the first
-        // yields a projection, the mid-loop append invalidated the enumeration ("Collection was
-        // modified") and the second car was never enriched. Prime the history fallback so the
-        // first car produces a projection, then verify both cars get a projected lap time.
+        // yields a patch, the mid-loop append invalidated the enumeration ("Collection was
+        // modified") and the second car was never enriched.
         _sessionContext.UpdateCars(
         [
             new CarPosition { Number = "41", TransponderId = 1041 },
             new CarPosition { Number = "42", TransponderId = 1042 },
         ]);
         _sessionContext.SessionState.CurrentFlag = Flags.Green;
-        foreach (var number in new[] { "41", "42" })
-        {
-            for (var lap = 1; lap <= 3; lap++)
-            {
-                await _carLapHistoryService.AddLapAsync(new CarPosition
-                {
-                    Number = number,
-                    LastLapCompleted = lap,
-                    LastLapTime = "00:01:30.000",
-                    TrackFlag = Flags.Green,
-                    LapIncludedPit = false,
-                });
-            }
-        }
 
         var json = """
             [{ "carNumber": "41", "speed": 80, "lat": 36.5841, "lon": -121.7539, "pitActive": false },
@@ -325,9 +310,131 @@ public class SessionStateProcessingPipelineTests
             """;
         await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow));
 
-        // Both cars enriched: the second would be 0 if enrichment threw after the first.
-        Assert.IsTrue(_sessionContext.GetCarByNumber("41")!.ProjectedLapTimeMs > 0);
-        Assert.IsTrue(_sessionContext.GetCarByNumber("42")!.ProjectedLapTimeMs > 0);
+        // No track map has been learned, so both cars are told their position is unknown - the point
+        // is that the second car was reached at all. It would still be null if enrichment threw
+        // after the first car's patch was appended.
+        Assert.AreEqual(CarPosition.InvalidTrackPosition, _sessionContext.GetCarByNumber("41")!.LapPositionPercent);
+        Assert.AreEqual(CarPosition.InvalidTrackPosition, _sessionContext.GetCarByNumber("42")!.LapPositionPercent);
+    }
+
+    /// <summary>
+    /// Puts a calibrated map for the event in the database so the pipeline's own TrackMapService
+    /// loads it, rather than having to learn one from a live feed.
+    /// </summary>
+    private async Task GivenStoredTrackMapAsync()
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        db.TrackMaps.Add(new RedMist.Database.Models.TrackMapRecord
+        {
+            EventId = 1,
+            Map = CircleTrack.BuildCalibratedMap(eventId: 1),
+            UpdatedUtc = _timeProvider.GetUtcNow().UtcDateTime,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private TimingMessage FlagtronicsAt(string carNumber, double lapFraction)
+    {
+        var (lat, lon) = CircleTrack.Point(lapFraction);
+        var json = $$"""
+            [{ "carNumber": "{{carNumber}}", "speed": 80, "lat": {{lat:F8}}, "lon": {{lon:F8}}, "pitActive": false }]
+            """;
+        return new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow);
+    }
+
+    [TestMethod]
+    public async Task Flagtronics_GpsPosition_PublishesLapPositionPercent_Test()
+    {
+        await GivenStoredTrackMapAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041 }]);
+
+        await _pipeline.PostAsync(FlagtronicsAt("41", 0.25));
+
+        Assert.AreEqual(25, _sessionContext.GetCarByNumber("41")!.LapPositionPercent!.Value, 2);
+    }
+
+    [TestMethod]
+    public async Task Gps_DeviceStillReportingButPositionDead_RetiresThePosition_Test()
+    {
+        // The device keeps talking while its GPS produces nothing usable. Its records carry no
+        // position change, so nothing marks it as still positioning - and without that distinction
+        // the last good percentage would sit on screen for the rest of the session.
+        await GivenStoredTrackMapAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041 }]);
+        await _pipeline.PostAsync(FlagtronicsAt("41", 0.25));
+        Assert.AreEqual(25, _sessionContext.GetCarByNumber("41")!.LapPositionPercent!.Value, 2);
+
+        // Speed 255 is the device's own bad-GPS sentinel.
+        var deadGps = """
+            [{ "carNumber": "41", "speed": 255, "lat": 0, "lon": 0, "pitActive": false }]
+            """;
+        for (int i = 0; i < 4; i++)
+        {
+            _timeProvider.Advance(TimeSpan.FromSeconds(4));
+            await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, deadGps, 1, DateTime.UtcNow));
+        }
+
+        Assert.AreEqual(CarPosition.InvalidTrackPosition, _sessionContext.GetCarByNumber("41")!.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task Gps_DeviceReportingZoneWithoutCoordinates_RetiresThePosition_Test()
+    {
+        // A device whose GPS module has failed but which keeps emitting its last flagging zone is
+        // not "faulted" as far as signal strength goes - the zone still locates it well enough to
+        // grade the link - but there is nothing in the record to position from.
+        await GivenStoredTrackMapAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041 }]);
+        await _pipeline.PostAsync(FlagtronicsAt("41", 0.25));
+        Assert.AreEqual(25, _sessionContext.GetCarByNumber("41")!.LapPositionPercent!.Value, 2);
+
+        var zoneOnly = """
+            [{ "carNumber": "41", "flaggingZone": 45, "pitActive": false }]
+            """;
+        for (int i = 0; i < 4; i++)
+        {
+            _timeProvider.Advance(TimeSpan.FromSeconds(4));
+            await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, zoneOnly, 1, DateTime.UtcNow));
+        }
+
+        Assert.AreEqual(CarPosition.InvalidTrackPosition, _sessionContext.GetCarByNumber("41")!.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task Gps_StationaryCarStillReporting_KeepsItsPosition_Test()
+    {
+        // The counterpart to the test above: an unchanged position from a healthy device is a car
+        // sitting still, not a car that has gone dark.
+        await GivenStoredTrackMapAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041 }]);
+        await _pipeline.PostAsync(FlagtronicsAt("41", 0.25));
+
+        for (int i = 0; i < 4; i++)
+        {
+            _timeProvider.Advance(TimeSpan.FromSeconds(4));
+            await _pipeline.PostAsync(FlagtronicsAt("41", 0.25));
+        }
+
+        Assert.AreEqual(25, _sessionContext.GetCarByNumber("41")!.LapPositionPercent!.Value, 2);
+    }
+
+    [TestMethod]
+    public async Task Gps_SourceGoesDownEntirely_PositionIsRetiredByTheTimingHeartbeat_Test()
+    {
+        // When the GPS source dies, no GPS message arrives to carry the staleness sweep - so the
+        // primary timing feed's own heartbeat has to be what notices. Without this the last known
+        // position stays on screen for the rest of the session.
+        await GivenStoredTrackMapAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041 }]);
+        await _pipeline.PostAsync(FlagtronicsAt("41", 0.25));
+        Assert.AreEqual(25, _sessionContext.GetCarByNumber("41")!.LapPositionPercent!.Value, 2);
+
+        // Flagtronics goes silent; only RMonitor keeps arriving.
+        _timeProvider.Advance(TimeSpan.FromSeconds(15));
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE,
+            "$G,1,\"1041\",1,\"00:05:30.123\"", 1, DateTime.UtcNow));
+
+        Assert.AreEqual(CarPosition.InvalidTrackPosition, _sessionContext.GetCarByNumber("41")!.LapPositionPercent);
     }
 
     [TestMethod]

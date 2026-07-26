@@ -65,6 +65,89 @@ public class FlagtronicsProcessorTests
         return Process(json);
     }
 
+    #region Cars with a usable fix
+
+    [TestMethod]
+    public void CarsWithUsableFix_ReportedPosition_IsListed()
+    {
+        Process("""[{ "carNumber": "42", "speed": 80, "lat": 36.5841, "lon": -121.7539 }]""");
+
+        CollectionAssert.AreEquivalent(new[] { "42" }, _processor.CarsWithUsableFix.ToArray());
+    }
+
+    [TestMethod]
+    public void CarsWithUsableFix_UnchangedPosition_IsStillListed()
+    {
+        // The point of this list: an unchanged record produces no patch, but the car is plainly
+        // still reporting its position.
+        var json = """[{ "carNumber": "42", "speed": 80, "lat": 36.5841, "lon": -121.7539 }]""";
+        Process(json);
+        var second = Process(json);
+
+        Assert.IsNull(second, "Nothing changed, so there is no patch to carry the fact it reported");
+        CollectionAssert.AreEquivalent(new[] { "42" }, _processor.CarsWithUsableFix.ToArray());
+    }
+
+    [TestMethod]
+    public void CarsWithUsableFix_BadGpsSentinelSpeed_IsExcluded()
+    {
+        Process("""[{ "carNumber": "42", "speed": 255, "lat": 36.5841, "lon": -121.7539 }]""");
+
+        Assert.AreEqual(0, _processor.CarsWithUsableFix.Count);
+    }
+
+    [TestMethod]
+    public void CarsWithUsableFix_ZoneWithoutCoordinates_IsExcluded()
+    {
+        // Not faulted - the zone locates the car well enough to grade its signal - but there is
+        // nothing here to position from.
+        Process("""[{ "carNumber": "42", "speed": 40, "flaggingZone": 45 }]""");
+
+        Assert.AreEqual(0, _processor.CarsWithUsableFix.Count);
+    }
+
+    [TestMethod]
+    public void CarsWithUsableFix_ZeroCoordinates_IsExcluded()
+    {
+        Process("""[{ "carNumber": "42", "speed": 40, "flaggingZone": 45, "lat": 0, "lon": 0 }]""");
+
+        Assert.AreEqual(0, _processor.CarsWithUsableFix.Count);
+    }
+
+    [TestMethod]
+    public void CarsWithUsableFix_CarUnknownToTiming_IsExcluded()
+    {
+        Process("""[{ "carNumber": "999", "speed": 80, "lat": 36.5841, "lon": -121.7539 }]""");
+
+        Assert.AreEqual(0, _processor.CarsWithUsableFix.Count);
+    }
+
+    [TestMethod]
+    public void CarsWithUsableFix_IsNotCarriedOverFromAnEarlierMessage()
+    {
+        Process("""[{ "carNumber": "42", "speed": 80, "lat": 36.5841, "lon": -121.7539 }]""");
+        Assert.AreEqual(1, _processor.CarsWithUsableFix.Count);
+
+        // Every early return has to leave the list empty, or cars that are no longer reporting keep
+        // looking current.
+        _processor.Process(new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "[]", 1, DateTime.UtcNow));
+        Assert.AreEqual(0, _processor.CarsWithUsableFix.Count);
+
+        Process("""[{ "carNumber": "42", "speed": 80, "lat": 36.5841, "lon": -121.7539 }]""");
+        Assert.AreEqual(1, _processor.CarsWithUsableFix.Count);
+
+        Process("not json at all");
+        Assert.AreEqual(0, _processor.CarsWithUsableFix.Count);
+
+        Process("""[{ "carNumber": "42", "speed": 80, "lat": 36.5841, "lon": -121.7539 }]""");
+        Assert.AreEqual(1, _processor.CarsWithUsableFix.Count);
+
+        Process("[]");
+        Assert.AreEqual(0, _processor.CarsWithUsableFix.Count);
+    }
+
+    #endregion
+
     #region Basic processing
 
     [TestMethod]

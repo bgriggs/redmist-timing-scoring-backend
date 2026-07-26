@@ -42,7 +42,7 @@ public class SessionStateProcessingPipeline
     private readonly FastestPaceEnricher fastestPaceEnricher;
     private readonly ProjectedLapTimeEnricher projectedLapTimeEnricher;
     private readonly TrackMapService trackMapService;
-    private readonly GpsProjectedLapTimeEnricher gpsProjectedLapTimeEnricher;
+    private readonly GpsLapPositionEnricher gpsLapPositionEnricher;
     private readonly StaleCarEnricher staleCarEnricher;
     private readonly UpdateConsolidator updateConsolidator;
     private readonly FlagtronicsProcessor flagtronicsProcessor;
@@ -87,7 +87,7 @@ public class SessionStateProcessingPipeline
         FastestPaceEnricher fastestPaceEnricher,
         ProjectedLapTimeEnricher projectedLapTimeEnricher,
         TrackMapService trackMapService,
-        GpsProjectedLapTimeEnricher gpsProjectedLapTimeEnricher,
+        GpsLapPositionEnricher gpsLapPositionEnricher,
         StaleCarEnricher staleCarEnricher,
         UpdateConsolidator updateConsolidator,
         FlagtronicsProcessor flagtronicsProcessor,
@@ -111,7 +111,7 @@ public class SessionStateProcessingPipeline
         this.fastestPaceEnricher = fastestPaceEnricher;
         this.projectedLapTimeEnricher = projectedLapTimeEnricher;
         this.trackMapService = trackMapService;
-        this.gpsProjectedLapTimeEnricher = gpsProjectedLapTimeEnricher;
+        this.gpsLapPositionEnricher = gpsLapPositionEnricher;
         this.staleCarEnricher = staleCarEnricher;
         this.updateConsolidator = updateConsolidator;
         this.flagtronicsProcessor = flagtronicsProcessor;
@@ -259,10 +259,19 @@ public class SessionStateProcessingPipeline
                                 allAppliedChanges.Add(new PatchUpdates([], [.. staleCarPatches]));
 
                             // Telemetry signal decays on the absence of records, so it has to be
-                            // driven from here rather than from the telemetry feed itself.
+                            // driven from here rather than from the telemetry feed itself. Runs
+                            // before the position sweep so a car dropping to zero bars is reflected
+                            // in the same pass rather than the next one.
                             var signalChanges = telemetrySignalTracker.Process();
                             if (signalChanges != null)
                                 allAppliedChanges.Add(signalChanges);
+
+                            // Retire GPS-derived track positions here as well as on GPS arrival: when
+                            // the GPS source goes down entirely there are no positions left to carry
+                            // the sweep, and every car's position would otherwise stay frozen on screen.
+                            var stalePositionPatches = gpsLapPositionEnricher.ExpireStalePositions();
+                            if (stalePositionPatches.Count > 0)
+                                allAppliedChanges.Add(new PatchUpdates([], [.. stalePositionPatches]));
                         }
 
                         // Perform a full external data update at defined intervals. 60 is at most once per
@@ -399,7 +408,12 @@ public class SessionStateProcessingPipeline
             // GPS-based projected lap time. Corrected positions carried by this batch feed the track-map
             // learner and refine each moving car's projected lap time. This is new enrichment the external
             // source doesn't compute, so it runs here even though ProcessExternal otherwise skips re-enrichment.
-            await ApplyGpsEnrichmentAsync(carPatches);
+            // The external source positions cars itself, so its fixes are not judged by the health
+            // of any in-car link. Note it carries no counterpart to the Flagtronics "still
+            // reporting" signal: a car whose position has not changed may simply be absent from the
+            // batch, so a parked car's position ages out rather than being held. That errs toward
+            // the time-based projection instead of showing a position that may have gone stale.
+            await ApplyGpsEnrichmentAsync(carPatches, fromInCarTelemetry: false);
 
             // Log completed laps. The external branch otherwise bypasses the lap processor that the
             // RMonitor path runs, so externally-sourced laps would never be persisted.
@@ -447,16 +461,26 @@ public class SessionStateProcessingPipeline
     {
         try
         {
+            // A message that changes nothing yields no updates, but it still says which cars are
+            // reporting - and a device whose GPS has died is precisely a car that keeps sending
+            // records while changing nothing. Bailing out here would leave its position on screen
+            // indefinitely, so enrichment runs on every message rather than only on eventful ones.
             var updates = flagtronicsProcessor.Process(message);
-            if (updates == null)
+
+            // GPS positions feed the track-map learner and each car's position around the lap,
+            // the same enrichment the external patch lane receives. A car reporting an unchanged
+            // position produces no patch, so the cars still delivering a usable fix are passed
+            // separately - a car sitting still is not the same as one that has gone off the air,
+            // and neither is one whose device is talking while its GPS is dead.
+            var carPatches = updates?.CarPatches.ToList() ?? [];
+            gpsLapPositionEnricher.MarkSeen(flagtronicsProcessor.CarsWithUsableFix);
+            await ApplyGpsEnrichmentAsync(carPatches, fromInCarTelemetry: true);
+
+            var sessionPatches = updates?.SessionPatches ?? [];
+            if (carPatches.Count == 0 && sessionPatches.Count == 0)
                 return null;
 
-            // GPS positions feed the track-map learner and GPS-projected lap timing,
-            // the same enrichment the external patch lane receives.
-            var carPatches = updates.CarPatches.ToList();
-            await ApplyGpsEnrichmentAsync(carPatches);
-
-            return new PatchUpdates(updates.SessionPatches, [.. carPatches]);
+            return new PatchUpdates(sessionPatches, [.. carPatches]);
         }
         catch (Exception ex)
         {
@@ -467,35 +491,45 @@ public class SessionStateProcessingPipeline
     }
 
     /// <summary>
-    /// Feeds patched GPS positions to the track-map learner and refines the projected lap
-    /// time of each moving car, appending any resulting patches to the list.
+    /// Feeds patched GPS positions to the track-map learner and updates each moving car's position
+    /// around the lap, appending any resulting patches to the list. Cars whose GPS has gone quiet
+    /// have their position retired in the same pass, since a dropout produces no patch of its own.
     /// </summary>
-    private async Task ApplyGpsEnrichmentAsync(List<CarPositionPatch> carPatches)
+    /// <param name="carPatches">Patches from this batch; enrichment appends to this list.</param>
+    /// <param name="fromInCarTelemetry">
+    /// Whether these positions came from the cars' own telemetry devices, whose link health is
+    /// tracked as signal bars, rather than from the timing source.
+    /// </param>
+    private async Task ApplyGpsEnrichmentAsync(List<CarPositionPatch> carPatches, bool fromInCarTelemetry)
     {
-        // Materialize before the loop: the loop appends projected-lap patches to carPatches,
+        // Materialize before the loop: the loop appends track-position patches to carPatches,
         // which would otherwise invalidate this lazy query mid-enumeration.
         var gpsCars = carPatches
             .Where(cp => (cp.Latitude != null || cp.Longitude != null) && !string.IsNullOrWhiteSpace(cp.Number))
             .Select(cp => cp.Number!)
             .Distinct()
             .ToList();
-        var hadGps = false;
-        foreach (var cn in gpsCars)
+
+        if (gpsCars.Count > 0)
         {
-            if (!hadGps)
+            await trackMapService.EnsureLoadedAsync(sessionContext.CancellationToken);
+            foreach (var cn in gpsCars)
             {
-                await trackMapService.EnsureLoadedAsync(sessionContext.CancellationToken);
-                hadGps = true;
-            }
-            var car = sessionContext.GetCarByNumber(cn);
-            if (car?.Latitude is double lat && car.Longitude is double lon)
-            {
-                await trackMapService.AddSampleAsync(cn, lat, lon, car.LastLapCompleted, sessionContext.CancellationToken);
-                var gpsPatch = await gpsProjectedLapTimeEnricher.ProcessCarAsync(car);
-                if (gpsPatch != null)
-                    carPatches.Add(gpsPatch);
+                var car = sessionContext.GetCarByNumber(cn);
+                if (car?.Latitude is double lat && car.Longitude is double lon)
+                {
+                    await trackMapService.AddSampleAsync(cn, lat, lon, car.LastLapCompleted, sessionContext.CancellationToken);
+                    var gpsPatch = await gpsLapPositionEnricher.ProcessCarAsync(car, fromInCarTelemetry);
+                    if (gpsPatch != null)
+                        carPatches.Add(gpsPatch);
+                }
             }
         }
+
+        // Sweep even when this batch carried no usable position: a source still talking to us while
+        // every car's GPS is dead is exactly when positions need retiring, and it produces no
+        // position patches to trigger the sweep by.
+        carPatches.AddRange(gpsLapPositionEnricher.ExpireStalePositions());
     }
 
     /// <summary>
