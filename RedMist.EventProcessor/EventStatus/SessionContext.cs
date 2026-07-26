@@ -43,6 +43,73 @@ public class SessionContext
     public virtual bool IsFlagtronicsPitActive { get; set; }
 
     /// <summary>
+    /// Fewest signal bars at which a car's Flagtronics in-car pit data is still applied. Below
+    /// this the car falls back to X2 loop data, so only zero and one bars hand over.
+    ///
+    /// In a live 8 hour race, pit episodes beginning at two bars or fewer were spurious 296 times
+    /// against 118 genuine, while at full bars the ratio inverts (343 genuine to 118 spurious).
+    /// That evidence covers the two-bar bucket as well, so a floor of 3 is defensible; 2 is the
+    /// conservative end, handing over only when telemetry is nearly gone.
+    /// </summary>
+    public const int MIN_TRUSTED_PIT_SIGNAL_BARS = 2;
+
+    /// <summary>
+    /// Whether Flagtronics in-car pit data should drive this particular car's pit state. False
+    /// when the feed is absent, when the car has no in-car device (<see cref="CarPosition.SignalBars"/>
+    /// null), or when its telemetry has degraded past <see cref="MIN_TRUSTED_PIT_SIGNAL_BARS"/> -
+    /// in which case X2 loop data takes the car back.
+    ///
+    /// This is per car rather than per event on purpose: device failures are individual and
+    /// intermittent. In the reference race one car's device degraded for the last five hours
+    /// while the rest of the field stayed clean, and another failed for a single hour and
+    /// recovered. It also covers the whole feed dying, since every car then goes stale and drops
+    /// to zero bars.
+    /// </summary>
+    public virtual bool IsFlagtronicsPitTrusted(string? carNumber)
+    {
+        if (!IsFlagtronicsPitActive || string.IsNullOrEmpty(carNumber))
+            return false;
+
+        return flagtronicsPitOwners.TryGetValue(carNumber, out var owned) && owned;
+    }
+
+    private readonly Dictionary<string, bool> flagtronicsPitOwners = [];
+
+    /// <summary>
+    /// Reassesses which source owns each car's pit state, from the telemetry health published as
+    /// <see cref="CarPosition.SignalBars"/>. Driven from the pipeline so the answer is stable for
+    /// a whole pass; <see cref="IsFlagtronicsPitTrusted"/> is a pure read of the result.
+    ///
+    /// Ownership only changes while a car is out of the pit. Handing a car over mid-stop splits
+    /// one physical stop across two sources, and the source taking it on has nothing to say yet -
+    /// X2 has no loop passing for a car sitting still in a box - so the car would be shown
+    /// leaving the pit while stationary and then entering again on recovery. That is exactly the
+    /// enter/exit flapping this split exists to remove. It matters because a long stop is a
+    /// common cause of losing a GPS fix, which is what drives the bars down in the first place.
+    /// </summary>
+    public virtual void UpdatePitOwnership()
+    {
+        if (!IsFlagtronicsPitActive)
+        {
+            flagtronicsPitOwners.Clear();
+            return;
+        }
+
+        foreach (var car in SessionState.CarPositions)
+        {
+            if (string.IsNullOrEmpty(car.Number))
+                continue;
+
+            // Null bars mean no in-car device, and null >= n is false, which is the wanted answer.
+            bool eligible = car.SignalBars >= MIN_TRUSTED_PIT_SIGNAL_BARS;
+            if (!flagtronicsPitOwners.TryGetValue(car.Number, out var owned))
+                flagtronicsPitOwners[car.Number] = eligible;
+            else if (owned != eligible && !car.IsInPit)
+                flagtronicsPitOwners[car.Number] = eligible;
+        }
+    }
+
+    /// <summary>
     /// Latest overall track flag reported by the RMonitor timing system. RMonitor is the
     /// authoritative source for the overall flag; see <see cref="GetEffectiveTrackFlag"/>.
     /// </summary>
@@ -203,6 +270,7 @@ public class SessionContext
             // into the fresh CurrentFlag before the new session's first heartbeat/feed arrives.
             RMonitorTrackFlag = Flags.Unknown;
             FlagtronicsFullCourseFlag = Flags.Unknown;
+            flagtronicsPitOwners.Clear();
         }
     }
 
