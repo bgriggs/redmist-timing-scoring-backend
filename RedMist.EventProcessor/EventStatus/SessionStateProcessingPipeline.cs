@@ -185,6 +185,10 @@ public class SessionStateProcessingPipeline
                                     var ftLapPatch = flagtronicsProcessor.NotifyLapCompleted(cn ?? string.Empty);
                                     if (ftLapPatch != null)
                                         ftLapPatches.Add(ftLapPatch);
+
+                                    // The car is demonstrably on track, so the in-pit hold on
+                                    // changing its pit-state owner no longer applies.
+                                    sessionContext.ReleasePitOwnershipHold(cn);
                                 }
                                 if (ftLapPatches.Count > 0)
                                     allAppliedChanges.Add(new PatchUpdates([], [.. ftLapPatches]));
@@ -263,6 +267,7 @@ public class SessionStateProcessingPipeline
                             var signalChanges = telemetrySignalTracker.Process();
                             if (signalChanges != null)
                                 allAppliedChanges.Add(signalChanges);
+                            sessionContext.UpdatePitOwnership();
                         }
 
                         // Perform a full external data update at defined intervals. 60 is at most once per
@@ -448,6 +453,13 @@ public class SessionStateProcessingPipeline
         try
         {
             var updates = flagtronicsProcessor.Process(message);
+
+            // Also swept here so an event driven by something other than RMonitor still gets
+            // signal bars published - without them every car reads as untrusted and Flagtronics
+            // pit detection would be silently disabled for the whole event.
+            telemetrySignalTracker.Process();
+            sessionContext.UpdatePitOwnership();
+
             if (updates == null)
                 return null;
 

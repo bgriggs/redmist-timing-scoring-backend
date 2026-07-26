@@ -268,7 +268,7 @@ public class SessionStateProcessingPipelineTests
     public async Task Flagtronics_VehicleData_AppliedThroughPipeline_Test()
     {
         // Arrange
-        _sessionContext.UpdateCars([new CarPosition { Number = "42", TransponderId = 1042 }]);
+        _sessionContext.UpdateCars([new CarPosition { Number = "42", TransponderId = 1042, SignalBars = CarPosition.MaxSignalBars }]);
         var json = """[{ "carNumber": "42", "speed": 88, "lat": 36.5841, "lon": -121.7539, "pitActive": true, "pitDuration": "00:01:30.000", "carFlag": "Blue", "driverSource": "blePuck" }]""";
 
         // Act - the pit state debounce needs the reading to persist across the confirm window
@@ -277,7 +277,6 @@ public class SessionStateProcessingPipelineTests
         await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow));
 
         // Assert
-        Assert.IsTrue(_sessionContext.IsFlagtronicsPitActive);
         var car = _sessionContext.GetCarByNumber("42");
         Assert.IsNotNull(car);
         Assert.AreEqual(36.5841, car!.Latitude);
@@ -334,7 +333,7 @@ public class SessionStateProcessingPipelineTests
     public async Task Flagtronics_X2PitSuppressed_AfterFlagtronicsData_Test()
     {
         // Arrange
-        _sessionContext.UpdateCars([new CarPosition { Number = "42", TransponderId = 1042 }]);
+        _sessionContext.UpdateCars([new CarPosition { Number = "42", TransponderId = 1042, SignalBars = CarPosition.MaxSignalBars }]);
         var ftJson = """[{ "carNumber": "42", "pitActive": true }]""";
         await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, ftJson, 1, DateTime.UtcNow));
         _timeProvider.Advance(TimeSpan.FromSeconds(11));
@@ -364,8 +363,9 @@ public class SessionStateProcessingPipelineTests
             _timeProvider.Advance(TimeSpan.FromSeconds(3));
         }
 
-        // Nothing has driven the sweep yet.
-        Assert.IsFalse(_sessionContext.SessionState.HasTelemetrySource);
+        // The Flagtronics lane drives the sweep itself, so an event with no RMonitor feed still
+        // publishes signal bars rather than leaving every car untrusted.
+        Assert.IsTrue(_sessionContext.SessionState.HasTelemetrySource);
 
         for (int i = 0; i < 3; i++)
             await _pipeline.PostAsync(new TimingMessage("rmonitor", "$I,\"07:29:44\",\"26 Apr 25\"", 1, DateTime.Now));

@@ -41,8 +41,10 @@ public class FlagtronicsProcessorTests
         _sessionContext = new SessionContext(config, dbContextFactory, _mockLoggerFactory.Object, mockLapHistoryService.Object);
         _sessionContext.UpdateCars(
             [
-            new CarPosition { Number = "42", TransponderId = 42, LastLapCompleted = 10 },
-            new CarPosition { Number = "7x", TransponderId = 77 },
+            // Full bars: a healthy in-car device, which is what these tests exercise. Pit data
+            // is only applied for cars whose telemetry is trusted; see the X2 fallback region.
+            new CarPosition { Number = "42", TransponderId = 42, LastLapCompleted = 10, SignalBars = CarPosition.MaxSignalBars },
+            new CarPosition { Number = "7x", TransponderId = 77, SignalBars = CarPosition.MaxSignalBars },
             ]);
 
         _time = new FakeTimeProvider();
@@ -52,7 +54,12 @@ public class FlagtronicsProcessorTests
     private static TimingMessage FtMessage(string json) =>
         new(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow);
 
-    private PatchUpdates? Process(string json) => _processor.Process(FtMessage(json));
+    private PatchUpdates? Process(string json)
+    {
+        // The pipeline reassesses which source owns each car's pit state once per pass.
+        _sessionContext.UpdatePitOwnership();
+        return _processor.Process(FtMessage(json));
+    }
 
     /// <summary>
     /// Feeds the same record either side of the pit-state confirm window so a changed pit
@@ -72,7 +79,6 @@ public class FlagtronicsProcessorTests
     {
         var result = _processor.Process(new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "[]", 1, DateTime.UtcNow));
         Assert.IsNull(result);
-        Assert.IsFalse(_sessionContext.IsFlagtronicsPitActive);
     }
 
     [TestMethod]
@@ -82,10 +88,12 @@ public class FlagtronicsProcessorTests
     }
 
     [TestMethod]
-    public void Process_VehicleData_SetsFlagtronicsPitActive()
+    public void Process_VehicleData_EstablishesPitOwnershipForAHealthyCar()
     {
         Process("""[{ "carNumber": "42", "pitActive": false }]""");
-        Assert.IsTrue(_sessionContext.IsFlagtronicsPitActive);
+        _sessionContext.UpdatePitOwnership();
+
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("42"));
     }
 
     [TestMethod]
@@ -319,6 +327,120 @@ public class FlagtronicsProcessorTests
         ProcessSettled("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 10 }]""");
         Assert.IsTrue(car.IsInPit);
         Assert.IsTrue(car.LapIncludedPit);
+    }
+
+    #endregion
+
+    #region Per-car X2 fallback on degraded telemetry
+
+    [TestMethod]
+    public void Process_DegradedTelemetry_StopsPublishingPitState()
+    {
+        var car = _sessionContext.GetCarByNumber("42")!;
+        ProcessSettled("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 5, "speed": 90 }]""");
+
+        // Telemetry falls below the trust floor: X2 loop data owns this car's pit state now.
+        car.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS - 1;
+        ProcessSettled("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 5 }]""");
+
+        Assert.IsFalse(car.IsInPit, "pit state must come from X2 while the device is untrusted");
+        Assert.IsFalse(car.IsEnteredPit);
+        Assert.IsFalse(car.LapIncludedPit);
+    }
+
+    [TestMethod]
+    public void Process_DegradedTelemetry_StillPublishesPositionAndFlag()
+    {
+        var car = _sessionContext.GetCarByNumber("42")!;
+        car.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS - 1;
+
+        ProcessSettled("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 33, "lat": 36.5, "lon": -121.7, "carFlag": "StYellow" }]""");
+
+        // Only pit ownership moves to X2; the rest of the record is unaffected.
+        Assert.AreEqual(33, car.SpeedMph);
+        Assert.AreEqual(36.5, car.Latitude);
+        Assert.AreEqual(Flags.Yellow, car.LocalFlag);
+    }
+
+    [TestMethod]
+    public void Process_TelemetryRecovers_TakesPitStateBack()
+    {
+        var car = _sessionContext.GetCarByNumber("42")!;
+        car.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS - 1;
+        ProcessSettled("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 5 }]""");
+        Assert.IsFalse(car.IsInPit);
+
+        // Device recovers. The debounced state was tracked throughout, so the car is taken back
+        // without having to re-observe the stop from scratch.
+        car.SignalBars = CarPosition.MaxSignalBars;
+        Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 5 }]""");
+
+        Assert.IsTrue(car.IsInPit);
+    }
+
+    [TestMethod]
+    public void UpdateCarPositionForLogging_StampsFromItsOwnRecordRegardlessOfCurrentOwnership()
+    {
+        var car = _sessionContext.GetCarByNumber("42")!;
+        ProcessSettled("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 5 }]""");
+
+        // Ownership moves away after the stop was observed. The lap still has to be stamped:
+        // gating on current ownership would leave it recorded by neither source, losing a real
+        // pit stop from the lap log.
+        car.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS - 1;
+        _sessionContext.UpdatePitOwnership();
+
+        var logged = new CarPosition { Number = "42", LastLapCompleted = 11 };
+        _processor.UpdateCarPositionForLogging(logged);
+        Assert.IsTrue(logged.LapIncludedPit);
+    }
+
+    [TestMethod]
+    public void PitOwnershipHold_IsLiftedByACompletedLap()
+    {
+        var car = _sessionContext.GetCarByNumber("42")!;
+        ProcessSettled("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 5 }]""");
+        Assert.IsTrue(car.IsInPit);
+
+        // Telemetry stops while the car is shown in the pit. Without an escape hatch the owner
+        // could never change and the car would sit in the pit for the rest of the session.
+        car.SignalBars = CarPosition.MinSignalBars;
+        _sessionContext.UpdatePitOwnership();
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("42"), "held while in pit");
+
+        // The car is scored across start/finish, which proves it is on track.
+        _sessionContext.ReleasePitOwnershipHold("42");
+        _sessionContext.UpdatePitOwnership();
+
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"), "a completed lap lifts the hold");
+    }
+
+    [TestMethod]
+    public void PitTrustBoundary_IsInclusiveOfTheFloor()
+    {
+        // Pins >= against >. Two bars or fewer was wrong more often than right in the reference
+        // race, so the floor itself must be trusted and one below it must not be.
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 5, "speed": 80 }]""");
+
+        car.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS;
+        _sessionContext.UpdatePitOwnership();
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("42"), "the floor is trusted");
+
+        car.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS - 1;
+        _sessionContext.UpdatePitOwnership();
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"), "one below the floor is not");
+    }
+
+    [TestMethod]
+    public void CarWithNoDevice_IsNeverTrustedForPit()
+    {
+        // Null bars mean no in-car device at all, which is not something to trust. This is also
+        // what makes an event with no in-car equipment fall to X2 without any separate flag.
+        _sessionContext.GetCarByNumber("42")!.SignalBars = null;
+        _sessionContext.UpdatePitOwnership();
+
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"));
     }
 
     #endregion
@@ -740,7 +862,7 @@ public class FlagtronicsProcessorTests
     [TestMethod]
     public void Process_RealVehicleRecord_MapsAllConsumedFields()
     {
-        _sessionContext.UpdateCars([new CarPosition { Number = "23", TransponderId = 23 }]);
+        _sessionContext.UpdateCars([new CarPosition { Number = "23", TransponderId = 23, SignalBars = CarPosition.MaxSignalBars }]);
 
         // Car in an enforced pit zone: stopped speed sentinel, null localFlag (zone >= 128), pit stop in progress
         var result = ProcessSettled("""[{"carNumber": "23", "ft200DeviceId": 20003022, "class": ["B"], "teamName": "Team 23", "speed": 254, "lat": 36.5593572, "lon": -79.2102957, "carFlag": "Green", "localFlag": null, "fullCourseFlag": "Green", "flaggingZone": 130, "timingZone": 130, "driverId": 70000221, "driverName": "Driver 23-1", "driverSource": "blePuck", "currentLapNumber": 299, "lastLapTime": "00:02:08.000", "bestLapTime": "00:02:07.000", "pitEntryTime": "2026-07-20T17:00:01Z", "pitDuration": "00:03:02.000", "pitActive": true, "enforced": true, "speedViolation": false}]""");
@@ -769,19 +891,54 @@ public class FlagtronicsProcessorTests
     #region X2 pit precedence
 
     [TestMethod]
-    public async Task X2PitProcessor_Suppressed_WhenFlagtronicsPitActive()
+    public void X2PitProcessor_SuppressedPerCar_ForTrustedTelemetry()
     {
         var mockDbContextFactory = new Mock<IDbContextFactory<TsContext>>();
         var pitProcessor = new PitProcessor(mockDbContextFactory.Object, _mockLoggerFactory.Object, _sessionContext);
 
         Process("""[{ "carNumber": "42", "pitActive": true }]""");
-        Assert.IsTrue(_sessionContext.IsFlagtronicsPitActive);
+        _sessionContext.UpdatePitOwnership();
 
-        var x2Message = new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, "[]", 1, DateTime.UtcNow);
-        var result = await pitProcessor.Process(x2Message);
-        Assert.IsNull(result);
-
+        // Healthy device: Flagtronics owns this car, so X2 stands down for it.
         Assert.IsNull(pitProcessor.ProcessCar("42"));
+    }
+
+    [TestMethod]
+    public void X2PitProcessor_TakesCarBack_WhenTelemetryDegrades()
+    {
+        var mockDbContextFactory = new Mock<IDbContextFactory<TsContext>>();
+        var pitProcessor = new PitProcessor(mockDbContextFactory.Object, _mockLoggerFactory.Object, _sessionContext);
+
+        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 5, "speed": 90 }]""");
+        _sessionContext.UpdatePitOwnership();
+        Assert.IsNull(pitProcessor.ProcessCar("42"), "trusted car belongs to Flagtronics");
+
+        // Telemetry degrades while the car is out of the pit, so ownership may move.
+        _sessionContext.GetCarByNumber("42")!.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS - 1;
+        _sessionContext.UpdatePitOwnership();
+
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"));
+        Assert.IsNotNull(pitProcessor.ProcessCar("42"), "X2 must take the car back");
+    }
+
+    [TestMethod]
+    public void PitOwnership_DoesNotChangeWhileTheCarIsInThePit()
+    {
+        var car = _sessionContext.GetCarByNumber("42")!;
+        ProcessSettled("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 5 }]""");
+        Assert.IsTrue(car.IsInPit);
+
+        // A long stop is a common way to lose the GPS fix that drives the bars. Handing the car
+        // over mid-stop would split one stop across two sources and show a false exit.
+        car.SignalBars = CarPosition.MinSignalBars;
+        _sessionContext.UpdatePitOwnership();
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("42"), "ownership must not move mid-stop");
+        Assert.IsTrue(car.IsInPit);
+
+        // Once the car is back out, the handover is allowed.
+        ProcessSettled("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 5, "speed": 80 }]""");
+        _sessionContext.UpdatePitOwnership();
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"));
     }
 
     #endregion

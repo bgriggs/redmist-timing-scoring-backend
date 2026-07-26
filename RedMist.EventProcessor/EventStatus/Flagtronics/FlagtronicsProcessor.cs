@@ -1,4 +1,4 @@
-using RedMist.EventProcessor.Models;
+﻿using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Mappers;
 using System.Text.Json;
@@ -73,8 +73,15 @@ public class FlagtronicsProcessor
     /// How long a changed pit reading must persist before it is applied. Real stops run for
     /// minutes while the observed glitches are one or two ticks, so this suppresses the spurious
     /// entry/exit edges at the cost of showing a genuine stop a few seconds late.
+    ///
+    /// Eight seconds is where the cost curve turns. Measured across a live 8 hour race, only 5
+    /// spurious pit episodes in the whole session fell in the 8-10s band, so trimming from 10s to
+    /// 8s is close to free; going to 5s would readmit 31 and to 3s, 51. Note this cannot be
+    /// shortened for cars with good telemetry - 118 of the spurious episodes occurred while the
+    /// car was reporting full signal bars, because the glitch is a pit-zone misclassification at
+    /// pit-lane speed rather than a device fault, and the two are uncorrelated.
     /// </summary>
-    private static readonly TimeSpan PitStateConfirmWindow = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan PitStateConfirmWindow = TimeSpan.FromSeconds(8);
 
     /// <summary>
     /// Longest gap between two ticks that still counts as continuous observation of the same
@@ -143,9 +150,6 @@ public class FlagtronicsProcessor
 
         if (vehicles == null || vehicles.Count == 0)
             return null;
-
-        // Flagtronics data is flowing: in-car pit detection takes precedence over X2 loop data
-        sessionContext.IsFlagtronicsPitActive = true;
 
         var patches = new List<CarPositionPatch>();
         foreach (var vehicle in vehicles)
@@ -270,7 +274,11 @@ public class FlagtronicsProcessor
         committedPitState[number] = false;
         pendingPitState.Remove(number);
 
-        if (!car.IsInPit)
+        // Internal state is corrected either way, but only the owning source publishes. This
+        // fallback fires precisely when the car has no GPS, which is also when it is likely to
+        // have been handed to X2 - without this gate both sources would write IsInPit in the
+        // same pass, which is the flapping the per-car split exists to prevent.
+        if (!car.IsInPit || !sessionContext.IsFlagtronicsPitTrusted(number))
             return null;
 
         var patch = new CarPositionPatch { Number = number, IsInPit = false };
@@ -342,11 +350,17 @@ public class FlagtronicsProcessor
         bool stuckOverride = vehicle.PitActive && !rawInPit;
 
         // Pit state: inPit is the level; entry/exit edges are derived from the transition
+        // Once this car's telemetry has degraded far enough, X2 loop data owns its pit state and
+        // none of the pit fields below are published - otherwise the two sources would fight.
+        // The debounced state is still tracked, so the car can be taken back cleanly if its
+        // device recovers. Position, speed and flag fields are unaffected and keep flowing.
+        bool pitTrusted = sessionContext.IsFlagtronicsPitTrusted(vehicle.CarNumber);
+
         bool wasInPit = car.IsInPit;
-        if (car.IsInPit != inPit)
+        if (pitTrusted && car.IsInPit != inPit)
             patch.IsInPit = inPit;
 
-        if (isLiveTick)
+        if (isLiveTick && pitTrusted)
         {
             bool entered = inPit && !wasInPit;
             bool exited = !inPit && wasInPit;
@@ -359,6 +373,9 @@ public class FlagtronicsProcessor
         // Apply pit entry time / duration except when overriding a stuck pitActive, whose
         // reported duration runs away and whose entry time is bogus, or when the duration itself
         // shows the device has no valid entry time (it then reports 0001-01-01 as the entry).
+        // Entry time and duration are not gated on ownership: X2 has no equivalent, so gating
+        // them would simply lose the only source. Both are already independently sanity checked
+        // against a stuck flag and a bogus duration above.
         if (!stuckOverride && !pitDataBogus && vehicle.PitEntryTime != null && car.PitEntryTime != vehicle.PitEntryTime)
             patch.PitEntryTime = vehicle.PitEntryTime;
 
@@ -385,7 +402,7 @@ public class FlagtronicsProcessor
         // Lap tagging requires the raw reading to agree with the committed state. While an exit
         // is awaiting confirmation the badge still shows in-pit but the car has already left, so
         // tagging on the committed state alone attributes an extra lap at the end of a stop.
-        if (inPit && rawInPit && (pitActive || carsSeenOnTrack.Contains(vehicle.CarNumber)))
+        if (pitTrusted && inPit && rawInPit && (pitActive || carsSeenOnTrack.Contains(vehicle.CarNumber)))
         {
             // Only a live observation extends the record. A replay re-applies the last record on
             // every RMonitor pass, so a car whose device stopped reporting mid-stop would
@@ -399,7 +416,7 @@ public class FlagtronicsProcessor
             if (!car.LapIncludedPit)
                 patch.LapIncludedPit = true;
         }
-        else
+        else if (pitTrusted)
         {
             // The set holds in-progress lap numbers, so the lap the car is on right now is
             // LastLapCompleted + 1. Testing LastLapCompleted instead kept the flag asserted for
@@ -566,10 +583,15 @@ public class FlagtronicsProcessor
     /// in progress, and the logged snapshot is captured the instant the lap counter advances, so
     /// it lands a tick either side of the pit transition; the recorded lap set is exact.
     /// Called from the lap processor's background logging loop - see <see cref="pitLapsLock"/>.
+    ///
+    /// Not gated on which source owns the car: laps are only recorded while this source owns it,
+    /// so having a record is itself the proof. Gating on ownership would leave a lap stamped by
+    /// neither source when ownership moved mid-stop, and would mean reading session state from
+    /// that background thread.
     /// </summary>
     public void UpdateCarPositionForLogging(CarPosition carPosition)
     {
-        if (!sessionContext.IsFlagtronicsPitActive || string.IsNullOrEmpty(carPosition.Number))
+        if (string.IsNullOrEmpty(carPosition.Number))
             return;
 
         // The recorded laps belong to the session this processor last saw. If the feed stopped

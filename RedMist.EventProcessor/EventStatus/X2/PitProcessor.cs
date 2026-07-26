@@ -105,11 +105,9 @@ public class PitProcessor
             return null;
         }
 
-        if (sessionContext.IsFlagtronicsPitActive)
-        {
-            // Flagtronics in-car pit data is active and takes precedence over X2 loop data
-            return null;
-        }
+        // Flagtronics is no longer an all-or-nothing gate here. Loop state is tracked for every
+        // car regardless, so a car handed back by a failing in-car device has usable history
+        // waiting; only the decision to publish is taken per car, further down.
 
         // Check for session change and clear out old data
         if (lastSessionId != sessionContext.SessionState.SessionId)
@@ -175,6 +173,11 @@ public class PitProcessor
             if (carNumber == null)
                 continue;
 
+            // A car whose in-car pit data is trusted is owned by Flagtronics; publishing loop
+            // state for it as well would have the two sources fight over IsInPit.
+            if (sessionContext.IsFlagtronicsPitTrusted(carNumber))
+                continue;
+
             var change = new PitStateUpdate(
                 carNumber,
                 CarLapsWithPitStops: carLapsWithPitStops,
@@ -216,9 +219,9 @@ public class PitProcessor
 
     public CarPositionPatch? ProcessCar(string number)
     {
-        if (sessionContext.IsFlagtronicsPitActive)
+        if (sessionContext.IsFlagtronicsPitTrusted(number))
         {
-            // Flagtronics in-car pit data is active and takes precedence over X2 loop data
+            // Flagtronics in-car pit data is trusted for this car and takes precedence
             return null;
         }
 
@@ -251,6 +254,13 @@ public class PitProcessor
         return carLapsWithPitStops.ToImmutableDictionary(entry => entry.Key, entry => entry.Value.ToImmutableHashSet());
     }
 
+    /// <summary>
+    /// Stamps the logged lap from this source's own record. Deliberately not gated on which
+    /// source owns the car: each source only ever records laps it observed, so whichever one saw
+    /// the stop is the one that stamps it. Gating on ownership instead would leave a lap stamped
+    /// by neither when ownership moved mid-stop, and would mean reading session state from the
+    /// lap-logging background thread.
+    /// </summary>
     public void UpdateCarPositionForLogging(CarPosition carPosition)
     {
         if (carPosition.Number != null && carLapsWithPitStops.TryGetValue(carPosition.Number, out var laps) && laps != null)
