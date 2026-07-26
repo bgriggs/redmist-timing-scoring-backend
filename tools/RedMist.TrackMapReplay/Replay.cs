@@ -226,12 +226,17 @@ public class Replay(IReadOnlyList<Sample> samples, LapIndex laps, double? declar
         return densified;
     }
 
-    /// <summary>Reproduces TelemetrySignalTracker's scale over the recorded feed.</summary>
+    /// <summary>
+    /// Reproduces TelemetrySignalTracker's scale over the recorded feed. Readings rejected as
+    /// impossible jumps count as faults, exactly as the live processor scores them, so the
+    /// distribution reflects what the gates downstream of bars actually see.
+    /// </summary>
     public int[] SimulateSignalBars()
     {
         var counts = new int[6];
         var windows = new Dictionary<string, Queue<(long Ts, bool Faulted)>>();
         var firstSeen = new Dictionary<string, long>();
+        var teleports = new TeleportFilter();
 
         foreach (var s in samples)
         {
@@ -240,7 +245,7 @@ public class Replay(IReadOnlyList<Sample> samples, LapIndex laps, double? declar
                 windows[s.Car] = w = new Queue<(long, bool)>();
                 firstSeen[s.Car] = s.Ts;
             }
-            w.Enqueue((s.Ts, s.IsFaulted()));
+            w.Enqueue((s.Ts, teleports.IsTeleport(s) || s.IsFaulted()));
             while (w.Count > 0 && w.Peek().Ts < s.Ts - 60)
                 w.Dequeue();
 

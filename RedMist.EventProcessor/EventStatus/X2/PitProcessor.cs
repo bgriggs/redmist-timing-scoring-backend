@@ -21,6 +21,14 @@ public class PitProcessor
     private readonly SessionContext sessionContext;
     private TimingCommon.Models.Configuration.Event? eventConfiguration;
     private readonly Dictionary<string, HashSet<int>> carLapsWithPitStops = [];
+
+    /// <summary>
+    /// Guards <see cref="carLapsWithPitStops"/>, which PitStateUpdate mutates on the pipeline
+    /// thread while <see cref="WasPitLap"/> reads it from the lap-logging background thread.
+    /// Needed since per-car ownership: this map used to stay empty whenever in-car telemetry was
+    /// running, so there was no concurrent writer.
+    /// </summary>
+    private readonly object pitLapsLock = new();
     private readonly Dictionary<uint, Passing> inPit = [];
     private readonly Dictionary<uint, Passing> pitEntrance = [];
     private readonly Dictionary<uint, Passing> pitExit = [];
@@ -77,6 +85,11 @@ public class PitProcessor
         return loopMetadata;
     }
 
+    private bool HasAnyPassing(uint transponderId) =>
+        inPit.ContainsKey(transponderId) || pitEntrance.ContainsKey(transponderId)
+        || pitExit.ContainsKey(transponderId) || pitSf.ContainsKey(transponderId)
+        || pitOther.ContainsKey(transponderId) || other.ContainsKey(transponderId);
+
     private void RemoveTransponderFromAllPassings(uint transponderId)
     {
         inPit.Remove(transponderId);
@@ -105,18 +118,25 @@ public class PitProcessor
             return null;
         }
 
-        if (sessionContext.IsFlagtronicsPitActive)
-        {
-            // Flagtronics in-car pit data is active and takes precedence over X2 loop data
-            return null;
-        }
+        // Flagtronics is no longer an all-or-nothing gate here. Loop state is tracked for every
+        // car regardless, so a car handed back by a failing in-car device has usable history
+        // waiting; only the decision to publish is taken per car, further down.
 
         // Check for session change and clear out old data
         if (lastSessionId != sessionContext.SessionState.SessionId)
         {
             Logger.LogInformation("Session changed from {LastSessionId} to {CurrentSessionId}, clearing pit processor state",
                 lastSessionId, sessionContext.SessionState.SessionId);
-            carLapsWithPitStops.Clear();
+            lock (pitLapsLock)
+            {
+                carLapsWithPitStops.Clear();
+            }
+            inPit.Clear();
+            pitEntrance.Clear();
+            pitExit.Clear();
+            pitSf.Clear();
+            pitOther.Clear();
+            other.Clear();
             lastSessionId = sessionContext.SessionState.SessionId;
         }
 
@@ -175,6 +195,11 @@ public class PitProcessor
             if (carNumber == null)
                 continue;
 
+            // A car whose in-car pit data is trusted is owned by Flagtronics; publishing loop
+            // state for it as well would have the two sources fight over IsInPit.
+            if (sessionContext.IsFlagtronicsPitTrusted(carNumber))
+                continue;
+
             var change = new PitStateUpdate(
                 carNumber,
                 CarLapsWithPitStops: carLapsWithPitStops,
@@ -186,7 +211,11 @@ public class PitProcessor
                 Other: other,
                 LoopMetadata: loopMetadata);
 
-            var p = change.ApplyCarChange(sessionContext);
+            CarPositionPatch? p;
+            lock (pitLapsLock)
+            {
+                p = change.ApplyCarChange(sessionContext);
+            }
             if (p != null)
             {
                 patches.Add(p);
@@ -216,11 +245,18 @@ public class PitProcessor
 
     public CarPositionPatch? ProcessCar(string number)
     {
-        if (sessionContext.IsFlagtronicsPitActive)
+        if (sessionContext.IsFlagtronicsPitTrusted(number))
         {
-            // Flagtronics in-car pit data is active and takes precedence over X2 loop data
+            // Flagtronics in-car pit data is trusted for this car and takes precedence
             return null;
         }
+
+        // Nothing has ever been seen for this transponder, so there is no basis to say anything
+        // about its pit state. Publishing anyway would drive every field false and clear the pit
+        // badge of a car handed over in an event with no X2 coverage.
+        var carPosition = sessionContext.GetCarByNumber(number);
+        if (carPosition != null && !HasAnyPassing(carPosition.TransponderId))
+            return null;
 
         var loopMetadata = GetLoopMetadata();
         var change = new PitStateUpdate(
@@ -234,7 +270,10 @@ public class PitProcessor
                 Other: other,
                 LoopMetadata: loopMetadata);
 
-        return change.ApplyCarChange(sessionContext);
+        lock (pitLapsLock)
+        {
+            return change.ApplyCarChange(sessionContext);
+        }
     }
 
     private async Task RefreshEventConfiguration(TimingMessage message)
@@ -251,11 +290,22 @@ public class PitProcessor
         return carLapsWithPitStops.ToImmutableDictionary(entry => entry.Key, entry => entry.Value.ToImmutableHashSet());
     }
 
-    public void UpdateCarPositionForLogging(CarPosition carPosition)
+    /// <summary>
+    /// Whether this source recorded the given lap as including a pit stop. A query rather than a
+    /// stamp, so the caller can take the union across sources: pit ownership can move mid-session,
+    /// leaving each source with only part of a car's history, and a source that writes its own
+    /// answer wholesale erases the other's.
+    ///
+    /// Called from the lap processor's background logging loop, hence <see cref="pitLapsLock"/>.
+    /// </summary>
+    public bool WasPitLap(string? carNumber, int lapNumber)
     {
-        if (carPosition.Number != null && carLapsWithPitStops.TryGetValue(carPosition.Number, out var laps) && laps != null)
+        if (string.IsNullOrEmpty(carNumber))
+            return false;
+
+        lock (pitLapsLock)
         {
-            carPosition.LapIncludedPit = laps.Contains(carPosition.LastLapCompleted);
+            return carLapsWithPitStops.TryGetValue(carNumber, out var laps) && laps.Contains(lapNumber);
         }
     }
 }

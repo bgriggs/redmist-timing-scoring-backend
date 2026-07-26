@@ -67,7 +67,8 @@ var bars = replay.SimulateSignalBars();
 var total = bars.Sum();
 for (int b = 5; b >= 0; b--)
     Console.WriteLine($"  {b} bars: {bars[b],9:N0}  {100.0 * bars[b] / total,6:F2}%");
-Console.WriteLine($"  a >=4 gate admits {100.0 * (bars[4] + bars[5]) / total:F2}%, >=3 admits {100.0 * (bars[3] + bars[4] + bars[5]) / total:F2}%");
+Console.WriteLine($"  a >=4 gate admits {100.0 * (bars[4] + bars[5]) / total:F2}% (track position is shown above this)");
+Console.WriteLine($"  a >=3 gate admits {100.0 * (bars[3] + bars[4] + bars[5]) / total:F2}% (pit data stays with telemetry above two bars)");
 
 return 0;
 

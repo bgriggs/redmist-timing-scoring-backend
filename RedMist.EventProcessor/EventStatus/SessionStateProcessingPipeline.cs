@@ -193,6 +193,10 @@ public class SessionStateProcessingPipeline
                                     var ftLapPatch = flagtronicsProcessor.NotifyLapCompleted(cn ?? string.Empty);
                                     if (ftLapPatch != null)
                                         ftLapPatches.Add(ftLapPatch);
+
+                                    // The car is demonstrably on track, so the in-pit hold on
+                                    // changing its pit-state owner no longer applies.
+                                    sessionContext.ReleasePitOwnershipHold(cn);
                                 }
                                 if (ftLapPatches.Count > 0)
                                     allAppliedChanges.Add(new PatchUpdates([], [.. ftLapPatches]));
@@ -273,6 +277,9 @@ public class SessionStateProcessingPipeline
                             var signalChanges = telemetrySignalTracker.Process();
                             if (signalChanges != null)
                                 allAppliedChanges.Add(signalChanges);
+                            // Which source owns each car's pit state follows from the bars just
+                            // recomputed above.
+                            sessionContext.UpdatePitOwnership();
 
                             // Retire GPS-derived track positions here as well as on GPS arrival: when
                             // the GPS source goes down entirely there are no positions left to carry
@@ -486,20 +493,36 @@ public class SessionStateProcessingPipeline
             // indefinitely, so enrichment runs on every message rather than only on eventful ones.
             var updates = flagtronicsProcessor.Process(message);
 
+            // Also swept here so an event driven by something other than RMonitor still gets
+            // signal bars published - without them every car reads as untrusted and Flagtronics
+            // pit detection would be silently disabled for the whole event. The sweep applies its
+            // own patches as it computes them, so dropping the result would commit the change
+            // server-side and never send it: the next sweep sees no delta and clients stay stale.
+            var signalChanges = telemetrySignalTracker.Process();
+            sessionContext.UpdatePitOwnership();
+
             // GPS positions feed the track-map learner and each car's position around the lap,
             // the same enrichment the external patch lane receives. A car reporting an unchanged
             // position produces no patch, so the cars still delivering a usable fix are passed
             // separately - a car sitting still is not the same as one that has gone off the air,
-            // and neither is one whose device is talking while its GPS is dead.
+            // and neither is one whose device is talking while its GPS is dead. This runs before
+            // any early return: a message that changed nothing is exactly what a device with dead
+            // GPS produces, and that is when a stale position most needs retiring.
             var carPatches = updates?.CarPatches.ToList() ?? [];
             gpsLapPositionEnricher.MarkSeen(flagtronicsProcessor.CarsWithUsableFix, confirmed: true);
             await ApplyGpsEnrichmentAsync(carPatches, fromInCarTelemetry: true);
 
-            var sessionPatches = updates?.SessionPatches ?? [];
+            var sessionPatches = (updates?.SessionPatches ?? []).ToList();
+            if (signalChanges != null)
+            {
+                carPatches.AddRange(signalChanges.CarPatches);
+                sessionPatches.AddRange(signalChanges.SessionPatches);
+            }
+
             if (carPatches.Count == 0 && sessionPatches.Count == 0)
                 return null;
 
-            return new PatchUpdates(sessionPatches, [.. carPatches]);
+            return new PatchUpdates([.. sessionPatches], [.. carPatches]);
         }
         catch (Exception ex)
         {
