@@ -509,7 +509,7 @@ public class PitProcessorTests
         carLapsDict["123"] = new HashSet<int> { 3, 5, 7 };
 
         // Act
-        _processor.UpdateCarPositionForLogging(carPosition);
+        carPosition.LapIncludedPit = _processor.WasPitLap(carPosition.Number, carPosition.LastLapCompleted);
 
         // Assert
         // The method should correctly identify that lap 5 is included in pit stops
@@ -528,7 +528,7 @@ public class PitProcessorTests
         };
 
         // Act
-        _processor.UpdateCarPositionForLogging(carPosition);
+        carPosition.LapIncludedPit = _processor.WasPitLap(carPosition.Number, carPosition.LastLapCompleted);
 
         // Assert
         Assert.IsFalse(carPosition.LapIncludedPit);
@@ -545,7 +545,7 @@ public class PitProcessorTests
         };
 
         // Act & Assert - The method handles null gracefully due to the null check
-        _processor.UpdateCarPositionForLogging(carPosition);
+        carPosition.LapIncludedPit = _processor.WasPitLap(carPosition.Number, carPosition.LastLapCompleted);
         // Should not throw - the condition carPosition.Number != null short-circuits
     }
 
@@ -568,7 +568,7 @@ public class PitProcessorTests
         carLapsDict["123"] = new HashSet<int> { 3, 5, 7 };
 
         // Act
-        _processor.UpdateCarPositionForLogging(carPosition);
+        carPosition.LapIncludedPit = _processor.WasPitLap(carPosition.Number, carPosition.LastLapCompleted);
 
         // Assert
         Assert.IsFalse(carPosition.LapIncludedPit);
@@ -596,7 +596,7 @@ public class PitProcessorTests
         carLapsDict["123"] = new HashSet<int> { 3, 7 }; // Lap 5 is NOT in pit laps
 
         // Act
-        _processor.UpdateCarPositionForLogging(carPosition);
+        carPosition.LapIncludedPit = _processor.WasPitLap(carPosition.Number, carPosition.LastLapCompleted);
 
         // Assert - The method should correctly identify that lap 5 is NOT in pit stops
         Assert.IsFalse(carPosition.LapIncludedPit);
@@ -605,7 +605,7 @@ public class PitProcessorTests
         carPosition.LastLapCompleted = 7; // Lap 7 IS in pit laps
         carPosition.LapIncludedPit = false; // Reset
 
-        _processor.UpdateCarPositionForLogging(carPosition);
+        carPosition.LapIncludedPit = _processor.WasPitLap(carPosition.Number, carPosition.LastLapCompleted);
         Assert.IsTrue(carPosition.LapIncludedPit); // Should be true now
     }
     #endregion

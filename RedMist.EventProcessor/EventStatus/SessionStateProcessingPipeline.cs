@@ -456,19 +456,28 @@ public class SessionStateProcessingPipeline
 
             // Also swept here so an event driven by something other than RMonitor still gets
             // signal bars published - without them every car reads as untrusted and Flagtronics
-            // pit detection would be silently disabled for the whole event.
-            telemetrySignalTracker.Process();
+            // pit detection would be silently disabled for the whole event. The sweep applies its
+            // own patches as it computes them, so dropping the result would commit the change
+            // server-side and never send it: the next sweep sees no delta and clients stay stale.
+            var signalChanges = telemetrySignalTracker.Process();
             sessionContext.UpdatePitOwnership();
 
-            if (updates == null)
+            if (updates == null && signalChanges == null)
                 return null;
 
             // GPS positions feed the track-map learner and GPS-projected lap timing,
             // the same enrichment the external patch lane receives.
-            var carPatches = updates.CarPatches.ToList();
+            var carPatches = updates?.CarPatches.ToList() ?? [];
             await ApplyGpsEnrichmentAsync(carPatches);
 
-            return new PatchUpdates(updates.SessionPatches, [.. carPatches]);
+            var sessionPatches = (updates?.SessionPatches ?? []).ToList();
+            if (signalChanges != null)
+            {
+                carPatches.AddRange(signalChanges.CarPatches);
+                sessionPatches.AddRange(signalChanges.SessionPatches);
+            }
+
+            return new PatchUpdates([.. sessionPatches], [.. carPatches]);
         }
         catch (Exception ex)
         {

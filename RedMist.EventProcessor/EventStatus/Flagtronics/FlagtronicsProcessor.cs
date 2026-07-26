@@ -578,34 +578,27 @@ public class FlagtronicsProcessor
     }
 
     /// <summary>
-    /// Stamps the authoritative LapIncludedPit onto a lap about to be logged, mirroring
-    /// <see cref="X2.PitProcessor.UpdateCarPositionForLogging"/>. The live flag describes the lap
-    /// in progress, and the logged snapshot is captured the instant the lap counter advances, so
-    /// it lands a tick either side of the pit transition; the recorded lap set is exact.
-    /// Called from the lap processor's background logging loop - see <see cref="pitLapsLock"/>.
+    /// Whether this source recorded the given lap as including a pit stop. The live flag
+    /// describes the lap in progress, and the logged snapshot is captured the instant the lap
+    /// counter advances, so it lands a tick either side of the pit transition; the recorded lap
+    /// set is exact. Called from the lap processor's background logging loop, hence
+    /// <see cref="pitLapsLock"/>.
     ///
-    /// Not gated on which source owns the car: laps are only recorded while this source owns it,
-    /// so having a record is itself the proof. Gating on ownership would leave a lap stamped by
-    /// neither source when ownership moved mid-stop, and would mean reading session state from
-    /// that background thread.
+    /// A query rather than a stamp, so the caller can take the union across sources. Ownership
+    /// can move mid-session, which leaves each source with only part of the car's history - a
+    /// source that writes its own answer wholesale erases the other's.
     /// </summary>
-    public void UpdateCarPositionForLogging(CarPosition carPosition)
+    public bool WasPitLap(string? carNumber, int lapNumber)
     {
-        if (string.IsNullOrEmpty(carPosition.Number))
-            return;
+        if (string.IsNullOrEmpty(carNumber))
+            return false;
 
         // The recorded laps belong to the session this processor last saw. If the feed stopped
         // and the event moved on, they say nothing about the lap being logged now.
         if (lastSessionId != sessionContext.SessionState.SessionId)
-            return;
+            return false;
 
-        // A car with no recorded pit laps is left alone rather than forced to false, so a car
-        // the Flagtronics feed does not cover keeps whatever the primary pit source decided.
-        lock (pitLapsLock)
-        {
-            if (carLapsWithPitStops.TryGetValue(carPosition.Number, out var laps))
-                carPosition.LapIncludedPit = laps.Contains(carPosition.LastLapCompleted);
-        }
+        return HasPitLap(carNumber, lapNumber);
     }
 
     /// <summary>

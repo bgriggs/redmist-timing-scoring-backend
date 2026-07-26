@@ -108,7 +108,10 @@ public class SessionContext
             bool eligible = car.SignalBars >= MIN_TRUSTED_PIT_SIGNAL_BARS;
             if (!flagtronicsPitOwners.TryGetValue(car.Number, out var owned))
             {
+                // First sight of the car establishes ownership outright; any release recorded
+                // before that has nothing to act on and must not stay armed for a later stop.
                 flagtronicsPitOwners[car.Number] = eligible;
+                pitOwnershipHoldReleased.Remove(car.Number);
                 continue;
             }
 

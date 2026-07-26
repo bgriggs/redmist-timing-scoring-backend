@@ -238,19 +238,17 @@ public class FlagtronicsProcessorTests
         foreach (var (lap, expected) in new[] { (10, false), (11, true), (12, true), (13, false), (14, false) })
         {
             var logged = new CarPosition { Number = "42", LastLapCompleted = lap, LapIncludedPit = !expected };
-            _processor.UpdateCarPositionForLogging(logged);
+            logged.LapIncludedPit = _processor.WasPitLap(logged.Number, logged.LastLapCompleted);
             Assert.AreEqual(expected, logged.LapIncludedPit, $"lap {lap}");
         }
     }
 
     [TestMethod]
-    public void UpdateCarPositionForLogging_IgnoredWhenFlagtronicsNotActive()
+    public void WasPitLap_FalseWhenThisSourceHasNoRecord()
     {
-        var logged = new CarPosition { Number = "42", LastLapCompleted = 11, LapIncludedPit = true };
-        _processor.UpdateCarPositionForLogging(logged);
-
-        // No Flagtronics data seen, so X2 stays authoritative for the logged value.
-        Assert.IsTrue(logged.LapIncludedPit);
+        // The caller takes the union across sources, so "no record here" must read as false
+        // rather than as an answer about the lap - X2 may well have seen the stop.
+        Assert.IsFalse(_processor.WasPitLap("42", 11));
     }
 
     [TestMethod]
@@ -391,7 +389,7 @@ public class FlagtronicsProcessorTests
         _sessionContext.UpdatePitOwnership();
 
         var logged = new CarPosition { Number = "42", LastLapCompleted = 11 };
-        _processor.UpdateCarPositionForLogging(logged);
+        logged.LapIncludedPit = _processor.WasPitLap(logged.Number, logged.LastLapCompleted);
         Assert.IsTrue(logged.LapIncludedPit);
     }
 
@@ -563,7 +561,7 @@ public class FlagtronicsProcessorTests
         Assert.IsTrue(car.IsInPit);
 
         var lap11 = new CarPosition { Number = "42", LastLapCompleted = 11 };
-        _processor.UpdateCarPositionForLogging(lap11);
+        lap11.LapIncludedPit = _processor.WasPitLap(lap11.Number, lap11.LastLapCompleted);
         Assert.IsTrue(lap11.LapIncludedPit, "the lap the car entered on must still be tagged");
     }
 
@@ -586,7 +584,7 @@ public class FlagtronicsProcessorTests
         foreach (var lap in new[] { 12, 13, 14, 15, 16 })
         {
             var logged = new CarPosition { Number = "42", LastLapCompleted = lap };
-            _processor.UpdateCarPositionForLogging(logged);
+            logged.LapIncludedPit = _processor.WasPitLap(logged.Number, logged.LastLapCompleted);
             Assert.IsFalse(logged.LapIncludedPit, $"lap {lap} was never observed in the pit");
         }
     }
@@ -918,7 +916,29 @@ public class FlagtronicsProcessorTests
         _sessionContext.UpdatePitOwnership();
 
         Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"));
-        Assert.IsNotNull(pitProcessor.ProcessCar("42"), "X2 must take the car back");
+
+        // X2 has never seen this transponder, so it has no basis to publish anything. Forcing
+        // its fields false here would clear the pit badge of a car in an event with no X2 cover.
+        Assert.IsNull(pitProcessor.ProcessCar("42"), "silent source must not publish");
+    }
+
+    [TestMethod]
+    public async Task X2PitProcessor_PublishesForADegradedCarItHasSeen()
+    {
+        var mockDbContextFactory = new Mock<IDbContextFactory<TsContext>>();
+        var pitProcessor = new PitProcessor(mockDbContextFactory.Object, _mockLoggerFactory.Object, _sessionContext);
+
+        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 5, "speed": 90 }]""");
+        _sessionContext.GetCarByNumber("42")!.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS - 1;
+        _sessionContext.UpdatePitOwnership();
+
+        // A loop passing gives X2 something real to say about the car. Passing serialises with
+        // short names: t = transponder, l = loop, p = in pit.
+        await pitProcessor.Process(new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE,
+            """[{ "t": 42, "p": true, "l": 1 }]""", 1, DateTime.UtcNow));
+
+        Assert.IsTrue(_sessionContext.GetCarByNumber("42")!.IsInPit, "X2 takes the car back");
+        Assert.IsTrue(pitProcessor.WasPitLap("42", 11), "and records the pit lap for logging");
     }
 
     [TestMethod]

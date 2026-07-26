@@ -228,11 +228,13 @@ public class LapProcessor : IDisposable
         {
             //Logger.LogTrace("Car {n} completed lap {l} in event {e}. Logging...", carNumber, position.LastLapCompleted, eventId);
 
-            // Update pit stops - this will set LapIncludedPit if the lap included a pit stop.
-            // Flagtronics runs second and only acts when it is the active pit source, matching
-            // the precedence the pit processors already use for live state.
-            pitProcessor?.UpdateCarPositionForLogging(position);
-            flagtronicsProcessor?.UpdateCarPositionForLogging(position);
+            // LapIncludedPit is the union of what either pit source recorded for this lap.
+            // Ownership moves between sources mid-session, so a stop is only guaranteed to be in
+            // the record of whichever source held the car at the time; letting one source write
+            // its own answer wholesale erases a real stop the other observed.
+            position.LapIncludedPit =
+                (pitProcessor?.WasPitLap(carNumber, position.LastLapCompleted) ?? false)
+                || (flagtronicsProcessor?.WasPitLap(carNumber, position.LastLapCompleted) ?? false);
 
             // Add the lap to the rolling window history in Redis
             await carLapHistoryService.AddLapAsync(position);
