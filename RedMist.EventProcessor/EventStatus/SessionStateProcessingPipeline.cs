@@ -46,6 +46,7 @@ public class SessionStateProcessingPipeline
     private readonly StaleCarEnricher staleCarEnricher;
     private readonly UpdateConsolidator updateConsolidator;
     private readonly FlagtronicsProcessor flagtronicsProcessor;
+    private readonly TelemetrySignalTracker telemetrySignalTracker;
 
     // Metrics for pipeline performance
     private readonly PipelineMetrics _overallProcessorMetrics = new("sequential_processor");
@@ -89,7 +90,8 @@ public class SessionStateProcessingPipeline
         GpsProjectedLapTimeEnricher gpsProjectedLapTimeEnricher,
         StaleCarEnricher staleCarEnricher,
         UpdateConsolidator updateConsolidator,
-        FlagtronicsProcessor flagtronicsProcessor)
+        FlagtronicsProcessor flagtronicsProcessor,
+        TelemetrySignalTracker telemetrySignalTracker)
     {
         sessionContext = context;
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -113,6 +115,7 @@ public class SessionStateProcessingPipeline
         this.staleCarEnricher = staleCarEnricher;
         this.updateConsolidator = updateConsolidator;
         this.flagtronicsProcessor = flagtronicsProcessor;
+        this.telemetrySignalTracker = telemetrySignalTracker;
 
         // Wire up flush of pending laps for mid-race reset handling
         rMonitorDataProcessorV2.FlushPendingLaps = () => lapProcessor.FlushPendingLapsAsync();
@@ -254,6 +257,12 @@ public class SessionStateProcessingPipeline
                             var staleCarPatches = await staleCarEnricher.ProcessAsync();
                             if (staleCarPatches != null && staleCarPatches.Count > 0)
                                 allAppliedChanges.Add(new PatchUpdates([], [.. staleCarPatches]));
+
+                            // Telemetry signal decays on the absence of records, so it has to be
+                            // driven from here rather than from the telemetry feed itself.
+                            var signalChanges = telemetrySignalTracker.Process();
+                            if (signalChanges != null)
+                                allAppliedChanges.Add(signalChanges);
                         }
 
                         // Perform a full external data update at defined intervals. 60 is at most once per

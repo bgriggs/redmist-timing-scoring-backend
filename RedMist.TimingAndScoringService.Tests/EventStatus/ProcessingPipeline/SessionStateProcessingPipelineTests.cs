@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.SignalR;
+﻿using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Configuration;
@@ -68,6 +68,7 @@ public class SessionStateProcessingPipelineTests
     private StaleCarEnricher _staleCarEnricher = null!;
     private UpdateConsolidator _updateConsolidator = null!;
     private FlagtronicsProcessor _flagtronicsProcessor = null!;
+    private TelemetrySignalTracker _telemetrySignalTracker = null!;
     private StatusAggregator _statusAggregator = null!;
     private StartingPositionProcessor _startingPositionProcessor = null!;
     private Mock<IConnectionMultiplexer> _mockConnectionMultiplexer = null!;
@@ -200,8 +201,10 @@ public class SessionStateProcessingPipelineTests
             _mockConnectionMultiplexer.Object,
             _sessionContext);
         _positionEnricher = new PositionDataEnricher(_mockLoggerFactory.Object, _sessionContext);
+        _telemetrySignalTracker = new TelemetrySignalTracker(_mockLoggerFactory.Object, _sessionContext, _timeProvider);
+        _flagtronicsProcessor = new FlagtronicsProcessor(_mockLoggerFactory.Object, _sessionContext, _timeProvider, _telemetrySignalTracker);
         // Use the existing _carLapHistoryService from SetupSessionContext instead of creating a new one
-        _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor, _carLapHistoryService, _timeProvider);
+        _lapProcessor = new LapProcessor(_mockLoggerFactory.Object, _dbContextFactory, _sessionContext, _mockConnectionMultiplexer.Object, _pitProcessor, _flagtronicsProcessor, _carLapHistoryService, _timeProvider);
         _driverEnricher = new DriverEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _videoEnricher = new VideoEnricher(_sessionContext, _mockLoggerFactory.Object, _mockConnectionMultiplexer.Object);
         _fastestPaceEnricher = new FastestPaceEnricher(_mockLoggerFactory.Object, _carLapHistoryService, _sessionContext);
@@ -211,7 +214,6 @@ public class SessionStateProcessingPipelineTests
         _staleCarEnricher = new StaleCarEnricher(_mockLoggerFactory.Object, _sessionContext);
         _statusAggregator = new StatusAggregator(_mockHubContext.Object, _mockLoggerFactory.Object, _sessionContext);
         _updateConsolidator = new UpdateConsolidator(_sessionContext, _mockLoggerFactory.Object, _statusAggregator);
-        _flagtronicsProcessor = new FlagtronicsProcessor(_mockLoggerFactory.Object, _sessionContext);
     }
 
     private void CreatePipeline()
@@ -236,7 +238,8 @@ public class SessionStateProcessingPipelineTests
             _gpsProjectedLapTimeEnricher,
             _staleCarEnricher,
             _updateConsolidator,
-            _flagtronicsProcessor
+            _flagtronicsProcessor,
+            _telemetrySignalTracker
         );
     }
 
@@ -268,9 +271,10 @@ public class SessionStateProcessingPipelineTests
         _sessionContext.UpdateCars([new CarPosition { Number = "42", TransponderId = 1042 }]);
         var json = """[{ "carNumber": "42", "speed": 88, "lat": 36.5841, "lon": -121.7539, "pitActive": true, "pitDuration": "00:01:30.000", "carFlag": "Blue", "driverSource": "blePuck" }]""";
 
-        // Act
-        var tm = new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow);
-        await _pipeline.PostAsync(tm);
+        // Act - the pit state debounce needs the reading to persist across the confirm window
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow));
+        _timeProvider.Advance(TimeSpan.FromSeconds(11));
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, json, 1, DateTime.UtcNow));
 
         // Assert
         Assert.IsTrue(_sessionContext.IsFlagtronicsPitActive);
@@ -333,6 +337,8 @@ public class SessionStateProcessingPipelineTests
         _sessionContext.UpdateCars([new CarPosition { Number = "42", TransponderId = 1042 }]);
         var ftJson = """[{ "carNumber": "42", "pitActive": true }]""";
         await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, ftJson, 1, DateTime.UtcNow));
+        _timeProvider.Advance(TimeSpan.FromSeconds(11));
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, ftJson, 1, DateTime.UtcNow));
 
         // Act: X2 passing that would normally clear pit state is suppressed
         var passingJson = """[{ "TransponderId": 1042, "IsInPit": false, "LoopId": 1 }]""";
@@ -341,6 +347,41 @@ public class SessionStateProcessingPipelineTests
         // Assert
         var car = _sessionContext.GetCarByNumber("42");
         Assert.IsTrue(car!.IsInPit);
+    }
+
+    [TestMethod]
+    public async Task Flagtronics_TelemetrySignal_PublishedThroughPipeline_Test()
+    {
+        // Covers both halves of the wiring: the Flagtronics lane has to record ticks, and the
+        // RMonitor lane has to drive the sweep that publishes them. Asserted on the session flag
+        // rather than a car, because RMonitor processing rebuilds the car list.
+        Assert.IsFalse(_sessionContext.SessionState.HasTelemetrySource);
+
+        var clean = """[{ "carNumber": "42", "pitActive": false, "flaggingZone": 5, "speed": 60, "lat": 36.5, "lon": -121.7 }]""";
+        for (int i = 0; i < 6; i++)
+        {
+            await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE, clean, 1, DateTime.UtcNow));
+            _timeProvider.Advance(TimeSpan.FromSeconds(3));
+        }
+
+        // Nothing has driven the sweep yet.
+        Assert.IsFalse(_sessionContext.SessionState.HasTelemetrySource);
+
+        for (int i = 0; i < 3; i++)
+            await _pipeline.PostAsync(new TimingMessage("rmonitor", "$I,\"07:29:44\",\"26 Apr 25\"", 1, DateTime.Now));
+
+        Assert.IsTrue(_sessionContext.SessionState.HasTelemetrySource);
+    }
+
+    [TestMethod]
+    public async Task NoTelemetry_LeavesTheSessionFlagUnset_Test()
+    {
+        // An event with no in-car equipment must never claim a telemetry source, so clients omit
+        // the indicator entirely.
+        for (int i = 0; i < 6; i++)
+            await _pipeline.PostAsync(new TimingMessage("rmonitor", "$I,\"07:29:44\",\"26 Apr 25\"", 1, DateTime.Now));
+
+        Assert.IsFalse(_sessionContext.SessionState.HasTelemetrySource);
     }
 
     [TestMethod]
