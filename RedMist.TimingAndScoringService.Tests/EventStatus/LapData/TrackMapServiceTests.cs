@@ -120,7 +120,7 @@ public class TrackMapServiceTests
     [TestMethod]
     public async Task AddSample_MapMatchingTheDeclaredLength_IsAccepted()
     {
-        _service.DeclaredLapLengthMeters = CircleTrack.Circumference;
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference);
 
         await CircleTrack.FeedFullLapAsync(_service);
 
@@ -133,7 +133,7 @@ public class TrackMapServiceTests
         // Laps can agree with each other and still be wrong together - a feed reporting lap counts
         // consistently late gives every buffer two laps. The declared length is the only thing that
         // can tell, and a map the event would otherwise be stuck with is thrown away.
-        _service.DeclaredLapLengthMeters = CircleTrack.Circumference * 2;
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference / 2);
 
         await CircleTrack.FeedFullLapAsync(_service);
 
@@ -143,12 +143,133 @@ public class TrackMapServiceTests
     [TestMethod]
     public async Task AddSample_DiscardedMap_DoesNotPersist()
     {
-        _service.DeclaredLapLengthMeters = CircleTrack.Circumference * 2;
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference / 2);
 
         await CircleTrack.FeedFullLapAsync(_service);
 
         await using var db = _dbContextFactory.CreateDbContext();
         Assert.IsNull(db.TrackMaps.FirstOrDefault(t => t.EventId == EventId));
+    }
+
+    [TestMethod]
+    public async Task DeclaredLength_ArrivingAfterAWrongMapWasLoaded_DiscardsIt()
+    {
+        // A map learned before this check existed is otherwise reloaded and trusted every session
+        // for the rest of the event.
+        await CircleTrack.FeedFullLapAsync(_service);
+        Assert.IsNotNull(_service.CurrentMap);
+
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference / 2);
+
+        Assert.IsNull(_service.CurrentMap, "A map that cannot be this track must not survive");
+    }
+
+    [TestMethod]
+    public async Task DeclaredLength_KnownBeforeAWrongStoredMapLoads_DiscardsItOnLoad()
+    {
+        // The restart case: a map learned before this check existed is in the database, and the
+        // declared length is already known by the time it is read back.
+        await using (var db = _dbContextFactory.CreateDbContext())
+        {
+            db.TrackMaps.Add(new TrackMapRecord
+            {
+                EventId = EventId,
+                UpdatedUtc = DateTime.UnixEpoch,
+                Map = new TrackMap
+                {
+                    EventId = EventId,
+                    TotalLengthMeters = 10_000,
+                    StartFinishOffsetMeters = 1_393,
+                    Points =
+                    [
+                        new TrackMapPoint { Latitude = 45.0, Longitude = -75.0, CumulativeDistanceMeters = 0 },
+                        new TrackMapPoint { Latitude = 45.001, Longitude = -75.0, CumulativeDistanceMeters = 111 },
+                    ],
+                },
+            });
+            await db.SaveChangesAsync();
+        }
+        await _service.SetDeclaredLapLengthAsync(4_088);
+
+        await _service.EnsureLoadedAsync();
+
+        Assert.IsNull(_service.CurrentMap);
+        Assert.IsFalse(_service.IsStartFinishCalibrated);
+    }
+
+    [TestMethod]
+    public async Task DeclaredLength_DiscardedMap_IsRemovedFromTheDatabase()
+    {
+        // Left in place it would be reloaded and re-discarded on every restart, and consumers would
+        // keep drawing an outline the server no longer uses.
+        await CircleTrack.FeedFullLapAsync(_service);
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference / 2);
+
+        await using var db = _dbContextFactory.CreateDbContext();
+        Assert.IsNull(db.TrackMaps.FirstOrDefault(t => t.EventId == EventId));
+    }
+
+    [TestMethod]
+    public async Task DeclaredLength_MapShorterThanDeclared_IsKept()
+    {
+        // A track length entered in the wrong units would otherwise destroy a good map and then
+        // reject every replacement for the rest of the event. A map reading short is the ordinary
+        // result of a polyline cutting corners; only an over-long one indicates a swallowed lap.
+        await CircleTrack.FeedFullLapAsync(_service);
+
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference * 1.61);
+
+        Assert.IsNotNull(_service.CurrentMap);
+    }
+
+    [TestMethod]
+    public async Task DeclaredLength_SameValueAgain_IsANoOp()
+    {
+        await CircleTrack.FeedFullLapAsync(_service);
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference);
+        var map = _service.CurrentMap;
+
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference);
+
+        Assert.AreSame(map, _service.CurrentMap);
+    }
+
+    [TestMethod]
+    public async Task DeclaredLength_NonFiniteOrNegative_IsIgnored()
+    {
+        await CircleTrack.FeedFullLapAsync(_service);
+
+        await _service.SetDeclaredLapLengthAsync(double.NaN);
+        await _service.SetDeclaredLapLengthAsync(double.PositiveInfinity);
+        await _service.SetDeclaredLapLengthAsync(-1);
+
+        Assert.IsNotNull(_service.CurrentMap);
+        Assert.IsNull(_service.DeclaredLapLengthMeters);
+    }
+
+    [TestMethod]
+    public async Task DeclaredLength_MatchingTheMapInHand_LeavesItAlone()
+    {
+        await CircleTrack.FeedFullLapAsync(_service);
+
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference);
+
+        Assert.IsNotNull(_service.CurrentMap);
+    }
+
+    [TestMethod]
+    public async Task DeclaredLength_AfterDiscardingAWrongMap_RelearnsFromLaterLaps()
+    {
+        await CircleTrack.FeedFullLapAsync(_service);
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference / 2);
+        Assert.IsNull(_service.CurrentMap);
+
+        // The declared length now matches what the cars are actually driving.
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference);
+        await CircleTrack.FeedFullLapAsync(_service);
+
+        Assert.IsNotNull(_service.CurrentMap);
+        Assert.AreEqual(CircleTrack.Circumference, _service.CurrentMap.TotalLengthMeters, CircleTrack.Circumference * 0.05);
     }
 
     [TestMethod]
@@ -167,7 +288,7 @@ public class TrackMapServiceTests
     {
         // A polyline through sampled fixes cuts every corner, so a learned map reads short against
         // the declared figure. That is expected, not a disagreement.
-        _service.DeclaredLapLengthMeters = CircleTrack.Circumference * 1.10;
+        await _service.SetDeclaredLapLengthAsync(CircleTrack.Circumference * 1.10);
 
         await CircleTrack.FeedFullLapAsync(_service);
 
@@ -182,9 +303,18 @@ public class TrackMapServiceTests
     private async Task<double> AddClusteredObservationsAsync(int count)
     {
         var target = _service.CurrentMap!.TotalLengthMeters * 0.10;
-        for (int i = 0; i < count; i++)
-            await _service.AddStartFinishObservationAsync(target + (i % 5) * 3.0);
+        await AddCrossingsAsync(target, count);
         return target;
+    }
+
+    /// <summary>
+    /// Feeds crossings clustered around a point, spread over enough cars to satisfy the rule that a
+    /// line is only moved on evidence from more than one of them.
+    /// </summary>
+    private async Task AddCrossingsAsync(double around, int count, int cars = 5)
+    {
+        for (int i = 0; i < count; i++)
+            await _service.AddStartFinishObservationAsync($"car{i % cars}", around + (i % 5) * 3.0);
     }
 
     [TestMethod]
@@ -215,7 +345,7 @@ public class TrackMapServiceTests
 
         // Crossings spread right around the track: no consensus about where the line is.
         foreach (var fraction in new[] { 0.0, 0.2, 0.4, 0.6, 0.8 })
-            await _service.AddStartFinishObservationAsync(length * fraction);
+            await _service.AddStartFinishObservationAsync("9", length * fraction);
 
         Assert.IsFalse(_service.IsStartFinishCalibrated);
     }
@@ -223,24 +353,171 @@ public class TrackMapServiceTests
     [TestMethod]
     public async Task Calibration_NoMapYet_IgnoresObservations()
     {
-        await _service.AddStartFinishObservationAsync(100);
+        await _service.AddStartFinishObservationAsync("9", 100);
 
         Assert.IsNull(_service.CurrentMap);
         Assert.IsFalse(_service.IsStartFinishCalibrated);
     }
 
     [TestMethod]
-    public async Task Calibration_OnceSet_LaterCrossingsDoNotMoveIt()
+    public async Task Calibration_CrossingsAgreeingWithTheLine_LeaveItWhereItIs()
+    {
+        await CircleTrack.FeedFullLapAsync(_service);
+        var target = await AddClusteredObservationsAsync(5);
+        var settled = _service.CurrentMap!.StartFinishOffsetMeters!.Value;
+
+        // Normal running: crossings keep arriving where the line already is.
+        await AddCrossingsAsync(target, 15);
+
+        Assert.AreEqual(settled, _service.CurrentMap.StartFinishOffsetMeters!.Value, 1e-6);
+    }
+
+    [TestMethod]
+    public async Task Calibration_AFewCrossingsElsewhere_DoNotMoveIt()
     {
         await CircleTrack.FeedFullLapAsync(_service);
         await AddClusteredObservationsAsync(5);
         var settled = _service.CurrentMap!.StartFinishOffsetMeters!.Value;
 
-        // A run of crossings from somewhere else entirely must not drag the line around mid-event.
-        for (int i = 0; i < 10; i++)
-            await _service.AddStartFinishObservationAsync(_service.CurrentMap.TotalLengthMeters * 0.60);
+        // Moving a located line takes more evidence than settling one did.
+        await AddCrossingsAsync(_service.CurrentMap.TotalLengthMeters * 0.60, 9);
 
         Assert.AreEqual(settled, _service.CurrentMap.StartFinishOffsetMeters!.Value, 1e-6);
+    }
+
+    [TestMethod]
+    public async Task Calibration_ScatteredLaterCrossings_DoNotMoveIt()
+    {
+        await CircleTrack.FeedFullLapAsync(_service);
+        await AddClusteredObservationsAsync(5);
+        var settled = _service.CurrentMap!.StartFinishOffsetMeters!.Value;
+
+        // Plenty of crossings, but they do not agree with each other either.
+        var length = _service.CurrentMap.TotalLengthMeters;
+        for (int i = 0; i < 15; i++)
+            await _service.AddStartFinishObservationAsync($"car{i % 5}", length * ((i % 5) * 0.2));
+
+        Assert.AreEqual(settled, _service.CurrentMap.StartFinishOffsetMeters!.Value, 1e-6);
+    }
+
+    [TestMethod]
+    public async Task Calibration_OneCarCirculatingAlone_CannotMoveTheLine()
+    {
+        // Ten crossings by one car are not ten measurements, they are one systematic bias repeated
+        // - and that car would otherwise capture the line for the whole field.
+        await CircleTrack.FeedFullLapAsync(_service);
+        await AddClusteredObservationsAsync(5);
+        var settled = _service.CurrentMap!.StartFinishOffsetMeters!.Value;
+        var elsewhere = _service.CurrentMap.TotalLengthMeters * 0.60;
+
+        for (int window = 0; window < 4; window++)
+            await AddCrossingsAsync(elsewhere, 10, cars: 1);
+
+        Assert.AreEqual(settled, _service.CurrentMap.StartFinishOffsetMeters!.Value, 1e-6);
+    }
+
+    [TestMethod]
+    public async Task Calibration_OneWindowElsewhere_WaitsForASecondOpinion()
+    {
+        // A field whose crossings fall into two clusters would otherwise move the line back and
+        // forth between them for the rest of the event.
+        await CircleTrack.FeedFullLapAsync(_service);
+        await AddClusteredObservationsAsync(5);
+        var settled = _service.CurrentMap!.StartFinishOffsetMeters!.Value;
+
+        await AddCrossingsAsync(_service.CurrentMap.TotalLengthMeters * 0.60, 10);
+
+        Assert.AreEqual(settled, _service.CurrentMap.StartFinishOffsetMeters!.Value, 1e-6);
+    }
+
+    [TestMethod]
+    public async Task Calibration_ASecondWindowDisagreeing_RetiresTheFirst()
+    {
+        await CircleTrack.FeedFullLapAsync(_service);
+        var target = await AddClusteredObservationsAsync(5);
+        var settled = _service.CurrentMap!.StartFinishOffsetMeters!.Value;
+        var length = _service.CurrentMap.TotalLengthMeters;
+
+        // Two windows pointing at different places, then one confirming where the line already is.
+        await AddCrossingsAsync(length * 0.60, 10);
+        await AddCrossingsAsync(length * 0.30, 10);
+        await AddCrossingsAsync(target, 10);
+
+        Assert.AreEqual(settled, _service.CurrentMap.StartFinishOffsetMeters!.Value, 1e-6);
+    }
+
+    [TestMethod]
+    public async Task Calibration_TwoWindowsAgreeingElsewhere_MoveTheLine()
+    {
+        // A line settled from bad evidence would otherwise be wrong for the rest of the event, and
+        // the whole event is what the map is kept for.
+        await CircleTrack.FeedFullLapAsync(_service);
+        await AddClusteredObservationsAsync(5);
+        var settled = _service.CurrentMap!.StartFinishOffsetMeters!.Value;
+        var elsewhere = _service.CurrentMap.TotalLengthMeters * 0.60;
+
+        await AddCrossingsAsync(elsewhere, 10);
+        await AddCrossingsAsync(elsewhere, 10);
+
+        Assert.AreNotEqual(settled, _service.CurrentMap.StartFinishOffsetMeters!.Value);
+        Assert.AreEqual(elsewhere, _service.CurrentMap.StartFinishOffsetMeters!.Value, 20);
+    }
+
+    [TestMethod]
+    public async Task Calibration_CrossingsJustInsideTheThreshold_DoNotMoveTheLine()
+    {
+        await CircleTrack.FeedFullLapAsync(_service);
+        var target = await AddClusteredObservationsAsync(5);
+        var settled = _service.CurrentMap!.StartFinishOffsetMeters!.Value;
+
+        // The floor is 150 m, so 120 m away is ordinary scatter rather than a different line.
+        await AddCrossingsAsync(target + 120, 10);
+        await AddCrossingsAsync(target + 120, 10);
+
+        Assert.AreEqual(settled, _service.CurrentMap.StartFinishOffsetMeters!.Value, 1e-6);
+    }
+
+    [TestMethod]
+    public async Task Calibration_CrossingsWellOutsideTheThreshold_MoveTheLine()
+    {
+        await CircleTrack.FeedFullLapAsync(_service);
+        var target = await AddClusteredObservationsAsync(5);
+
+        await AddCrossingsAsync(target + 400, 10);
+        await AddCrossingsAsync(target + 400, 10);
+
+        Assert.AreEqual(target + 400, _service.CurrentMap!.StartFinishOffsetMeters!.Value, 20);
+    }
+
+    [TestMethod]
+    public async Task Calibration_CrossingsThatSettledTheLine_DoNotCountTowardsMovingIt()
+    {
+        // The window starts fresh after calibration, so the line cannot be moved by evidence that
+        // is partly the evidence which placed it.
+        await CircleTrack.FeedFullLapAsync(_service);
+        await AddClusteredObservationsAsync(5);
+        var elsewhere = _service.CurrentMap!.TotalLengthMeters * 0.60;
+
+        // Nine is one short of a window, even though fourteen crossings have now been seen.
+        await AddCrossingsAsync(elsewhere, 9);
+        Assert.AreEqual(0.10 * _service.CurrentMap.TotalLengthMeters,
+            _service.CurrentMap.StartFinishOffsetMeters!.Value, 20);
+    }
+
+    [TestMethod]
+    public async Task Calibration_MovedLine_IsPersisted()
+    {
+        await CircleTrack.FeedFullLapAsync(_service);
+        await AddClusteredObservationsAsync(5);
+        var elsewhere = _service.CurrentMap!.TotalLengthMeters * 0.60;
+
+        await AddCrossingsAsync(elsewhere, 10);
+        await AddCrossingsAsync(elsewhere, 10);
+
+        await using var db = _dbContextFactory.CreateDbContext();
+        var record = db.TrackMaps.FirstOrDefault(t => t.EventId == EventId);
+        Assert.IsNotNull(record);
+        Assert.AreEqual(elsewhere, record.Map.StartFinishOffsetMeters!.Value, 20);
     }
 
     [TestMethod]
@@ -283,12 +560,12 @@ public class TrackMapServiceTests
 
         // A run of scattered early crossings, none of which agree.
         for (int i = 0; i < 20; i++)
-            await _service.AddStartFinishObservationAsync(length * (i % 5) * 0.2);
+            await _service.AddStartFinishObservationAsync("9", length * (i % 5) * 0.2);
         Assert.IsFalse(_service.IsStartFinishCalibrated);
 
         // Then a full window of agreeing ones, which should push the old ones out.
         for (int i = 0; i < 20; i++)
-            await _service.AddStartFinishObservationAsync(length * 0.10 + (i % 3));
+            await _service.AddStartFinishObservationAsync("9", length * 0.10 + (i % 3));
 
         Assert.IsTrue(_service.IsStartFinishCalibrated);
         Assert.AreEqual(length * 0.10, _service.CurrentMap.StartFinishOffsetMeters!.Value, 20);

@@ -44,8 +44,44 @@ public class TrackMapService
     /// long event cannot grow it without limit, and so the estimate follows the recent field rather
     /// than crossings from hours ago.
     /// </summary>
-    private readonly List<double> startFinishObservations = [];
+    private readonly List<(string Car, double Distance)> startFinishObservations = [];
     private const int MaxStartFinishObservations = 20;
+
+    /// <summary>
+    /// Crossings needed to move a line that has already been located, against the five that settle
+    /// it in the first place. Overturning a working calibration should take more evidence than
+    /// establishing one, and all of it gathered since.
+    /// </summary>
+    private const int MinObservationsToRecalibrate = 10;
+
+    /// <summary>
+    /// Distinct cars those crossings must come from. Ten crossings by one car circulating alone are
+    /// not ten measurements, they are one systematic bias repeated - and that car would otherwise
+    /// capture the event's start/finish line for the whole field.
+    /// </summary>
+    private const int MinCarsToRecalibrate = 3;
+
+    /// <summary>
+    /// How far the crossings must sit from the located line before it is worth moving, as a fraction
+    /// of the lap, floored by <see cref="MinRecalibrationDistanceMeters"/>.
+    /// </summary>
+    private const double RecalibrationThreshold = 0.05;
+
+    /// <summary>
+    /// Crossings scatter in normal running - cars cross at different speeds and their laps are
+    /// reported with different delays - and the calibrator calls anything inside 100 m agreement.
+    /// A purely proportional threshold falls below that on a track under a mile and a quarter, which
+    /// would have the line chasing its own noise, so it never goes under half as much again.
+    /// </summary>
+    private const double MinRecalibrationDistanceMeters = 150.0;
+
+    /// <summary>
+    /// A revised line waiting on a second, independent window of crossings to say the same thing.
+    /// Without that, a field whose crossings fall into two clusters - a mixed grid whose classes
+    /// report laps a few seconds apart - moves the line back and forth between them indefinitely,
+    /// each move a database write and a jump in every car's reported position.
+    /// </summary>
+    private double? pendingRevision;
 
     public TrackMapService(SessionContext sessionContext, IDbContextFactory<TsContext> dbContextFactory,
         IConnectionMultiplexer redis, ILoggerFactory loggerFactory, TimeProvider? timeProvider = null)
@@ -65,8 +101,86 @@ public class TrackMapService
     /// laps against each other cannot tell a circuit from one whose every buffer covers two laps -
     /// a feed reporting lap counts consistently late produces exactly that, and the doubled laps
     /// agree with each other perfectly. Only something outside the GPS can settle it.
+    ///
+    /// Setting it also re-examines the map already in hand. A map learned before this check existed,
+    /// or before the declared length arrived, is otherwise reloaded and trusted every session for
+    /// the rest of the event.
     /// </summary>
-    public double? DeclaredLapLengthMeters { get; set; }
+    public double? DeclaredLapLengthMeters => declaredLapLengthMeters;
+
+    private double? declaredLapLengthMeters;
+
+    /// <summary>
+    /// Records the length the timing system declares, and re-examines the map already in hand
+    /// against it.
+    /// </summary>
+    public async Task SetDeclaredLapLengthAsync(double meters, CancellationToken cancellationToken = default)
+    {
+        if (!double.IsFinite(meters) || meters <= 0 || declaredLapLengthMeters == meters)
+            return;
+
+        declaredLapLengthMeters = meters;
+        if (IsLongerThanDeclared(currentMap?.TotalLengthMeters))
+            await DiscardMapAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Whether a map is too long to be this track. Deliberately one-sided: the failure this guards
+    /// against is a buffer that swallowed a lap boundary, which is always too long, while a map
+    /// reading short is the ordinary result of a polyline cutting every corner. Treating short as
+    /// wrong would let a track length entered in the wrong units destroy a perfectly good map and
+    /// then reject every replacement for the rest of the event.
+    /// </summary>
+    private bool IsLongerThanDeclared(double? lengthMeters)
+    {
+        if (lengthMeters is not double length)
+            return false;
+        if (declaredLapLengthMeters is not double declared || !double.IsFinite(declared) || declared <= 0)
+            return false;
+        return (length - declared) / declared > DeclaredLengthTolerance;
+    }
+
+    /// <summary>
+    /// Throws away the current map, and the stored copies of it, so the next clean laps replace it
+    /// rather than the event carrying a map it cannot use for the rest of its life.
+    /// </summary>
+    private async Task DiscardMapAsync(CancellationToken cancellationToken)
+    {
+        Logger.LogWarning(
+            "Discarding the {len:F0} m map held for event {event}: the timing system declares {declared:F0} m. Relearning.",
+            currentMap!.TotalLengthMeters, sessionContext.EventId, declaredLapLengthMeters);
+
+        currentMap = null;
+        builders.Clear();
+        startFinishObservations.Clear();
+        pendingRevision = null;
+
+        try
+        {
+            await using var db = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+            var record = await db.TrackMaps.FirstOrDefaultAsync(t => t.EventId == sessionContext.EventId, cancellationToken);
+            if (record != null)
+            {
+                db.TrackMaps.Remove(record);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete the discarded track map for event {event}", sessionContext.EventId);
+        }
+
+        try
+        {
+            // Consumers draw the outline from here, and would otherwise keep drawing the one just
+            // discarded while every car reports its position as unknown.
+            await redis.GetDatabase().KeyDeleteAsync(string.Format(Consts.TRACK_MAP_KEY, sessionContext.EventId));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to remove the discarded track map for event {event} from the cache", sessionContext.EventId);
+        }
+    }
 
     /// <summary>
     /// How far a learned map may sit from the declared length. Generous, because a polyline through
@@ -83,20 +197,35 @@ public class TrackMapService
 
     /// <summary>
     /// Records where a car was on the path at the moment its completed-lap count incremented - that
-    /// is, a sighting of the start/finish line. Once enough sightings agree the offset is fixed on
-    /// the map and persisted; further observations are ignored.
+    /// is, a sighting of the start/finish line. Enough agreeing sightings locate the line; the map
+    /// is then persisted and published so a reload starts calibrated.
+    ///
+    /// Crossings keep being collected afterwards. A line settled from bad evidence - a session that
+    /// began with a handful of degraded devices, a course whose timing line has since moved - would
+    /// otherwise be wrong for the rest of the event, and the whole event is what the map is kept
+    /// for. Moving it takes more evidence than settling it did, all of it gathered since, agreeing
+    /// with itself and disagreeing with where the line currently sits by more than crossings
+    /// normally scatter.
     /// </summary>
-    public async Task AddStartFinishObservationAsync(double distanceAlongMeters,
+    public async Task AddStartFinishObservationAsync(string carNumber, double distanceAlongMeters,
         CancellationToken cancellationToken = default)
     {
-        if (currentMap == null || currentMap.StartFinishOffsetMeters != null)
+        if (currentMap == null)
             return;
 
-        startFinishObservations.Add(distanceAlongMeters);
+        startFinishObservations.Add((carNumber, distanceAlongMeters));
         if (startFinishObservations.Count > MaxStartFinishObservations)
             startFinishObservations.RemoveAt(0);
 
-        var offset = StartFinishCalibrator.EstimateOffsetMeters(startFinishObservations, currentMap.TotalLengthMeters);
+        if (currentMap.StartFinishOffsetMeters is double located)
+            await ReviseStartFinishAsync(located, cancellationToken);
+        else
+            await LocateStartFinishAsync(cancellationToken);
+    }
+
+    private async Task LocateStartFinishAsync(CancellationToken cancellationToken)
+    {
+        var offset = StartFinishCalibrator.EstimateOffsetMeters(Distances(), currentMap!.TotalLengthMeters);
         if (offset == null)
             return;
 
@@ -105,9 +234,60 @@ public class TrackMapService
             "Calibrated start/finish for event {event} at {offset:F0} m along the map ({count} crossings)",
             sessionContext.EventId, offset.Value, startFinishObservations.Count);
 
+        // Start the next window fresh, so nothing that settled this line counts towards moving it.
+        startFinishObservations.Clear();
         await PersistAsync(currentMap, cancellationToken);
         await PublishAsync(currentMap, cancellationToken);
     }
+
+    private async Task ReviseStartFinishAsync(double located, CancellationToken cancellationToken)
+    {
+        if (startFinishObservations.Count < MinObservationsToRecalibrate)
+            return;
+        if (startFinishObservations.Select(o => o.Car).Distinct().Count() < MinCarsToRecalibrate)
+            return;
+
+        var revised = StartFinishCalibrator.EstimateOffsetMeters(Distances(),
+            currentMap!.TotalLengthMeters, MinObservationsToRecalibrate);
+        if (revised == null)
+            return;
+
+        var threshold = Math.Max(currentMap.TotalLengthMeters * RecalibrationThreshold, MinRecalibrationDistanceMeters);
+        var drift = TrackGeometry.CircularDistanceMeters(revised.Value, located, currentMap.TotalLengthMeters);
+        if (drift <= threshold)
+        {
+            // These crossings say the line is where it already is, which retires any revision that
+            // was waiting on a second opinion.
+            pendingRevision = null;
+            startFinishObservations.Clear();
+            return;
+        }
+
+        if (pendingRevision is not double pending
+            || TrackGeometry.CircularDistanceMeters(pending, revised.Value, currentMap.TotalLengthMeters) > threshold)
+        {
+            // First window to point somewhere else. Hold it, and see whether an independent one
+            // says the same before moving anything.
+            Logger.LogInformation(
+                "Crossings for event {event} put start/finish {drift:F0} m from where it sits, at {revised:F0} m. Waiting for a second window to agree.",
+                sessionContext.EventId, drift, revised.Value);
+            pendingRevision = revised;
+            startFinishObservations.Clear();
+            return;
+        }
+
+        currentMap.StartFinishOffsetMeters = revised;
+        Logger.LogWarning(
+            "Moved start/finish for event {event} from {old:F0} m to {new:F0} m along the map: two windows of crossings since it was located agree it is {drift:F0} m away",
+            sessionContext.EventId, located, revised.Value, drift);
+
+        pendingRevision = null;
+        startFinishObservations.Clear();
+        await PersistAsync(currentMap, cancellationToken);
+        await PublishAsync(currentMap, cancellationToken);
+    }
+
+    private List<double> Distances() => [.. startFinishObservations.Select(o => o.Distance)];
 
     /// <summary>
     /// Loads the event's persisted map once. Idempotent and cheap after the first call.
@@ -133,11 +313,21 @@ public class TrackMapService
             if (record?.Map is { Points.Count: > 1 })
             {
                 currentMap = record.Map;
-                Logger.LogInformation("Loaded track map for event {event}: {points} points, {len:F0} m, {sf}",
-                    sessionContext.EventId, currentMap.Points.Count, currentMap.TotalLengthMeters,
-                    currentMap.StartFinishOffsetMeters is double sf
-                        ? $"start/finish at {sf:F0} m"
-                        : "start/finish not yet calibrated");
+
+                // A stored map is only as good as the checks that existed when it was learned, so
+                // it is re-examined before anything is claimed about having loaded one.
+                if (IsLongerThanDeclared(currentMap.TotalLengthMeters))
+                {
+                    await DiscardMapAsync(cancellationToken);
+                }
+                else
+                {
+                    Logger.LogInformation("Loaded track map for event {event}: {points} points, {len:F0} m, {sf}",
+                        sessionContext.EventId, currentMap.Points.Count, currentMap.TotalLengthMeters,
+                        currentMap.StartFinishOffsetMeters is double sf
+                            ? $"start/finish at {sf:F0} m"
+                            : "start/finish not yet calibrated");
+                }
             }
             loaded = true;
         }
@@ -178,19 +368,20 @@ public class TrackMapService
         if (map == null)
             return;
 
-        if (DeclaredLapLengthMeters is double declared && declared > 0
-            && Math.Abs(map.TotalLengthMeters - declared) / declared > DeclaredLengthTolerance)
+        if (IsLongerThanDeclared(map.TotalLengthMeters))
         {
             // Learned from laps that agree with each other but not with the track. Start that car
             // over rather than persisting a map the event is then stuck with.
             Logger.LogWarning(
                 "Discarding a {len:F0} m map learned for event {event} from car {car}: the timing system declares {declared:F0} m",
-                map.TotalLengthMeters, sessionContext.EventId, carNumber, declared);
+                map.TotalLengthMeters, sessionContext.EventId, carNumber, declaredLapLengthMeters);
             builders.Remove(carNumber);
             return;
         }
 
         currentMap = map;
+        startFinishObservations.Clear();
+        pendingRevision = null;
         builders.Clear();
         Logger.LogInformation("Learned track map for event {event} from car {car}: {points} points, {len:F0} m",
             sessionContext.EventId, carNumber, map.Points.Count, map.TotalLengthMeters);

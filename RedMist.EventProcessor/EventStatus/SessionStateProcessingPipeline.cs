@@ -161,7 +161,10 @@ public class SessionStateProcessingPipeline
                         // The timing system declares the track's length; it is the only measure of
                         // the circuit that does not come from the GPS being checked against it.
                         if (rMonitorProcessor.TrackLength > 0)
-                            trackMapService.DeclaredLapLengthMeters = rMonitorProcessor.TrackLength * MetersPerMile;
+                        {
+                            await trackMapService.SetDeclaredLapLengthAsync(
+                                rMonitorProcessor.TrackLength * MetersPerMile, sessionContext.CancellationToken);
+                        }
                         if (rmonitorChanges != null)
                             allAppliedChanges.AddRange(rmonitorChanges);
 

@@ -170,7 +170,7 @@ public class GpsLapPositionEnricher
         {
             if (isRollover)
             {
-                await trackMapService.AddStartFinishObservationAsync(snap!.Value.DistanceAlongMeters,
+                await trackMapService.AddStartFinishObservationAsync(car.Number, snap!.Value.DistanceAlongMeters,
                     sessionContext.CancellationToken);
             }
 
