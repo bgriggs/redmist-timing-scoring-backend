@@ -372,12 +372,6 @@ public class FlagtronicsProcessor
         if (vehicle.FlaggingZone != null && car.FlaggingZone != vehicle.FlaggingZone)
             patch.FlaggingZone = vehicle.FlaggingZone;
 
-        // GPS fix present when the zone is valid or a non-zero position is reported. Drives
-        // the no-GPS lap-completion fallback and lets clients show a GPS dropout.
-        bool hasGps = hasValidZone || (vehicle.Lat is double gpsLat && vehicle.Lon is double gpsLon && (gpsLat != 0 || gpsLon != 0));
-        if (car.HasGps != hasGps)
-            patch.HasGps = hasGps;
-
         // Track laps that included a pit stop, mirroring the X2 loop behavior. Exclude the
         // pre-race grid/pit staging, where the whole field sits in pit zones (inPit by zone,
         // pitActive false) before ever turning a lap, so it does not tag the first lap: only

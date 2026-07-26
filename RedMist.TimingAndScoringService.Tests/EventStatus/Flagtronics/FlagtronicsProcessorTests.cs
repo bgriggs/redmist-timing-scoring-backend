@@ -506,25 +506,7 @@ public class FlagtronicsProcessorTests
 
     #endregion
 
-    #region HasGps and no-GPS lap-completion fallback
-
-    [TestMethod]
-    public void Process_HasGps_TrueWithZone_FalseWithout()
-    {
-        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 5, "speed": 40 }]""");
-        Assert.IsTrue(_sessionContext.GetCarByNumber("42")!.HasGps);
-
-        // Zone 0 and no position => no GPS fix.
-        Process("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 0 }]""");
-        Assert.IsFalse(_sessionContext.GetCarByNumber("42")!.HasGps);
-    }
-
-    [TestMethod]
-    public void Process_HasGps_TrueFromLatLonWithoutZone()
-    {
-        Process("""[{ "carNumber": "42", "pitActive": false, "lat": 36.5, "lon": -121.7 }]""");
-        Assert.IsTrue(_sessionContext.GetCarByNumber("42")!.HasGps);
-    }
+    #region No-GPS lap-completion fallback
 
     [TestMethod]
     public void NotifyLapCompleted_NoGpsStuckPit_ClearsAndSuppresses()
