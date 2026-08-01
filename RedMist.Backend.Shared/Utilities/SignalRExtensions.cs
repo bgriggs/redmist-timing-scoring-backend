@@ -13,6 +13,9 @@ public static class SignalRExtensions
         return services.AddSignalR(o => 
         {
             o.MaximumParallelInvocationsPerClient = 3;
+            // The relay sends a full Flagtronics vehicle state as a single message. At ~500 bytes
+            // per car an 80 car field is ~40KB, past the 32KB default, and the connection is aborted.
+            o.MaximumReceiveMessageSize = 1024 * 1024;
             // Critical settings for multi-replica scenarios
             o.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
             o.KeepAliveInterval = TimeSpan.FromSeconds(15);
