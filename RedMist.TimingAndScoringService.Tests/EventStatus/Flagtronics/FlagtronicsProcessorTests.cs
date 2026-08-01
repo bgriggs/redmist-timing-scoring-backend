@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
+using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.Flagtronics;
@@ -11,6 +12,8 @@ using RedMist.EventProcessor.EventStatus.X2;
 using RedMist.EventProcessor.Models;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
+using StackExchange.Redis;
+using System.Text.Json;
 
 namespace RedMist.EventProcessor.Tests.EventStatus.Flagtronics;
 
@@ -1258,6 +1261,224 @@ public class FlagtronicsProcessorTests
         ProcessSettled("""[{ "carNumber": "42", "pitActive": false, "flaggingZone": 5, "speed": 80 }]""");
         _sessionContext.UpdatePitOwnership();
         Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"));
+    }
+
+    #endregion
+
+    #region Driver publication
+
+    /// <summary>
+    /// Stands in for the driver cache the enricher reads, so a publication can be inspected as
+    /// the enricher would find it.
+    /// </summary>
+    private Dictionary<string, string> _driverCache = null!;
+
+    private FlagtronicsProcessor CreateProcessorWithCache()
+    {
+        _driverCache = [];
+        var mockDatabase = new Mock<IDatabase>();
+        mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync((RedisKey k, CommandFlags _) =>
+                _driverCache.TryGetValue(k.ToString(), out var v) ? (RedisValue)v : RedisValue.Null);
+        // A TimeSpan expiry binds to the Expiration/ValueCondition overload, not the older
+        // TimeSpan? ones. Stubbing the wrong one leaves the write silently unrecorded.
+        mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
+                It.IsAny<Expiration>(), It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
+            .Callback((RedisKey k, RedisValue v, Expiration e, ValueCondition c, CommandFlags f) =>
+                _driverCache[k.ToString()] = v.ToString())
+            .ReturnsAsync(true);
+
+        var mockMux = new Mock<IConnectionMultiplexer>();
+        mockMux.Setup(x => x.GetDatabase(It.IsAny<int>(), It.IsAny<object>())).Returns(mockDatabase.Object);
+        return new FlagtronicsProcessor(_mockLoggerFactory.Object, _sessionContext, _time, null, mockMux.Object);
+    }
+
+    private static string DriverKey(string carNumber) =>
+        string.Format(Backend.Shared.Consts.EVENT_DRIVER_KEY, 1, carNumber);
+
+    private DriverInfoSource ReadPublished(string carNumber) =>
+        JsonSerializer.Deserialize<DriverInfoSource>(_driverCache[DriverKey(carNumber)])!;
+
+    [TestMethod]
+    public async Task PublishDriverInfo_WithNameOnRecord_PublishesAndReportsChange()
+    {
+        var processor = CreateProcessorWithCache();
+        processor.Process(FtMessage("""[{ "carNumber": "42", "driverName": "Dan Tiley", "driverId": 71000286 }]"""));
+
+        var changed = await processor.PublishDriverInfoAsync();
+
+        Assert.AreEqual(1, changed.Count);
+        Assert.AreEqual("42", changed[0]);
+        var published = ReadPublished("42");
+        Assert.AreEqual("Dan Tiley", published.DriverInfo.DriverName);
+        Assert.AreEqual("71000286", published.DriverInfo.DriverId);
+        Assert.AreEqual(1, published.DriverInfo.EventId);
+        Assert.AreEqual(FlagtronicsProcessor.FLAGTRONICS_VEHICLE_CLIENT_ID, published.ClientId);
+    }
+
+    [TestMethod]
+    public async Task PublishDriverInfo_UnchangedWithinRefreshWindow_ReportsNoChange()
+    {
+        var processor = CreateProcessorWithCache();
+        const string record = """[{ "carNumber": "42", "driverName": "Dan Tiley", "driverId": 71000286 }]""";
+
+        processor.Process(FtMessage(record));
+        await processor.PublishDriverInfoAsync();
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        processor.Process(FtMessage(record));
+        var changed = await processor.PublishDriverInfoAsync();
+
+        Assert.AreEqual(0, changed.Count, "an unchanged driver must not be re-patched every record");
+    }
+
+    [TestMethod]
+    public async Task PublishDriverInfo_UnchangedPastRefreshWindow_RewritesKeyAndReportsCar()
+    {
+        var processor = CreateProcessorWithCache();
+        const string record = """[{ "carNumber": "42", "driverName": "Dan Tiley", "driverId": 71000286 }]""";
+
+        processor.Process(FtMessage(record));
+        await processor.PublishDriverInfoAsync();
+
+        // The key carries a 10 minute expiration, so a driver who stays in the car has to have
+        // the record refreshed or the enricher would clear the name once it lapses. An expiry
+        // between the two passes is exactly the case where the car is no longer showing the
+        // name, so the refresh has to be reported even though the value did not change.
+        _driverCache.Clear();
+        _time.Advance(TimeSpan.FromMinutes(7));
+        processor.Process(FtMessage(record));
+        var changed = await processor.PublishDriverInfoAsync();
+
+        Assert.IsTrue(_driverCache.ContainsKey(DriverKey("42")), "the record must be rewritten before it expires");
+        CollectionAssert.Contains(changed.ToList(), "42", "a restored record must be re-applied by the enricher");
+    }
+
+    [TestMethod]
+    public async Task PublishDriverInfo_HeldRecordLapses_TakesTheCarOverAndReportsIt()
+    {
+        var processor = CreateProcessorWithCache();
+        const string record = """[{ "carNumber": "42", "driverName": "Dan Tiley", "driverId": 71000286 }]""";
+
+        // The relay's DriverID record holds the car at first.
+        _driverCache[DriverKey("42")] = JsonSerializer.Serialize(new DriverInfoSource(
+            new DriverInfo { EventId = 1, CarNumber = "42", DriverId = "71000999", DriverName = "Relay Driver" },
+            "relay-abc", DateTime.UtcNow));
+
+        processor.Process(FtMessage(record));
+        Assert.AreEqual(0, (await processor.PublishDriverInfoAsync()).Count);
+
+        // The relay stops posting and its record expires. The vehicle feed must take the car
+        // over rather than leaving it on a name nothing is refreshing.
+        _driverCache.Clear();
+        _time.Advance(TimeSpan.FromMinutes(7));
+        processor.Process(FtMessage(record));
+        var changed = await processor.PublishDriverInfoAsync();
+
+        CollectionAssert.Contains(changed.ToList(), "42");
+        Assert.AreEqual("Dan Tiley", ReadPublished("42").DriverInfo.DriverName);
+    }
+
+    [TestMethod]
+    public async Task PublishDriverInfo_LaterRecordInSameMessageClearsDriver_PublishesNothing()
+    {
+        var processor = CreateProcessorWithCache();
+
+        // A poll batch can carry the same car twice; the driver got out on the second record.
+        // Publishing the empty name would clear whatever driver the car had, from any source.
+        processor.Process(FtMessage("""
+            [{ "carNumber": "42", "driverName": "Dan Tiley", "driverId": 71000286 },
+             { "carNumber": "42", "driverName": null, "driverSource": "none" }]
+            """));
+
+        var changed = await processor.PublishDriverInfoAsync();
+
+        Assert.AreEqual(0, changed.Count);
+        Assert.IsEmpty(_driverCache);
+    }
+
+    [TestMethod]
+    public async Task PublishDriverInfo_NameChanges_Republishes()
+    {
+        var processor = CreateProcessorWithCache();
+        processor.Process(FtMessage("""[{ "carNumber": "42", "driverName": "Dan Tiley", "driverId": 71000286 }]"""));
+        await processor.PublishDriverInfoAsync();
+
+        processor.Process(FtMessage("""[{ "carNumber": "42", "driverName": "Ryan Isabell", "driverId": 71000471 }]"""));
+        var changed = await processor.PublishDriverInfoAsync();
+
+        Assert.AreEqual(1, changed.Count);
+        Assert.AreEqual("Ryan Isabell", ReadPublished("42").DriverInfo.DriverName);
+    }
+
+    [TestMethod]
+    public async Task PublishDriverInfo_RecordHeldByAnotherSource_LeavesItAlone()
+    {
+        var processor = CreateProcessorWithCache();
+
+        // The DriverID event feed reaches the cache through the relay and outranks the vehicle
+        // feed's view of who is in the car.
+        var existing = new DriverInfoSource(
+            new DriverInfo { EventId = 1, CarNumber = "42", DriverId = "71000999", DriverName = "Relay Driver" },
+            "relay-abc", DateTime.UtcNow);
+        _driverCache[DriverKey("42")] = JsonSerializer.Serialize(existing);
+
+        processor.Process(FtMessage("""[{ "carNumber": "42", "driverName": "Dan Tiley", "driverId": 71000286 }]"""));
+        var changed = await processor.PublishDriverInfoAsync();
+
+        Assert.AreEqual(0, changed.Count);
+        Assert.AreEqual("Relay Driver", ReadPublished("42").DriverInfo.DriverName);
+    }
+
+    [TestMethod]
+    public async Task PublishDriverInfo_RecordFromItselfWithName_IsStillUpdated()
+    {
+        var processor = CreateProcessorWithCache();
+        var existing = new DriverInfoSource(
+            new DriverInfo { EventId = 1, CarNumber = "42", DriverId = "71000286", DriverName = "Dan Tiley" },
+            FlagtronicsProcessor.FLAGTRONICS_VEHICLE_CLIENT_ID, DateTime.UtcNow);
+        _driverCache[DriverKey("42")] = JsonSerializer.Serialize(existing);
+
+        processor.Process(FtMessage("""[{ "carNumber": "42", "driverName": "Ryan Isabell", "driverId": 71000471 }]"""));
+        var changed = await processor.PublishDriverInfoAsync();
+
+        Assert.AreEqual(1, changed.Count);
+        Assert.AreEqual("Ryan Isabell", ReadPublished("42").DriverInfo.DriverName);
+    }
+
+    [TestMethod]
+    public async Task PublishDriverInfo_NoDriverOnRecord_PublishesNothing()
+    {
+        var processor = CreateProcessorWithCache();
+        processor.Process(FtMessage("""[{ "carNumber": "42", "driverName": null, "driverSource": "none" }]"""));
+
+        var changed = await processor.PublishDriverInfoAsync();
+
+        Assert.AreEqual(0, changed.Count);
+        Assert.IsEmpty(_driverCache);
+    }
+
+    [TestMethod]
+    public async Task PublishDriverInfo_CarNotInTimingFeed_PublishesNothing()
+    {
+        var processor = CreateProcessorWithCache();
+        processor.Process(FtMessage("""[{ "carNumber": "999", "driverName": "Dan Tiley", "driverId": 71000286 }]"""));
+
+        var changed = await processor.PublishDriverInfoAsync();
+
+        Assert.AreEqual(0, changed.Count);
+        Assert.IsEmpty(_driverCache);
+    }
+
+    [TestMethod]
+    public async Task PublishDriverInfo_WithoutCache_IsInert()
+    {
+        // The processor is constructed without a multiplexer in much of the test suite.
+        _processor.Process(FtMessage("""[{ "carNumber": "42", "driverName": "Dan Tiley", "driverId": 71000286 }]"""));
+
+        var changed = await _processor.PublishDriverInfoAsync();
+
+        Assert.AreEqual(0, changed.Count);
     }
 
     #endregion

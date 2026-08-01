@@ -14,6 +14,7 @@ using RedMist.TimingAndScoringService.EventStatus.InCarDriverMode;
 using RedMist.TimingAndScoringService.EventStatus.RMonitor;
 using RedMist.TimingAndScoringService.EventStatus.X2;
 using StackExchange.Redis;
+using RedMist.EventProcessor.Tests.Utilities;
 
 namespace RedMist.TimingAndScoringService.Tests.EventStatus.RMonitor;
 
@@ -31,7 +32,7 @@ public class RMonitorProcessorTests
         var cacheMux = new Mock<IConnectionMultiplexer>();
         var db = new Mock<IDbContextFactory<TsContext>>();
         var hub = new Mock<IHubContext<StatusHub>>();
-        var hcache = new Mock<HybridCache>();
+        var hcache = new FakeHybridCache();
         
         // Create a SessionContext for the DriverModeProcessor
         var configuration = new ConfigurationBuilder()
@@ -39,7 +40,7 @@ public class RMonitorProcessorTests
             .Build();
         var sessionContext = new SessionContext(configuration, new FakeTimeProvider());
         
-        var dmProc = new DriverModeProcessor(hub.Object, lf, hcache.Object, db.Object, cacheMux.Object, sessionContext);
+        var dmProc = new DriverModeProcessor(hub.Object, lf, hcache, db.Object, cacheMux.Object, sessionContext);
         return new RMonitorDataProcessor(0, mediatorMock.Object, lf, new DebugSessionMonitor(0, dbMock.Object), pitProcessor, flagProcessor, cacheMux.Object, db.Object, dmProc);
     }
 

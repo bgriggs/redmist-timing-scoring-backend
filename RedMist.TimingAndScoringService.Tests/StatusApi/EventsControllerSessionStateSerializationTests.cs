@@ -1,4 +1,4 @@
-using MessagePack;
+﻿using MessagePack;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -53,7 +53,7 @@ public class EventsControllerSessionStateSerializationTests
         _controller = new TestEventsController(
             mockLoggerFactory.Object,
             new TestDbContextFactory(options),
-            new Mock<HybridCache>().Object,
+            new FakeHybridCache(),
             new Mock<IConnectionMultiplexer>().Object,
             new Mock<Microsoft.Extensions.Caching.Memory.IMemoryCache>().Object,
             new Mock<IHttpClientFactory>().Object)

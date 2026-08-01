@@ -196,9 +196,11 @@ public class DriverEnricher
             car.DriverId = string.Empty;
             car.DriverName = string.Empty;
 
-            // Send "empty" status since null will be ignored
+            // Send "empty" status since null will be ignored. The car number is required:
+            // the consolidator drops any patch without one, so it would never reach clients.
             patch = new CarPositionPatch()
             {
+                Number = car.Number,
                 DriverId = string.Empty,
                 DriverName = string.Empty
             };
@@ -210,7 +212,9 @@ public class DriverEnricher
     private static CarPositionPatch? UpdateCar(DriverInfo driverInfo, CarPosition car)
     {
         bool changed = false;
-        var patch = new CarPositionPatch();
+        // The car number is required: the consolidator drops any patch without one, so a patch
+        // that omits it updates server state and never reaches a client.
+        var patch = new CarPositionPatch { Number = car.Number };
         if (car.DriverId != driverInfo.DriverId)
         {
             car.DriverId = driverInfo.DriverId;

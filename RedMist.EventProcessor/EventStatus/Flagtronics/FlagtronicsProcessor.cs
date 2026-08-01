@@ -1,7 +1,11 @@
-﻿using RedMist.EventProcessor.Models;
+﻿using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Models;
+using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.LapTiming;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Mappers;
+using StackExchange.Redis;
+using System.Globalization;
 using System.Text.Json;
 
 namespace RedMist.EventProcessor.EventStatus.Flagtronics;
@@ -71,6 +75,47 @@ public class FlagtronicsProcessor
     /// </summary>
     private readonly HashSet<string> lastRecordPositionRejected = [];
     private int lastSessionId = -1;
+
+    /// <summary>
+    /// Cars whose most recent record carried a driver name, pending publication to the driver
+    /// cache. The vehicle feed names cars the DriverID event feed never attributes, so this is
+    /// the only route by which most of the field gets a driver.
+    /// </summary>
+    private readonly List<string> carsReportingDriver = [];
+
+    /// <summary>
+    /// The driver last considered for the cache per car, and when, so an unchanged name is not
+    /// rewritten on every record. Records an attempt rather than a write: a car skipped because
+    /// another source held its record is rate-limited the same way, and re-checked once the
+    /// interval passes so it can be taken over when that record lapses.
+    /// </summary>
+    private readonly Dictionary<string, (string DriverId, string DriverName, DateTimeOffset AttemptedAt)> driverAttempts = [];
+
+    /// <summary>
+    /// Client id recorded on driver records published from the vehicle feed. Distinguishes this
+    /// processor's own records, which it may freely update, from another source's.
+    /// </summary>
+    public const string FLAGTRONICS_VEHICLE_CLIENT_ID = "flagtronics-vehicle";
+
+    /// <summary>
+    /// Matches the expiration the external telemetry endpoint writes, so a record from either
+    /// source ages out of the cache the same way.
+    /// </summary>
+    private static readonly TimeSpan DriverKeyExpiration = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// How often an unchanged driver record is rewritten to keep it from expiring. A driver who
+    /// is not re-identified during a stint produces no change to publish, so the record has to
+    /// be refreshed on its own or the enricher would clear the name when the key lapses.
+    /// </summary>
+    private static readonly TimeSpan DriverKeyRefreshInterval = TimeSpan.FromMinutes(4);
+
+    /// <summary>
+    /// Spread applied to <see cref="DriverKeyRefreshInterval"/> per car. Every car is first
+    /// published in the same pass, so a single interval would land the whole field's refresh in
+    /// one message - a full grid of round trips while the session write lock is held.
+    /// </summary>
+    private static readonly TimeSpan DriverKeyRefreshSpread = TimeSpan.FromMinutes(2);
 
     /// <summary>
     /// Guards <see cref="carLapsWithPitStops"/> only. Everything else here runs on the pipeline
@@ -148,15 +193,18 @@ public class FlagtronicsProcessor
 
 
     private readonly TelemetrySignalTracker? signalTracker;
+    private readonly IConnectionMultiplexer? cacheMux;
 
 
     public FlagtronicsProcessor(ILoggerFactory loggerFactory, SessionContext sessionContext,
-        TimeProvider? timeProvider = null, TelemetrySignalTracker? signalTracker = null)
+        TimeProvider? timeProvider = null, TelemetrySignalTracker? signalTracker = null,
+        IConnectionMultiplexer? cacheMux = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.sessionContext = sessionContext;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.signalTracker = signalTracker;
+        this.cacheMux = cacheMux;
     }
 
 
@@ -170,6 +218,7 @@ public class FlagtronicsProcessor
         // Cleared before anything else, so that every early return below leaves it empty instead of
         // leaving the previous message's cars looking like current reports.
         carsWithUsableFix.Clear();
+        carsReportingDriver.Clear();
 
         if (message.Type != Backend.Shared.Consts.FLAGTRONICS_TYPE)
             return null;
@@ -190,6 +239,7 @@ public class FlagtronicsProcessor
             pendingPitState.Clear();
             lastAcceptedFix.Clear();
             lastRecordPositionRejected.Clear();
+            driverAttempts.Clear();
             sessionContext.FlagtronicsFullCourseFlag = Flags.Unknown;
             lastSessionId = sessionContext.SessionState.SessionId;
         }
@@ -242,6 +292,9 @@ public class FlagtronicsProcessor
             if (!faulted && carriesPosition)
                 carsWithUsableFix.Add(vehicle.CarNumber);
 
+            if (!string.IsNullOrWhiteSpace(vehicle.DriverName))
+                carsReportingDriver.Add(vehicle.CarNumber);
+
             var patch = BuildPatch(vehicle, car, isLiveTick: true, positionUsable: !teleported);
             if (CarPositionMapper.GetChangedProperties(patch).Length > 1)
             {
@@ -259,6 +312,125 @@ public class FlagtronicsProcessor
             return null;
 
         return new PatchUpdates([.. sessionPatches], [.. patches]);
+    }
+
+    /// <summary>
+    /// Publishes driver names carried by the vehicle records to the cache the driver enricher
+    /// reads, so the enricher stays the only writer of a car's driver and applies these the same
+    /// way it applies an external one. Returns the cars whose record actually changed, for the
+    /// caller to refresh; an unchanged record is still rewritten periodically to hold off the
+    /// key's expiration but reports no change.
+    /// </summary>
+    /// <remarks>
+    /// A record already set by another source with a name is left alone. The DriverID event feed
+    /// arrives via the relay as a deliberate identification and outranks the vehicle feed's view,
+    /// so this fills in the rest of the field rather than competing for the cars that feed covers.
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> PublishDriverInfoAsync()
+    {
+        if (cacheMux == null || carsReportingDriver.Count == 0)
+            return [];
+
+        var eventId = sessionContext.EventId;
+        if (eventId <= 0)
+            return [];
+
+        var now = timeProvider.GetUtcNow();
+        var cache = cacheMux.GetDatabase();
+        var changed = new List<string>();
+
+        foreach (var carNumber in carsReportingDriver)
+        {
+            if (!lastVehicles.TryGetValue(carNumber, out var vehicle))
+                continue;
+
+            // The car was queued on a record that carried a name, but a later record for the same
+            // car in the same message replaces it. Publishing the empty name that leaves would
+            // clear the car's driver outright, which is worse than publishing nothing.
+            if (string.IsNullOrWhiteSpace(vehicle.DriverName))
+                continue;
+
+            var driverName = vehicle.DriverName;
+            var driverId = vehicle.DriverId?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+
+            var isNew = !driverAttempts.TryGetValue(carNumber, out var attempted);
+            var valueChanged = isNew || attempted.DriverId != driverId || attempted.DriverName != driverName;
+            if (!valueChanged && now - attempted.AttemptedAt < RefreshIntervalFor(carNumber))
+                continue;
+
+            var key = string.Format(Consts.EVENT_DRIVER_KEY, eventId, carNumber);
+            try
+            {
+                if (await IsHeldByAnotherSourceAsync(cache, key))
+                {
+                    // Rate-limited like a write so the override is not re-read on every record,
+                    // and re-checked afterwards so the car is taken over if that record lapses.
+                    driverAttempts[carNumber] = (driverId, driverName, now);
+                    continue;
+                }
+
+                var source = new DriverInfoSource(
+                    new DriverInfo
+                    {
+                        EventId = eventId,
+                        CarNumber = carNumber,
+                        DriverId = driverId,
+                        DriverName = driverName,
+                    },
+                    FLAGTRONICS_VEHICLE_CLIENT_ID,
+                    now.UtcDateTime);
+
+                await cache.StringSetAsync(key, JsonSerializer.Serialize(source), expiry: DriverKeyExpiration);
+                driverAttempts[carNumber] = (driverId, driverName, now);
+
+                // Every write is reported, not only a changed name. A refresh that restores a key
+                // which had expired - or that took the car over from a lapsed record - carries a
+                // name the car may not currently be showing. The enricher returns no patch when
+                // nothing actually differs, so reporting an unchanged car costs a cache read.
+                changed.Add(carNumber);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed publishing Flagtronics driver for car {CarNumber}", carNumber);
+            }
+        }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// Spreads each car's refresh across a window so the field does not all come due at once.
+    /// Derived from the car number so a car keeps the same offset for the whole session.
+    /// </summary>
+    private static TimeSpan RefreshIntervalFor(string carNumber)
+    {
+        var offset = (uint)carNumber.GetHashCode(StringComparison.Ordinal) % (ulong)DriverKeyRefreshSpread.Ticks;
+        return DriverKeyRefreshInterval + TimeSpan.FromTicks((long)offset);
+    }
+
+    /// <summary>
+    /// Whether the car's driver record was set by something other than this processor and carries
+    /// a name. Such a record outranks the vehicle feed and is not overwritten.
+    /// </summary>
+    private static async Task<bool> IsHeldByAnotherSourceAsync(IDatabase cache, string key)
+    {
+        var existingJson = await cache.StringGetAsync(key);
+        if (!existingJson.HasValue)
+            return false;
+
+        try
+        {
+            var existing = JsonSerializer.Deserialize<DriverInfoSource>(existingJson!.ToString());
+            // DriverInfo is a positional record member and is absent from a malformed payload.
+            if (existing?.DriverInfo == null || string.IsNullOrWhiteSpace(existing.DriverInfo.DriverName))
+                return false;
+            return existing.ClientId != FLAGTRONICS_VEHICLE_CLIENT_ID;
+        }
+        catch (JsonException)
+        {
+            // An unreadable record is not evidence of a higher priority source.
+            return false;
+        }
     }
 
     /// <summary>

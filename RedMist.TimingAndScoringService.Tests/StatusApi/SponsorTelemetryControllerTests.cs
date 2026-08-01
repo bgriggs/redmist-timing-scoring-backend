@@ -45,7 +45,7 @@ public class SponsorTelemetryControllerTests
 
     private SponsorTelemetryController CreateController(HybridCache? hybridCache = null)
     {
-        hybridCache ??= new Mock<HybridCache>().Object;
+        hybridCache ??= new FakeHybridCache();
         return new SponsorTelemetryController(_mockLoggerFactory.Object, _queue, _dbContextFactory, hybridCache);
     }
 
