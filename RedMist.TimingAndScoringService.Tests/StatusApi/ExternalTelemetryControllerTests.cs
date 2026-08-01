@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Logging;
 using Moq;
+using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Models;
 using RedMist.Database;
 using RedMist.EventProcessor.Tests.Utilities;
@@ -23,7 +24,7 @@ public class ExternalTelemetryControllerTests
     private Mock<IConnectionMultiplexer> _mockConnectionMultiplexer = null!;
     private Mock<IDatabase> _mockDatabase = null!;
     private RedMist.StatusApi.Controllers.V2.EventsController _eventsController = null!;
-    private Mock<HybridCache> _mockHybridCache = null!;
+    private FakeHybridCache _hybridCache = null!;
     private IDbContextFactory<TsContext> _dbContextFactory = null!;
     private ExternalTelemetryController _controller = null!;
     private TsContext _dbContext = null!;
@@ -35,7 +36,7 @@ public class ExternalTelemetryControllerTests
         _mockLogger = new Mock<ILogger>();
         _mockConnectionMultiplexer = new Mock<IConnectionMultiplexer>();
         _mockDatabase = new Mock<IDatabase>();
-        _mockHybridCache = new Mock<HybridCache>();
+        _hybridCache = new FakeHybridCache();
 
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
         // Return the same mock database for all calls
@@ -55,7 +56,7 @@ public class ExternalTelemetryControllerTests
         _eventsController = new RedMist.StatusApi.Controllers.V2.EventsController(
             _mockLoggerFactory.Object,
             _dbContextFactory,
-            _mockHybridCache.Object,
+            _hybridCache,
             _mockConnectionMultiplexer.Object,
             mockMemoryCache.Object,
             mockHttpClientFactory.Object);
@@ -65,7 +66,7 @@ public class ExternalTelemetryControllerTests
             _mockConnectionMultiplexer.Object,
             _eventsController,
             _dbContextFactory,
-            _mockHybridCache.Object);
+            _hybridCache);
     }
 
     [TestCleanup]
@@ -174,7 +175,7 @@ public class ExternalTelemetryControllerTests
         _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(RedisValue.Null);
         _mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
-            It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
+            It.IsAny<Expiration>(), It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
         _mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
             It.IsAny<RedisValue>(), It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(),
@@ -186,7 +187,16 @@ public class ExternalTelemetryControllerTests
 
         // Assert
         Assert.IsInstanceOfType<OkResult>(result);
-        // Successfully processed and created new driver info
+
+        // The record has to actually reach the cache the driver enricher reads. Asserting only
+        // the status code passes even when the write goes nowhere, which is what happens when
+        // the stubbed overload is not the one a TimeSpan expiry binds to.
+        _mockDatabase.Verify(x => x.StringSetAsync(
+            (RedisKey)string.Format(Consts.EVENT_DRIVER_KEY, 1, "42"),
+            It.Is<RedisValue>(v => v.ToString().Contains("John Doe")),
+            It.IsAny<Expiration>(),
+            It.IsAny<ValueCondition>(),
+            It.IsAny<CommandFlags>()), Times.Once);
     }
 
     [TestMethod]
@@ -207,22 +217,24 @@ public class ExternalTelemetryControllerTests
         _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(RedisValue.Null);
         _mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
-            It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
+            It.IsAny<Expiration>(), It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
         _mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
             It.IsAny<RedisValue>(), It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(),
             It.IsAny<CommandFlags>()))
             .ReturnsAsync(new RedisValue("test-id"));
 
-        // Note: HybridCache.GetOrCreateAsync is not virtual so cannot be mocked for LoadLiveEvents
-        // This test will use actual implementation which will return empty list from database
-
         // Act
         var result = await _controller.UpdateDriversAsync(drivers);
 
         // Assert
         Assert.IsInstanceOfType<OkResult>(result);
-        // Successfully processed driver with transponder ID
+        _mockDatabase.Verify(x => x.StringSetAsync(
+            (RedisKey)string.Format(Consts.DRIVER_TRANSPONDER_KEY, 12345),
+            It.Is<RedisValue>(v => v.ToString().Contains("Jane Smith")),
+            It.IsAny<Expiration>(),
+            It.IsAny<ValueCondition>(),
+            It.IsAny<CommandFlags>()), Times.Once);
     }
 
     [TestMethod]
@@ -244,11 +256,13 @@ public class ExternalTelemetryControllerTests
 
         // Assert
         Assert.IsInstanceOfType<OkResult>(result);
+        // The controller passes a TimeSpan expiry, which binds to the Expiration/ValueCondition
+        // overload. Verifying any other one would pass whether or not the write happened.
         _mockDatabase.Verify(x => x.StringSetAsync(
             It.IsAny<RedisKey>(),
             It.IsAny<RedisValue>(),
-            It.IsAny<TimeSpan?>(),
-            It.IsAny<When>(),
+            It.IsAny<Expiration>(),
+            It.IsAny<ValueCondition>(),
             It.IsAny<CommandFlags>()), Times.Never);
     }
 
@@ -276,13 +290,15 @@ public class ExternalTelemetryControllerTests
             Name = "Centrally Stored Name"
         };
 
-        // Note: HybridCache.GetOrCreateAsync is not virtual so cannot be mocked
-        // This test will use the actual implementation which will query the database
+        // The lookup runs against the database through the cache, so the row has to be there
+        // for the centrally stored name to win.
+        _dbContext.DriverInfo.Add(storedDriver);
+        await _dbContext.SaveChangesAsync();
 
         _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(RedisValue.Null);
         _mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
-            It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
+            It.IsAny<Expiration>(), It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
         _mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
             It.IsAny<RedisValue>(), It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(),
@@ -294,7 +310,17 @@ public class ExternalTelemetryControllerTests
 
         // Assert
         Assert.IsInstanceOfType<OkResult>(result);
-        // Successfully loaded from HybridCache and used centrally stored name
+
+        // The centrally stored name replaces the one the source sent, so every source ends up
+        // publishing the same name for a given driver id.
+        _mockDatabase.Verify(x => x.StringSetAsync(
+            (RedisKey)string.Format(Consts.EVENT_DRIVER_KEY, 1, "42"),
+            It.Is<RedisValue>(v => v.ToString().Contains("Centrally Stored Name")
+                && !v.ToString().Contains("Incoming Name")),
+            It.IsAny<Expiration>(),
+            It.IsAny<ValueCondition>(),
+            It.IsAny<CommandFlags>()), Times.Once);
+        Assert.Contains($"driver-flagtronics-{flagtronicsId}", _hybridCache.FactoryInvocations);
     }
 
     [TestMethod]
@@ -319,7 +345,7 @@ public class ExternalTelemetryControllerTests
         _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(new RedisValue(existingJson));
         _mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
-            It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
+            It.IsAny<Expiration>(), It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
 
         // Act
@@ -370,7 +396,7 @@ public class ExternalTelemetryControllerTests
         _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(new RedisValue(existingJson));
         _mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
-            It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
+            It.IsAny<Expiration>(), It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
 
         // Act
@@ -412,7 +438,7 @@ public class ExternalTelemetryControllerTests
         _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(new RedisValue(existingJson));
         _mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
-            It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
+            It.IsAny<Expiration>(), It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
         _mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
             It.IsAny<RedisValue>(), It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(),
@@ -446,7 +472,7 @@ public class ExternalTelemetryControllerTests
         _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(RedisValue.Null);
         _mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
-            It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
+            It.IsAny<Expiration>(), It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
         _mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
             It.IsAny<RedisValue>(), It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(),
@@ -483,7 +509,7 @@ public class ExternalTelemetryControllerTests
         _mockDatabase.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(RedisValue.Null);
         _mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
-            It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
+            It.IsAny<Expiration>(), It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
         _mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
             It.IsAny<RedisValue>(), It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(),
@@ -519,7 +545,7 @@ public class ExternalTelemetryControllerTests
                 return RedisValue.Null;
             });
         _mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
-            It.IsAny<TimeSpan?>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
+            It.IsAny<Expiration>(), It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
         _mockDatabase.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
             It.IsAny<RedisValue>(), It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(),

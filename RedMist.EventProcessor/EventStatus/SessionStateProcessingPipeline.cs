@@ -515,6 +515,29 @@ public class SessionStateProcessingPipeline
             gpsLapPositionEnricher.MarkSeen(flagtronicsProcessor.CarsWithUsableFix, confirmed: true);
             await ApplyGpsEnrichmentAsync(carPatches, fromInCarTelemetry: true);
 
+            // The vehicle records carry the driver the station has resolved for each car, which
+            // covers far more of the field than the DriverID event feed does. The processor
+            // publishes those to the driver cache; the enricher remains the one place a car's
+            // driver is written, so the change is read back through it here rather than patched
+            // directly. Without this the name would only appear on the next full driver sweep.
+            // Guarded separately: the processor has already applied this message's GPS, pit and
+            // flag changes to server state, so letting a Redis fault escape to the outer catch
+            // would drop those patches while keeping the state they describe, freezing cars on
+            // screen until their next change.
+            try
+            {
+                foreach (var carNumber in await flagtronicsProcessor.PublishDriverInfoAsync())
+                {
+                    var driverPatch = await driverEnricher.ProcessCarAsync(carNumber);
+                    if (driverPatch != null)
+                        carPatches.Add(driverPatch);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Error publishing Flagtronics driver info");
+            }
+
             var sessionPatches = (updates?.SessionPatches ?? []).ToList();
             if (signalChanges != null)
             {

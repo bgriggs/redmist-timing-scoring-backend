@@ -45,7 +45,7 @@ public class SessionStateProcessingPipelineTests
     private Mock<ILogger> _mockLogger = null!;
     private IDbContextFactory<TsContext> _dbContextFactory = null!;
     private Mock<IHubContext<StatusHub>> _mockHubContext = null!;
-    private Mock<HybridCache> _mockHybridCache = null!;
+    private FakeHybridCache _hybridCache = null!;
 
     // Real processor instances for end-to-end testing
     private RMonitorDataProcessor _rMonitorProcessor = null!;
@@ -95,7 +95,7 @@ public class SessionStateProcessingPipelineTests
         _mockLogger = new Mock<ILogger>();
         _mockHubContext = new Mock<IHubContext<StatusHub>>();
         _mockConnectionMultiplexer = new Mock<IConnectionMultiplexer>();
-        _mockHybridCache = new Mock<HybridCache>();
+        _hybridCache = new FakeHybridCache();
 
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
 
@@ -152,11 +152,12 @@ public class SessionStateProcessingPipelineTests
             })
             .ReturnsAsync(RedisValue.Null);
 
+        // A TimeSpan expiry binds to the Expiration/ValueCondition overload; the TimeSpan? ones
+        // are stubbed as well so a call using either shape is covered.
+        mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<Expiration>(), It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
+            .Returns(Task.FromResult(true));
         mockDatabase.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<TimeSpan?>(), It.IsAny<bool>(), It.IsAny<When>(), It.IsAny<CommandFlags>()))
             .Returns(Task.FromResult(true));
-
-        // Note: HybridCache mocking is complex due to optional parameters in expression trees
-        // For now, we'll rely on the DriverModeProcessor to handle null returns gracefully
     }
 
     private void SetupSessionContext()
@@ -196,7 +197,7 @@ public class SessionStateProcessingPipelineTests
         _driverModeProcessor = new DriverModeProcessor(
             _mockHubContext.Object,
             _mockLoggerFactory.Object,
-            _mockHybridCache.Object,
+            _hybridCache,
             _dbContextFactory,
             _mockConnectionMultiplexer.Object,
             _sessionContext);

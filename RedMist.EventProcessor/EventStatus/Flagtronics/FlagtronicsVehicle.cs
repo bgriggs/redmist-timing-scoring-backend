@@ -55,6 +55,20 @@ public class FlagtronicsVehicle
     public int? FlaggingZone { get; set; }
 
     /// <summary>
+    /// 8 digit Flagtronics driver ID. Null when no driver is identified for the car.
+    /// </summary>
+    [JsonPropertyName("driverId")]
+    public long? DriverId { get; set; }
+
+    /// <summary>
+    /// Name the station has resolved for the current driver. Null when none is identified.
+    /// The station populates this for cars the DriverID event feed never attributes, so it
+    /// covers far more of the field than that feed does.
+    /// </summary>
+    [JsonPropertyName("driverName")]
+    public string? DriverName { get; set; }
+
+    /// <summary>
     /// blePuck | rfidHelmet | manualOverride | none. Pre-v3.0 stations use BleDrid,
     /// HelmetDrid, Manual, None.
     /// </summary>

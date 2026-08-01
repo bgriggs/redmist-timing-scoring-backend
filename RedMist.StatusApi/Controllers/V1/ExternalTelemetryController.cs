@@ -75,6 +75,9 @@ public class ExternalTelemetryController : Controller
 
         await using var db = await tsContext.CreateDbContextAsync();
         var cache = cacheMux.GetDatabase();
+        // Set when a driver is rejected in favour of a higher priority source. Reported once the
+        // rest of the batch has been written rather than abandoning it partway through.
+        var locked = false;
         foreach (var driver in drivers)
         {
             try
@@ -135,8 +138,11 @@ public class ExternalTelemetryController : Controller
                                 && !string.IsNullOrWhiteSpace(existingDis.DriverInfo.DriverName) 
                                 && string.IsNullOrWhiteSpace(dis.DriverInfo.DriverName))
                             {
-                                // Reject the change to prioritizing using the name from another source when the relay does not have one
-                                return StatusCode(StatusCodes.Status423Locked, "Record is set with data from another source that has a name");
+                                // Reject the change to prioritizing using the name from another source when the relay does not have one.
+                                // Only this driver is rejected: returning here would abandon every remaining driver in the batch, and a
+                                // relay posts the whole field at once.
+                                locked = true;
+                                continue;
                             }
                             changed = !existingDis.EqualsDriverInfo(dis);
 
@@ -160,7 +166,8 @@ public class ExternalTelemetryController : Controller
                         else
                         {
                             Logger.LogDebug("Rejecting change for non-relay source over existing relay source");
-                            return StatusCode(StatusCodes.Status423Locked, "Record is locked by a higher priority user");
+                            locked = true;
+                            continue;
                         }
                     }
                     catch (Exception e)
@@ -203,6 +210,9 @@ public class ExternalTelemetryController : Controller
                 Logger.LogError(ex, "Error setting event driver info");
             }
         }
+
+        if (locked)
+            return StatusCode(StatusCodes.Status423Locked, "One or more records are set by a higher priority source");
         return Ok();
     }
 
