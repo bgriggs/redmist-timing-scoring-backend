@@ -167,6 +167,28 @@ public class PositionMetadataProcessorTests
     }
 
     [TestMethod]
+    public void UpdateCarPositions_SameLap_NegativeGap_NotPublished_Test()
+    {
+        var processor = new PositionMetadataProcessor();
+
+        // Same non-atomic rmonitor race condition as the excessive gap case, but landing the other way:
+        // the car behind reports a smaller total time than the leader on the same lap, which is not
+        // physically possible. The resulting gap and diff of -20:04.486 must not be published.
+        var car1 = new CarPosition { Number = "60", Class = "A", TotalTime = "00:50:00.000", LastLapCompleted = 58, LastLapTime = "00:02:20.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "58", Class = "A", TotalTime = "00:29:55.514", LastLapCompleted = 58, LastLapTime = "00:02:19.719", OverallPosition = 2 };
+
+        processor.UpdateCarPositions([car1, car2]);
+
+        Assert.AreEqual("", car1.OverallGap);
+        Assert.AreEqual("", car1.OverallDifference);
+
+        Assert.IsNull(car2.OverallGap, "A negative gap is bad data and must not be published");
+        Assert.IsNull(car2.OverallDifference, "A negative difference is bad data and must not be published");
+        Assert.IsNull(car2.InClassGap);
+        Assert.IsNull(car2.InClassDifference);
+    }
+
+    [TestMethod]
     public void UpdateCarPositions_SameLap_WithinAdaptiveThreshold_Test()
     {
         var processor = new PositionMetadataProcessor();
@@ -776,6 +798,57 @@ public class PositionMetadataProcessorTests
         var zeroTime = new TimeSpan(0);
         var format = PositionMetadataProcessor.GetTimeFormat(zeroTime);
         Assert.AreEqual(@"s\.fff", format);
+    }
+
+    [TestMethod]
+    public void GetTimeFormat_NegativeHours_Test()
+    {
+        // A delta to a car behind is negative, such as the gap in driver mode
+        var negativeHours = new TimeSpan(0, 1, 0, 5, 250).Negate(); // -1 hour, 5.25 seconds
+        var format = PositionMetadataProcessor.GetTimeFormat(negativeHours);
+        Assert.AreEqual(@"h\:mm\:ss\.fff", format, "A negative delta must keep its hours");
+        // The format carries the magnitude only. GainLoss prefixes its own minus sign, while the
+        // driver mode Gap is left unsigned since its meaning comes from which car it refers to.
+        Assert.AreEqual("1:00:05.250", negativeHours.ToString(format));
+    }
+
+    [TestMethod]
+    public void GetTimeFormat_NegativeMinutes_Test()
+    {
+        var negativeMinutes = new TimeSpan(0, 0, 1, 15).Negate(); // -1 minute, 15 seconds
+        var format = PositionMetadataProcessor.GetTimeFormat(negativeMinutes);
+        Assert.AreEqual(@"m\:ss\.fff", format, "A negative delta must keep its minutes");
+        Assert.AreEqual("1:15.000", negativeMinutes.ToString(format));
+    }
+
+    [TestMethod]
+    public void GetTimeFormat_NegativeSeconds_Test()
+    {
+        var negativeSeconds = new TimeSpan(0, 0, 0, 25).Negate(); // -25 seconds
+        var format = PositionMetadataProcessor.GetTimeFormat(negativeSeconds);
+        Assert.AreEqual(@"s\.fff", format);
+    }
+
+    [TestMethod]
+    public void GetTimeFormat_Boundaries_Test()
+    {
+        // The buckets must switch on the same magnitude in both directions
+        foreach (var sign in new[] { 1, -1 })
+        {
+            Assert.AreEqual(@"s\.fff", PositionMetadataProcessor.GetTimeFormat(TimeSpan.FromMilliseconds(59999 * sign)), $"59.999 sign {sign}");
+            Assert.AreEqual(@"m\:ss\.fff", PositionMetadataProcessor.GetTimeFormat(TimeSpan.FromMinutes(1 * sign)), $"1:00 sign {sign}");
+            Assert.AreEqual(@"m\:ss\.fff", PositionMetadataProcessor.GetTimeFormat(TimeSpan.FromMilliseconds(3599999 * sign)), $"59:59.999 sign {sign}");
+            Assert.AreEqual(@"h\:mm\:ss\.fff", PositionMetadataProcessor.GetTimeFormat(TimeSpan.FromHours(1 * sign)), $"1:00:00 sign {sign}");
+        }
+    }
+
+    [TestMethod]
+    public void GetTimeFormat_ExtremeValues_DoNotThrow_Test()
+    {
+        // The magnitude is taken from the total properties rather than Duration() because
+        // TimeSpan.MinValue.Duration() overflows. Keep that from being simplified away.
+        Assert.AreEqual(@"h\:mm\:ss\.fff", PositionMetadataProcessor.GetTimeFormat(TimeSpan.MinValue));
+        Assert.AreEqual(@"h\:mm\:ss\.fff", PositionMetadataProcessor.GetTimeFormat(TimeSpan.MaxValue));
     }
 
     [TestMethod]

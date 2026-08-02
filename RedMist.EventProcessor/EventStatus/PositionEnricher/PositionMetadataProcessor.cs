@@ -91,8 +91,10 @@ public class PositionMetadataProcessor
                     {
                         var g = cpt - pat;
                         // If the gap is 150% larger than the typical high lap time at the given last lap completed,
-                        // consider it an invalid gap resulting from race condition from non-atomic rmonitor updates
-                        if (g > TimeSpan.FromMilliseconds((long)(highLapTime.TotalMilliseconds * 1.5)))
+                        // consider it an invalid gap resulting from race condition from non-atomic rmonitor updates.
+                        // A negative gap comes from the same race condition since the car ahead on the same lap
+                        // cannot have a larger total time, so it is left alone rather than published.
+                        if (g < TimeSpan.Zero || g > TimeSpan.FromMilliseconds((long)(highLapTime.TotalMilliseconds * 1.5)))
                         {
                             //setGap(currentPosition, string.Empty);
                         }
@@ -121,8 +123,10 @@ public class PositionMetadataProcessor
                 {
                     var diff = cpt - leaderTime;
                     // If the diff is 150% larger than the typical high lap time at the given last lap completed,
-                    // consider it an invalid gap resulting from race condition from non-atomic rmonitor updates
-                    if (diff > TimeSpan.FromMilliseconds((long)(highLapTime.TotalMilliseconds * 1.5)))
+                    // consider it an invalid gap resulting from race condition from non-atomic rmonitor updates.
+                    // A negative diff comes from the same race condition since the leader on the same lap cannot
+                    // have a larger total time, so it is left alone rather than published.
+                    if (diff < TimeSpan.Zero || diff > TimeSpan.FromMilliseconds((long)(highLapTime.TotalMilliseconds * 1.5)))
                     {
                         //setDiff(currentPosition, string.Empty);
                     }
@@ -344,12 +348,14 @@ public class PositionMetadataProcessor
     public static string GetTimeFormat(TimeSpan time)
     {
         // Note the total properties are used since the components roll over, e.g. an hour and five
-        // seconds has a Minutes of zero and would otherwise be formatted as five seconds.
-        if (time.TotalHours >= 1)
+        // seconds has a Minutes of zero and would otherwise be formatted as five seconds. The
+        // magnitude is used since a delta can be negative, such as the gap to a car behind in
+        // driver mode, and a negative time would otherwise fall through to the seconds format.
+        if (Math.Abs(time.TotalHours) >= 1)
         {
             return HourTimeFormat;
         }
-        if (time.TotalMinutes >= 1)
+        if (Math.Abs(time.TotalMinutes) >= 1)
         {
             return MinTimeFormat;
         }
