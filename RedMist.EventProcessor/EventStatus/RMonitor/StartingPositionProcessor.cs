@@ -15,6 +15,17 @@ public class StartingPositionProcessor : BackgroundService
     private readonly IDbContextFactory<TsContext> tsContext;
     private int lastCompletedSessionHistoricalCheck = -1;
 
+    /// <summary>
+    /// How many times a session's grid is reconstructed from historic laps before giving up. The
+    /// failures worth retrying are temporary - laps not queryable yet, session id not settled - and
+    /// clear within a pass or two. The rest never resolve: a session whose green flag falls beyond the
+    /// laps that get loaded cannot be reconstructed however often it is tried, and retrying it every
+    /// interval would re-read and deserialize every car's early laps for the rest of the session.
+    /// </summary>
+    private const int MaxHistoricalCheckAttempts = 10;
+    private int historicalCheckAttemptSession = -1;
+    private int historicalCheckAttempts;
+
 
     public StartingPositionProcessor(SessionContext sessionContext, ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
     {
@@ -67,18 +78,42 @@ public class StartingPositionProcessor : BackgroundService
         {
             Logger.LogInformation("Starting laps for session {sid} have not been determined. Performing historical check...", currentSession);
             var result = await UpdateStartingPositionsFromHistoricLapsAsync(currentSession);
-            lastCompletedSessionHistoricalCheck = currentSession;
             if (result)
             {
+                // Only a successful reconstruction retires the check outright. Marking it done
+                // regardless meant one failure disabled recovery for the rest of the session.
+                lastCompletedSessionHistoricalCheck = currentSession;
                 Logger.LogInformation("Starting positions for session {sid} have been determined from historical laps.", currentSession);
+            }
+            else if (RecordFailedHistoricalCheck(currentSession) >= MaxHistoricalCheckAttempts)
+            {
+                lastCompletedSessionHistoricalCheck = currentSession;
+                Logger.LogWarning("Could not determine starting positions for session {sid} from historical laps after {n} attempts. Giving up.",
+                    currentSession, MaxHistoricalCheckAttempts);
             }
             else
             {
-                Logger.LogWarning("Could not determine starting positions for session {sid} from historical laps.", currentSession);
+                Logger.LogWarning("Could not determine starting positions for session {sid} from historical laps (attempt {n}). Will retry.",
+                    currentSession, historicalCheckAttempts);
             }
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Counts a failed reconstruction against the current session, restarting the count when the
+    /// session changes so each session gets its own allowance.
+    /// </summary>
+    /// <returns>Attempts made for this session, including this one.</returns>
+    private int RecordFailedHistoricalCheck(int sessionId)
+    {
+        if (historicalCheckAttemptSession != sessionId)
+        {
+            historicalCheckAttemptSession = sessionId;
+            historicalCheckAttempts = 0;
+        }
+        return ++historicalCheckAttempts;
     }
 
     public virtual void UpdateStartingPosition(string[] parts, string regNum, Flags flag)
@@ -94,20 +129,29 @@ public class StartingPositionProcessor : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Ranks each class by its cars' overall grid positions to give their in-class starting positions.
+    ///
+    /// Ranking is by grid position rather than by the car's current class position on purpose. The two
+    /// agree while the field is still on the grid, which is the only time this used to run, but they
+    /// diverge the moment the race does - so rebuilding mid-race (after a restart, or from historic
+    /// laps) off the current order would hand every car an in-class starting position equal to where
+    /// it is now, and the whole field would show zero positions gained.
+    /// </summary>
     internal void UpdateInClassStartingPositionLookup()
     {
         var entries = new List<(string num, string @class, int pos)>();
         var startingPositions = sessionContext.GetStartingPositions();
         foreach (var regNum in startingPositions.Keys)
         {
-            var ri = startingPositions[regNum];
+            var startingPosition = startingPositions[regNum];
             var car = sessionContext.GetCarByNumber(regNum);
             if (car == null || car.Class == null)
             {
                 //Logger.LogWarning("Car {rn} not found for starting position", regNum);
                 continue;
             }
-            entries.Add((regNum, car.Class, car.ClassPosition));
+            entries.Add((regNum, car.Class, startingPosition));
         }
 
         var classGroups = entries.GroupBy(x => x.@class);

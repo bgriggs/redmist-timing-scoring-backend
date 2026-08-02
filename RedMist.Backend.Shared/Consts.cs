@@ -56,6 +56,12 @@ public class Consts
     public const string RELAY_LOG_BATCH = "relay-log-batch-{0}";
     public const string RELAY_LOG_BATCH_TRACKING = "relay-log-batch-tracking";
     public const string CAR_LAP_HISTORY = "car-lap-history-evt-{0}-car-{1}";
+    /// <summary>
+    /// Session the event processor last adopted for an event. Read back on startup to tell a process
+    /// restart mid-session from a genuinely new session: both arrive as the same session-change
+    /// message, but only the latter may clear the per-car lap history keyed by CAR_LAP_HISTORY.
+    /// </summary>
+    public const string EVENT_CURRENT_SESSION = "evt-{0}-current-session";
     public const string EVENT_SERVICE_STATUSES = "evt-{0}-svc-statuses";
     public const string EVENT_ACCESS = "evt-{0}-access";
     public const string EVENT_ACCESS_CODE_HEADER = "X-Event-Access-Code";

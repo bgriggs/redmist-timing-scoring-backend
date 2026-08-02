@@ -310,7 +310,65 @@ public class StartingPositionProcessorTests
 
     #endregion
 
+    #region UpdateInClassStartingPositionLookup Tests
+
+    /// <summary>
+    /// Rebuilding in-class ranks mid-race - after a restart, or from historic laps - must use the grid
+    /// order. Using the current order would give every car an in-class starting position equal to where
+    /// it is now, and the whole field would read zero positions gained in class.
+    /// </summary>
+    [TestMethod]
+    public void UpdateInClassStartingPositionLookup_MidRace_RanksByGridNotCurrentPosition()
+    {
+        // Current running order is the exact reverse of the grid.
+        _sessionContext.UpdateCars(
+        [
+            CreateCarPosition("1", 3, 20, Flags.Green),
+            CreateCarPosition("2", 2, 20, Flags.Green),
+            CreateCarPosition("3", 1, 20, Flags.Green),
+        ]);
+        _sessionContext.SetStartingPosition("1", 1);
+        _sessionContext.SetStartingPosition("2", 2);
+        _sessionContext.SetStartingPosition("3", 3);
+
+        _processor.UpdateInClassStartingPositionLookup();
+
+        Assert.AreEqual(1, _sessionContext.GetInClassStartingPosition("1"));
+        Assert.AreEqual(2, _sessionContext.GetInClassStartingPosition("2"));
+        Assert.AreEqual(3, _sessionContext.GetInClassStartingPosition("3"));
+    }
+
+    #endregion
+
     #region CheckHistoricLapStartingPositionsAsync Tests
+
+    /// <summary>
+    /// The usual reasons the reconstruction fails are temporary - the laps are not queryable yet, or
+    /// the green flag has not been reached - so a failure must not retire the check for the session.
+    /// </summary>
+    [TestMethod]
+    public async Task CheckHistoricLapStartingPositions_FailsThenDataArrives_RetriesAndSucceeds()
+    {
+        // Arrange - session is running but no historic laps are available yet
+        await SetupSessionContextWithCars();
+        _sessionContext.SessionState.SessionId = 67;
+        _sessionContext.SessionState.CurrentFlag = Flags.Green;
+        foreach (var car in _sessionContext.SessionState.CarPositions)
+        {
+            car.LastLapCompleted = 5;
+        }
+
+        // Act - first pass fails
+        await _processor.CheckHistoricLapStartingPositionsAsync();
+        Assert.IsEmpty(_sessionContext.GetStartingPositions(), "First pass should not have found anything");
+
+        // The laps become available and the next pass must try again
+        await SeedDatabaseWithStartingLaps(67);
+        await _processor.CheckHistoricLapStartingPositionsAsync();
+
+        // Assert
+        Assert.IsNotEmpty(_sessionContext.GetStartingPositions(), "Second pass should have reconstructed the grid");
+    }
 
     [TestMethod]
     public async Task CheckHistoricLapStartingPositions_AlreadyCheckedSession_ReturnsFalse()

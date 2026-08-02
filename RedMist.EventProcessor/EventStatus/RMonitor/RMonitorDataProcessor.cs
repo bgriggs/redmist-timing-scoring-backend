@@ -234,19 +234,37 @@ public class RMonitorDataProcessor
                 if (p != null)
                     carPatches.Add(p);
             }
+
+            // In-class starting positions are derived from the cars' classes, which the loop above has
+            // only just resolved. A car's class is written solely by AddUpdateCompetitor, which runs
+            // during this batch's $A pass while the classes map is still empty - $I emptied it, since
+            // a restart has no flag yet - and is not re-run until here. So every car was still
+            // class-less when the batch's $G grid records went by and seeded the starting positions,
+            // and UpdateInClassStartingPositionLookup skipped the lot. Without this rebuild the batch
+            // leaves the in-class starting positions empty and every car reads blank for positions
+            // gained in class. Invisible on a live reset, where the classes are already known; it
+            // shows up only when the process restarts with nothing in memory.
+            startingPositionProcessor.UpdateInClassStartingPositionLookup();
         }
 
-        // If this is a mid-race reset, have all cars re-evaluated for previous lap time 
-        // since the reset does not resend them and it would otherwise take a lap for each car
-        // to have their last lap time updated
-        if (isMidRaceReset)
+        // If this is a reset of an event already under way, have all cars re-evaluated for previous
+        // lap time since the reset does not resend them and it would otherwise take a lap for each
+        // car to have their last lap time updated.
+        //
+        // Whether the event is under way is read from the laps this batch just applied rather than
+        // from the heartbeat: on a process restart the relay replays its cached data set, which
+        // carries no heartbeat, so the $G lap counts are the only evidence available - and a restart
+        // mid-session is precisely the case where the restore matters. At a genuine session start
+        // every car is on lap 0, which correctly skips the restore and with it any risk of dragging
+        // the previous session's lap times into the new one.
+        if (isMidRaceReset && RaceHasPassedStart())
         {
             // Flush any pending lap completions so the lap history service has all completed laps
             // before we read it to restore last lap times
             if (FlushPendingLaps != null)
                 await FlushPendingLaps();
 
-            await sessionContext.SetLastLapTimeBeforeResetAsync();
+            carPatches.AddRange(await sessionContext.SetLastLapTimeBeforeResetAsync());
             Logger.LogInformation("Completed resetting lap times for mid-race reset");
         }
 
@@ -365,13 +383,14 @@ public class RMonitorDataProcessor
     }
 
     /// <summary>
-    /// Determine if this is part of a mid-race reset sequence.
+    /// Determine if this batch is a reset sequence carrying a full data set - either a mid-race reset
+    /// from the timing system or the relay replaying its cache after this process restarted. Whether
+    /// the event is actually under way is a separate question, answered by <see cref="RaceHasPassedStart"/>
+    /// once the batch has been applied.
     /// </summary>
     /// <returns>true is a reset sequence</returns>
-    private bool IsMidRaceReset(string data)
+    private static bool IsMidRaceReset(string data)
     {
-        if (Heartbeat.FlagStatus == string.Empty)
-            return false;
         // A multi-line command that includes at last the following should follow a reset
         return data.Contains("$I") && (data.Contains("$A") || data.Contains("$COMP"));
     }

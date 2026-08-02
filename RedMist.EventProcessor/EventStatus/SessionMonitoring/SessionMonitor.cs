@@ -39,6 +39,12 @@ public class SessionMonitor : BackgroundService
     private SessionState? last = null;
     public event Action? FinalizedSession;
 
+    /// <summary>
+    /// Whether this process has taken ownership of a session yet. Only the first session change after
+    /// startup can be a resume; every one after that is a real session change. See <see cref="ProcessAsync(int, CancellationToken)"/>.
+    /// </summary>
+    private bool hasAdoptedSession;
+
 
     public SessionMonitor(IConfiguration configuration, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory,
         SessionContext sessionContext, IConnectionMultiplexer cacheMux)
@@ -134,18 +140,81 @@ public class SessionMonitor : BackgroundService
         if (SessionId == sessionId)
         {
             _ = lastUpdatedDebouncer.ExecuteAsync(() => SaveLastUpdatedTimestampAsync(eventId, sessionId, stoppingToken), stoppingToken);
+            return;
         }
-        else // New session
+
+        // The first session change after this process starts is normally the relay replaying its
+        // cache, naming the session that was already running. Treating that as a new session
+        // finalizes and re-creates it, which clears the lap history - and that history is the only
+        // source of each car's last lap time on a restart, since the relay's cached data set does
+        // not carry lap times at all. So adopt it as-is when the cache says it is the session we
+        // were already on, and only take the destructive path for a genuinely new session.
+        if (!hasAdoptedSession && await IsResumingSessionAsync(sessionId))
         {
-            Logger.LogInformation("New session {sessionId} received for event {eventId}", sessionId, eventId);
-
-            // Finalize the previous session
-            FinalizeSession();
-
-            // Start the new session
-            ClearSession();
+            Logger.LogInformation("Resuming in-progress session {sessionId} for event {eventId}", sessionId, eventId);
+            hasAdoptedSession = true;
             SessionId = sessionId;
             await SetSessionAsLiveAsync(eventId, sessionId);
+            // Same value, but it renews the expiry so a long event surviving several restarts does
+            // not age its own marker out and lose the ability to tell a resume from a new session.
+            await SaveCurrentSessionAsync(sessionId);
+            FireResumedSession();
+            return;
+        }
+
+        // New session
+        Logger.LogInformation("New session {sessionId} received for event {eventId}", sessionId, eventId);
+        hasAdoptedSession = true;
+
+        // Retire the outgoing session's lap history here rather than leaving it to NewSessionAsync,
+        // which runs on a background task and does a database read before it gets to the clear. The
+        // relay sends this session change immediately ahead of its cached data set, so that batch can
+        // be applied first - and it would then restore the previous session's lap times onto the new
+        // session's cars and publish them to clients. NewSessionAsync still clears; this is idempotent.
+        await sessionContext.ClearLapHistoryAsync();
+
+        // Finalize the previous session
+        FinalizeSession();
+
+        // Start the new session
+        ClearSession();
+        SessionId = sessionId;
+        await SetSessionAsLiveAsync(eventId, sessionId);
+        await SaveCurrentSessionAsync(sessionId);
+    }
+
+    /// <summary>
+    /// Whether the incoming session is the one this event was already running when the process
+    /// stopped, rather than a genuinely new session. Both arrive as the same session-change message,
+    /// so the answer comes from the session id cached when the session was adopted.
+    /// </summary>
+    private async Task<bool> IsResumingSessionAsync(int sessionId)
+    {
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            var cached = await cache.StringGetAsync(string.Format(Consts.EVENT_CURRENT_SESSION, eventId));
+            return !cached.IsNullOrEmpty && int.TryParse(cached.ToString(), out var cachedSessionId) && cachedSessionId == sessionId;
+        }
+        catch (Exception ex)
+        {
+            // Falling through to the new-session path costs the lap history, which is recoverable
+            // a lap later; guessing the other way would keep a stale session's data indefinitely.
+            Logger.LogError(ex, "Error reading cached session for event {eventId}", eventId);
+            return false;
+        }
+    }
+
+    private async Task SaveCurrentSessionAsync(int sessionId)
+    {
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            await cache.StringSetAsync(string.Format(Consts.EVENT_CURRENT_SESSION, eventId), sessionId, TimeSpan.FromDays(7));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error caching current session {sessionId} for event {eventId}", sessionId, eventId);
         }
     }
 
@@ -361,6 +430,22 @@ public class SessionMonitor : BackgroundService
                 sessionContext.SetSessionClassMetadata();
             });
         }
+    }
+
+    /// <summary>
+    /// Names the resumed session on the session context. Dispatched rather than awaited for the same
+    /// reason as the new-session case above: this runs inside the processing pipeline's write lock,
+    /// which the session context takes again and which is not reentrant. Class metadata is not
+    /// re-read - unlike a new session this keeps the existing session state, so what was loaded at
+    /// startup still stands.
+    /// </summary>
+    protected void FireResumedSession()
+    {
+        if (lastSession == null)
+            return;
+
+        var session = lastSession; // Capture for thread safety
+        _ = Task.Run(() => sessionContext.ResumeSessionAsync(session.Id, session.Name));
     }
 
     /// <summary>

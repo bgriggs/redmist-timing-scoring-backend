@@ -348,23 +348,76 @@ public class SessionContext
 
     #endregion
 
-    public virtual async Task SetLastLapTimeBeforeResetAsync()
+    /// <summary>
+    /// Restores each car's last lap time from the lap history. A reset does not resend lap times, and
+    /// the relay's cached data set never carries them at all, so without this every car reads blank
+    /// until it next crosses start/finish.
+    /// </summary>
+    /// <returns>
+    /// Patches for the cars whose last lap time changed. These are returned rather than applied
+    /// silently because clients are only sent what a patch tells them; a car restored in place here
+    /// would stay blank on screen until its next change.
+    /// </returns>
+    public virtual async Task<List<CarPositionPatch>> SetLastLapTimeBeforeResetAsync()
     {
-        int timeSetCount = 0;
+        var patches = new List<CarPositionPatch>();
         foreach (var car in SessionState.CarPositions)
         {
             if (!string.IsNullOrEmpty(car.Number))
             {
                 var laps = await lapHistoryService.GetLapsAsync(car.Number);
-                if (laps.Count > 0)
+                if (laps.Count > 0 && car.LastLapTime != laps[0].LastLapTime)
                 {
                     car.LastLapTime = laps[0].LastLapTime;
-                    timeSetCount++;
+                    patches.Add(new CarPositionPatch { Number = car.Number, LastLapTime = car.LastLapTime });
                 }
             }
         }
 
-        Logger.LogInformation("Set last lap time before reset for {count} cars of {total}", timeSetCount, SessionState.CarPositions.Count);
+        Logger.LogInformation("Set last lap time before reset for {count} cars of {total}", patches.Count, SessionState.CarPositions.Count);
+        return patches;
+    }
+
+    /// <summary>
+    /// Drops the cached lap history for the event. Exposed separately from <see cref="NewSessionAsync"/>
+    /// so a caller can retire the outgoing session's laps before it returns: NewSessionAsync runs on a
+    /// background task and can land after the next batch has already been applied, and until it does
+    /// the history still holds the previous session's laps.
+    /// </summary>
+    public virtual Task ClearLapHistoryAsync() => lapHistoryService.ClearLapsAsync();
+
+    /// <summary>
+    /// Adopts a session that is already under way, as happens when this process restarts mid-session.
+    /// Unlike <see cref="NewSessionAsync"/> nothing is cleared: the cars rebuilt from the relay's
+    /// cached data stay, and so does the lap history, which is the only record of each car's last lap
+    /// time until it next crosses start/finish.
+    /// </summary>
+    public virtual async Task ResumeSessionAsync(int sessionId, string sessionName)
+    {
+        var eventName = await LoadEventNameAsync();
+
+        using (await SessionStateLock.AcquireWriteLockAsync(CancellationToken))
+        {
+            // A real session change can be adopted while this waits for the lock, and it does its own
+            // adopting on a background task too, so the two are not ordered against each other. A
+            // resume only ever names the session that was running at startup, so it must never pull
+            // the state back to it. Zero here means no session has been adopted yet, not session 0 -
+            // an adopted session 0 matches the id and is let through.
+            if (SessionState.SessionId != 0 && SessionState.SessionId != sessionId)
+            {
+                Logger.LogInformation("Skipping resume of session {sessionId}; session {current} has since been adopted",
+                    sessionId, SessionState.SessionId);
+                return;
+            }
+
+            SessionState.EventId = EventId;
+            SessionState.EventName = eventName;
+            SessionState.SessionId = sessionId;
+            SessionState.SessionName = sessionName;
+
+            Logger.LogInformation("Resumed session {sessionId} ({sessionName}) holding {cars} cars",
+                sessionId, sessionName, SessionState.CarPositions.Count);
+        }
     }
 
     public virtual void SetSessionClassMetadata()
