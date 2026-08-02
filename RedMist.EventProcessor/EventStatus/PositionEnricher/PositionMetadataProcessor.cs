@@ -8,6 +8,7 @@ namespace RedMist.EventProcessor.EventStatus.PositionEnricher;
 /// </summary>
 public class PositionMetadataProcessor
 {
+    private const string HourTimeFormat = @"h\:mm\:ss\.fff";
     private const string MinTimeFormat = @"m\:ss\.fff";
     private const string SecTimeFormat = @"s\.fff";
     private static readonly PositionComparer positionComparer = new();
@@ -23,6 +24,15 @@ public class PositionMetadataProcessor
         foreach (var classGroup in classGroups)
         {
             UpdateGapAndDiff([.. classGroup], (p, g) => p.InClassGap = g, (p, d) => p.InClassDifference = d);
+        }
+
+        // Overall Gap and Difference when sorted by best lap time, e.g. qualifying
+        UpdateGapAndDiffByFastTime(positions, (p, g) => p.OverallGapByFastTime = g, (p, d) => p.OverallDifferenceByFastTime = d);
+
+        // Class Gap and Difference when sorted by best lap time
+        foreach (var classGroup in classGroups)
+        {
+            UpdateGapAndDiffByFastTime([.. classGroup], (p, g) => p.InClassGapByFastTime = g, (p, d) => p.InClassDifferenceByFastTime = d);
         }
 
         // Set class positions
@@ -135,6 +145,59 @@ public class PositionMetadataProcessor
                     }
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Gap and difference based on each car's best lap time rather than its position on track. This supports
+    /// the UI sorting cars by fastest time, such as for qualifying, where the leader is the car with the
+    /// fastest lap. Gap is to the car ahead in the best time order and difference is to the fastest car.
+    /// Cars without a best lap time have no gap or difference since they are not ranked. Cars with matching
+    /// best times are ordered by the lap the time was set on, which keeps the order from changing as the
+    /// cars move around the track.
+    /// </summary>
+    private static void UpdateGapAndDiffByFastTime(List<CarPosition> carPositions, Action<CarPosition, string> setGap, Action<CarPosition, string> setDiff)
+    {
+        if (carPositions.Count == 0)
+            return;
+
+        var ranked = new List<(CarPosition Car, TimeSpan BestTime)>();
+        foreach (var car in carPositions)
+        {
+            var bestTime = ParseRMTime(car.BestTime ?? string.Empty).TimeOfDay;
+            if (bestTime == default) // Car has not set a lap time
+            {
+                setGap(car, string.Empty);
+                setDiff(car, string.Empty);
+                continue;
+            }
+            ranked.Add((car, bestTime));
+        }
+
+        // Fastest first. Matching times go to the car that set it on the earlier lap, which does not
+        // change until the car posts a new best time. Cars with an unknown best lap are ranked last.
+        ranked = [.. ranked
+            .OrderBy(r => r.BestTime)
+            .ThenBy(r => r.Car.BestLap <= 0 ? int.MaxValue : r.Car.BestLap)
+            .ThenBy(r => r.Car.Number, StringComparer.Ordinal)];
+
+        for (int i = 0; i < ranked.Count; i++)
+        {
+            var (car, bestTime) = ranked[i];
+
+            // Fastest car
+            if (i == 0)
+            {
+                setGap(car, string.Empty);
+                setDiff(car, string.Empty);
+                continue;
+            }
+
+            var gap = bestTime - ranked[i - 1].BestTime;
+            setGap(car, gap.ToString(GetTimeFormat(gap)));
+
+            var diff = bestTime - ranked[0].BestTime;
+            setDiff(car, diff.ToString(GetTimeFormat(diff)));
         }
     }
 
@@ -280,7 +343,13 @@ public class PositionMetadataProcessor
 
     public static string GetTimeFormat(TimeSpan time)
     {
-        if (time.Minutes > 0)
+        // Note the total properties are used since the components roll over, e.g. an hour and five
+        // seconds has a Minutes of zero and would otherwise be formatted as five seconds.
+        if (time.TotalHours >= 1)
+        {
+            return HourTimeFormat;
+        }
+        if (time.TotalMinutes >= 1)
         {
             return MinTimeFormat;
         }

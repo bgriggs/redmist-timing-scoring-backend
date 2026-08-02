@@ -28,6 +28,7 @@ using RedMist.EventProcessor.Models;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
+using System.Globalization;
 using System.Text.Json;
 
 namespace RedMist.EventProcessor.Tests.EventStatus.ProcessingPipeline;
@@ -1164,6 +1165,145 @@ public class SessionStateProcessingPipelineTests
             var issueReport = string.Join(Environment.NewLine, issuesFound);
             Assert.Fail($"Found {issuesFound.Count} gap/diff issues exceeding 5 minutes on same lap:{Environment.NewLine}{issueReport}");
         }
+    }
+
+    /// <summary>
+    /// Replays a full event and verifies the gap and difference used when the UI sorts by best lap time,
+    /// such as for qualifying. Each check re-derives the expected values from the best times in the session
+    /// state and compares them to what the position enricher published.
+    /// </summary>
+    [TestMethod]
+    public async Task FastTimeGapAndDiff_FullReplay_Test()
+    {
+        // Arrange
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "ra2025.txt");
+        await entriesData.LoadAsync();
+        var issuesFound = new List<string>();
+        int rankedCarChecks = 0;
+
+        // Act
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                // Advance time to simulate passage between records
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+
+                // Validate the published values BEFORE processing the next message
+                rankedCarChecks += ValidateFastTimeGapAndDiff(
+                    [.. _sessionContext.SessionState.CarPositions],
+                    $"RaceTime={_sessionContext.SessionState.RunningRaceTime}",
+                    issuesFound);
+            }
+
+            var tm = new TimingMessage(d.type, d.data, 1, d.ts);
+            await _pipeline.PostAsync(tm);
+        }
+
+        // Assert
+        if (issuesFound.Count > 0)
+        {
+            // Only report the first several issues since a single bad update repeats across cars
+            var issueReport = string.Join(Environment.NewLine, issuesFound.Take(25));
+            Assert.Fail($"Found {issuesFound.Count} fast time gap/diff issues:{Environment.NewLine}{issueReport}");
+        }
+
+        Assert.IsGreaterThan(0, rankedCarChecks, "Expected the replay to include cars ranked by best time");
+    }
+
+    /// <summary>
+    /// Checks the overall and in-class fast time gap/difference of every car against values re-derived
+    /// from the best times in the given state. Returns the number of ranked cars that were checked.
+    /// </summary>
+    private static int ValidateFastTimeGapAndDiff(List<CarPosition> cars, string context, List<string> issuesFound)
+    {
+        int rankedCars = ValidateFastTimeGroup(cars, context, "overall",
+            c => c.OverallGapByFastTime, c => c.OverallDifferenceByFastTime, issuesFound);
+
+        foreach (var classGroup in cars.GroupBy(c => c.Class))
+        {
+            ValidateFastTimeGroup([.. classGroup], context, $"class {classGroup.Key}",
+                c => c.InClassGapByFastTime, c => c.InClassDifferenceByFastTime, issuesFound);
+        }
+
+        return rankedCars;
+    }
+
+    private static int ValidateFastTimeGroup(List<CarPosition> cars, string context, string scope,
+        Func<CarPosition, string?> getGap, Func<CarPosition, string?> getDiff, List<string> issuesFound)
+    {
+        var ranked = cars
+            .Select(c => (Car: c, BestTime: PositionMetadataProcessor.ParseRMTime(c.BestTime ?? string.Empty).TimeOfDay))
+            .Where(c => c.BestTime != default)
+            .OrderBy(c => c.BestTime)
+            .ThenBy(c => c.Car.BestLap <= 0 ? int.MaxValue : c.Car.BestLap)
+            .ThenBy(c => c.Car.Number, StringComparer.Ordinal)
+            .ToList();
+
+        // Cars without a lap time are not ranked and have no gap or difference
+        foreach (var car in cars.Where(c => PositionMetadataProcessor.ParseRMTime(c.BestTime ?? string.Empty).TimeOfDay == default))
+        {
+            if (!string.IsNullOrEmpty(getGap(car)))
+                issuesFound.Add($"Car {car.Number} has {scope} fast time gap of '{getGap(car)}' with no best time at {context}");
+            if (!string.IsNullOrEmpty(getDiff(car)))
+                issuesFound.Add($"Car {car.Number} has {scope} fast time diff of '{getDiff(car)}' with no best time at {context}");
+        }
+
+        for (int i = 0; i < ranked.Count; i++)
+        {
+            var (car, bestTime) = ranked[i];
+            var expectedGap = i == 0 ? string.Empty : FormatFastTimeDelta(bestTime - ranked[i - 1].BestTime);
+            var expectedDiff = i == 0 ? string.Empty : FormatFastTimeDelta(bestTime - ranked[0].BestTime);
+
+            if (getGap(car) != expectedGap)
+            {
+                issuesFound.Add($"Car {car.Number} (best {car.BestTime}) has {scope} fast time gap of " +
+                    $"'{getGap(car)}' but expected '{expectedGap}' at {context}");
+            }
+            if (getDiff(car) != expectedDiff)
+            {
+                issuesFound.Add($"Car {car.Number} (best {car.BestTime}) has {scope} fast time diff of " +
+                    $"'{getDiff(car)}' but expected '{expectedDiff}' at {context}");
+            }
+        }
+
+        // Check the published difference again without going through the same ordering and formatting
+        // as the enricher: read the value back as a time and compare it to the fastest best time.
+        if (ranked.Count > 0)
+        {
+            var fastest = ranked.Min(r => r.BestTime);
+            foreach (var (car, bestTime) in ranked)
+            {
+                var reported = ReadFastTimeDelta(getDiff(car));
+                if (reported == null)
+                {
+                    issuesFound.Add($"Car {car.Number} has an unreadable {scope} fast time diff of '{getDiff(car)}' at {context}");
+                }
+                else if (reported != bestTime - fastest)
+                {
+                    issuesFound.Add($"Car {car.Number} (best {car.BestTime}) reports a {scope} fast time diff of " +
+                        $"'{getDiff(car)}' which is {reported} from the fastest best time of {fastest} at {context}");
+                }
+            }
+        }
+
+        return ranked.Count;
+    }
+
+    private static string FormatFastTimeDelta(TimeSpan delta) => delta.ToString(PositionMetadataProcessor.GetTimeFormat(delta));
+
+    /// <summary>
+    /// Reads a published gap/difference back as a time. The fastest car has no value which reads as zero.
+    /// </summary>
+    private static TimeSpan? ReadFastTimeDelta(string? delta)
+    {
+        if (string.IsNullOrEmpty(delta))
+            return TimeSpan.Zero;
+        string[] formats = [@"s\.fff", @"m\:ss\.fff", @"h\:mm\:ss\.fff"];
+        if (TimeSpan.TryParseExact(delta, formats, CultureInfo.InvariantCulture, out var parsed))
+            return parsed;
+        return null;
     }
 
     [TestMethod]

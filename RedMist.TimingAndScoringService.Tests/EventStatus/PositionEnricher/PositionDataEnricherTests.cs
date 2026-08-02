@@ -225,6 +225,63 @@ public class PositionDataEnricherTests
         }
     }
 
+    /// <summary>
+    /// The gap and difference by best time need to reach clients as patches and be applied to the
+    /// session state so the UI can sort by fastest time.
+    /// </summary>
+    [TestMethod]
+    public void Process_FastTimeGapAndDifference_ArePatchedAndApplied()
+    {
+        // Arrange - car 3 is last on track but has the fastest lap
+        var car1 = CreateTestCarPosition("1", "A", 1);
+        car1.TransponderId = 1001;
+        car1.TotalTime = "00:10:00.000";
+        car1.LastLapCompleted = 10;
+        car1.BestTime = "00:01:32.000";
+
+        var car2 = CreateTestCarPosition("2", "B", 2);
+        car2.TransponderId = 1002;
+        car2.TotalTime = "00:10:01.000";
+        car2.LastLapCompleted = 10;
+        car2.BestTime = "00:01:31.000";
+
+        var car3 = CreateTestCarPosition("3", "A", 3);
+        car3.TransponderId = 1003;
+        car3.TotalTime = "00:10:02.000";
+        car3.LastLapCompleted = 10;
+        car3.BestTime = "00:01:30.500";
+
+        // UpdateCars registers the cars so that patches can be applied back to the session state
+        _sessionContext.UpdateCars([car1, car2, car3]);
+
+        // Act
+        var result = _enricher.Process();
+
+        // Assert
+        Assert.IsNotNull(result);
+
+        var car1Patch = result.CarPatches.FirstOrDefault(p => p.Number == "1");
+        Assert.IsNotNull(car1Patch, "Car 1 should have a patch with its fast time gap and difference");
+        Assert.AreEqual("1.000", car1Patch.OverallGapByFastTime, "Gap to car 2 which is next fastest");
+        Assert.AreEqual("1.500", car1Patch.OverallDifferenceByFastTime, "Difference to car 3 which is fastest");
+        Assert.AreEqual("1.500", car1Patch.InClassGapByFastTime, "Car 3 is the only other car in class A");
+        Assert.AreEqual("1.500", car1Patch.InClassDifferenceByFastTime);
+
+        // Fastest car overall and in its class is cleared out since it has nothing to compare against
+        var car3Patch = result.CarPatches.FirstOrDefault(p => p.Number == "3");
+        Assert.IsNotNull(car3Patch);
+        Assert.AreEqual("", car3Patch.OverallGapByFastTime);
+        Assert.AreEqual("", car3Patch.OverallDifferenceByFastTime);
+        Assert.AreEqual("", car3Patch.InClassGapByFastTime);
+        Assert.AreEqual("", car3Patch.InClassDifferenceByFastTime);
+
+        // Patches are applied to the session state
+        Assert.AreEqual("1.000", _sessionContext.GetCarByNumber("1")?.OverallGapByFastTime);
+        Assert.AreEqual("1.500", _sessionContext.GetCarByNumber("1")?.OverallDifferenceByFastTime);
+        Assert.AreEqual("0.500", _sessionContext.GetCarByNumber("2")?.OverallGapByFastTime);
+        Assert.AreEqual("0.500", _sessionContext.GetCarByNumber("2")?.OverallDifferenceByFastTime);
+    }
+
     [TestMethod]
     public void Process_BestTimeCalculation_UpdatesBestTimeFlags()
     {
