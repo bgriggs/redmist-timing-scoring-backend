@@ -384,4 +384,31 @@ public abstract class EventControllerBase : ControllerBase
             yield return log;
         }
     }
+
+    /// <summary>
+    /// Gets the total number of status log entries for an event, optionally scoped to a single session.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="sessionId">Optional session identifier to restrict the count to a single session.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>The number of matching log entries.</returns>
+    /// <response code="200">Returns the log entry count.</response>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <remarks>
+    /// Intended to be called before <see cref="LoadEventLogsAsync"/> so callers can size a progress indicator
+    /// for the paged log download. Uses the same filter as <see cref="LoadEventLogsAsync"/>.
+    /// </remarks>
+    [HttpGet]
+    [Produces("application/json")]
+    [ProducesResponseType<int>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public virtual async Task<int> LoadEventLogsCountAsync(int eventId, int? sessionId, CancellationToken cancellationToken = default)
+    {
+        Logger.LogMethodEntry();
+        await using var context = await tsContext.CreateDbContextAsync(cancellationToken);
+        return await context.EventStatusLogs
+            .AsNoTracking()
+            .Where(x => x.EventId == eventId && (!sessionId.HasValue || x.SessionId == sessionId.Value))
+            .CountAsync(cancellationToken);
+    }
 }
