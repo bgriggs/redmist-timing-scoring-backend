@@ -376,6 +376,7 @@ public abstract class EventControllerBase : ControllerBase
             .AsNoTracking()
             .Where(x => x.EventId == eventId && (!sessionId.HasValue || x.SessionId == sessionId.Value))
             .OrderByDescending(x => x.Timestamp)
+            .ThenByDescending(x => x.Id)
             .Skip(skip)
             .Take(cappedTake)
             .AsAsyncEnumerable()

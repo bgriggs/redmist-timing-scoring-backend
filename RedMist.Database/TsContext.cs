@@ -159,6 +159,12 @@ public class TsContext : DbContext
         modelBuilder.Entity<Models.DriverInfo>().HasIndex(o => o.FlagtronicsId).IsUnique();
         modelBuilder.Entity<CarLapLog>().HasIndex(l => new { l.EventId, l.SessionId, l.CarNumber, l.LapNumber });
         modelBuilder.Entity<ExternalMessageLog>().HasIndex(l => new { l.EventId, l.SessionId });
+        // Keyed to match the log download queries: filter on EventId, order by Timestamp/Id descending.
+        // SessionId is an INCLUDE rather than a key column so a single index serves both the all-sessions
+        // and single-session forms without falling back to a sort.
+        modelBuilder.Entity<EventStatusLog>()
+            .HasIndex(l => new { l.EventId, l.Timestamp, l.Id })
+            .IncludeProperties(l => l.SessionId);
     }
 }
 #pragma warning restore CS0618
