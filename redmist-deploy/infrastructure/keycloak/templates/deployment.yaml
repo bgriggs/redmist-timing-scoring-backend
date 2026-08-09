@@ -7,6 +7,12 @@ metadata:
     app: keycloak
 spec:
   replicas: {{ .Values.keycloak.replicas }}
+  # Recreate, not RollingUpdate: a Keycloak version upgrade migrates the database
+  # schema on startup, and running two different major/minor versions against one
+  # database is unsupported. With replicas=1 the default strategy would surge the
+  # new pod up first and migrate the schema underneath the old one still serving.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: keycloak
@@ -15,39 +21,31 @@ spec:
       labels:
         app: keycloak
     spec:
-      initContainers:
-      - name: keycloak-init
-        image: {{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}
-        command:
-          - /bin/bash
-          - -c
-          - |
-            /opt/keycloak/bin/kc.sh build --db=postgres
-        env:
-        - name: KC_DB
-          value: postgres
       containers:
       - name: keycloak
         image: {{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}
         args:
           - start
         env:
-        - name: KC_FEATURES
-          value: "hostname:v1"
-        - name: KC_HOSTNAME_STRICT
-          value: "false"
-        - name: KC_HOSTNAME_STRICT_HTTPS
+        # Hostname v2 (v1 was removed in Keycloak 26.0). The server is only ever
+        # reached through the ingress, so pinning an explicit hostname stops URLs
+        # being derived from request headers. hostname-strict is deliberately not
+        # set: it is ignored whenever hostname is configured.
+        - name: KC_HOSTNAME
+          value: "https://{{ .Values.keycloak.hostname }}"
+        - name: KC_HOSTNAME_ADMIN
+          value: "https://{{ .Values.keycloak.hostname }}"
+        # Not a like-for-like translation of the old hostname-strict-backchannel=false,
+        # which resolved backchannel URLs per request. Every consumer reaches Keycloak
+        # at the public URL, so backchannel URLs are pinned to the frontchannel ones.
+        # An in-cluster client fetching discovery via keycloak.keycloak.svc would need
+        # this set to "true".
+        - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
           value: "false"
         - name: KC_PROXY_HEADERS
           value: "xforwarded"
         - name: KC_HTTP_ENABLED
           value: "true"
-        - name: KC_HOSTNAME_URL
-          value: "https://{{ .Values.keycloak.hostname }}"
-        - name: KC_HOSTNAME_ADMIN_URL
-          value: "https://{{ .Values.keycloak.hostname }}"
-        - name: KC_HOSTNAME_STRICT_BACKCHANNEL
-          value: "false"
         - name: KC_HEALTH_ENABLED
           value: "true"
         - name: KC_METRICS_ENABLED
@@ -66,12 +64,14 @@ spec:
             secretKeyRef:
               name: keycloak-db-secret
               key: password
-        - name: KEYCLOAK_ADMIN
+        # Only consulted on the very first start, before the master realm exists.
+        # KEYCLOAK_ADMIN/_PASSWORD were deprecated in Keycloak 26.0.
+        - name: KC_BOOTSTRAP_ADMIN_USERNAME
           valueFrom:
             secretKeyRef:
               name: keycloak-admin-secret
               key: username
-        - name: KEYCLOAK_ADMIN_PASSWORD
+        - name: KC_BOOTSTRAP_ADMIN_PASSWORD
           valueFrom:
             secretKeyRef:
               name: keycloak-admin-secret
@@ -81,18 +81,28 @@ spec:
           containerPort: 8080
         - name: https
           containerPort: 8443
+        # Holds off the liveness and readiness probes until startup finishes. A
+        # version upgrade runs the schema migration on first start, and without
+        # this the liveness probe would restart the container mid-migration while
+        # Liquibase still holds DATABASECHANGELOGLOCK, wedging every later start.
+        # 10 minutes of budget.
+        startupProbe:
+          httpGet:
+            path: /health/started
+            port: 9000
+          periodSeconds: 10
+          failureThreshold: 60
+          timeoutSeconds: 5
         readinessProbe:
           httpGet:
             path: /health/ready
             port: 9000
-          initialDelaySeconds: 60
           periodSeconds: 10
           timeoutSeconds: 5
         livenessProbe:
           httpGet:
             path: /health/live
             port: 9000
-          initialDelaySeconds: 90
           periodSeconds: 30
           timeoutSeconds: 5
         resources:

@@ -4,10 +4,14 @@ keycloak:
   replicas: 1  # Start with 1 for migration, scale to 2 after
   image:
     repository: quay.io/keycloak/keycloak
-    tag: "25.0.0"
+    tag: "26.7.1"
   
   hostname: auth.redmist.racing
   
+  # Below Keycloak's documented 750Mi floor once the JVM sizes its heap from the
+  # limit, but every node in the pool is already 70-97% committed on memory
+  # requests, so a larger request would leave this pod Pending with nowhere to go.
+  # Raise these once the node pool has headroom.
   resources:
     requests:
       memory: "512Mi"
