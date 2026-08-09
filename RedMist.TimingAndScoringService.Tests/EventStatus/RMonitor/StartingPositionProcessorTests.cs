@@ -608,7 +608,7 @@ public class StartingPositionProcessorTests
 
         // Change to session 68 and seed new data
         await SeedDatabaseWithStartingLaps(68);
-        await _sessionContext.NewSessionAsync(68, "New Session");
+        await _sessionContext.NewSessionWithLockHeldAsync(68, "New Session");
         _sessionContext.SessionState.CurrentFlag = Flags.Green;
 
         // Re-setup cars for new session

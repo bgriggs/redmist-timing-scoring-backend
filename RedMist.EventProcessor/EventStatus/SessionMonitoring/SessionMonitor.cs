@@ -101,14 +101,14 @@ public class SessionMonitor : BackgroundService
     {
         using (await sessionContext.SessionStateLock.AcquireReadLockAsync(stoppingToken))
         {
+            // One snapshot serves both the comparison and the next pass's baseline. The read lock
+            // holds the pipeline off, so it is worth taking the state apart only once - and the
+            // finalization below persists that state, which needs the lock to stay held.
+            var current = SessionStateMapper.PatchToEntity(SessionStateMapper.ToPatch(sessionContext.SessionState));
             if (last != null)
-            {
-                var pc = SessionStateMapper.ToPatch(sessionContext.SessionState);
-                CheckForFinished(last, SessionStateMapper.PatchToEntity(pc));
-            }
+                CheckForFinished(last, current);
 
-            var pl = SessionStateMapper.ToPatch(sessionContext.SessionState);
-            last = SessionStateMapper.PatchToEntity(pl);
+            last = current;
         }
     }
 

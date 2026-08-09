@@ -45,14 +45,15 @@ public class ProjectedLapTimeEnricher
     }
 
     /// <summary>
-    /// Determines an estimated lap time for the car based on previous laps.
+    /// Determines an estimated lap time for the car based on previous laps. Runs inside the
+    /// pipeline's write lock, so it reads the flag without locking again - the lock is not reentrant.
     /// </summary>
     /// <param name="car"></param>
     /// <returns>time in milliseconds or 0 if no projection is available</returns>
     public async Task<int> CalculateProjectedLapTimeAsync(CarPosition car)
     {
         // Get current track flag
-        var (currentFlag, _) = await sessionContext.GetCurrentFlagAndLapAsync();
+        var (currentFlag, _) = sessionContext.GetCurrentFlagAndLapWithLockHeld();
 
         // Only process for green or yellow flags
         if (currentFlag != Flags.Green && currentFlag != Flags.Yellow)

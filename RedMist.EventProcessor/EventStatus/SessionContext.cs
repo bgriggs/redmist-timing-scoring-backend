@@ -268,26 +268,15 @@ public class SessionContext
     }
 
     /// <summary>
-    /// Starts a fresh session, dropping everything the previous one accumulated. Takes the write
-    /// lock, so a caller already inside it must use <see cref="NewSessionWithLockHeldAsync"/> -
-    /// the lock is not reentrant and this would deadlock.
-    /// </summary>
-    public virtual async Task NewSessionAsync(int sessionId, string sessionName)
-    {
-        var eventName = await LoadEventNameAsync();
-
-        using (await SessionStateLock.AcquireWriteLockAsync(CancellationToken))
-        {
-            await ApplyNewSessionAsync(sessionId, sessionName, eventName);
-        }
-    }
-
-    /// <summary>
-    /// <see cref="NewSessionAsync"/> for a caller that is already inside the write lock. The lock is
-    /// not reentrant, so such a caller cannot go through the locking overload - and it must not defer
-    /// the reset to a background task either: the relay sends the new session's entry records right
-    /// behind the session change, and a reset landing after those have been applied wipes the field
-    /// it just rebuilt. Entries only arrive once per session, so nothing puts them back.
+    /// Starts a fresh session, dropping everything the previous one accumulated.
+    ///
+    /// For a caller that is already inside the write lock, which every caller is: sessions change on
+    /// the processing pipeline, which holds the lock for the whole message. There is deliberately no
+    /// locking overload - the lock is not reentrant, so one would be a hang waiting to be called by
+    /// name. The reset must not be deferred to a background task either: the relay sends the new
+    /// session's entry records right behind the session change, and a reset landing after those have
+    /// been applied wipes the field it just rebuilt. Entries only arrive once per session, so
+    /// nothing puts them back.
     /// </summary>
     public virtual async Task NewSessionWithLockHeldAsync(int sessionId, string sessionName)
     {
@@ -473,13 +462,22 @@ public class SessionContext
     {
         using (await SessionStateLock.AcquireReadLockAsync(CancellationToken))
         {
-            int lastLap = 0;
-            if (SessionState.CarPositions.Count > 0)
-            {
-                lastLap = SessionState.CarPositions.Max(cp => cp.LastLapCompleted);
-            }
-            return (SessionState.CurrentFlag, lastLap);
+            return GetCurrentFlagAndLapWithLockHeld();
         }
+    }
+
+    /// <summary>
+    /// <see cref="GetCurrentFlagAndLapAsync"/> for a caller already inside the lock - the pipeline
+    /// runs its enrichers under the write lock, and the lock is not reentrant.
+    /// </summary>
+    public virtual (Flags, int) GetCurrentFlagAndLapWithLockHeld()
+    {
+        int lastLap = 0;
+        if (SessionState.CarPositions.Count > 0)
+        {
+            lastLap = SessionState.CarPositions.Max(cp => cp.LastLapCompleted);
+        }
+        return (SessionState.CurrentFlag, lastLap);
     }
 
     private async Task<string> LoadEventNameAsync()
