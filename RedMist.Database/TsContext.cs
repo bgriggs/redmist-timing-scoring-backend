@@ -33,6 +33,7 @@ public class TsContext : DbContext
     public DbSet<Models.DriverInfo> DriverInfo { get; set; } = null!;
     public DbSet<SponsorTelemetryLog> SponsorTelemetryLogs { get; set; } = null!;
     public DbSet<Sponsor> Sponsors { get; set; } = null!;
+    public DbSet<SponsorExclusion> SponsorExclusions { get; set; } = null!;
     public DbSet<SponsorStatistics> SponsorStatistics { get; set; } = null!;
     public DbSet<EventSponsorStatistics> EventSponsorStatistics { get; set; } = null!;
     public DbSet<SourceSponsorStatistics> SourceSponsorStatistics { get; set; } = null!;
@@ -149,6 +150,10 @@ public class TsContext : DbContext
         var trackMapProperty = modelBuilder.Entity<TrackMapRecord>().Property(t => t.Map);
         trackMapProperty.HasConversion(trackMapConverter!);
         trackMapProperty.HasColumnType("jsonb");
+
+        // Sponsor exclusions: one row per (organization, blocked sponsor). Keyed on OrganizationId first so
+        // the lookup for "what does this event's organization exclude" is a prefix scan of the PK index.
+        modelBuilder.Entity<SponsorExclusion>().HasKey(e => new { e.OrganizationId, e.SponsorId });
 
         // Configure TimingCommon models
         modelBuilder.Entity<Session>().HasKey(s => new { s.Id, s.EventId });

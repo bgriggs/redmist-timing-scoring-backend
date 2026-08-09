@@ -249,4 +249,154 @@ public class SponsorTelemetryControllerTests
     }
 
     #endregion
+
+    #region Sponsor Exclusion Tests
+
+    /// <summary>
+    /// Adds three active sponsors (ids assigned by the in-memory store) and an event owned by
+    /// <paramref name="organizationId"/>, returning the sponsor ids in insertion order.
+    /// </summary>
+    private async Task<(int eventId, int[] sponsorIds)> SeedSponsorsAndEventAsync(int organizationId)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var sponsors = new[]
+        {
+            new Sponsor { Name = "ChampCar", ImageUrl = "https://a.com/1.png", TargetUrl = "https://a.com", SubscriptionStart = today.AddDays(-5), SubscriptionEnd = null },
+            new Sponsor { Name = "Lucky Dog", ImageUrl = "https://a.com/2.png", TargetUrl = "https://b.com", SubscriptionStart = today.AddDays(-5), SubscriptionEnd = null },
+            new Sponsor { Name = "WRL", ImageUrl = "https://a.com/3.png", TargetUrl = "https://c.com", SubscriptionStart = today.AddDays(-5), SubscriptionEnd = null },
+        };
+        await _dbContext.Sponsors.AddRangeAsync(sponsors);
+
+        var evt = new RedMist.TimingCommon.Models.Configuration.Event { OrganizationId = organizationId, Name = "Test Event" };
+        await _dbContext.Events.AddAsync(evt);
+        await _dbContext.SaveChangesAsync();
+
+        return (evt.Id, sponsors.Select(s => s.Id).ToArray());
+    }
+
+    private static List<SponsorInfo> Sponsors(ActionResult<List<SponsorInfo>> result)
+        => (List<SponsorInfo>)((OkObjectResult)result.Result!).Value!;
+
+    [TestMethod]
+    public async Task GetSponsorsAsync_EventOrgHasExclusions_RemovesExcludedSponsors()
+    {
+        var (eventId, sponsorIds) = await SeedSponsorsAndEventAsync(organizationId: 5);
+        await _dbContext.SponsorExclusions.AddRangeAsync(
+            new SponsorExclusion { OrganizationId = 5, SponsorId = sponsorIds[1] },
+            new SponsorExclusion { OrganizationId = 5, SponsorId = sponsorIds[2] });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateController(new PassThroughHybridCache()).GetSponsorsAsync(eventId);
+
+        var sponsors = Sponsors(result);
+        Assert.AreEqual(1, sponsors.Count);
+        Assert.AreEqual("ChampCar", sponsors[0].Name);
+    }
+
+    [TestMethod]
+    public async Task GetSponsorsAsync_NoEventId_IgnoresExclusions()
+    {
+        var (_, sponsorIds) = await SeedSponsorsAndEventAsync(organizationId: 5);
+        await _dbContext.SponsorExclusions.AddAsync(new SponsorExclusion { OrganizationId = 5, SponsorId = sponsorIds[1] });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateController(new PassThroughHybridCache()).GetSponsorsAsync();
+
+        Assert.AreEqual(3, Sponsors(result).Count);
+    }
+
+    [TestMethod]
+    public async Task GetSponsorsAsync_ExclusionsBelongToAnotherOrg_ReturnsAllSponsors()
+    {
+        var (eventId, sponsorIds) = await SeedSponsorsAndEventAsync(organizationId: 5);
+        await _dbContext.SponsorExclusions.AddAsync(new SponsorExclusion { OrganizationId = 6, SponsorId = sponsorIds[1] });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateController(new PassThroughHybridCache()).GetSponsorsAsync(eventId);
+
+        Assert.AreEqual(3, Sponsors(result).Count);
+    }
+
+    [TestMethod]
+    public async Task GetSponsorsAsync_UnknownEventId_ReturnsAllSponsors()
+    {
+        var (eventId, sponsorIds) = await SeedSponsorsAndEventAsync(organizationId: 5);
+        await _dbContext.SponsorExclusions.AddAsync(new SponsorExclusion { OrganizationId = 5, SponsorId = sponsorIds[1] });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateController(new PassThroughHybridCache()).GetSponsorsAsync(eventId + 1000);
+
+        Assert.AreEqual(3, Sponsors(result).Count);
+    }
+
+    [TestMethod]
+    public async Task GetSponsorsAsync_ExcludedSponsorIsAlreadyExpired_StillReturnsRemainingSponsors()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var (eventId, sponsorIds) = await SeedSponsorsAndEventAsync(organizationId: 5);
+        var expired = new Sponsor
+        {
+            Name = "Expired",
+            ImageUrl = "https://a.com/4.png",
+            TargetUrl = "https://d.com",
+            SubscriptionStart = today.AddDays(-30),
+            SubscriptionEnd = today.AddDays(-1)
+        };
+        await _dbContext.Sponsors.AddAsync(expired);
+        await _dbContext.SaveChangesAsync();
+        await _dbContext.SponsorExclusions.AddRangeAsync(
+            new SponsorExclusion { OrganizationId = 5, SponsorId = expired.Id },
+            new SponsorExclusion { OrganizationId = 5, SponsorId = sponsorIds[2] });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await CreateController(new PassThroughHybridCache()).GetSponsorsAsync(eventId);
+
+        CollectionAssert.AreEquivalent(
+            new[] { "ChampCar", "Lucky Dog" },
+            Sponsors(result).Select(s => s.Name).ToArray());
+    }
+
+    /// <summary>
+    /// Exclusions must be cached per event, not globally: two events belonging to different
+    /// organizations, served by one cache, each get their own organization's filtering.
+    /// </summary>
+    [TestMethod]
+    public async Task GetSponsorsAsync_TwoEventsDifferentOrgs_EachGetsItsOwnExclusions()
+    {
+        var (champCarEventId, sponsorIds) = await SeedSponsorsAndEventAsync(organizationId: 5);
+        var luckyDogEvent = new RedMist.TimingCommon.Models.Configuration.Event { OrganizationId = 6, Name = "Other Event" };
+        await _dbContext.Events.AddAsync(luckyDogEvent);
+        await _dbContext.SponsorExclusions.AddRangeAsync(
+            new SponsorExclusion { OrganizationId = 5, SponsorId = sponsorIds[1] },
+            new SponsorExclusion { OrganizationId = 6, SponsorId = sponsorIds[0] });
+        await _dbContext.SaveChangesAsync();
+
+        var controller = CreateController(new FakeHybridCache());
+        var champCar = await controller.GetSponsorsAsync(champCarEventId);
+        var luckyDog = await controller.GetSponsorsAsync(luckyDogEvent.Id);
+
+        CollectionAssert.AreEquivalent(new[] { "ChampCar", "WRL" }, Sponsors(champCar).Select(s => s.Name).ToArray());
+        CollectionAssert.AreEquivalent(new[] { "Lucky Dog", "WRL" }, Sponsors(luckyDog).Select(s => s.Name).ToArray());
+    }
+
+    /// <summary>
+    /// Filtering must not mutate the cached sponsor list: an event with exclusions is served first,
+    /// then a request with no event must still see every sponsor.
+    /// </summary>
+    [TestMethod]
+    public async Task GetSponsorsAsync_FilteringDoesNotMutateCachedList()
+    {
+        var (eventId, sponsorIds) = await SeedSponsorsAndEventAsync(organizationId: 5);
+        await _dbContext.SponsorExclusions.AddAsync(new SponsorExclusion { OrganizationId = 5, SponsorId = sponsorIds[1] });
+        await _dbContext.SaveChangesAsync();
+
+        var controller = CreateController(new FakeHybridCache());
+        var filtered = await controller.GetSponsorsAsync(eventId);
+        var unfiltered = await controller.GetSponsorsAsync();
+
+        Assert.AreEqual(2, Sponsors(filtered).Count);
+        Assert.AreEqual(3, Sponsors(unfiltered).Count);
+    }
+
+    #endregion
 }
