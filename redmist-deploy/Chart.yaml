@@ -3,8 +3,42 @@ name: redmist-timing
 description: Deploy redmist timing backend
 type: application
 version: 0.1.0
+# The redmist-* subcharts are vendored: their directories live in charts/ and are committed to
+# git rather than fetched. They still have to be declared here, otherwise `helm lint` fails with
+# "chart metadata is missing these dependencies" and the condition keys below do not work.
+# They intentionally carry no `repository:` field -- Helm resolves those from charts/ directly.
+# After editing this list, run `helm dependency update .` to refresh Chart.lock, or the
+# `helm dependency build` in deploy.ps1 will fail with "lock file is out of sync". The same
+# applies to bumping a subchart's own version: it must be changed here too, or every deploy
+# blocks on "does not satisfy the constraint".
+# Careful with the condition keys: they resolve against coalesced values, so adding a top-level
+# `enabled` key to any subchart's own values.yaml would silently drop that service from a deploy.
 dependencies:
   - name: redis-operator
     version: "3.2.9"
     repository: https://spotahome.github.io/redis-operator
     condition: redis-operator.enabled
+  - name: redmist-event-management
+    version: "0.1.0"
+    condition: redmist-event-management.enabled
+  - name: redmist-event-orchestration
+    version: "0.1.0"
+    condition: redmist-event-orchestration.enabled
+  - name: redmist-external-data-collection
+    version: "0.1.0"
+    condition: redmist-external-data-collection.enabled
+  - name: redmist-relay-api
+    version: "0.1.0"
+    condition: redmist-relay-api.enabled
+  - name: redmist-sponsor-data-rollup
+    version: "0.1.0"
+    condition: redmist-sponsor-data-rollup.enabled
+  - name: redmist-sponsor-reports
+    version: "0.1.0"
+    condition: redmist-sponsor-reports.enabled
+  - name: redmist-status-api
+    version: "0.1.0"
+    condition: redmist-status-api.enabled
+  - name: redmist-user-management
+    version: "0.1.0"
+    condition: redmist-user-management.enabled

@@ -23,3 +23,41 @@ jobs:
       run: dotnet build --no-restore
     - name: Test
       run: dotnet test --no-build --verbosity normal
+
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Helm
+      uses: azure/setup-helm@v4
+      with:
+        # Pinned to match the version deploy.ps1 is exercised with; it passes --force-conflicts,
+        # which only exists in Helm 4.
+        version: v4.1.0
+    # `helm dependency build` (unlike `update`) refuses to fetch from a repository URL that is not
+    # already registered, so a bare runner needs this first.
+    - name: Add chart repos
+      run: helm repo add spotahome https://spotahome.github.io/redis-operator
+    # Fetches redis-operator into charts/ (it is gitignored) and verifies Chart.lock is in sync
+    # with Chart.yaml -- the same check deploy.ps1 performs before every release.
+    - name: Resolve chart dependencies
+      working-directory: redmist-deploy
+      run: helm dependency build .
+    - name: Lint
+      working-directory: redmist-deploy
+      run: |
+        for env in prod test dev; do
+          echo "::group::helm lint ($env)"
+          helm lint . -f values.yaml -f "values-$env.yaml"
+          echo "::endgroup::"
+        done
+    - name: Render
+      working-directory: redmist-deploy
+      run: |
+        for env in prod test dev; do
+          echo "::group::helm template ($env)"
+          helm template "redmist-$env" . -f values.yaml -f "values-$env.yaml" > /dev/null
+          echo "::endgroup::"
+        done

@@ -2,5 +2,29 @@ dependencies:
 - name: redis-operator
   repository: https://spotahome.github.io/redis-operator
   version: 3.2.9
-digest: sha256:737d0c65fa7552dcd7acb2935edfd6ff4de2d3f742d487377252c59ad51d9733
-generated: "2025-10-31T16:27:07.1548552-06:00"
+- name: redmist-event-management
+  repository: ""
+  version: 0.1.0
+- name: redmist-event-orchestration
+  repository: ""
+  version: 0.1.0
+- name: redmist-external-data-collection
+  repository: ""
+  version: 0.1.0
+- name: redmist-relay-api
+  repository: ""
+  version: 0.1.0
+- name: redmist-sponsor-data-rollup
+  repository: ""
+  version: 0.1.0
+- name: redmist-sponsor-reports
+  repository: ""
+  version: 0.1.0
+- name: redmist-status-api
+  repository: ""
+  version: 0.1.0
+- name: redmist-user-management
+  repository: ""
+  version: 0.1.0
+digest: sha256:eaddd0863d882066183b55d483b82ce70ae05eb4f79277caefe564df221707e9
+generated: "2026-08-09T12:22:06.9731888-06:00"
