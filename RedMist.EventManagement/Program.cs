@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using NLog.Extensions.Logging;
+using Prometheus;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Extensions;
 using RedMist.Backend.Shared.Utilities;
@@ -203,6 +204,7 @@ public class Program
         app.UseCors();
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseMetricServer();
         app.MapControllers();
 
         await app.RunAsync();

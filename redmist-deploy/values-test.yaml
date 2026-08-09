@@ -88,8 +88,14 @@ redmist-event-management:
       prometheusServerAddress: http://prometheus-kube-prometheus-prometheus.monitoring:9090
       cooldownPeriod: 300
       podsWhenActive: 2
+  # Scraped in test so memory/GC trends can be compared against prod over time.
+  # Safe to enable here because event-management only publishes unlabeled eventmgmt_* counters.
+  # Do NOT blanket-enable this for the other test services: the KEDA triggers query the shared
+  # Prometheus with no namespace filter (e.g. sum(live_events_count), sum(total_relay_connections)),
+  # so scraping test would feed test values into prod scaling decisions. Scope those queries with
+  # {namespace="..."} before turning the rest on.
   serviceMonitor:
-    enabled: false
+    enabled: true
 
 redmist-external-data-collection:
   autoscaling:

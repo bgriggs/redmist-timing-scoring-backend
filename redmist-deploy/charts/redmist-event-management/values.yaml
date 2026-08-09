@@ -41,13 +41,18 @@ autoscaling:
     # count stays fixed at this value regardless of how many relays are active.
     podsWhenActive: 2
 
+# Measured steady state is ~185-199Mi (of which ~165Mi is non-reclaimable: ~103Mi anon plus
+# ~62Mi of W^X JIT/loader-heap mapping). That is normal for this ASP.NET Core + EF Core stack
+# and in line with the other services, which sit at 143-253Mi. The old 300Mi limit left the
+# smallest headroom in the fleet, and the 150Mi request was below actual usage, which made the
+# pod the first eviction candidate under node pressure.
 resources:
   requests:
     cpu: "100m"
-    memory: "150Mi"
+    memory: "200Mi"
   limits:
     cpu: "250m"
-    memory: "300Mi"
+    memory: "512Mi"
 
 serviceAccount:
   create: false
