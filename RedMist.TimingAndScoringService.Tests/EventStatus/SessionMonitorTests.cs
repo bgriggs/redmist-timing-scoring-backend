@@ -225,6 +225,87 @@ public class SessionMonitorTests
                                       $"Cars: {sessionContext.SessionState.CarPositions.Count}");
     }
 
+    /// <summary>
+    /// Saving the results is several database round trips and a synchronous Redis read. The finish
+    /// check runs it with the session-state lock released, so the processing pipeline is not stopped
+    /// for the duration - at the checkered flag, of all moments. Moving that write back inside the
+    /// lock is what this is here to catch.
+    /// </summary>
+    [TestMethod]
+    public async Task Finalization_SavesResultsWithTheSessionStateLockReleased()
+    {
+        var sessionContext = CreateSessionContext(1);
+        var sessionMonitor = new DebugSessionMonitor(1, CreateDbContextFactory(), sessionContext);
+        await sessionMonitor.ProcessAsync(36, TestContext.CancellationToken);
+
+        bool? writeLockWasFree = null;
+        sessionMonitor.OnPersistFinishedSession = _ =>
+        {
+            // What the pipeline does on every message. It must not be blocked by this write.
+            var acquire = sessionContext.SessionStateLock.AcquireWriteLockAsync();
+            writeLockWasFree = acquire.Wait(TimeSpan.FromSeconds(2));
+            if (writeLockWasFree == true)
+                acquire.Result.Dispose();
+            return true;
+        };
+
+        await RunToFinishAsync(sessionMonitor, sessionContext);
+
+        Assert.IsNotNull(writeLockWasFree, "The session should have finished and had its results saved.");
+        Assert.IsTrue(writeLockWasFree, "Results were saved while the session-state lock was still held.");
+    }
+
+    /// <summary>
+    /// A session ends once, and this is the only thing that ever writes its results, so a database
+    /// that happens to be unreachable at the checkered flag must not cost the session outright.
+    /// </summary>
+    [TestMethod]
+    public async Task Finalization_WhenSavingFails_TriesAgainOnTheNextPass()
+    {
+        var sessionContext = CreateSessionContext(1);
+        var sessionMonitor = new DebugSessionMonitor(1, CreateDbContextFactory(), sessionContext);
+        await sessionMonitor.ProcessAsync(36, TestContext.CancellationToken);
+
+        var attempts = new List<int>();
+        var saveSucceeds = false;
+        sessionMonitor.OnPersistFinishedSession = f =>
+        {
+            attempts.Add(f.SessionId);
+            return saveSucceeds;
+        };
+
+        await RunToFinishAsync(sessionMonitor, sessionContext);
+        Assert.HasCount(1, attempts, "The session should have been written out once, unsuccessfully.");
+        CollectionAssert.AreEqual(new[] { 36 }, attempts);
+
+        // The database comes back.
+        saveSucceeds = true;
+        await sessionMonitor.RunCheckForFinishedAsync(TestContext.CancellationToken);
+        CollectionAssert.AreEqual(new[] { 36, 36 }, attempts, "The failed results should have been retried.");
+
+        // And are not written again once they are in.
+        await sessionMonitor.RunCheckForFinishedAsync(TestContext.CancellationToken);
+        Assert.HasCount(2, attempts, "Results that saved should not be written again.");
+    }
+
+    /// <summary>
+    /// Drives the monitor to a finish: green, then checkered with the event clock stopped. The check
+    /// needs one pass to take a baseline, one to see the transition, and two more to conclude the
+    /// event time is no longer moving.
+    /// </summary>
+    private async Task RunToFinishAsync(DebugSessionMonitor monitor, SessionContext sessionContext)
+    {
+        sessionContext.SessionState.CurrentFlag = TimingCommon.Models.Flags.Green;
+        sessionContext.SessionState.LocalTimeOfDay = "10:00:00";
+        await monitor.RunCheckForFinishedAsync(TestContext.CancellationToken);
+
+        sessionContext.SessionState.CurrentFlag = TimingCommon.Models.Flags.Checkered;
+        for (int i = 0; i < 3; i++)
+            await monitor.RunCheckForFinishedAsync(TestContext.CancellationToken);
+    }
+
+    public TestContext TestContext { get; set; } = null!;
+
     private static SessionContext CreateSessionContext(int eventId)
     {
         var configDict = new Dictionary<string, string?>

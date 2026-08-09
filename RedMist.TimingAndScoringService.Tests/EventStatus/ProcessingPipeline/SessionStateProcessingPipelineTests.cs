@@ -1351,6 +1351,67 @@ public class SessionStateProcessingPipelineTests
         Assert.IsTrue(finalizedCalled, "FinalizedSession event should have been called at end of event.");
     }
 
+    /// <summary>
+    /// The finished field is captured while the session-state lock is held and written out after it
+    /// is released, so this covers the seam: what lands in the database has to be the field as it
+    /// stood at the finish, not an empty state and not something lost on the way across.
+    /// </summary>
+    [TestMethod]
+    public async Task SessionFinialization_EndOfEvent_SavesTheFinishedFieldToResults_Test()
+    {
+        // Arrange - results are only written for a session that exists, under the configured event.
+        const int SessionId = 70;
+        await using (var db = await _dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken))
+        {
+            db.Sessions.Add(new Session
+            {
+                Id = SessionId,
+                EventId = 1,
+                Name = "The Sebring 14hr Enduro",
+                StartTime = DateTime.UtcNow,
+                IsLive = true,
+            });
+            await db.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        var entriesData = new RMonitorTestDataHelper(FilePrefix + "TestEventEndSessionFinialization.txt");
+        await entriesData.LoadAsync();
+
+        var s = new Session { EventId = 1, Id = SessionId, Name = "The Sebring 14hr Enduro" };
+        var sessionChangeTm = new TimingMessage(Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE,
+            JsonSerializer.Serialize(s), s.Id, DateTime.Now);
+        await _pipeline.PostAsync(sessionChangeTm);
+
+        // Act
+        int count = 0;
+        while (!entriesData.IsFinished)
+        {
+            var d = entriesData.GetNextRecord();
+            if (d.data.StartsWith("$F"))
+            {
+                count++;
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+                if (count % 5 == 0)
+                {
+                    await _sessionMonitor.RunCheckForFinishedAsync(_sessionContext.CancellationToken);
+                }
+            }
+            await _pipeline.PostAsync(new TimingMessage(d.type, d.data, 1, d.ts));
+        }
+
+        // Assert
+        await using var verify = await _dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
+        var result = verify.SessionResults.FirstOrDefault(r => r.EventId == 1 && r.SessionId == SessionId);
+        Assert.IsNotNull(result, "The finished session should have been written to SessionResults.");
+        Assert.IsNotNull(result!.SessionState);
+        Assert.IsNotEmpty(result.SessionState!.CarPositions, "The saved results should carry the finishing field.");
+        Assert.AreEqual(SessionId, result.SessionState.SessionId);
+
+        var session = verify.Sessions.First(x => x.EventId == 1 && x.Id == SessionId);
+        Assert.IsFalse(session.IsLive, "A finished session should no longer be live.");
+        Assert.IsNotNull(session.EndTime);
+    }
+
     [TestMethod]
     public async Task PatchesIncludeEventId_Test()
     {

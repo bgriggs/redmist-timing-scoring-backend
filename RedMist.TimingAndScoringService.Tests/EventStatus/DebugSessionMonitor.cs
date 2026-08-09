@@ -71,10 +71,16 @@ internal class DebugSessionMonitor : SessionMonitor
         return Task.CompletedTask;
     }
 
-    protected override void FinalizeSession()
+    /// <summary>
+    /// Stands in for writing the results, so a test can observe when persistence runs and under
+    /// what conditions. Returns whether the write succeeded; unset means it succeeds.
+    /// </summary>
+    public Func<FinishedSession, bool>? OnPersistFinishedSession { get; set; }
+
+    protected override bool PersistFinishedSession(FinishedSession finished)
     {
-        ClearSession();
-        FireFinalizedSession();
+        // No database for the test implementation; the hook stands in for the write.
+        return OnPersistFinishedSession?.Invoke(finished) ?? true;
     }
 
     protected override async Task SetSessionAsLiveAsync(int eventId, int sessionId)
