@@ -132,6 +132,11 @@ public class SessionMonitor : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Takes the session change. The caller must hold the session context's write lock: the session
+    /// is adopted on the context from here, and it is adopted inline precisely so that no record can
+    /// be applied between the change and the reset.
+    /// </summary>
     public async Task ProcessAsync(int sessionId, CancellationToken stoppingToken = default)
     {
         if (sessionId == 999999)
@@ -158,7 +163,8 @@ public class SessionMonitor : BackgroundService
             // Same value, but it renews the expiry so a long event surviving several restarts does
             // not age its own marker out and lose the ability to tell a resume from a new session.
             await SaveCurrentSessionAsync(sessionId);
-            FireResumedSession();
+            if (lastSession != null)
+                await sessionContext.ResumeSessionWithLockHeldAsync(sessionId, lastSession.Name);
             return;
         }
 
@@ -166,20 +172,53 @@ public class SessionMonitor : BackgroundService
         Logger.LogInformation("New session {sessionId} received for event {eventId}", sessionId, eventId);
         hasAdoptedSession = true;
 
-        // Retire the outgoing session's lap history here rather than leaving it to NewSessionAsync,
-        // which runs on a background task and does a database read before it gets to the clear. The
-        // relay sends this session change immediately ahead of its cached data set, so that batch can
-        // be applied first - and it would then restore the previous session's lap times onto the new
-        // session's cars and publish them to clients. NewSessionAsync still clears; this is idempotent.
+        // Retire the outgoing session's lap history before anything else. A caller that did not
+        // supply a session (so there is no adoption below) still has to drop it, or the previous
+        // session's lap times would be restored onto the new session's cars. The adoption clears it
+        // again; this is idempotent.
         await sessionContext.ClearLapHistoryAsync();
 
-        // Finalize the previous session
+        // Finalize the previous session. This reads the outgoing session's state, so it has to run
+        // before the context is reset below.
         FinalizeSession();
 
-        // Start the new session
+        // Start the new session. Each of the steps below is guarded on its own, because none of them
+        // gets a second attempt: the session id is set here, so every later session-change message
+        // for this session takes the keep-alive path above and returns early. One of them failing -
+        // a database blip is enough - must not carry off the others with it.
         ClearSession();
         SessionId = sessionId;
-        await SetSessionAsLiveAsync(eventId, sessionId);
+
+        // Adopt the session on the context inline rather than on a background task. The caller holds
+        // the pipeline's write lock, so nothing can be applied in between - whereas a deferred reset
+        // races the relay's cached data set, which arrives immediately behind this message, and wipes
+        // the field it had already rebuilt.
+        if (lastSession != null)
+        {
+            try
+            {
+                await sessionContext.NewSessionWithLockHeldAsync(sessionId, lastSession.Name);
+                sessionContext.SetSessionClassMetadata();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error adopting session {sessionId} on the session context", sessionId);
+            }
+        }
+
+        // Which session is live drives what the events API hands clients, so a failure here would
+        // leave them pointed at the session that just finished.
+        try
+        {
+            await SetSessionAsLiveAsync(eventId, sessionId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error marking session {sessionId} as live for event {eventId}", sessionId, eventId);
+        }
+
+        // Guarded internally. Without it a later restart cannot tell a resume from a new session and
+        // takes the destructive path, losing the lap history.
         await SaveCurrentSessionAsync(sessionId);
     }
 
@@ -276,13 +315,13 @@ public class SessionMonitor : BackgroundService
                 eventTime - lastCheckeredChangedCountTimestamp > TimeSpan.FromSeconds(60))
             {
                 Logger.LogInformation("Session {sessionId} finishing completed 60 seconds interval", SessionId);
-                FinalizeSession(startNewSession: false);
+                FinalizeSession();
             }
             // When event time stops changing, finalize the session
             else if (finishingEventLastTimestamp is not null && finishingEventLastTimestamp == eventTime)
             {
                 Logger.LogInformation("Session {sessionId} finishing completed with event time stop", SessionId);
-                FinalizeSession(startNewSession: false);
+                FinalizeSession();
             }
 
             finishingEventLastTimestamp = eventTime;
@@ -327,7 +366,7 @@ public class SessionMonitor : BackgroundService
         return changes;
     }
 
-    protected virtual void FinalizeSession(bool startNewSession = true)
+    protected virtual void FinalizeSession()
     {
         Logger.LogInformation("Finalizing session {sessionId}...", SessionId);
 
@@ -404,7 +443,7 @@ public class SessionMonitor : BackgroundService
 
             db.SaveChanges();
             ClearSession();
-            FireFinalizedSession(startNewSession);
+            FireFinalizedSession();
         }
         catch (Exception ex)
         {
@@ -412,40 +451,15 @@ public class SessionMonitor : BackgroundService
         }
     }
 
-    protected void FireFinalizedSession(bool startNewSession = true)
+    /// <summary>
+    /// Announces that the session has been persisted. Adopting the next session on the context is
+    /// not done here - only a session change starts one, and it does so inline in
+    /// <see cref="ProcessAsync(int, CancellationToken)"/> so the reset cannot land after the
+    /// incoming session's data has already been applied.
+    /// </summary>
+    protected void FireFinalizedSession()
     {
         FinalizedSession?.Invoke();
-
-        // Handle session finalization callback - only start new session when triggered
-        // by a session change (where lastSession is the incoming session). Checkered flag
-        // and shutdown finalizations should not start a new session because lastSession
-        // refers to the session being finalized, not a new one, and doing so would race
-        // with the NewSessionAsync started by the subsequent session change.
-        if (startNewSession && lastSession != null)
-        {
-            var session = lastSession; // Capture for thread safety
-            _ = Task.Run(async () =>
-            {
-                await sessionContext.NewSessionAsync(session.Id, session.Name);
-                sessionContext.SetSessionClassMetadata();
-            });
-        }
-    }
-
-    /// <summary>
-    /// Names the resumed session on the session context. Dispatched rather than awaited for the same
-    /// reason as the new-session case above: this runs inside the processing pipeline's write lock,
-    /// which the session context takes again and which is not reentrant. Class metadata is not
-    /// re-read - unlike a new session this keeps the existing session state, so what was loaded at
-    /// startup still stands.
-    /// </summary>
-    protected void FireResumedSession()
-    {
-        if (lastSession == null)
-            return;
-
-        var session = lastSession; // Capture for thread safety
-        _ = Task.Run(() => sessionContext.ResumeSessionAsync(session.Id, session.Name));
     }
 
     /// <summary>
@@ -460,7 +474,7 @@ public class SessionMonitor : BackgroundService
             if (eventIds?.Contains(eventId) ?? false)
             {
                 Logger.LogInformation("Received shutdown signal for event {eventId}", eventId);
-                FinalizeSession(startNewSession: false);
+                FinalizeSession();
             }
         }
         catch (Exception ex)

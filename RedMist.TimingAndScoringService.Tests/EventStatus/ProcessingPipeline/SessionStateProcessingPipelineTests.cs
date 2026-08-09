@@ -748,16 +748,10 @@ public class SessionStateProcessingPipelineTests
                         var sessionChangeTm = new TimingMessage(Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE, sJson, s.Id, d.ts);
                         await _pipeline.PostAsync(sessionChangeTm);
 
-                        // Wait for the background NewSessionAsync task to complete. PostAsync triggers
-                        // FinalizeSession -> FireFinalizedSession -> Task.Run(NewSessionAsync) which acquires
-                        // the write lock and resets session state. Without this wait, the background task can
-                        // race with RunCheckForFinishedAsync and reset CurrentFlag to Unknown between snapshots,
-                        // causing CheckForFinished to miss an active -> checkered flag transition.
-                        var sw = System.Diagnostics.Stopwatch.StartNew();
-                        while (_sessionContext.SessionState.SessionId != s.Id && sw.ElapsedMilliseconds < 5000)
-                        {
-                            await Task.Delay(10, TestContext.CancellationToken);
-                        }
+                        // The session context is adopted before PostAsync returns, so the records
+                        // that follow are applied to the new session rather than to state a
+                        // deferred reset is about to wipe.
+                        Assert.AreEqual(s.Id, _sessionContext.SessionState.SessionId);
                     }
                 }
             }
@@ -1319,16 +1313,9 @@ public class SessionStateProcessingPipelineTests
         var sessionChangeTm = new TimingMessage(Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE, sJson, s.Id, DateTime.Now);
         await _pipeline.PostAsync(sessionChangeTm);
 
-        // Wait for the background NewSessionAsync task to complete. PostAsync triggers
-        // FinalizeSession -> FireFinalizedSession -> Task.Run(NewSessionAsync) which acquires
-        // the write lock and resets session state. Without this wait, the background task can
-        // race with data processing below and clear accumulated state (car positions, flags),
-        // causing CheckForFinished to miss the checkered flag transition.
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (_sessionContext.SessionState.SessionId != s.Id && sw.ElapsedMilliseconds < 5000)
-        {
-            await Task.Delay(10);
-        }
+        // The session context is adopted before PostAsync returns, so the records processed below
+        // build on the new session rather than on state a deferred reset is about to wipe.
+        Assert.AreEqual(s.Id, _sessionContext.SessionState.SessionId);
 
         bool finalizedCalled = false;
         _sessionMonitor.FinalizedSession += () => finalizedCalled = true;

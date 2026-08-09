@@ -71,10 +71,10 @@ internal class DebugSessionMonitor : SessionMonitor
         return Task.CompletedTask;
     }
 
-    protected override void FinalizeSession(bool startNewSession = true)
+    protected override void FinalizeSession()
     {
         ClearSession();
-        FireFinalizedSession(startNewSession);
+        FireFinalizedSession();
     }
 
     protected override async Task SetSessionAsLiveAsync(int eventId, int sessionId)

@@ -34,7 +34,6 @@ public class SessionMonitorResumeTests
         await monitor.ProcessAsync(SessionChange(42, "Race"));
 
         Assert.AreEqual(42, monitor.SessionId);
-        await WaitForAsync(() => ctx.Resumed.Count == 1);
         CollectionAssert.AreEqual(new[] { (42, "Race") }, ctx.Resumed.ToArray());
         Assert.IsEmpty(ctx.Created, "A resume must not re-create the session");
     }
@@ -48,7 +47,6 @@ public class SessionMonitorResumeTests
         await monitor.ProcessAsync(SessionChange(42, "Race"));
 
         Assert.AreEqual(42, monitor.SessionId);
-        await WaitForAsync(() => ctx.Created.Count == 1);
         CollectionAssert.AreEqual(new[] { (42, "Race") }, ctx.Created.ToArray());
         Assert.IsEmpty(ctx.Resumed);
     }
@@ -65,7 +63,6 @@ public class SessionMonitorResumeTests
 
         await monitor.ProcessAsync(SessionChange(42, "Race"));
 
-        await WaitForAsync(() => ctx.Created.Count == 1);
         CollectionAssert.AreEqual(new[] { (42, "Race") }, ctx.Created.ToArray());
         Assert.IsEmpty(ctx.Resumed);
     }
@@ -101,9 +98,8 @@ public class SessionMonitorResumeTests
         await monitor.ProcessAsync(SessionChange(43, "Race"));
 
         Assert.AreEqual(43, monitor.SessionId);
-        await WaitForAsync(() => ctx.Created.Count >= 2);
-        // Unordered: each adoption is dispatched onto its own task, so which lands first is not fixed.
-        CollectionAssert.AreEquivalent(new[] { (42, "Practice"), (43, "Race") }, ctx.Created.ToArray());
+        // In order: each adoption completes before the session change that triggered it returns.
+        CollectionAssert.AreEqual(new[] { (42, "Practice"), (43, "Race") }, ctx.Created.ToArray());
         Assert.IsEmpty(ctx.Resumed);
     }
 
@@ -117,10 +113,8 @@ public class SessionMonitorResumeTests
         var monitor = new DebugSessionMonitor(EventId, CreateDbContextFactory(), ctx.Context.Object, CreateCacheMux(currentSessionId: 42));
 
         await monitor.ProcessAsync(SessionChange(42, "Race"));
-        await WaitForAsync(() => ctx.Resumed.Count == 1);
         await monitor.ProcessAsync(SessionChange(42, "Race"));
 
-        await Task.Delay(100);
         Assert.HasCount(1, ctx.Resumed, "The session was already adopted, so it must not be adopted again");
         Assert.IsEmpty(ctx.Created);
     }
@@ -132,25 +126,8 @@ public class SessionMonitorResumeTests
     }
 
     /// <summary>
-    /// The session context is adopted on a background task, since the caller holds the pipeline's write
-    /// lock, so the assertions have to wait for it rather than assume it has already run.
-    /// </summary>
-    private static async Task WaitForAsync(Func<bool> condition, int timeoutMs = 5000)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (condition())
-                return;
-            await Task.Delay(10);
-        }
-        Assert.Fail("Timed out waiting for the session context to be updated");
-    }
-
-    /// <summary>
-    /// Adoptions are recorded into thread-safe lists as they happen rather than read back off the
-    /// mock afterwards: they run on background tasks, and Moq's invocation list is not safe to
-    /// enumerate while those are still appending to it.
+    /// Adoptions are recorded in order as they happen rather than read back off the mock afterwards,
+    /// so the assertions can state which session was adopted and in what order.
     /// </summary>
     private sealed record SessionContextProbe(
         Mock<SessionContext> Context,
@@ -171,10 +148,10 @@ public class SessionMonitorResumeTests
 
         var created = new ConcurrentQueue<(int, string)>();
         var resumed = new ConcurrentQueue<(int, string)>();
-        mock.Setup(x => x.NewSessionAsync(It.IsAny<int>(), It.IsAny<string>()))
+        mock.Setup(x => x.NewSessionWithLockHeldAsync(It.IsAny<int>(), It.IsAny<string>()))
             .Callback<int, string>((id, name) => created.Enqueue((id, name)))
             .Returns(Task.CompletedTask);
-        mock.Setup(x => x.ResumeSessionAsync(It.IsAny<int>(), It.IsAny<string>()))
+        mock.Setup(x => x.ResumeSessionWithLockHeldAsync(It.IsAny<int>(), It.IsAny<string>()))
             .Callback<int, string>((id, name) => resumed.Enqueue((id, name)))
             .Returns(Task.CompletedTask);
         mock.Setup(x => x.ClearLapHistoryAsync()).Returns(Task.CompletedTask);

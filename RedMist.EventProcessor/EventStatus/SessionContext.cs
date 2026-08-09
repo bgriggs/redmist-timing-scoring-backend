@@ -267,32 +267,55 @@ public class SessionContext
         Logger.LogDebug("Session state reset cleared car positions");
     }
 
+    /// <summary>
+    /// Starts a fresh session, dropping everything the previous one accumulated. Takes the write
+    /// lock, so a caller already inside it must use <see cref="NewSessionWithLockHeldAsync"/> -
+    /// the lock is not reentrant and this would deadlock.
+    /// </summary>
     public virtual async Task NewSessionAsync(int sessionId, string sessionName)
     {
         var eventName = await LoadEventNameAsync();
 
         using (await SessionStateLock.AcquireWriteLockAsync(CancellationToken))
         {
-            ResetCommand();
-            startingPositions.Clear();
-            inClassStartingPositions.Clear();
-            await lapHistoryService.ClearLapsAsync();
-
-            SessionState = new SessionState
-            {
-                EventId = EventId,
-                EventName = eventName,
-                SessionId = sessionId,
-                SessionName = sessionName
-            };
-
-            // Reset the track-flag sources so a stale flag from the prior session cannot leak
-            // into the fresh CurrentFlag before the new session's first heartbeat/feed arrives.
-            RMonitorTrackFlag = Flags.Unknown;
-            FlagtronicsFullCourseFlag = Flags.Unknown;
-            flagtronicsPitOwners.Clear();
-            pitOwnershipHoldReleased.Clear();
+            await ApplyNewSessionAsync(sessionId, sessionName, eventName);
         }
+    }
+
+    /// <summary>
+    /// <see cref="NewSessionAsync"/> for a caller that is already inside the write lock. The lock is
+    /// not reentrant, so such a caller cannot go through the locking overload - and it must not defer
+    /// the reset to a background task either: the relay sends the new session's entry records right
+    /// behind the session change, and a reset landing after those have been applied wipes the field
+    /// it just rebuilt. Entries only arrive once per session, so nothing puts them back.
+    /// </summary>
+    public virtual async Task NewSessionWithLockHeldAsync(int sessionId, string sessionName)
+    {
+        var eventName = await LoadEventNameAsync();
+        await ApplyNewSessionAsync(sessionId, sessionName, eventName);
+    }
+
+    private async Task ApplyNewSessionAsync(int sessionId, string sessionName, string eventName)
+    {
+        ResetCommand();
+        startingPositions.Clear();
+        inClassStartingPositions.Clear();
+        await lapHistoryService.ClearLapsAsync();
+
+        SessionState = new SessionState
+        {
+            EventId = EventId,
+            EventName = eventName,
+            SessionId = sessionId,
+            SessionName = sessionName
+        };
+
+        // Reset the track-flag sources so a stale flag from the prior session cannot leak
+        // into the fresh CurrentFlag before the new session's first heartbeat/feed arrives.
+        RMonitorTrackFlag = Flags.Unknown;
+        FlagtronicsFullCourseFlag = Flags.Unknown;
+        flagtronicsPitOwners.Clear();
+        pitOwnershipHoldReleased.Clear();
     }
 
     #region Starting Positions
@@ -379,45 +402,50 @@ public class SessionContext
     }
 
     /// <summary>
-    /// Drops the cached lap history for the event. Exposed separately from <see cref="NewSessionAsync"/>
-    /// so a caller can retire the outgoing session's laps before it returns: NewSessionAsync runs on a
-    /// background task and can land after the next batch has already been applied, and until it does
-    /// the history still holds the previous session's laps.
+    /// Drops the cached lap history for the event. Exposed separately from the session reset so a
+    /// caller that is not adopting a session - one handed a bare session id, with no name to adopt
+    /// it under - can still retire the outgoing session's laps, which would otherwise be restored
+    /// onto the new session's cars.
     /// </summary>
     public virtual Task ClearLapHistoryAsync() => lapHistoryService.ClearLapsAsync();
 
     /// <summary>
     /// Adopts a session that is already under way, as happens when this process restarts mid-session.
-    /// Unlike <see cref="NewSessionAsync"/> nothing is cleared: the cars rebuilt from the relay's
-    /// cached data stay, and so does the lap history, which is the only record of each car's last lap
-    /// time until it next crosses start/finish.
+    /// Unlike <see cref="NewSessionWithLockHeldAsync"/> nothing is cleared: the cars rebuilt from the
+    /// relay's cached data stay, and so does the lap history, which is the only record of each car's
+    /// last lap time until it next crosses start/finish.
+    ///
+    /// For a caller already inside the write lock; there is no locking overload, since the only
+    /// caller is the processing pipeline. See <see cref="NewSessionWithLockHeldAsync"/> for why the
+    /// work cannot be deferred.
     /// </summary>
-    public virtual async Task ResumeSessionAsync(int sessionId, string sessionName)
+    public virtual async Task ResumeSessionWithLockHeldAsync(int sessionId, string sessionName)
     {
         var eventName = await LoadEventNameAsync();
+        ApplyResumedSession(sessionId, sessionName, eventName);
+    }
 
-        using (await SessionStateLock.AcquireWriteLockAsync(CancellationToken))
+    private void ApplyResumedSession(int sessionId, string sessionName, string eventName)
+    {
+        // A resume only ever names the session that was running at startup, so it must never pull
+        // the state back to it once a real session change has been adopted. Session changes are
+        // serialized by the write lock this runs under, so nothing can get in front of the resume
+        // today; the guard stands in case one ever can. Zero here means no session has been adopted
+        // yet, not session 0 - an adopted session 0 matches the id and is let through.
+        if (SessionState.SessionId != 0 && SessionState.SessionId != sessionId)
         {
-            // A real session change can be adopted while this waits for the lock, and it does its own
-            // adopting on a background task too, so the two are not ordered against each other. A
-            // resume only ever names the session that was running at startup, so it must never pull
-            // the state back to it. Zero here means no session has been adopted yet, not session 0 -
-            // an adopted session 0 matches the id and is let through.
-            if (SessionState.SessionId != 0 && SessionState.SessionId != sessionId)
-            {
-                Logger.LogInformation("Skipping resume of session {sessionId}; session {current} has since been adopted",
-                    sessionId, SessionState.SessionId);
-                return;
-            }
-
-            SessionState.EventId = EventId;
-            SessionState.EventName = eventName;
-            SessionState.SessionId = sessionId;
-            SessionState.SessionName = sessionName;
-
-            Logger.LogInformation("Resumed session {sessionId} ({sessionName}) holding {cars} cars",
-                sessionId, sessionName, SessionState.CarPositions.Count);
+            Logger.LogInformation("Skipping resume of session {sessionId}; session {current} has since been adopted",
+                sessionId, SessionState.SessionId);
+            return;
         }
+
+        SessionState.EventId = EventId;
+        SessionState.EventName = eventName;
+        SessionState.SessionId = sessionId;
+        SessionState.SessionName = sessionName;
+
+        Logger.LogInformation("Resumed session {sessionId} ({sessionName}) holding {cars} cars",
+            sessionId, sessionName, SessionState.CarPositions.Count);
     }
 
     public virtual void SetSessionClassMetadata()
