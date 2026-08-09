@@ -23,6 +23,12 @@ public class SponsorTelemetryController : Controller
     private const string CLICK_THROUGH = "ClickThrough";
     private const string ENGAGEMENT_DURATION = "EngagementDuration";
 
+    private static readonly HybridCacheEntryOptions SponsorCacheOptions = new()
+    {
+        Expiration = TimeSpan.FromMinutes(15),
+        LocalCacheExpiration = TimeSpan.FromMinutes(15)
+    };
+
     private ILogger Logger { get; }
     private readonly SponsorTelemetryQueue queue;
     private readonly IDbContextFactory<TsContext> tsContext;
@@ -83,9 +89,17 @@ public class SponsorTelemetryController : Controller
         queue.TryEnqueue(new SponsorTelemetryEntry(source, eventId, imageId, eventType, durationMs));
     }
 
+    /// <summary>
+    /// Gets the sponsors with a currently active subscription.
+    /// </summary>
+    /// <param name="eventId">
+    /// Optional event to scope the list to. When supplied, sponsors excluded by the organization running
+    /// that event (typically competitors) are removed from the result. Omit for contexts with no event,
+    /// such as the landing page, which shows every active sponsor.
+    /// </param>
     [HttpGet]
     [ProducesResponseType<List<SponsorInfo>>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<List<SponsorInfo>>> GetSponsorsAsync()
+    public async Task<ActionResult<List<SponsorInfo>>> GetSponsorsAsync(int? eventId = null)
     {
         var sponsors = await hcache.GetOrCreateAsync(
             "sponsors-all",
@@ -107,11 +121,43 @@ public class SponsorTelemetryController : Controller
                     })
                     .ToListAsync(ct);
             },
-            new HybridCacheEntryOptions
+            SponsorCacheOptions);
+
+        if (eventId is null)
+        {
+            return Ok(sponsors);
+        }
+
+        var excluded = await GetExcludedSponsorIdsAsync(eventId.Value);
+        if (excluded.Length == 0)
+        {
+            return Ok(sponsors);
+        }
+
+        // New list rather than a mutation: the list above can be the local cache's own instance,
+        // handed to every other request for the next 15 minutes.
+        return Ok(sponsors.Where(s => !excluded.Contains(s.Id)).ToList());
+    }
+
+    /// <summary>
+    /// Gets the sponsors the organization running <paramref name="eventId"/> has excluded from its events.
+    /// Returns empty when the event is unknown or the organization has no exclusions, so an unresolvable
+    /// event shows the full sponsor list rather than none.
+    /// </summary>
+    private async Task<int[]> GetExcludedSponsorIdsAsync(int eventId)
+    {
+        return await hcache.GetOrCreateAsync(
+            $"sponsor-exclusions-event-{eventId}",
+            eventId,
+            async (id, ct) =>
             {
-                Expiration = TimeSpan.FromMinutes(15),
-                LocalCacheExpiration = TimeSpan.FromMinutes(15)
-            });
-        return Ok(sponsors);
+                using var context = await tsContext.CreateDbContextAsync(ct);
+                return await (from e in context.Events
+                              join x in context.SponsorExclusions on e.OrganizationId equals x.OrganizationId
+                              where e.Id == id
+                              select x.SponsorId)
+                    .ToArrayAsync(ct);
+            },
+            SponsorCacheOptions);
     }
 }
