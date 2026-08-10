@@ -23,13 +23,16 @@ public class ExternalMessageLogConsumer : BackgroundService
     private const string CONSUMER_GROUP = "log";
     private readonly SemaphoreSlim streamCheckLock = new(1);
     private readonly static TimeSpan interval = TimeSpan.FromSeconds(10);
+    private readonly TimeProvider timeProvider;
 
 
-    public ExternalMessageLogConsumer(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration, IDbContextFactory<TsContext> tsContext)
+    public ExternalMessageLogConsumer(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
+        IDbContextFactory<TsContext> tsContext, TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
         eventId = configuration.GetValue("event_id", 0);
         streamKey = string.Format(Consts.EVENT_EXTERNAL_LOG_STREAM_KEY, eventId);
         cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
@@ -44,7 +47,7 @@ public class ExternalMessageLogConsumer : BackgroundService
         var counter = Metrics.CreateCounter("external_msg_logs_total", "Total number of external messages processed");
 
         Logger.LogInformation("Starting external message logger loop for event {e} on stream {s}", eventId, streamKey);
-        var lastMetricUpdate = DateTime.UtcNow;
+        var lastMetricUpdate = timeProvider.GetUtcNow().UtcDateTime;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -77,11 +80,11 @@ public class ExternalMessageLogConsumer : BackgroundService
                     }
                 }
 
-                if ((DateTime.UtcNow - lastMetricUpdate) > interval)
+                if ((timeProvider.GetUtcNow().UtcDateTime - lastMetricUpdate) > interval)
                 {
                     var streamLength = await cache.StreamPendingAsync(streamKey, CONSUMER_GROUP);
                     Logger.LogInformation("Total: {t} Stream pending: {s}", counter.Value, streamLength.PendingMessageCount);
-                    lastMetricUpdate = DateTime.UtcNow;
+                    lastMetricUpdate = timeProvider.GetUtcNow().UtcDateTime;
                 }
             }
             catch (Exception ex)
@@ -131,7 +134,7 @@ public class ExternalMessageLogConsumer : BackgroundService
                 Type = type.Length > 20 ? type[..20] : type,
                 EventId = eventId,
                 SessionId = sessionId,
-                Timestamp = DateTime.UtcNow,
+                Timestamp = timeProvider.GetUtcNow().UtcDateTime,
                 Data = data,
             });
             await db.SaveChangesAsync(stoppingToken);

@@ -21,13 +21,16 @@ public class EventProcessLogger : BackgroundService
     private readonly static TimeSpan interval = TimeSpan.FromSeconds(10);
     private readonly Queue<DateTime> logTimestamps = new();
     private readonly TimeSpan window = TimeSpan.FromMinutes(1);
+    private readonly TimeProvider timeProvider;
 
 
-    public EventProcessLogger(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration, IDbContextFactory<TsContext> tsContext)
+    public EventProcessLogger(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
+        IDbContextFactory<TsContext> tsContext, TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
         eventId = configuration.GetValue("event_id", 0);
         streamKey = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, eventId);
         cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
@@ -44,7 +47,7 @@ public class EventProcessLogger : BackgroundService
         var rateGauge = Metrics.CreateGauge("event_proc_logs_rate", "Log save rate");
 
         Logger.LogInformation("Starting event processor loop for event {e} on stream {s}", eventId, streamKey);
-        var lastMetricUpdate = DateTime.UtcNow;
+        var lastMetricUpdate = timeProvider.GetUtcNow().UtcDateTime;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -89,14 +92,14 @@ public class EventProcessLogger : BackgroundService
                 }
 
                 // Update metrics
-                if ((DateTime.UtcNow - lastMetricUpdate) > interval)
+                if ((timeProvider.GetUtcNow().UtcDateTime - lastMetricUpdate) > interval)
                 {
                     var rate = GetRate();
                     rateGauge.Set(rate);
                     var streamLength = await cache.StreamPendingAsync(streamKey, CONSUMER_GROUP);
                     logsPending.IncTo(streamLength.PendingMessageCount);
                     Logger.LogInformation("Total: {t} Rate: {r:0.0}/min Stream: {s}", counter.Value, rate, streamLength.PendingMessageCount);
-                    lastMetricUpdate = DateTime.UtcNow;
+                    lastMetricUpdate = timeProvider.GetUtcNow().UtcDateTime;
                 }
             }
             catch (Exception ex)
@@ -151,13 +154,13 @@ public class EventProcessLogger : BackgroundService
                     var lastLapRef = await context.CarLastLaps.FirstOrDefaultAsync(x => x.EventId == eventId && x.SessionId == log.SessionId && x.CarNumber == log.Log.CarNumber, cancellationToken: stoppingToken);
                     if (lastLapRef == null)
                     {
-                        lastLapRef = new CarLastLap { EventId = eventId, SessionId = log.SessionId, CarNumber = log.Log.CarNumber, LastLapNumber = log.LastLapNum, LastLapTimestamp = DateTime.UtcNow };
+                        lastLapRef = new CarLastLap { EventId = eventId, SessionId = log.SessionId, CarNumber = log.Log.CarNumber, LastLapNumber = log.LastLapNum, LastLapTimestamp = timeProvider.GetUtcNow().UtcDateTime };
                         context.CarLastLaps.Add(lastLapRef);
                     }
                     else
                     {
                         lastLapRef.LastLapNumber = log.LastLapNum;
-                        lastLapRef.LastLapTimestamp = DateTime.UtcNow;
+                        lastLapRef.LastLapTimestamp = timeProvider.GetUtcNow().UtcDateTime;
                     }
                 }
                 catch (Exception ex)
@@ -197,16 +200,16 @@ public class EventProcessLogger : BackgroundService
 
     #region Metrics
 
-    private void RecordLogSave()
+    internal void RecordLogSave()
     {
-        var now = DateTime.UtcNow;
+        var now = timeProvider.GetUtcNow().UtcDateTime;
         logTimestamps.Enqueue(now);
         CleanupOld(now);
     }
 
-    private double GetRate()
+    internal double GetRate()
     {
-        var now = DateTime.UtcNow;
+        var now = timeProvider.GetUtcNow().UtcDateTime;
         CleanupOld(now);
         return logTimestamps.Count;
     }
