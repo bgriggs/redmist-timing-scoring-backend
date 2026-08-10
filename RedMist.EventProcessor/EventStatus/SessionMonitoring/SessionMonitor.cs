@@ -622,11 +622,18 @@ public class SessionMonitor : BackgroundService
     /// Prior to the service being shutdown, ensure any active session is persisted.
     /// </summary>
     /// <param name="msg">event IDs being shutdown</param>
-    private void HandleEventShutdown(ChannelMessage msg)
+    private void HandleEventShutdown(ChannelMessage msg) => HandleEventShutdown(msg.Message.ToString());
+
+    /// <summary>
+    /// <see cref="HandleEventShutdown(ChannelMessage)"/> over the raw payload, which is all the
+    /// handler uses. Separated so it can be driven without a Redis channel message.
+    /// </summary>
+    /// <param name="payload">JSON list of the event IDs being shut down</param>
+    internal void HandleEventShutdown(string payload)
     {
         try
         {
-            var eventIds = JsonSerializer.Deserialize<List<int>>(msg.Message.ToString());
+            var eventIds = JsonSerializer.Deserialize<List<int>>(payload);
             if (eventIds?.Contains(eventId) ?? false)
             {
                 Logger.LogInformation("Received shutdown signal for event {eventId}", eventId);
