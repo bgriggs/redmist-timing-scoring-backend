@@ -80,7 +80,7 @@ public class SessionStateAnnouncementSyncService : BackgroundService
     }
 
     /// <summary>Fetches the full state and refreshes the store. Returns false when the processor is not reachable yet.</summary>
-    private async Task<bool> SyncAsync(CancellationToken stoppingToken)
+    internal async Task<bool> SyncAsync(CancellationToken stoppingToken)
     {
         var endpoint = await GetProcessorEndpointAsync(stoppingToken);
         if (endpoint is null)
