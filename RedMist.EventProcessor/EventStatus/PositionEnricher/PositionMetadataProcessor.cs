@@ -1,5 +1,5 @@
-﻿using RedMist.TimingCommon.Models;
-using System.Globalization;
+﻿using RedMist.Backend.Shared.Utilities;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.EventProcessor.EventStatus.PositionEnricher;
 
@@ -63,12 +63,12 @@ public class PositionMetadataProcessor
         var highLapTime = GetTypicalHighLapTime(carPositions);
 
         var leader = carPositions[0];
-        var leaderTime = ParseRMTime(leader.TotalTime ?? string.Empty);
+        var leaderTime = ParseRMTime(leader.TotalTime);
 
         for (int i = 0; i < carPositions.Count; i++)
         {
             var currentPosition = carPositions[i];
-            var cpt = ParseRMTime(currentPosition.TotalTime ?? string.Empty);
+            var cpt = ParseRMTime(currentPosition.TotalTime);
             if (cpt == default)
             {
                 continue;
@@ -82,12 +82,12 @@ public class PositionMetadataProcessor
             else // Behind the leader
             {
                 var positionAhead = carPositions[i - 1];
-                var pat = ParseRMTime(positionAhead.TotalTime ?? string.Empty);
+                var pat = ParseRMTime(positionAhead.TotalTime);
 
                 // Overall Gap
                 if (positionAhead.LastLapCompleted == currentPosition.LastLapCompleted)
                 {
-                    if (pat != default && pat.TimeOfDay != default)
+                    if (pat != default)
                     {
                         var g = cpt - pat;
                         // If the gap is 150% larger than the typical high lap time at the given last lap completed,
@@ -168,7 +168,7 @@ public class PositionMetadataProcessor
         var ranked = new List<(CarPosition Car, TimeSpan BestTime)>();
         foreach (var car in carPositions)
         {
-            var bestTime = ParseRMTime(car.BestTime ?? string.Empty).TimeOfDay;
+            var bestTime = ParseRMTime(car.BestTime);
             if (bestTime == default) // Car has not set a lap time
             {
                 setGap(car, string.Empty);
@@ -226,8 +226,8 @@ public class PositionMetadataProcessor
             return;
 
         var bestCar = (from car in carPositions
-                       let time = ParseRMTime(car.BestTime ?? string.Empty)
-                       where time.TimeOfDay != default // Filter out cars with no laps
+                       let time = ParseRMTime(car.BestTime)
+                       where time != default // Filter out cars with no laps
                        orderby time
                        select car)
                       .FirstOrDefault();
@@ -337,13 +337,12 @@ public class PositionMetadataProcessor
         }
     }
 
-    public static DateTime ParseRMTime(string time)
-    {
-        if (DateTime.TryParseExact(time, "HH:mm:ss.fff", null, DateTimeStyles.NoCurrentDateDefault, out var result))
-            return result;
-        DateTime.TryParseExact(time, "HH:mm:ss", null, DateTimeStyles.NoCurrentDateDefault, out result);
-        return result;
-    }
+    /// <summary>
+    /// Parses a race clock string from the timing feed. Returns <see cref="TimeSpan.Zero"/> when the
+    /// value cannot be read, which callers treat as "no time" - a genuine zero time is not
+    /// distinguishable from an unparseable one.
+    /// </summary>
+    public static TimeSpan ParseRMTime(string? time) => RaceTimeParser.Parse(time);
 
     public static string GetTimeFormat(TimeSpan time)
     {
@@ -378,8 +377,7 @@ public class PositionMetadataProcessor
         {
             if (car.LastLapTime != null)
             {
-                var t = ParseRMTime(car.LastLapTime);
-                lapTimes.Add(t.TimeOfDay);
+                lapTimes.Add(ParseRMTime(car.LastLapTime));
             }
         }
         if (lapTimes.Count == 0)

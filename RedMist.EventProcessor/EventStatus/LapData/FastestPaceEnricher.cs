@@ -1,8 +1,8 @@
 ﻿using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Models;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
-using System.Globalization;
 using System.Text.Json;
 
 namespace RedMist.EventProcessor.EventStatus.LapData;
@@ -88,7 +88,7 @@ public class FastestPaceEnricher
         int usableTimes = 0;
         foreach (var car in recentLaps)
         {
-            var carLapTime = ParseRMTime(car.LastLapTime ?? string.Empty);
+            var carLapTime = ParseRMTime(car.LastLapTime);
             if (carLapTime != TimeSpan.Zero)
             {
                 totalMs += (int)carLapTime.TotalMilliseconds;
@@ -100,14 +100,11 @@ public class FastestPaceEnricher
         return avg;
     }
 
-    public static TimeSpan ParseRMTime(string time)
-    {
-        if (TimeSpan.TryParseExact(time, @"hh\:mm\:ss\.fff", null, TimeSpanStyles.None, out var result))
-            return result;
-        if (TimeSpan.TryParseExact(time, @"hh\:mm\:ss", null, TimeSpanStyles.None, out result))
-            return result;
-        return TimeSpan.Zero;
-    }
+    /// <summary>
+    /// Parses a race clock string from the timing feed. Returns <see cref="TimeSpan.Zero"/> when the
+    /// value cannot be read, which callers treat as "no time".
+    /// </summary>
+    public static TimeSpan ParseRMTime(string? time) => RaceTimeParser.Parse(time);
 
     private static CarPositionPatch? UpdateCar(CarPosition car, string fastestCarNumber)
     {

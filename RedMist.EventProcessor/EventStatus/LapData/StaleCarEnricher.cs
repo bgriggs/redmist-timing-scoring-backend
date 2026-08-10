@@ -61,7 +61,7 @@ public class StaleCarEnricher
         return patches;
     }
 
-    public bool CheckForStale(CarPosition car, Flags trackFlag, DateTime raceTime)
+    public bool CheckForStale(CarPosition car, Flags trackFlag, TimeSpan raceTime)
     {
         if (trackFlag != Flags.Green && trackFlag != Flags.Yellow && trackFlag != Flags.White)
             return false; // Only consider green and yellow laps for staleness

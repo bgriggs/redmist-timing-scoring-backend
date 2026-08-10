@@ -1,5 +1,5 @@
-﻿using RedMist.EventProcessor.EventStatus.RMonitor.StateChanges;
-using System.Globalization;
+﻿using RedMist.Backend.Shared.Utilities;
+using RedMist.EventProcessor.EventStatus.RMonitor.StateChanges;
 
 namespace RedMist.EventProcessor.EventStatus.RMonitor;
 
@@ -11,26 +11,15 @@ public partial class PassingInformation
     public partial string LapTime { get; set; } = string.Empty;
 
     [IgnoreReactive]
-    public DateTime LapTimestamp
-    {
-        get
-        {
-            DateTime.TryParseExact(LapTime, "HH:mm:ss.fff", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime result);
-            return result;
-        }
-    }
+    public TimeSpan LapTimestamp => RaceTimeParser.Parse(LapTime);
 
     public partial string RaceTime { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The car's elapsed race time. Unbounded hours - this passes 24 hours in an endurance event.
+    /// </summary>
     [IgnoreReactive]
-    public DateTime RaceTimestamp
-    {
-        get
-        {
-            DateTime.TryParseExact(RaceTime, "HH:mm:ss.fff", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime result);
-            return result;
-        }
-    }
+    public TimeSpan RaceTimestamp => RaceTimeParser.Parse(RaceTime);
 
     public bool IsDirty { get; set; }
 

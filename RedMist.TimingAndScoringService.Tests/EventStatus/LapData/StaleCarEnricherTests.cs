@@ -167,6 +167,54 @@ public class StaleCarEnricherTests
     }
 
     [TestMethod]
+    public async Task ProcessAsync_PastTwentyFourHours_OffThePace_MarkedAsStale()
+    {
+        // Arrange - an endurance race past the 24 hour mark. The session's running race time and the
+        // car's total time both carry hours over 24. These used to parse as zero, which collapsed the
+        // difference between them to nothing and silently switched staleness detection off for the
+        // rest of the race.
+        var car = CreateTestCarPosition("1", "GT3",
+            isStale: false,
+            lastLapTime: "00:01:30.000", // 90 seconds, threshold is 117s
+            totalTime: "25:05:00.000",
+            lastLapCompleted: 800);
+        _sessionContext.SessionState.CarPositions = [car];
+        _sessionContext.SessionState.RunningRaceTime = "25:07:00.000"; // 120s since the car's last lap
+        _sessionContext.SessionState.CurrentFlag = Flags.Green;
+
+        // Act
+        var result = await _enricher.ProcessAsync();
+
+        // Assert
+        Assert.HasCount(1, result);
+        Assert.IsTrue(result[0].IsStale, "Car 120s off a 90s lap past the 24 hour mark should be stale");
+    }
+
+    [TestMethod]
+    public async Task ProcessAsync_RaceTimeCrossedTwentyFourHours_OffThePace_MarkedAsStale()
+    {
+        // Arrange - the crossover window, where the session clock has passed 24 hours but a car that
+        // stopped just before the boundary still reports a sub-24-hour total time. Only the session
+        // clock used to zero, which made the difference negative and hid a car that had been sitting
+        // for 20 minutes.
+        var car = CreateTestCarPosition("1", "GT3",
+            isStale: false,
+            lastLapTime: "00:01:30.000",
+            totalTime: "23:50:00.000",
+            lastLapCompleted: 800);
+        _sessionContext.SessionState.CarPositions = [car];
+        _sessionContext.SessionState.RunningRaceTime = "24:10:00.000"; // 20 minutes since the car's last lap
+        _sessionContext.SessionState.CurrentFlag = Flags.Green;
+
+        // Act
+        var result = await _enricher.ProcessAsync();
+
+        // Assert
+        Assert.HasCount(1, result);
+        Assert.IsTrue(result[0].IsStale, "A car 20 minutes off the pace across the 24 hour boundary should be stale");
+    }
+
+    [TestMethod]
     public async Task ProcessAsync_CarWithZeroLapsCompleted_MarkedAsStale()
     {
         // Arrange
@@ -270,7 +318,7 @@ public class StaleCarEnricherTests
         var car = CreateTestCarPosition("1", "GT3",
             lastLapTime: "00:01:30.000",
             totalTime: "00:05:00.000");
-        var raceTime = new DateTime(1, 1, 1, 0, 10, 0, 0); // 10 minutes
+        var raceTime = new TimeSpan(0, 0, 10, 0, 0); // 10 minutes
 
         // Act
         var result = _enricher.CheckForStale(car, Flags.Red, raceTime);
@@ -286,7 +334,7 @@ public class StaleCarEnricherTests
         var car = CreateTestCarPosition("1", "GT3",
             lastLapTime: "00:01:30.000",
             totalTime: "00:05:00.000");
-        var raceTime = new DateTime(1, 1, 1, 0, 10, 0, 0); // 10 minutes
+        var raceTime = new TimeSpan(0, 0, 10, 0, 0); // 10 minutes
 
         // Act
         var result = _enricher.CheckForStale(car, Flags.Checkered, raceTime);
@@ -302,7 +350,7 @@ public class StaleCarEnricherTests
         var car = CreateTestCarPosition("1", "GT3",
             lastLapTime: "00:01:30.000");
         car.TotalTime = null;
-        var raceTime = new DateTime(1, 1, 1, 0, 10, 0, 0); // 10 minutes
+        var raceTime = new TimeSpan(0, 0, 10, 0, 0); // 10 minutes
 
         // Act
         var result = _enricher.CheckForStale(car, Flags.Green, raceTime);
@@ -317,7 +365,7 @@ public class StaleCarEnricherTests
         // Arrange
         var car = CreateTestCarPosition("1", "GT3", totalTime: "00:05:00.000");
         car.LastLapTime = null;
-        var raceTime = new DateTime(1, 1, 1, 0, 10, 0, 0); // 10 minutes
+        var raceTime = new TimeSpan(0, 0, 10, 0, 0); // 10 minutes
 
         // Act
         var result = _enricher.CheckForStale(car, Flags.Green, raceTime);
@@ -334,7 +382,7 @@ public class StaleCarEnricherTests
             lastLapTime: "00:01:30.000",
             totalTime: "00:05:00.000");
         // Race time is only 0.5 seconds after car's total time
-        var raceTime = new DateTime(1, 1, 1, 0, 5, 0, 500); // 5:00.500
+        var raceTime = new TimeSpan(0, 0, 5, 0, 500); // 5:00.500
 
         // Act
         var result = _enricher.CheckForStale(car, Flags.Green, raceTime);
@@ -352,7 +400,7 @@ public class StaleCarEnricherTests
             totalTime: "00:05:00.000", // 5 minutes
             trackFlag: Flags.Green);
         // Race time is 7:00 = 2 minutes (120 seconds) since last lap
-        var raceTime = new DateTime(1, 1, 1, 0, 7, 0, 0);
+        var raceTime = new TimeSpan(0, 0, 7, 0, 0);
 
         // Act
         var result = _enricher.CheckForStale(car, Flags.Green, raceTime);
@@ -370,7 +418,7 @@ public class StaleCarEnricherTests
             totalTime: "00:05:00.000", // 5 minutes
             trackFlag: Flags.Green);
         // Race time is 6:30 = 90 seconds since last lap (within threshold)
-        var raceTime = new DateTime(1, 1, 1, 0, 6, 30, 0);
+        var raceTime = new TimeSpan(0, 0, 6, 30, 0);
 
         // Act
         var result = _enricher.CheckForStale(car, Flags.Green, raceTime);
@@ -388,7 +436,7 @@ public class StaleCarEnricherTests
             totalTime: "00:05:00.000",
             trackFlag: Flags.Green); // Car's last lap was under green
         // Race time is 8:30 = 210 seconds since last lap (exceeds 189s threshold)
-        var raceTime = new DateTime(1, 1, 1, 0, 8, 30, 0);
+        var raceTime = new TimeSpan(0, 0, 8, 30, 0);
 
         // Act
         var result = _enricher.CheckForStale(car, Flags.Yellow, raceTime);
@@ -406,7 +454,7 @@ public class StaleCarEnricherTests
             totalTime: "00:05:00.000",
             trackFlag: Flags.Green); // Car's last lap was under green
         // Race time is 8:00 = 180 seconds since last lap (within 189s threshold)
-        var raceTime = new DateTime(1, 1, 1, 0, 8, 0, 0);
+        var raceTime = new TimeSpan(0, 0, 8, 0, 0);
 
         // Act
         var result = _enricher.CheckForStale(car, Flags.Yellow, raceTime);
@@ -424,7 +472,7 @@ public class StaleCarEnricherTests
             totalTime: "00:05:00.000",
             trackFlag: Flags.Green); // Car was on green
         // Race time is 8:30 = 210 seconds since last lap (exceeds 189s threshold)
-        var raceTime = new DateTime(1, 1, 1, 0, 8, 30, 0);
+        var raceTime = new TimeSpan(0, 0, 8, 30, 0);
 
         // Act - Track is now yellow
         var result = _enricher.CheckForStale(car, Flags.Yellow, raceTime);
@@ -442,7 +490,7 @@ public class StaleCarEnricherTests
             totalTime: "00:05:00.000",
             trackFlag: Flags.Yellow); // Car was on yellow
         // Race time is 6:36 = 96 seconds since last lap (exceeds 94.5s threshold)
-        var raceTime = new DateTime(1, 1, 1, 0, 6, 36, 0);
+        var raceTime = new TimeSpan(0, 0, 6, 36, 0);
 
         // Act - Track is now green
         var result = _enricher.CheckForStale(car, Flags.Green, raceTime);
@@ -460,7 +508,7 @@ public class StaleCarEnricherTests
             totalTime: "00:05:00.000",
             trackFlag: Flags.Green);
         // Race time is 7:00 = 120 seconds since last lap
-        var raceTime = new DateTime(1, 1, 1, 0, 7, 0, 0);
+        var raceTime = new TimeSpan(0, 0, 7, 0, 0);
 
         // Act
         var result = _enricher.CheckForStale(car, Flags.White, raceTime);
@@ -476,7 +524,7 @@ public class StaleCarEnricherTests
         var car = CreateTestCarPosition("1", "GT3",
             lastLapTime: "00:00:00.000",
             totalTime: "00:05:00.000");
-        var raceTime = new DateTime(1, 1, 1, 0, 10, 0, 0);
+        var raceTime = new TimeSpan(0, 0, 10, 0, 0);
 
         // Act
         var result = _enricher.CheckForStale(car, Flags.Green, raceTime);
@@ -486,12 +534,28 @@ public class StaleCarEnricherTests
     }
 
     [TestMethod]
+    public void CheckForStale_PastTwentyFourHours_WithinThreshold_ReturnsFalse()
+    {
+        // Arrange
+        var car = CreateTestCarPosition("1", "GT3",
+            lastLapTime: "00:01:30.000", // 90 seconds, threshold is 117s
+            totalTime: "48:05:00.000");
+        var raceTime = new TimeSpan(2, 0, 6, 30, 0); // 48:06:30 = 90 seconds since the car's last lap
+
+        // Act
+        var result = _enricher.CheckForStale(car, Flags.Green, raceTime);
+
+        // Assert
+        Assert.IsFalse(result, "Car running on pace past the 24 hour mark should not be stale");
+    }
+
+    [TestMethod]
     public void Debug_ParseTimeFormats()
     {
         // Test parsing to verify it works
         var lastLapTime = FastestPaceEnricher.ParseRMTime("00:01:30.000");
         var totalTime = PositionMetadataProcessor.ParseRMTime("00:05:00.000");
-        var raceTime = new DateTime(1, 1, 1, 0, 7, 0, 0);
+        var raceTime = new TimeSpan(0, 0, 7, 0, 0);
 
         Console.WriteLine($"LastLapTime: {lastLapTime.TotalSeconds}s");
         Console.WriteLine($"TotalTime: {totalTime}");
@@ -501,7 +565,7 @@ public class StaleCarEnricherTests
         Console.WriteLine($"Diff: {diff.TotalSeconds}s");
 
         Assert.AreEqual(90, lastLapTime.TotalSeconds, "Last lap should be 90 seconds");
-        Assert.AreEqual(new DateTime(1, 1, 1, 0, 5, 0, 0), totalTime, "Total time should be 5 minutes");
+        Assert.AreEqual(new TimeSpan(0, 0, 5, 0, 0), totalTime, "Total time should be 5 minutes");
         Assert.AreEqual(120, diff.TotalSeconds, "Diff should be 120 seconds");
         Assert.IsTrue(diff.TotalSeconds > lastLapTime.TotalSeconds * 1.3, "120 > 117");
     }

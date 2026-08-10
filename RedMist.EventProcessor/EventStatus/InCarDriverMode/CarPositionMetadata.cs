@@ -77,8 +77,8 @@ public partial class CarPositionMetadata
         if (car.LastLapCompleted == driver.LastLapCompleted)
         {
             // Gap
-            var carTime = PositionMetadataProcessor.ParseRMTime(car.TotalTime ?? string.Empty);
-            var driversTime = PositionMetadataProcessor.ParseRMTime(driver.TotalTime ?? string.Empty);
+            var carTime = PositionMetadataProcessor.ParseRMTime(car.TotalTime);
+            var driversTime = PositionMetadataProcessor.ParseRMTime(driver.TotalTime);
             if (carTime == default || driversTime == default)
             {
                 Gap = string.Empty;
@@ -104,8 +104,8 @@ public partial class CarPositionMetadata
         }
 
         // Gain/Loss
-        var carLap = PositionMetadataProcessor.ParseRMTime(car.LastLapTime ?? string.Empty);
-        var driverLap = PositionMetadataProcessor.ParseRMTime(driver.LastLapTime ?? string.Empty);
+        var carLap = PositionMetadataProcessor.ParseRMTime(car.LastLapTime);
+        var driverLap = PositionMetadataProcessor.ParseRMTime(driver.LastLapTime);
         if (carLap == default || driverLap == default)
         {
             GainLoss = string.Empty;

@@ -583,6 +583,15 @@ public class FastestPaceEnricherTests
     }
 
     [TestMethod]
+    public void ParseRMTime_PastTwentyFourHours_DoesNotZero()
+    {
+        // Shared with the session and car race clocks, which pass 24 hours in an endurance event
+        Assert.AreEqual(new TimeSpan(1, 1, 0, 0, 0), FastestPaceEnricher.ParseRMTime("25:00:00.000"));
+        Assert.AreEqual(new TimeSpan(2, 0, 0, 15, 989), FastestPaceEnricher.ParseRMTime("48:00:15.989"));
+        Assert.AreEqual(new TimeSpan(5, 4, 30, 12, 5), FastestPaceEnricher.ParseRMTime("124:30:12.005"));
+    }
+
+    [TestMethod]
     public void ParseRMTime_InvalidFormat_ReturnsDefault()
     {
         // Arrange

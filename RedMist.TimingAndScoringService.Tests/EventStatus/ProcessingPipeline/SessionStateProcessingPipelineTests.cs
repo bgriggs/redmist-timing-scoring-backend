@@ -1228,7 +1228,7 @@ public class SessionStateProcessingPipelineTests
         Func<CarPosition, string?> getGap, Func<CarPosition, string?> getDiff, List<string> issuesFound)
     {
         var ranked = cars
-            .Select(c => (Car: c, BestTime: PositionMetadataProcessor.ParseRMTime(c.BestTime ?? string.Empty).TimeOfDay))
+            .Select(c => (Car: c, BestTime: PositionMetadataProcessor.ParseRMTime(c.BestTime)))
             .Where(c => c.BestTime != default)
             .OrderBy(c => c.BestTime)
             .ThenBy(c => c.Car.BestLap <= 0 ? int.MaxValue : c.Car.BestLap)
@@ -1236,7 +1236,7 @@ public class SessionStateProcessingPipelineTests
             .ToList();
 
         // Cars without a lap time are not ranked and have no gap or difference
-        foreach (var car in cars.Where(c => PositionMetadataProcessor.ParseRMTime(c.BestTime ?? string.Empty).TimeOfDay == default))
+        foreach (var car in cars.Where(c => PositionMetadataProcessor.ParseRMTime(c.BestTime) == default))
         {
             if (!string.IsNullOrEmpty(getGap(car)))
                 issuesFound.Add($"Car {car.Number} has {scope} fast time gap of '{getGap(car)}' with no best time at {context}");
@@ -1586,9 +1586,9 @@ public class SessionStateProcessingPipelineTests
             return null;
 
         // Try parsing with PositionMetadataProcessor first (handles HH:mm:ss.fff)
-        var parsedDateTime = PositionMetadataProcessor.ParseRMTime(timeString);
-        if (parsedDateTime != default)
-            return parsedDateTime.TimeOfDay;
+        var parsedTime = PositionMetadataProcessor.ParseRMTime(timeString);
+        if (parsedTime != default)
+            return parsedTime;
 
         // Handle formats like "40:49.146" (mm:ss.fff) or "5:30.123" (m:ss.fff)
         var parts = timeString.Split(':');

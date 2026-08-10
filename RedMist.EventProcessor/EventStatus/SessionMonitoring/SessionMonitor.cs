@@ -31,11 +31,11 @@ public class SessionMonitor : BackgroundService
     private readonly IConnectionMultiplexer cacheMux;
     private readonly static Flags[] activeSessionFlags = [Flags.White, Flags.Green, Flags.Yellow, Flags.Purple35];
     private readonly static Flags[] finishedSessionFlags = [Flags.Checkered];
-    private DateTime? finishingStartedTimestamp;
-    private DateTime? finishingEventLastTimestamp;
+    private TimeSpan? finishingStartedTimestamp;
+    private TimeSpan? finishingEventLastTimestamp;
     private readonly Dictionary<string, CarPosition> checkeredCarPositionsLookup = [];
     private int lastCheckeredChangedCount;
-    private DateTime? lastCheckeredChangedCountTimestamp;
+    private TimeSpan? lastCheckeredChangedCountTimestamp;
     private Session? lastSession;
     private SessionState? last = null;
     public event Action? FinalizedSession;

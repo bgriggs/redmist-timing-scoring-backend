@@ -1,5 +1,5 @@
-﻿using RedMist.EventProcessor.EventStatus.RMonitor.StateChanges;
-using System.Globalization;
+﻿using RedMist.Backend.Shared.Utilities;
+using RedMist.EventProcessor.EventStatus.RMonitor.StateChanges;
 
 namespace RedMist.EventProcessor.EventStatus.RMonitor;
 
@@ -14,14 +14,7 @@ public partial class PracticeQualifying
     public partial string BestLapTime { get; set; } = string.Empty;
 
     [IgnoreReactive]
-    public DateTime BestTimeTimestamp
-    {
-        get
-        {
-            DateTime.TryParseExact(BestLapTime, "HH:mm:ss.fff", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime result);
-            return result;
-        }
-    }
+    public TimeSpan BestTimeTimestamp => RaceTimeParser.Parse(BestLapTime);
 
     public bool IsDirty { get; set; }
 

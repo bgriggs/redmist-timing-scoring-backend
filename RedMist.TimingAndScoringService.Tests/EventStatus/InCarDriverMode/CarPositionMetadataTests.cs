@@ -97,6 +97,32 @@ public class CarPositionMetadataTests
     }
 
     [TestMethod]
+    public void Gap_SameLap_PastTwentyFourHours_Test()
+    {
+        // Total times pass 24 hours in an endurance event. These used to fail to parse, which
+        // blanked the in-car gap for the rest of the race.
+        var driver = Car("1", 800, "25:52:00.000", "00:02:00.000");
+        var ahead = Car("2", 800, "25:50:00.000", "00:02:00.000");
+
+        var metadata = Apply(driver, ahead);
+
+        Assert.AreEqual("2:00.000", metadata.Gap);
+    }
+
+    [TestMethod]
+    public void Gap_SameLap_CrossingTwentyFourHours_Test()
+    {
+        // The crossover window, where one car's total time has passed 24 hours and the other's
+        // has not. Only one of the two used to zero, which produced a nonsense gap.
+        var driver = Car("1", 800, "24:00:01.000", "00:02:00.000");
+        var ahead = Car("2", 800, "23:59:58.500", "00:02:00.000");
+
+        var metadata = Apply(driver, ahead);
+
+        Assert.AreEqual("2.500", metadata.Gap);
+    }
+
+    [TestMethod]
     public void Gap_SameLap_MissingTotalTime_IsEmpty_Test()
     {
         var driver = Car("1", 10, "00:50:00.000", "00:02:00.000");

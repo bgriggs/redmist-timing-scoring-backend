@@ -37,6 +37,52 @@ public class PositionMetadataProcessorTests
     }
 
     [TestMethod]
+    public void UpdateCarPositions_TotalTimePastTwentyFourHours_StillPublishesGapAndDiff()
+    {
+        // A car's total time passes 24 hours in an endurance event. These used to fail to parse,
+        // which skipped the car entirely and froze its published gap and difference at whatever
+        // they were before the boundary.
+        var secondaryProcessor = new PositionMetadataProcessor();
+
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "25:10:00.000", LastLapCompleted = 800, LastLapTime = "00:01:00.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "25:10:01.000", LastLapCompleted = 800, LastLapTime = "00:01:01.000", OverallPosition = 2 };
+        var car3 = new CarPosition { Number = "3", Class = "A", TotalTime = "25:10:02.000", LastLapCompleted = 800, LastLapTime = "00:01:02.000", OverallPosition = 3 };
+
+        secondaryProcessor.UpdateCarPositions([car1, car2, car3]);
+
+        Assert.AreEqual("", car1.OverallGap);
+        Assert.AreEqual("", car1.OverallDifference);
+
+        Assert.AreEqual("1.000", car2.OverallGap);
+        Assert.AreEqual("1.000", car2.OverallDifference);
+        Assert.AreEqual("1.000", car2.InClassGap);
+        Assert.AreEqual("1.000", car2.InClassDifference);
+
+        Assert.AreEqual("1.000", car3.OverallGap);
+        Assert.AreEqual("2.000", car3.OverallDifference);
+        Assert.AreEqual("1.000", car3.InClassGap);
+        Assert.AreEqual("2.000", car3.InClassDifference);
+    }
+
+    [TestMethod]
+    public void UpdateCarPositions_TotalTimeCrossingTwentyFourHours_StillPublishesGapAndDiff()
+    {
+        // The leader has passed 24 hours while the cars behind it have not yet. Before the fix the
+        // leader's time zeroed while the others' did not, so every gap was computed against a
+        // 24-hour-wrong leader time and thrown away by the sanity bounds.
+        var secondaryProcessor = new PositionMetadataProcessor();
+
+        var car1 = new CarPosition { Number = "1", Class = "A", TotalTime = "24:00:01.000", LastLapCompleted = 800, LastLapTime = "00:01:00.000", OverallPosition = 1 };
+        var car2 = new CarPosition { Number = "2", Class = "A", TotalTime = "24:00:02.500", LastLapCompleted = 800, LastLapTime = "00:01:01.000", OverallPosition = 2 };
+
+        secondaryProcessor.UpdateCarPositions([car1, car2]);
+
+        Assert.AreEqual("", car1.OverallGap);
+        Assert.AreEqual("1.500", car2.OverallGap);
+        Assert.AreEqual("1.500", car2.OverallDifference);
+    }
+
+    [TestMethod]
     public void UpdateCarPositions_SingleClass_MultiLap_Test()
     {
         var secondaryProcessor = new PositionMetadataProcessor();
@@ -748,24 +794,34 @@ public class PositionMetadataProcessorTests
     {
         // Test HH:mm:ss.fff format
         var result1 = PositionMetadataProcessor.ParseRMTime("12:34:56.789");
-        Assert.AreEqual(new DateTime(1, 1, 1, 12, 34, 56, 789).TimeOfDay, result1.TimeOfDay);
+        Assert.AreEqual(new TimeSpan(0, 12, 34, 56, 789), result1);
 
         // Test HH:mm:ss format
         var result2 = PositionMetadataProcessor.ParseRMTime("08:15:30");
-        Assert.AreEqual(new DateTime(1, 1, 1, 8, 15, 30, 0).TimeOfDay, result2.TimeOfDay);
+        Assert.AreEqual(new TimeSpan(0, 8, 15, 30, 0), result2);
+    }
+
+    [TestMethod]
+    public void ParseRMTime_PastTwentyFourHours_Test()
+    {
+        // An endurance event's total time and running race time run past 24 hours. These used to
+        // come back as zero, which silently froze every gap and difference for the rest of the race.
+        Assert.AreEqual(new TimeSpan(1, 1, 0, 0, 0), PositionMetadataProcessor.ParseRMTime("25:00:00.000"));
+        Assert.AreEqual(new TimeSpan(2, 0, 0, 15, 989), PositionMetadataProcessor.ParseRMTime("48:00:15.989"));
+        Assert.AreEqual(new TimeSpan(5, 4, 30, 12, 5), PositionMetadataProcessor.ParseRMTime("124:30:12.005"));
     }
 
     [TestMethod]
     public void ParseRMTime_InvalidFormats_ShouldReturnDefault()
     {
         var result1 = PositionMetadataProcessor.ParseRMTime("invalid");
-        Assert.AreEqual(default(DateTime), result1);
+        Assert.AreEqual(default, result1);
 
         var result2 = PositionMetadataProcessor.ParseRMTime("");
-        Assert.AreEqual(default(DateTime), result2);
+        Assert.AreEqual(default, result2);
 
-        var result3 = PositionMetadataProcessor.ParseRMTime("25:00:00.000"); // Invalid hour
-        Assert.AreEqual(default(DateTime), result3);
+        var result3 = PositionMetadataProcessor.ParseRMTime("aa:bb:cc.ddd");
+        Assert.AreEqual(default, result3);
     }
 
     [TestMethod]
