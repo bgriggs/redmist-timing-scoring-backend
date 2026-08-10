@@ -23,33 +23,20 @@ public class ServiceCollectionExtensionsTests
         return provider.GetRequiredService<IOptions<MvcOptions>>().Value;
     }
 
+    /// <summary>
+    /// One provider build covers the whole registration: the formatters for both directions, the
+    /// negotiation settings (honor Accept, but fall back to a formatter rather than answering 406) and
+    /// the ?format=msgpack mapping.
+    /// </summary>
     [TestMethod]
-    public void AddControllersWithMessagePack_RegistersFormattersForBothDirections()
+    public void AddControllersWithMessagePack_RegistersTheFormattersAndTheirNegotiationSettings()
     {
         var options = BuildMvcOptions();
 
         Assert.IsTrue(options.InputFormatters.OfType<MessagePackInputFormatter>().Any());
         Assert.IsTrue(options.OutputFormatters.OfType<MessagePackOutputFormatter>().Any());
-    }
-
-    /// <summary>
-    /// Negotiation has to honor the Accept header, and an unmatched one has to fall back to a
-    /// formatter rather than answering 406.
-    /// </summary>
-    [TestMethod]
-    public void AddControllersWithMessagePack_NegotiatesOnAcceptButNeverRefuses()
-    {
-        var options = BuildMvcOptions();
-
         Assert.IsTrue(options.RespectBrowserAcceptHeader);
         Assert.IsFalse(options.ReturnHttpNotAcceptable);
-    }
-
-    [TestMethod]
-    public void AddControllersWithMessagePack_MapsTheMsgpackFormatToItsMediaType()
-    {
-        var options = BuildMvcOptions();
-
         Assert.AreEqual("application/x-msgpack", options.FormatterMappings.GetMediaTypeMappingForFormat("msgpack"));
     }
 }

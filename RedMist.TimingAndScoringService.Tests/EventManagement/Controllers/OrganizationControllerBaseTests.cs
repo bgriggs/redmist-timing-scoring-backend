@@ -47,9 +47,13 @@ public class OrganizationControllerBaseTests
         mockConfiguration.Setup(c => c["Assets:ApiAccessKey"]).Returns("test-api-key");
         mockConfiguration.Setup(c => c["Assets:CdnId"]).Returns("test-cdn-id");
 
-        _mockAssetsCdn = new Mock<AssetsCdn>(mockConfiguration.Object, _mockLoggerFactory.Object, _mockHttpClientFactory.Object);
-
         _mockLoggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(_mockLogger.Object);
+
+        _mockAssetsCdn = new Mock<AssetsCdn>(mockConfiguration.Object, _mockLoggerFactory.Object, _mockHttpClientFactory.Object);
+        // AssetsCdn.SaveLogoAsync must stay virtual: a non-virtual member cannot be intercepted, so the
+        // proxy would run the real body and perform a live bunny.net upload. Moq refuses to Setup a
+        // non-virtual member, so this line fails the whole class the moment the keyword is removed.
+        _mockAssetsCdn.Setup(x => x.SaveLogoAsync(It.IsAny<int>(), It.IsAny<byte[]>())).ReturnsAsync(true);
 
         var options = new DbContextOptionsBuilder<TsContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
@@ -572,6 +576,11 @@ public class OrganizationControllerBaseTests
 
         var result = await _controller.GetControlLogStatistics(organization);
 
+        // GetControlLogStatistics swallows every exception and returns an all-default result, in which
+        // IsStaleWarning is also false. These two assertions are what separate "compared and found
+        // different" from "blew up on the way there".
+        Assert.IsTrue(result.IsConnected, "the control log must actually have been loaded");
+        Assert.AreEqual(1, result.TotalEntries);
         Assert.IsFalse(result.IsStaleWarning, $"A difference in {changedField} should not be treated as the same log.");
     }
 
@@ -780,6 +789,8 @@ public class OrganizationControllerBaseTests
         await _controller.UpdateOrganization(new Organization { Id = 1, Logo = null });
 
         CollectionAssert.AreEqual(new byte[] { 7, 7 }, _dbContext.Organizations.AsNoTracking().Single().Logo);
+        _mockAssetsCdn.Verify(x => x.SaveLogoAsync(It.IsAny<int>(), It.IsAny<byte[]>()), Times.Never,
+            "a null logo means 'unchanged', so nothing may be pushed to the CDN");
     }
 
     [TestMethod]
@@ -793,6 +804,72 @@ public class OrganizationControllerBaseTests
 
         Assert.IsInstanceOfType<OkResult>(result);
         Assert.IsNull(_dbContext.Organizations.AsNoTracking().Single().Logo);
+        _mockAssetsCdn.Verify(x => x.SaveLogoAsync(It.IsAny<int>(), It.IsAny<byte[]>()), Times.Never);
+    }
+
+    /// <summary>
+    /// A logo that reaches the database is also pushed to the CDN, keyed by the caller's own
+    /// organization id rather than the one in the posted body.
+    /// </summary>
+    [TestMethod]
+    public async Task UpdateOrganization_WithALogo_StoresItAndUploadsItToTheCdn()
+    {
+        await SeedOrganizationsAsync();
+
+        // Id 2 belongs to another organization; the upload must still be keyed to the caller's org.
+        var result = await _controller.UpdateOrganization(new Organization { Id = 2, Logo = [4, 5, 6] });
+
+        Assert.IsInstanceOfType<OkResult>(result);
+        CollectionAssert.AreEqual(new byte[] { 4, 5, 6 }, _dbContext.Organizations.AsNoTracking().Single(o => o.Id == 1).Logo);
+        _mockAssetsCdn.Verify(x => x.SaveLogoAsync(1, It.Is<byte[]>(b => b.SequenceEqual(new byte[] { 4, 5, 6 }))), Times.Once);
+        _mockAssetsCdn.Verify(x => x.SaveLogoAsync(2, It.IsAny<byte[]>()), Times.Never);
+    }
+
+    /// <summary>
+    /// The CDN upload is fire-and-await-later, and its bool result is discarded, so a failed upload
+    /// still answers 200 with the logo committed to the database. Pinned as the current contract:
+    /// the database is the source of truth and the CDN copy is re-pushed by the next save.
+    /// </summary>
+    [TestMethod]
+    public async Task UpdateOrganization_WhenTheCdnUploadFails_StillSavesTheLogoAndSucceeds()
+    {
+        await SeedOrganizationsAsync();
+        _mockAssetsCdn.Setup(x => x.SaveLogoAsync(It.IsAny<int>(), It.IsAny<byte[]>())).ReturnsAsync(false);
+
+        var result = await _controller.UpdateOrganization(new Organization { Id = 1, Logo = [4, 5, 6] });
+
+        Assert.IsInstanceOfType<OkResult>(result);
+        CollectionAssert.AreEqual(new byte[] { 4, 5, 6 }, _dbContext.Organizations.AsNoTracking().Single(o => o.Id == 1).Logo);
+    }
+
+    /// <summary>
+    /// Clearing the logo has to leave the CDN showing the default image rather than the organization's
+    /// old one, so the placeholder is uploaded in its place when one is configured.
+    /// </summary>
+    [TestMethod]
+    public async Task UpdateOrganization_EmptyLogo_WithADefaultImage_UploadsTheDefaultToTheCdn()
+    {
+        _dbContext.Organizations.Add(new Organization { Id = 1, ClientId = "test-client-id", Name = "Mine", ShortName = "M", Logo = [7, 7] });
+        _dbContext.DefaultOrgImages.Add(new DefaultOrgImage { Id = 1, ImageData = [1, 2, 3] });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.UpdateOrganization(new Organization { Id = 1, Logo = [] });
+
+        Assert.IsInstanceOfType<OkResult>(result);
+        Assert.IsNull(_dbContext.Organizations.AsNoTracking().Single().Logo, "the default image is not written back to the row");
+        _mockAssetsCdn.Verify(x => x.SaveLogoAsync(1, It.Is<byte[]>(b => b.SequenceEqual(new byte[] { 1, 2, 3 }))), Times.Once);
+    }
+
+    [TestMethod]
+    public async Task UpdateOrganization_NoOrganizationForClient_UploadsNothing()
+    {
+        await SeedOrganizationsAsync();
+        SetUser("unknown-client-id");
+
+        await _controller.UpdateOrganization(new Organization { Id = 1, Logo = [4, 5, 6] });
+
+        _mockAssetsCdn.Verify(x => x.SaveLogoAsync(It.IsAny<int>(), It.IsAny<byte[]>()), Times.Never,
+            "a caller with no organization must not be able to overwrite anyone's CDN logo");
     }
 
     #endregion
@@ -839,13 +916,18 @@ public class OrganizationControllerBaseTests
         Assert.AreEqual(0, _dbContext.UserOrganizationMappings.Count());
     }
 
+    /// <summary>
+    /// A save replaces the caller's organization's mappings wholesale and leaves other organizations
+    /// alone. "Wholesale" is not scoped to the admin role, which is the data loss pinned below.
+    /// </summary>
     [TestMethod]
-    public async Task SaveOrganizationAdministratorsAsync_ReplacesMappingsForCallersOrganizationOnly()
+    public async Task SaveOrganizationAdministratorsAsync_DeletesEveryMappingForTheCallersOrganizationRegardlessOfRole()
     {
         await SeedOrganizationsAsync();
         _dbContext.UserOrganizationMappings.AddRange(
             new UserOrganizationMapping { OrganizationId = 1, Username = "old@mine.test", Role = "admin" },
             new UserOrganizationMapping { OrganizationId = 1, Username = "viewer@mine.test", Role = "viewer" },
+            new UserOrganizationMapping { OrganizationId = 1, Username = "owner@mine.test", Role = "Admin" },
             new UserOrganizationMapping { OrganizationId = 2, Username = "admin@theirs.test", Role = "admin" });
         await _dbContext.SaveChangesAsync();
 
@@ -853,10 +935,45 @@ public class OrganizationControllerBaseTests
 
         Assert.IsInstanceOfType<OkResult>(result);
         var mine = _dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1).ToList();
+
+        // BUG (pinned, not fixed): SaveOrganizationAdministratorsAsync RemoveRange's every mapping for
+        // the organization without filtering on Role, then re-adds only the posted usernames as
+        // Role = "admin". Two things follow, and both are pinned here rather than fixed:
+        //  1. Non-admin mappings ("viewer@mine.test") are destroyed by an admin-list save.
+        //  2. RedMist.UserManagement.Consts.DEFAULT_ORGANIZATION_ROLE writes the organization creator's
+        //     mapping as Role = "Admin" (capital A), while the read in LoadOrganizationAdministratorsAsync
+        //     filters on Role == "admin". Postgres string comparison is case sensitive, so the owner
+        //     never appears in the list the UI posts back, and the first save silently deletes their
+        //     mapping - locking the owner out of their own organization.
+        // The seeded viewer and the seeded "Admin" owner are both gone: only the posted username is left.
         Assert.AreEqual(1, mine.Count);
         Assert.AreEqual("new@mine.test", mine[0].Username);
         Assert.AreEqual("admin", mine[0].Role);
+
         Assert.AreEqual(1, _dbContext.UserOrganizationMappings.AsNoTracking().Count(m => m.OrganizationId == 2));
+    }
+
+    /// <summary>
+    /// The other half of the case mismatch: the read filters on lowercase "admin", so the mapping the
+    /// organization creator is given is invisible to the administrator list.
+    /// </summary>
+    [TestMethod]
+    public async Task LoadOrganizationAdministratorsAsync_DoesNotSeeTheOwnersCapitalizedAdminRole()
+    {
+        await SeedOrganizationsAsync();
+        _dbContext.UserOrganizationMappings.AddRange(
+            new UserOrganizationMapping { OrganizationId = 1, Username = "owner@mine.test", Role = "Admin" },
+            new UserOrganizationMapping { OrganizationId = 1, Username = "added@mine.test", Role = "admin" });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.LoadOrganizationAdministratorsAsync();
+
+        // BUG (pinned, not fixed): see SaveOrganizationAdministratorsAsync above. The role written at
+        // organization creation is "Admin" and the read here matches "admin". Two mappings differing
+        // only in the case of their role, and only one of them comes back.
+        var emails = (result.Result as OkObjectResult)?.Value as List<string>;
+        Assert.IsNotNull(emails);
+        CollectionAssert.AreEqual(new[] { "added@mine.test" }, emails);
     }
 
     [TestMethod]

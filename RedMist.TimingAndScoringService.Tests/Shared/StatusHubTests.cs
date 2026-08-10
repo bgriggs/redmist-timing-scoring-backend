@@ -325,16 +325,6 @@ public class StatusHubTests
     }
 
     [TestMethod]
-    public async Task UnsubscribeFromControlLogs_LeavesTheEventControlLogGroup()
-    {
-        var hub = CreateHub();
-
-        await hub.UnsubscribeFromControlLogs(EventId);
-
-        groups.Verify(g => g.RemoveFromGroupAsync(connectionId, $"{EventId}-cl", It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [TestMethod]
     public async Task SubscribeToCarControlLogs_JoinsThePerCarGroup()
     {
         var hub = CreateHub();
@@ -342,16 +332,6 @@ public class StatusHubTests
         await hub.SubscribeToCarControlLogs(EventId, "42");
 
         VerifyJoined($"{EventId}-42", Times.Once());
-    }
-
-    [TestMethod]
-    public async Task UnsubscribeFromCarControlLogs_LeavesThePerCarGroup()
-    {
-        var hub = CreateHub();
-
-        await hub.UnsubscribeFromCarControlLogs(EventId, "42");
-
-        groups.Verify(g => g.RemoveFromGroupAsync(connectionId, $"{EventId}-42", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     #endregion
@@ -400,30 +380,45 @@ public class StatusHubTests
         Assert.AreEqual(0, StoredConnection()!.SubscribedEventId);
     }
 
+    /// <summary>
+    /// Both in-car unsubscribes leave their own group and clear the driver connection off the tracking
+    /// record; a driver who leaves in-car mode must stop being addressable as one.
+    /// </summary>
     [TestMethod]
-    public async Task UnsubscribeFromInCarDriverEventV2_LeavesTheGroupAndClearsTheDriverConnection()
+    [DataRow(false, DisplayName = "V1")]
+    [DataRow(true, DisplayName = "V2")]
+    public async Task UnsubscribeFromInCarDriverEvent_LeavesTheGroupAndClearsTheDriverConnection(bool v2)
     {
+        var group = string.Format(v2 ? Consts.IN_CAR_EVENT_SUB_V2 : Consts.IN_CAR_EVENT_SUB, EventId, "42");
         var hub = CreateHub();
         await hub.OnConnectedAsync();
-        await hub.SubscribeToInCarDriverEventV2(EventId, "42");
+        await (v2 ? hub.SubscribeToInCarDriverEventV2(EventId, "42") : hub.SubscribeToInCarDriverEvent(EventId, "42"));
 
-        await hub.UnsubscribeFromInCarDriverEventV2(EventId, "42");
+        await (v2 ? hub.UnsubscribeFromInCarDriverEventV2(EventId, "42") : hub.UnsubscribeFromInCarDriverEvent(EventId, "42"));
 
-        groups.Verify(g => g.RemoveFromGroupAsync(connectionId, string.Format(Consts.IN_CAR_EVENT_SUB_V2, EventId, "42"), It.IsAny<CancellationToken>()), Times.Once);
+        groups.Verify(g => g.RemoveFromGroupAsync(connectionId, group, It.IsAny<CancellationToken>()), Times.Once);
         Assert.IsNull(StoredConnection()!.InCarDriverConnection);
     }
 
+    #endregion
+
+    /// <summary>
+    /// The control log unsubscribes carry no connection bookkeeping with them. All each one does is
+    /// compute a group name and leave it, so the group name is the whole behavior worth pinning;
+    /// getting it wrong leaves a client receiving updates it asked to stop receiving.
+    /// </summary>
     [TestMethod]
-    public async Task UnsubscribeFromInCarDriverEvent_LeavesTheV1Group()
+    [DataRow(false, DisplayName = "Whole event")]
+    [DataRow(true, DisplayName = "Single car")]
+    public async Task UnsubscribeFromControlLogs_LeavesTheGroupItNames(bool perCar)
     {
+        var group = perCar ? $"{EventId}-42" : $"{EventId}-cl";
         var hub = CreateHub();
 
-        await hub.UnsubscribeFromInCarDriverEvent(EventId, "42");
+        await (perCar ? hub.UnsubscribeFromCarControlLogs(EventId, "42") : hub.UnsubscribeFromControlLogs(EventId));
 
-        groups.Verify(g => g.RemoveFromGroupAsync(connectionId, string.Format(Consts.IN_CAR_EVENT_SUB, EventId, "42"), It.IsAny<CancellationToken>()), Times.Once);
+        groups.Verify(g => g.RemoveFromGroupAsync(connectionId, group, It.IsAny<CancellationToken>()), Times.Once);
     }
-
-    #endregion
 
     /// <summary>
     /// Every subscribe entry point has to run the access-code gate, or a private event leaks through

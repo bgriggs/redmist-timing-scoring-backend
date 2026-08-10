@@ -74,10 +74,15 @@ public class BunnyCdnTests
     [DataRow(HttpStatusCode.InternalServerError)]
     public async Task UploadAsync_WhenStorageRejectsTheUpload_ReportsFailure(HttpStatusCode status)
     {
-        using var cdn = CreateCdn(storageTransport: StubHttpMessageHandler.Returning(status));
+        var handler = StubHttpMessageHandler.Returning(status);
+        using var cdn = CreateCdn(storageTransport: handler);
         using var stream = Payload();
 
         Assert.IsFalse(await cdn.UploadAsync(stream, $"/{StorageZone}/event-logs/event-42.gz"));
+
+        // A real, failed network call returns false too, so this asserts the refusal under test is
+        // the stubbed one and not the storage zone being unreachable from the build agent.
+        Assert.HasCount(1, handler.Requests.Where(r => r.Method == HttpMethod.Put).ToList());
     }
 
     /// <summary>
@@ -146,9 +151,15 @@ public class BunnyCdnTests
     [TestMethod]
     public async Task CleanDestinationAsync_WhenTheListingFails_ReportsAnError()
     {
-        using var cdn = CreateCdn(storageTransport: StubHttpMessageHandler.Returning(HttpStatusCode.Unauthorized));
+        var handler = StubHttpMessageHandler.Returning(HttpStatusCode.Unauthorized);
+        using var cdn = CreateCdn(storageTransport: handler);
 
-        Assert.AreEqual(2, await cdn.CleanDestinationAsync(2, $"/{StorageZone}/logos/"));
+        // The concurrency argument is deliberately not 2: the error code is also 2, and a production
+        // method that merely echoed its first argument would otherwise pass this.
+        Assert.AreEqual(2, await cdn.CleanDestinationAsync(4, $"/{StorageZone}/logos/"));
+
+        Assert.IsNotEmpty(handler.Requests, "the listing has to have been attempted against the stub, not the live zone");
+        Assert.IsFalse(handler.Requests.Any(r => r.Method == HttpMethod.Delete), "nothing may be deleted off a listing that failed");
     }
 
     [TestMethod]

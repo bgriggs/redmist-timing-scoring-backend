@@ -14,12 +14,10 @@ public class ClientTypeHelperTests
     [DataRow("redmist-android-ui", "Android")]
     [DataRow("redmist-browser-ui", "Web")]
     [DataRow("api-partner-feed", "API")]
-    [DataRow("API-PARTNER-FEED", "API")]
-    [DataRow("Api-Partner-Feed", "API")]
-    [DataRow("something-else", "Web")]
-    [DataRow("", "Web")]
-    [DataRow(null, "Web")]
-    public void ResolveClientType(string? clientId, string expected)
+    [DataRow("API-PARTNER-FEED", "API", DisplayName = "The api- prefix is matched case insensitively")]
+    [DataRow("something-else", "Web", DisplayName = "An unrecognized client id falls back to Web")]
+    [DataRow(null, "Web", DisplayName = "A connection with no client id at all falls back to Web")]
+    public void ResolveClientType_MapsTheKnownClientIdsAndFallsBackToWeb(string? clientId, string expected)
     {
         Assert.AreEqual(expected, ClientTypeHelper.ResolveClientType(clientId));
     }

@@ -515,6 +515,9 @@ public class SponsorStatisticsRollupJobTests
     /// started, then rolls up and stops the host.
     /// </summary>
     [TestMethod]
+    // The only thing that completes ExecuteTask is the ApplicationStarted token; if that setup ever
+    // stops matching, the loose mock hands back a token that never cancels and the await never returns.
+    [Timeout(30_000)]
     public async Task ExecuteAsync_WaitsForApplicationStartedThenRollsUpAndStopsHost()
     {
         var h = CreateHarness(applicationAlreadyStarted: false);

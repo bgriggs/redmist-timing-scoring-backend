@@ -132,11 +132,22 @@ public class RelayHubTests
     }
 
     /// <summary>
-    /// Nothing a relay sends may reach an event stream or the database without an authenticated
-    /// client behind it, since the client id is what the organization is resolved from.
+    /// Every hub method that resolves an organization from the client id drops the message when there
+    /// is no authenticated user, so nothing it would have written is written.
     /// </summary>
+    /// <remarks>
+    /// This is deliberately not "no relay message is accepted without a user". <c>SendRMonitor</c>,
+    /// <c>SendMultiloop</c> and <c>SendFlagtronics</c> never call <c>GetClientId</c> at all: they write
+    /// to the event stream for any <c>eventId &gt; 0</c> without resolving, or caring, which
+    /// organization the caller belongs to. Production says so in a comment on each of them - the
+    /// per-message check is skipped for throughput, and the boundary that is actually relied on is
+    /// <c>SendSessionChange</c>, which decides whether an event id is ever committed for an
+    /// organization at all. Any authenticated relay can therefore write to any event's stream; the hub
+    /// is <c>[Authorize]</c>d, so an unauthenticated socket never reaches a hub method in production
+    /// and those three are excluded here rather than asserted on.
+    /// </remarks>
     [TestMethod]
-    public async Task WithoutAUser_NoRelayMessageIsAccepted()
+    public async Task WithoutAUser_TheClientScopedMessagesAreIgnored()
     {
         await SeedOrganizationAsync();
         var eventId = NewEventId();
@@ -150,6 +161,7 @@ public class RelayHubTests
         };
 
         await hub.SendHeartbeat(eventId, "3.1.4");
+        var telemetry = await hub.SendHeartbeatV2(eventId, "3.1.4");
         await hub.SendSessionChange(eventId, 1, "Race", 0);
         await hub.SendPassings(eventId, 1, [new Passing { Id = 1 }]);
         await hub.SendLoopChange(eventId, [new Loop { Id = 1 }]);
@@ -161,6 +173,11 @@ public class RelayHubTests
         Assert.IsEmpty(redis.StreamWrites);
         Assert.IsEmpty(redis.HashWrites);
         Assert.IsEmpty(redis.HashDeletes);
+        // SendHeartbeatV2's write half is dropped with the rest. Its read half is not gated on the
+        // client id at all - it reports whatever is cached for the event id it was handed - so this
+        // only says the cache was never populated, not that the read was refused.
+        Assert.IsEmpty(telemetry.ServiceStatuses);
+        Assert.IsEmpty(telemetry.EventConnections);
         await using var db = await dbFactory.CreateDbContextAsync();
         Assert.IsFalse(await db.Sessions.AnyAsync());
         Assert.IsFalse(await db.RelayLogs.AnyAsync());
@@ -179,16 +196,15 @@ public class RelayHubTests
         Assert.Contains((Consts.RELAY_EVENT_CONNECTIONS, field), redis.HashDeletes);
     }
 
-    /// <summary>
-    /// <c>RelayHub</c> reads the azp claim with First(), not FirstOrDefault(), so a token that
-    /// authenticates but carries no azp claim faults the hub method rather than being ignored the
-    /// way a missing user is. <c>StatusHub</c> uses FirstOrDefault for the same claim.
-    /// </summary>
     [TestMethod]
     public async Task OnConnectedAsync_UserWithoutAnAzpClaim_Throws()
     {
         var hub = CreateHub(new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", "someone")], "test")));
 
+        // BUG (pinned, not fixed): GetClientId reads the azp claim with First(), not FirstOrDefault(),
+        // and the null check on the next line is therefore unreachable. A token that authenticates but
+        // carries no azp claim faults the hub method - a 500 back to the relay - instead of being
+        // ignored the way a missing user is. StatusHub uses FirstOrDefault for the same claim.
         await Assert.ThrowsAsync<InvalidOperationException>(() => hub.OnConnectedAsync());
     }
 
@@ -373,8 +389,8 @@ public class RelayHubTests
 
     /// <summary>
     /// The per-event connection hash used to hold timestamps and now holds a client type. Anything
-    /// that is not one of the four known types — including the old timestamps and, because the known
-    /// set is case sensitive, a differently cased type — is counted as a web client.
+    /// that is not one of the four known types - including the old timestamps - is counted as a web
+    /// client.
     /// </summary>
     [TestMethod]
     public async Task SendHeartbeatV2_CountsConnectionsByClientTypeAndFoldsUnknownValuesIntoWeb()
@@ -394,6 +410,11 @@ public class RelayHubTests
         var counts = telemetry.EventConnections.ToDictionary(c => c.ClientApplication, c => c.Clients);
         Assert.AreEqual(2, counts["iOS"]);
         Assert.AreEqual(1, counts["Android"]);
+
+        // BUG (pinned, not fixed): KnownClientTypes is a HashSet with the default ordinal comparer while
+        // the counting dictionary next to it is OrdinalIgnoreCase. "ios" therefore fails the known-type
+        // test, is rewritten to "Web", and an iOS client is reported as a web one. Three here is
+        // Web + the legacy timestamp + the miscounted "ios".
         Assert.AreEqual(3, counts["Web"]);
         Assert.HasCount(3, telemetry.EventConnections);
     }
@@ -482,8 +503,13 @@ public class RelayHubTests
         Assert.HasCount(1, redis.StreamWrites, "the existing session is still republished so the processor picks it up");
     }
 
+    /// <summary>
+    /// The organization lookup is the first database access SendSessionChange makes, so a database
+    /// that is down fails there, before the event or session is ever queried. It has to be swallowed:
+    /// a relay whose hub call faults tears down its connection.
+    /// </summary>
     [TestMethod]
-    public async Task SendSessionChange_WhenTheDatabaseIsUnavailable_DoesNotFaultTheConnection()
+    public async Task SendSessionChange_WhenTheOrganizationLookupFails_DoesNotFaultTheConnection()
     {
         var hub = CreateHub(factory: new ThrowingDbContextFactory());
 

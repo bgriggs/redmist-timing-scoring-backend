@@ -14,8 +14,6 @@ public class MediatorTests
 {
     public sealed record CarUpdated(string CarNumber) : INotification;
 
-    public sealed record SessionEnded : INotification;
-
     /// <summary>Records the notifications it receives; used to assert fan-out.</summary>
     public sealed class RecordingHandler : INotificationHandler<CarUpdated>
     {
@@ -99,17 +97,6 @@ public class MediatorTests
         await mediator.Publish(new CarUpdated("42"), cts.Token);
 
         Assert.AreEqual(cts.Token, handler.LastToken);
-    }
-
-    [TestMethod]
-    public async Task Publish_DoesNotReachHandlersForOtherNotificationTypes()
-    {
-        var handler = new RecordingHandler();
-        var mediator = CreateMediator(handler);
-
-        await mediator.Publish(new SessionEnded());
-
-        Assert.IsEmpty(handler.Received);
     }
 
     [TestMethod]

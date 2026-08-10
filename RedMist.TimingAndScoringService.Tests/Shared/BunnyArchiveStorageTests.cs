@@ -117,7 +117,8 @@ public class BunnyArchiveStorageTests
     [TestMethod]
     public async Task Uploads_WhenTheCdnRejectsThem_ReportFailure()
     {
-        var storage = CreateStorage(StubHttpMessageHandler.Returning(HttpStatusCode.InternalServerError));
+        var transport = StubHttpMessageHandler.Returning(HttpStatusCode.InternalServerError);
+        var storage = CreateStorage(transport);
 
         Assert.IsFalse(await storage.UploadEventLogsAsync(Payload(), 42));
         Assert.IsFalse(await storage.UploadSessionLogsAsync(Payload(), 42, 7));
@@ -127,6 +128,10 @@ public class BunnyArchiveStorageTests
         Assert.IsFalse(await storage.UploadEventX2LoopsAsync(Payload(), 42));
         Assert.IsFalse(await storage.UploadSessionFlagsAsync(Payload(), 42, 7));
         Assert.IsFalse(await storage.UploadEventCompetitorMetadataAsync(Payload(), 42));
+
+        // A real, failed network call returns false too, so this asserts the rejection under test is
+        // the stubbed one and not the storage zone being unreachable from the build agent.
+        Assert.HasCount(8, UploadedPaths(transport));
     }
 
     /// <summary>

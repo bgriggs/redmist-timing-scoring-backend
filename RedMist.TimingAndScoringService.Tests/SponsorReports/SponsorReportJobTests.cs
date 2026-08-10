@@ -1,4 +1,5 @@
 using BigMission.TestHelpers.Testing;
+using MailKit.Net.Smtp;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -18,10 +19,12 @@ namespace RedMist.TimingAndScoringService.Tests.SponsorReports;
 /// <see cref="SponsorStatistics"/> rows, renders an HTML report and marks each row processed.
 /// </summary>
 /// <remarks>
-/// <see cref="EmailHelper"/> is a concrete SMTP client in RedMist.Backend.Shared with no
-/// interface and non-virtual methods, so it cannot be mocked. The job exposes a
+/// <see cref="EmailHelper"/> is a concrete SMTP client in RedMist.Backend.Shared with no interface
+/// and a non-virtual <c>SendEmailAsync</c>, so it cannot be mocked. The job exposes a
 /// <c>protected virtual SendEmailAsync</c> seam instead, which <see cref="RecordingReportJob"/>
-/// overrides to capture what would have been sent.
+/// overrides to capture what would have been sent. As a second line of defense the helper handed to
+/// the job builds a mocked <c>ISmtpClient</c>, so nothing here can open a connection even if a test
+/// takes a path that bypasses the job's seam.
 /// </remarks>
 [TestClass]
 public class SponsorReportJobTests
@@ -103,7 +106,20 @@ public class SponsorReportJobTests
         };
     }
 
-    /// <summary>Constructing EmailHelper only reads configuration; it opens no connection.</summary>
+    /// <summary>
+    /// An <see cref="EmailHelper"/> whose SMTP client is a mock, so a send cannot open a socket.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="RecordingReportJob"/> overrides the job's own send seam, but that is the only thing
+    /// standing between these tests and MailKit's ConnectAsync. Overriding CreateSmtpClient as well
+    /// means no arrangement of the job under test can reach the network, whichever path it takes.
+    /// This is the same seam <c>EmailHelperTests.TestableEmailHelper</c> uses.
+    /// </remarks>
+    private sealed class UnconnectedEmailHelper(IConfiguration configuration) : EmailHelper(configuration)
+    {
+        protected override ISmtpClient CreateSmtpClient() => Mock.Of<ISmtpClient>();
+    }
+
     private static EmailHelper CreateEmailHelper()
     {
         var config = new ConfigurationBuilder()
@@ -115,7 +131,7 @@ public class SponsorReportJobTests
                 ["Email:Password"] = "pass",
             })
             .Build();
-        return new EmailHelper(config);
+        return new UnconnectedEmailHelper(config);
     }
 
     private RecordingReportJob CreateJob(Harness h, TimeProvider? clock = null)
@@ -515,6 +531,9 @@ public class SponsorReportJobTests
     /// started, then mails the reports and stops the host.
     /// </summary>
     [TestMethod]
+    // The only thing that completes ExecuteTask is the ApplicationStarted token; if that setup ever
+    // stops matching, the loose mock hands back a token that never cancels and the await never returns.
+    [Timeout(30_000)]
     public async Task ExecuteAsync_WaitsForApplicationStartedThenSendsAndStopsHost()
     {
         var h = CreateHarness(applicationAlreadyStarted: false);

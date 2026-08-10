@@ -28,7 +28,9 @@ public class AssetsCdn
     }
 
 
-    public async Task<bool> SaveLogoAsync(int organizationId, byte[] data)
+    // virtual only to give tests a seam: without it a mocked AssetsCdn calls straight through to here
+    // and performs a real bunny.net upload.
+    public virtual async Task<bool> SaveLogoAsync(int organizationId, byte[] data)
     {
         using var cdnClient = new BunnyCdn(storageZoneName, storageAccessKey, mainReplicationRegion, apiAccessKey, loggerFactory, httpClientFactory);
         using var stream = new MemoryStream(data);
