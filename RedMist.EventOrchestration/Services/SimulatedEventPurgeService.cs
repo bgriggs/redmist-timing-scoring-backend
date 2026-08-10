@@ -9,16 +9,22 @@ public class SimulatedEventPurgeService : BackgroundService
 {
     private readonly ILoggerFactory loggerFactory;
     private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly EmailHelper emailHelper;
+    private readonly ArchiveEmailHelper archiveEmailHelper;
 
     private ILogger Logger { get; }
 
-    public SimulatedEventPurgeService(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, EmailHelper emailHelper)
+    /// <param name="emailHelper">SMTP transport. May be null only when <paramref name="archiveEmailHelper"/> is supplied.</param>
+    /// <param name="archiveEmailHelper">
+    /// Sends the failure notifications. Defaults to an SMTP-backed helper built from
+    /// <paramref name="emailHelper"/>; tests supply a stand-in so no mail is sent.
+    /// </param>
+    public SimulatedEventPurgeService(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
+        EmailHelper? emailHelper, ArchiveEmailHelper? archiveEmailHelper = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.loggerFactory = loggerFactory;
         this.tsContext = tsContext;
-        this.emailHelper = emailHelper;
+        this.archiveEmailHelper = archiveEmailHelper ?? new ArchiveEmailHelper(Logger, tsContext, emailHelper);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -49,8 +55,7 @@ public class SimulatedEventPurgeService : BackgroundService
             catch (Exception ex)
             {
                 Logger.LogError(ex, "An unexpected error occurred in the simulated event purge service main loop.");
-                var emailHelper = new ArchiveEmailHelper(Logger, tsContext, this.emailHelper);
-                await emailHelper.SendArchiveFailureEmailAsync($"Unexpected error in simulated event purge service main loop: {ex.Message}", null, 0, ex);
+                await archiveEmailHelper.SendArchiveFailureEmailAsync($"Unexpected error in simulated event purge service main loop: {ex.Message}", null, 0, ex);
                 // Wait 1 hour before trying again if there's an unexpected error
                 await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
             }
@@ -78,8 +83,7 @@ public class SimulatedEventPurgeService : BackgroundService
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error during simulated event purge process.");
-            var emailHelper = new ArchiveEmailHelper(Logger, tsContext, this.emailHelper);
-            await emailHelper.SendArchiveFailureEmailAsync($"Simulated event purge failed: {ex.Message}", null, 0, ex);
+            await archiveEmailHelper.SendArchiveFailureEmailAsync($"Simulated event purge failed: {ex.Message}", null, 0, ex);
         }
     }
 }
