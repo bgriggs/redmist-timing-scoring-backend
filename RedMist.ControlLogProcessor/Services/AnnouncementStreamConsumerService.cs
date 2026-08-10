@@ -95,7 +95,7 @@ public class AnnouncementStreamConsumerService : BackgroundService
         Logger.LogInformation("AnnouncementStreamConsumerService stopped.");
     }
 
-    private void ProcessExternalBatch(string data)
+    internal void ProcessExternalBatch(string data)
     {
         if (string.IsNullOrWhiteSpace(data))
             return;

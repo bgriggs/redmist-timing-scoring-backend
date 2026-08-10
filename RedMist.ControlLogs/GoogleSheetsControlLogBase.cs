@@ -173,58 +173,7 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
                 return (false, []);
             }
 
-            int missedTimestampCount = 0;
-            var rowDataList = response.Sheets[0].Data[0].RowData;
-
-            for (int row = 1; row < rowDataList.Count; row++)
-            {
-                var rowData = rowDataList[row];
-                if (rowData.Values == null)
-                {
-                    continue;
-                }
-
-                var requiredColumns = ColumnMappings.Where(c => c.IsRequired).ToList();
-                ControlLogEntry entry = new() { OrderId = row };
-
-                for (int col = 0; col < rowData.Values.Count; col++)
-                {
-                    if (columnIndexMappings.TryGetValue(col, out var mapping))
-                    {
-                        var cell = rowData.Values[col];
-                        if (cell != null)
-                        {
-                            var valueSet = mapping.SetEntryValue(entry, cell.FormattedValue);
-                            if (valueSet)
-                            {
-                                requiredColumns.Remove(mapping);
-                                var color = cell.EffectiveFormat?.BackgroundColor;
-                                if (color != null && color.Red == 1 && color.Green == 1 && color.Blue == null)
-                                {
-                                    mapping.SetCellHighlighted(entry);
-                                }
-                            }
-                            else
-                            {
-                                if (mapping.PropertyName.Contains("Time"))
-                                {
-                                    missedTimestampCount++;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (requiredColumns.Count == 0 && entry.Timestamp > new DateTime(MinimumTimestampYear))
-                {
-                    log.Add(entry);
-                }
-
-                if (missedTimestampCount > MaxMissedTimestamps)
-                {
-                    break;
-                }
-            }
+            log = ParseRows(response.Sheets[0].Data[0].RowData);
 
             // Explicitly clear response data to release memory
             // The Google Sheets API response can contain massive amounts of grid data
@@ -246,7 +195,76 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
         return (true, log);
     }
 
-    private void InitializeColumnMappings(RowData header)
+    /// <summary>
+    /// The column mappings resolved from the sheet header, keyed by zero-based column index. Empty until
+    /// <see cref="InitializeColumnMappings"/> has run, and cleared whenever the worksheet parameter changes.
+    /// </summary>
+    internal IReadOnlyDictionary<int, SheetColumnMapping> ColumnIndexMappings => columnIndexMappings;
+
+    /// <summary>
+    /// Parses the sheet's data rows into control log entries using the mappings established by
+    /// <see cref="InitializeColumnMappings"/>. Row 0 is the header and is skipped. Split out from the
+    /// Google Sheets fetch so row-to-entry parsing can be exercised without calling the Sheets API.
+    /// </summary>
+    internal List<ControlLogEntry> ParseRows(IList<RowData> rowDataList)
+    {
+        var log = new List<ControlLogEntry>();
+        int missedTimestampCount = 0;
+
+        for (int row = 1; row < rowDataList.Count; row++)
+        {
+            var rowData = rowDataList[row];
+            if (rowData.Values == null)
+            {
+                continue;
+            }
+
+            var requiredColumns = ColumnMappings.Where(c => c.IsRequired).ToList();
+            ControlLogEntry entry = new() { OrderId = row };
+
+            for (int col = 0; col < rowData.Values.Count; col++)
+            {
+                if (columnIndexMappings.TryGetValue(col, out var mapping))
+                {
+                    var cell = rowData.Values[col];
+                    if (cell != null)
+                    {
+                        var valueSet = mapping.SetEntryValue(entry, cell.FormattedValue);
+                        if (valueSet)
+                        {
+                            requiredColumns.Remove(mapping);
+                            var color = cell.EffectiveFormat?.BackgroundColor;
+                            if (color != null && color.Red == 1 && color.Green == 1 && color.Blue == null)
+                            {
+                                mapping.SetCellHighlighted(entry);
+                            }
+                        }
+                        else
+                        {
+                            if (mapping.PropertyName.Contains("Time"))
+                            {
+                                missedTimestampCount++;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (requiredColumns.Count == 0 && entry.Timestamp > new DateTime(MinimumTimestampYear))
+            {
+                log.Add(entry);
+            }
+
+            if (missedTimestampCount > MaxMissedTimestamps)
+            {
+                break;
+            }
+        }
+
+        return log;
+    }
+
+    internal void InitializeColumnMappings(RowData header)
     {
         for (int i = 0; i < header.Values.Count; i++)
         {
