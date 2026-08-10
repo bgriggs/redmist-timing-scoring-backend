@@ -356,6 +356,9 @@ public class EventProcessLoggerTests
 
         await RunAsync(CreateService().RunAsync, cts.Token);
 
+        mockCache.Verify(x => x.StreamCreateConsumerGroupAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
+            It.IsAny<RedisValue?>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()), Times.Once,
+            "The stream is ensured before the loop looks at its token, so a pod stopped at start still leaves it usable.");
         mockCache.Verify(x => x.StreamReadGroupAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(),
             It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<TimeSpan?>(), It.IsAny<CommandFlags>()),
             Times.Never);

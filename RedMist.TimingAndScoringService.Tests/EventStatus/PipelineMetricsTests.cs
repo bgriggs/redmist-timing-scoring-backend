@@ -83,6 +83,52 @@ public class PipelineMetricsTests
     }
 
     /// <summary>
+    /// BUG (pinned, not fixed): the synchronous <c>Track&lt;T&gt;</c> has none of the empty-PatchUpdates
+    /// filtering its async sibling has - it is a bare <c>if (result != null)</c> - so a block that produced
+    /// no patches is still counted as output.
+    ///
+    /// That overload is what the multiloop and position-metadata blocks use
+    /// (<c>SessionStateProcessingPipeline.ProcessMultiloop</c> and <c>ProcessPositionEnrichment</c>), and
+    /// <c>MultiloopProcessor.Process</c> always hands back a non-null PatchUpdates. Both blocks therefore
+    /// report a filter ratio pinned at 1.0 for the life of the process and can never be seen filtering,
+    /// which is precisely the "permanently healthy" reading this file's header warns about.
+    ///
+    /// This asserts the current, wrong behavior so the difference between the two overloads is visible
+    /// and a fix to <c>PipelineMetrics.Track&lt;T&gt;</c> shows up here rather than passing silently.
+    /// </summary>
+    [TestMethod]
+    public void Track_EmptyPatchUpdates_IsStillCountedAsOutput()
+    {
+        var metrics = NewMetrics();
+
+        metrics.Track(() => Patches(0, 0));
+
+        var m = metrics.GetCurrentMetrics();
+        Assert.AreEqual(1, m.MessagesProcessed);
+        Assert.AreEqual(1, m.MessagesOutput,
+            "If this now reads 0 the sync overload has gained the filter; update the async-sibling comparison below too.");
+        Assert.AreEqual(1, m.FilterRatio, "A block that filtered everything out reports a perfect filter ratio.");
+    }
+
+    /// <summary>
+    /// The two overloads disagree on the same input. Pinned as a pair so the asymmetry cannot be read as
+    /// an accident of either test on its own.
+    /// </summary>
+    [TestMethod]
+    public async Task TrackOverloads_GivenTheSameEmptyPatchUpdates_DisagreeOnWhetherItIsOutput()
+    {
+        var syncMetrics = NewMetrics();
+        var asyncMetrics = NewMetrics();
+
+        syncMetrics.Track(() => Patches(0, 0));
+        await asyncMetrics.TrackAsync(() => Task.FromResult(Patches(0, 0)));
+
+        // BUG (pinned, not fixed): these should be equal.
+        Assert.AreEqual(1, syncMetrics.GetCurrentMetrics().MessagesOutput);
+        Assert.AreEqual(0, asyncMetrics.GetCurrentMetrics().MessagesOutput);
+    }
+
+    /// <summary>
     /// The action overloads have no result to filter on, so every completed call is output.
     /// </summary>
     [TestMethod]

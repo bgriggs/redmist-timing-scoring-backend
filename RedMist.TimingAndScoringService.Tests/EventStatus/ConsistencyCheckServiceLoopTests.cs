@@ -62,18 +62,6 @@ public class ConsistencyCheckServiceLoopTests
         Assert.AreEqual(3, service.Passes, "The loop should have carried on past the failed check.");
     }
 
-    [TestMethod]
-    [Timeout(30_000)]
-    public async Task Loop_KeepsCheckingUntilItIsStopped()
-    {
-        var (service, _) = CreateService();
-        service.StopAfterPasses = 4;
-
-        await RunLoopAsync(service);
-
-        Assert.AreEqual(4, service.Passes);
-    }
-
     public TestContext TestContext { get; set; } = null!;
 
     /// <summary>

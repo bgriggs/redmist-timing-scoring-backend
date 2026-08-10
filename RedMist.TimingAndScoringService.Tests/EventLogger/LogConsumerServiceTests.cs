@@ -176,6 +176,13 @@ public class LogConsumerServiceTests
             "The entry must still be acknowledged so a bad field cannot wedge the stream.");
     }
 
+    /// <summary>
+    /// BUG (pinned, not fixed): the two ways a field name can be malformed are handled completely
+    /// differently. A name with too few tags (the test above) is skipped and the entry is still
+    /// acknowledged; a name with the right shape but a non-numeric session id reaches <c>int.Parse</c>,
+    /// which throws out of the whole iteration. The entry is never acknowledged, so it is redelivered on
+    /// every pass for as long as the consumer runs - one poison field wedges the stream permanently.
+    /// </summary>
     [TestMethod]
     public async Task ExecuteAsync_NonNumericSessionIdTag_FailsTheIterationAndLogsAnError()
     {

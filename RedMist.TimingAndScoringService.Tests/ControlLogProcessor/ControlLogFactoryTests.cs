@@ -20,18 +20,6 @@ public class ControlLogFactoryTests
         new(NullLoggerFactory.Instance, new ConfigurationBuilder().Build(), Mock.Of<IDbContextFactory<TsContext>>(), store);
 
     [TestMethod]
-    [DataRow(ControlLogType.WRL_GOOGLE_SHEET)]
-    [DataRow(ControlLogType.CHAMPCAR_GOOGLE_SHEET)]
-    [DataRow(ControlLogType.LUCKYDOG_GOOGLE_SHEET)]
-    [DataRow(ControlLogType.ANNOUNCEMENT)]
-    public void CreateControlLog_BuildsTheImplementationThatReportsTheRequestedType(string type)
-    {
-        using var log = Factory().CreateControlLog(type);
-
-        Assert.AreEqual(type, log.Type);
-    }
-
-    [TestMethod]
     public void CreateControlLog_EveryTypeInTheAdvertisedListIsSupported()
     {
         foreach (var type in ControlLogType.Types)

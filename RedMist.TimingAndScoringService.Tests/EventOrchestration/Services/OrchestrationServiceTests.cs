@@ -445,6 +445,11 @@ public class OrchestrationServiceTests
             k8s.CreatedJobs.Select(j => j.Metadata.Name).ToArray());
     }
 
+    /// <summary>
+    /// A configured external-source image is cluster-wide; only the event's own timing source decides
+    /// whether the job is wanted. Asserted as the whole job set rather than as the absence of one name,
+    /// so a regression that stopped creating any jobs at all could not pass this.
+    /// </summary>
     [TestMethod]
     public async Task EnsureEventJobsAsync_RelayTimingSourceWithImageConfigured_DoesNotCreateExternalSourceJob()
     {
@@ -454,7 +459,9 @@ public class OrchestrationServiceTests
         await svc.EnsureEventJobsAsync(new RelayConnectionEventEntry { EventId = 42, OrganizationId = 7 },
             k8s.Object, Namespace, k8s.Jobs, CancellationToken.None);
 
-        Assert.IsFalse(k8s.CreatedJobs.Any(j => j.Metadata.Name.Contains("external-source")));
+        CollectionAssert.AreEquivalent(
+            new[] { "tst-evt-42-logger", "tst-evt-42-event-processor" },
+            k8s.CreatedJobs.Select(j => j.Metadata.Name).ToArray());
     }
 
     [TestMethod]
@@ -481,8 +488,8 @@ public class OrchestrationServiceTests
     public async Task DisposeEventAsync_DeletesTheEventsJobsAndTheirServices()
     {
         var svc = CreateService();
-        // NOTE: matching is a substring test on "evt-{id}", so an id that is a prefix of another
-        // (4 vs 42) would also match. Job names for distinct ids are used here deliberately.
+        // Ids that are not prefixes of one another, so this covers the intended behavior only; the
+        // prefix collision is pinned separately below.
         var jobs = JobList(
             NewJob("tst-evt-42-logger", 0, 0),
             NewJob("tst-evt-42-event-processor", 0, 0),
@@ -497,6 +504,30 @@ public class OrchestrationServiceTests
             new[] { "tst-evt-42-logger-service", "tst-evt-42-event-processor-service" }, k8s.DeletedServices);
         Assert.IsTrue(k8s.RequestedNamespaces.All(n => n == Namespace),
             "Teardown must stay inside the orchestrator's own namespace");
+    }
+
+    /// <summary>
+    /// BUG (pinned, not fixed): a job belongs to the event being torn down if its name
+    /// <c>Contains("evt-{id}")</c>, which is a substring test, not a segment one. Retiring event 4
+    /// therefore also matches "tst-evt-42-..." and "tst-evt-400-...", and deletes the jobs of an event
+    /// that may be mid-race. Job names are generated as "{org}-evt-{id}-{role}", so a segment-aware
+    /// match ("evt-{id}-") would fix it.
+    /// </summary>
+    [TestMethod]
+    public async Task DisposeEventAsync_EventIdIsAPrefixOfAnotherEventsId_AlsoDeletesThatOtherEventsJobs()
+    {
+        var svc = CreateService();
+        var jobs = JobList(
+            NewJob("tst-evt-4-logger", 0, 0),
+            NewJob("tst-evt-42-event-processor", 0, 0),
+            NewJob("tst-evt-400-logger", 0, 0));
+
+        await svc.DisposeEventAsync(new RelayConnectionEventEntry { EventId = 4, OrganizationId = 7 },
+            k8s.Object, Namespace, jobs, CancellationToken.None);
+
+        CollectionAssert.AreEquivalent(
+            new[] { "tst-evt-4-logger", "tst-evt-42-event-processor", "tst-evt-400-logger" }, k8s.DeletedJobs,
+            "Only tst-evt-4-logger belongs to event 4; the other two are live events being torn down with it.");
     }
 
     [TestMethod]

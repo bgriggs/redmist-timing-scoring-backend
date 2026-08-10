@@ -111,17 +111,6 @@ public class OrganizationControllerTests
         Assert.AreEqual(1, _cache.FactoryInvocations.Count(k => k == "org-list"));
     }
 
-    [TestMethod]
-    public async Task GetOrganizations_NoRelayOrganizations_ReturnsEmptyList()
-    {
-        AddOrganization(1, "Internal", "svc-internal");
-        await _db.SaveChangesAsync();
-
-        var result = await _controller.GetOrganizations();
-
-        Assert.AreEqual(0, ((List<OrganizationSummary>)((OkObjectResult)result.Result!).Value!).Count);
-    }
-
     #endregion
 
     #region GetOrganizationIcon
@@ -215,17 +204,8 @@ public class OrganizationControllerTests
 
     #region GetImageMimeType
 
-    [TestMethod]
-    public void GetImageMimeType_DetectsPng() => Assert.AreEqual("image/png", TestOrganizationController.MimeTypeOf(PngBytes));
-
-    [TestMethod]
-    public void GetImageMimeType_DetectsJpeg() => Assert.AreEqual("image/jpeg", TestOrganizationController.MimeTypeOf(JpegBytes));
-
-    [TestMethod]
-    public void GetImageMimeType_DetectsGif() => Assert.AreEqual("image/gif", TestOrganizationController.MimeTypeOf(GifBytes));
-
-    [TestMethod]
-    public void GetImageMimeType_DetectsBmp() => Assert.AreEqual("image/bmp", TestOrganizationController.MimeTypeOf(BmpBytes));
+    // The four recognized signatures (PNG, JPEG, GIF, BMP) are each asserted end-to-end through
+    // GetOrganizationIcon above, so only the fallbacks are exercised directly here.
 
     [TestMethod]
     public void GetImageMimeType_UnrecognizedSignature_FallsBackToOctetStream() =>

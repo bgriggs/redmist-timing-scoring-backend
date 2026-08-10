@@ -293,20 +293,40 @@ public class SentinelStatusServicePollingTests
         Assert.IsEmpty(publishedDrivers[0]);
     }
 
+    /// <summary>
+    /// The filter is a prefix match, not a substring one, so a name that merely contains "PROD" is a
+    /// competitor and is published as one. This is the behavior that is wanted.
+    /// </summary>
     [TestMethod]
-    [DataRow("prod cam")]
-    [DataRow("Prod Cam")]
-    [DataRow("REPRODUCTION")]
-    public async Task ExecuteAsync_NameOnlyResemblingProduction_IsTreatedAsDriver(string driverName)
+    public async Task ExecuteAsync_NameOnlyResemblingProduction_IsTreatedAsDriver()
     {
-        // The filter is a plain StartsWith with no StringComparison - a culture-sensitive, case-sensitive
-        // prefix match - so these are all real drivers.
+        const string driverName = "REPRODUCTION";
         ArrangeStreams([StreamOf("111", driverName, youTube: "https://youtu.be/a")]);
         var cts = ArrangeIterations(1);
 
         await RunLoopAsync(cts);
 
         Assert.AreEqual(driverName, publishedDrivers[0].Single().DriverName);
+    }
+
+    /// <summary>
+    /// BUG (pinned, not fixed): the camera filter is <c>!stream.DriverName.StartsWith("PROD")</c> with no
+    /// <see cref="StringComparison"/>, so it only matches the upper-case spelling. A facility camera that
+    /// Sentinel reports as "prod cam" is published as a competitor's driver name and shows up against
+    /// whichever car holds that transponder.
+    /// </summary>
+    [TestMethod]
+    [DataRow("prod cam")]
+    [DataRow("Prod Cam")]
+    public async Task ExecuteAsync_ProductionCameraNameInAnyCaseButUpper_IsPublishedAsADriver(string driverName)
+    {
+        ArrangeStreams([StreamOf("111", driverName, youTube: "https://youtu.be/a")]);
+        var cts = ArrangeIterations(1);
+
+        await RunLoopAsync(cts);
+
+        Assert.AreEqual(driverName, publishedDrivers[0].Single().DriverName,
+            "A camera feed is being advertised as a driver.");
     }
 
     [TestMethod]
@@ -503,8 +523,10 @@ public class SentinelStatusServicePollingTests
 
     // NOTE: ProcessUiStatusRequestAsync is currently unreachable in production - nothing subscribes to
     // the UI status command, so a newly connected UI never gets the cached video metadata replayed.
-    // These tests pin the behavior for whenever the subscription is wired back up; they are not
-    // evidence that the replay works today.
+    // These pin the replay and the one guard that can actually fail (a payload that deserializes to
+    // null) for whenever the subscription is wired back up; they are not evidence that the replay works
+    // today. The "nothing cached yet" branch is not covered: with no caller there is nothing to regress,
+    // and a mock-was-not-called assertion on a plain null check buys nothing.
 
     [TestMethod]
     public async Task ProcessUiStatusRequest_WithCachedMetadata_ReplaysToRequestingConnection()
@@ -527,19 +549,12 @@ public class SentinelStatusServicePollingTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// A payload of literal "null" deserializes to a null command. Without the guard the next line
+    /// dereferences it, so this is the case that would throw rather than merely do nothing.
+    /// </summary>
     [TestMethod]
-    public async Task ProcessUiStatusRequest_NoCachedMetadata_SendsNothing()
-    {
-        var clients = new Mock<IHubClients>();
-        mockHubContext.Setup(x => x.Clients).Returns(clients.Object);
-
-        await InvokeProcessUiStatusRequestAsync("{\"EventId\":7,\"ConnectionId\":\"conn-9\"}");
-
-        clients.Verify(x => x.Client(It.IsAny<string>()), Times.Never);
-    }
-
-    [TestMethod]
-    public async Task ProcessUiStatusRequest_NullCommand_SendsNothing()
+    public async Task ProcessUiStatusRequest_PayloadDeserializingToNull_IsIgnoredWithoutThrowing()
     {
         var clients = new Mock<IHubClients>();
         mockHubContext.Setup(x => x.Clients).Returns(clients.Object);

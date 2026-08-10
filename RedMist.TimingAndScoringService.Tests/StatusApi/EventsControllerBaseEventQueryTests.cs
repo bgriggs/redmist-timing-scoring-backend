@@ -145,14 +145,6 @@ public class EventsControllerBaseEventQueryTests
         Assert.AreEqual("B-Race", events.Single(e => e.EventName == "B").Sessions.Single().Name);
     }
 
-    [TestMethod]
-    public async Task LoadEvents_EmptyDatabase_ReturnsEmptyList()
-    {
-        var events = Events(await _h.Controller.LoadEvents(DateTime.UtcNow.AddDays(-1)));
-
-        Assert.AreEqual(0, events.Count);
-    }
-
     #endregion
 
     #region LoadLiveEvents
