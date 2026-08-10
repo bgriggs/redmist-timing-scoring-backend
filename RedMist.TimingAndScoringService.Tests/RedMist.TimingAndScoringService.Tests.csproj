@@ -44,6 +44,10 @@
 		<ProjectReference Include="..\RedMist.EventOrchestration\RedMist.EventOrchestration.csproj" />
 		<ProjectReference Include="..\RedMist.EventManagement\RedMist.EventManagement.csproj" />
 		<ProjectReference Include="..\RedMist.StatusApi\RedMist.StatusApi.csproj" />
+		<ProjectReference Include="..\RedMist.EventLogger\RedMist.EventLogger.csproj" />
+		<ProjectReference Include="..\RedMist.RelayApi\RedMist.RelayApi.csproj" />
+		<ProjectReference Include="..\RedMist.SponsorDataRollup\RedMist.SponsorDataRollup.csproj" />
+		<ProjectReference Include="..\RedMist.SponsorReports\RedMist.SponsorReports.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
