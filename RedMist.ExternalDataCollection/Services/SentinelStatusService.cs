@@ -24,7 +24,7 @@ public class SentinelStatusService : BackgroundService
     /// Interval for checking for updates from Sentinel endpoint. This is accessible
     /// for unit testing.
     /// </summary>
-    private TimeSpan UpdateInterval { get; set; } = TimeSpan.FromSeconds(15);
+    internal TimeSpan UpdateInterval { get; set; } = TimeSpan.FromSeconds(15);
     private readonly SemaphoreSlim subscriptionCheckLock = new(1);
     private List<VideoMetadata>? lastVideoMetadata;
     private List<DriverInfo>? lastDriverInfo;

@@ -1,6 +1,7 @@
 ﻿using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarVideo;
 using RestSharp;
+using RestSharp.Authenticators;
 using BigMission.Shared.Auth;
 using MessagePack;
 
@@ -11,7 +12,14 @@ public class ExternalTelemetryClient
     private readonly RestClient restClient;
 
 
-    public ExternalTelemetryClient(IConfiguration configuration)
+    public ExternalTelemetryClient(IConfiguration configuration) : this(configuration, null, null)
+    {
+    }
+
+    /// <summary>
+    /// Allows the authenticator and message handler to be supplied so the HTTP transport can be stubbed for testing.
+    /// </summary>
+    internal ExternalTelemetryClient(IConfiguration configuration, IAuthenticator? authenticator, HttpMessageHandler? messageHandler)
     {
         var url = configuration["Server:ExtTelemUrl"] ?? throw new ArgumentException("Server ExtTelemUrl is not configured.");
         var authUrl = configuration["Keycloak:AuthServerUrl"] ?? throw new ArgumentException("Keycloak URL is not configured.");
@@ -21,8 +29,12 @@ public class ExternalTelemetryClient
 
         var options = new RestClientOptions(url)
         {
-            Authenticator = new KeycloakServiceAuthenticator(string.Empty, authUrl, realm, clientId, clientSecret)
+            Authenticator = authenticator ?? new KeycloakServiceAuthenticator(string.Empty, authUrl, realm, clientId, clientSecret)
         };
+        if (messageHandler != null)
+        {
+            options.ConfigureMessageHandler = _ => messageHandler;
+        }
         restClient = new RestClient(options);
 
         // Add default Accept header for all requests (MessagePack preferred, JSON fallback)
