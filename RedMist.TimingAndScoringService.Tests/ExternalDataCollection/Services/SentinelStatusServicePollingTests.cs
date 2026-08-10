@@ -50,6 +50,11 @@ public class SentinelStatusServicePollingTests
     private readonly List<List<DriverInfo>> publishedDrivers = [];
     private readonly List<CancellationToken> publishTokens = [];
 
+    private CancellationTokenSource? loopCts;
+    private CancellationToken loopToken;
+    private int iterationBudget;
+    private int iterationsStarted;
+
     [TestInitialize]
     public void Setup()
     {
@@ -83,18 +88,28 @@ public class SentinelStatusServicePollingTests
             .ReturnsAsync(true);
         mockTelemetryClient
             .Setup(x => x.UpdateDriversAsync(It.IsAny<List<DriverInfo>>(), It.IsAny<CancellationToken>()))
-            .Callback<List<DriverInfo>, CancellationToken>((d, t) => { publishedDrivers.Add(d); publishTokens.Add(t); })
+            .Callback<List<DriverInfo>, CancellationToken>((d, t) =>
+            {
+                publishedDrivers.Add(d);
+                publishTokens.Add(t);
+                // The driver publish is the last thing a poll does, so stopping here lets the whole
+                // poll body run against a live token, the way it does in production.
+                if (iterationsStarted >= iterationBudget)
+                {
+                    loopCts?.Cancel();
+                }
+            })
             .ReturnsAsync(true);
 
         // Unless a test says otherwise, every SVN URL probe succeeds.
         SetSvnResponse(StubHttpMessageHandler.Status(HttpStatusCode.OK));
 
         service = new TestableSentinelStatusService(loggerFactory.Object, mockCacheMux.Object, mockHubContext.Object,
-            mockSentinelClient.Object, mockEventsChecker.Object, mockTelemetryClient.Object, mockHttpClientFactory.Object);
-
-        // Cancellation, not the clock, ends the loop in these tests.
-        typeof(SentinelStatusService).GetProperty("UpdateInterval", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .SetValue(service, TimeSpan.Zero);
+            mockSentinelClient.Object, mockEventsChecker.Object, mockTelemetryClient.Object, mockHttpClientFactory.Object)
+        {
+            // Cancellation, not the clock, ends the loop in these tests.
+            UpdateInterval = TimeSpan.Zero
+        };
     }
 
     #region Event gating
@@ -284,7 +299,8 @@ public class SentinelStatusServicePollingTests
     [DataRow("REPRODUCTION")]
     public async Task ExecuteAsync_NameOnlyResemblingProduction_IsTreatedAsDriver(string driverName)
     {
-        // The filter is a case-sensitive prefix match, so these are real drivers.
+        // The filter is a plain StartsWith with no StringComparison - a culture-sensitive, case-sensitive
+        // prefix match - so these are all real drivers.
         ArrangeStreams([StreamOf("111", driverName, youTube: "https://youtu.be/a")]);
         var cts = ArrangeIterations(1);
 
@@ -411,22 +427,10 @@ public class SentinelStatusServicePollingTests
     [TestMethod]
     public async Task ExecuteAsync_EventLookupThrows_RecoversOnNextPoll()
     {
-        var cts = new CancellationTokenSource();
-        var calls = 0;
-        mockEventsChecker.Setup(x => x.GetCurrentEventsAsync()).Returns(() =>
-        {
-            calls++;
-            if (calls >= 2)
-            {
-                cts.Cancel();
-            }
-            if (calls == 1)
-            {
-                throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, "redis down");
-            }
-            return Task.FromResult(OneEvent());
-        });
         ArrangeStreams([StreamOf("111", "Alice", youTube: "https://youtu.be/a")]);
+        var cts = ArrangeIterations(2, iteration => iteration == 1
+            ? throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, "redis down")
+            : OneEvent());
 
         await RunLoopAsync(cts);
 
@@ -489,13 +493,18 @@ public class SentinelStatusServicePollingTests
         await RunLoopAsync(cts);
 
         Assert.HasCount(2, publishTokens);
-        Assert.IsTrue(publishTokens.TrueForAll(t => t == cts.Token),
+        Assert.IsTrue(publishTokens.TrueForAll(t => t == loopToken),
             "Publishes must observe the service stopping token so shutdown is not blocked");
     }
 
     #endregion
 
     #region UI status request replay
+
+    // NOTE: ProcessUiStatusRequestAsync is currently unreachable in production - nothing subscribes to
+    // the UI status command, so a newly connected UI never gets the cached video metadata replayed.
+    // These tests pin the behavior for whenever the subscription is wired back up; they are not
+    // evidence that the replay works today.
 
     [TestMethod]
     public async Task ProcessUiStatusRequest_WithCachedMetadata_ReplaysToRequestingConnection()
@@ -558,23 +567,26 @@ public class SentinelStatusServicePollingTests
         [new RelayConnectionEventEntry { EventId = eventId, ConnectionId = "relay-1" }];
 
     /// <summary>
-    /// Arranges the event lookup so the poll loop runs exactly <paramref name="iterations"/> times and then
-    /// exits through cancellation rather than through the wall clock.
+    /// Arranges the event lookup so the poll loop runs <paramref name="iterations"/> times and then exits
+    /// through cancellation rather than through the wall clock. The stop is normally requested once the
+    /// last poll has published (see the driver publish callback); this only stops a run whose polls never
+    /// reach a publish, such as an idle loop with no live event.
     /// </summary>
     private CancellationTokenSource ArrangeIterations(int iterations, Func<int, List<RelayConnectionEventEntry>>? events = null)
     {
-        var cts = new CancellationTokenSource();
-        var call = 0;
+        iterationBudget = iterations;
+        iterationsStarted = 0;
+        loopCts = new CancellationTokenSource();
         mockEventsChecker.Setup(x => x.GetCurrentEventsAsync()).Returns(() =>
         {
-            call++;
-            if (call >= iterations)
+            iterationsStarted++;
+            if (iterationsStarted > iterationBudget)
             {
-                cts.Cancel();
+                loopCts.Cancel();
             }
-            return Task.FromResult(events?.Invoke(call) ?? OneEvent());
+            return Task.FromResult(events?.Invoke(iterationsStarted) ?? OneEvent());
         });
-        return cts;
+        return loopCts;
     }
 
     /// <summary>
@@ -600,16 +612,21 @@ public class SentinelStatusServicePollingTests
 
     private async Task RunLoopAsync(CancellationTokenSource cts)
     {
-        // Failsafe only: a regression that stops honoring cancellation must not hang the suite.
-        cts.CancelAfter(TimeSpan.FromSeconds(30));
+        // The failsafe stops a loop that ignores cancellation from hanging (or hot spinning) the suite.
+        // It is asserted on so that such a regression fails the test instead of passing slowly.
+        using var failsafe = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, failsafe.Token);
+        loopToken = linked.Token;
         try
         {
-            await service.RunAsync(cts.Token);
+            await service.RunAsync(linked.Token);
         }
         catch (OperationCanceledException)
         {
             // Expected: the inter-poll delay throws once the service is stopped.
         }
+
+        Assert.IsFalse(failsafe.IsCancellationRequested, "The poll loop did not exit when cancellation was requested");
     }
 
     private void SetLastVideoMetadata(List<VideoMetadata> metadata)

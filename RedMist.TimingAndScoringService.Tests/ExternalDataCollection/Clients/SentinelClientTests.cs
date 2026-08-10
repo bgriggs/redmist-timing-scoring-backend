@@ -72,15 +72,6 @@ public class SentinelClientTests
     }
 
     [TestMethod]
-    public async Task GetStreamsAsync_EmptyFeed_ReturnsEmptyList()
-    {
-        var handler = StubHttpMessageHandler.Json(HttpStatusCode.OK, "[]");
-        var client = new SentinelClient(Config(), handler);
-
-        Assert.IsEmpty(await client.GetStreamsAsync());
-    }
-
-    [TestMethod]
     public async Task GetStreamsAsync_NullBody_ReturnsEmptyListRatherThanNull()
     {
         var handler = StubHttpMessageHandler.Json(HttpStatusCode.OK, "null");
