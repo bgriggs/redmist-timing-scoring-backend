@@ -12,7 +12,8 @@ namespace RedMist.SponsorDataRollup;
 public class SponsorStatisticsRollupJob(
     ILoggerFactory loggerFactory,
     IDbContextFactory<TsContext> contextFactory,
-    IHostApplicationLifetime lifetime) : BackgroundService
+    IHostApplicationLifetime lifetime,
+    TimeProvider? timeProvider = null) : BackgroundService
 {
     private const string IMPRESSION = "Impression";
     private const string VIEWABLE_IMPRESSION = "ViewableImpression";
@@ -20,6 +21,7 @@ public class SponsorStatisticsRollupJob(
     private const string ENGAGEMENT_DURATION = "EngagementDuration";
 
     private readonly ILogger logger = loggerFactory.CreateLogger<SponsorStatisticsRollupJob>();
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
 
     private sealed class SponsorAggregate
     {
@@ -56,12 +58,20 @@ public class SponsorStatisticsRollupJob(
     {
         // Wait for the host to fully start before executing (K8s networking/DNS readiness)
         await WaitForStartupAsync(stoppingToken);
+        await RunRollupAsync(stoppingToken);
+    }
 
+    /// <summary>
+    /// Runs the rollup once. Separated from <see cref="ExecuteAsync"/> so the work can be
+    /// invoked without the host-startup wait.
+    /// </summary>
+    internal async Task RunRollupAsync(CancellationToken stoppingToken)
+    {
         try
         {
             logger.LogInformation("Sponsor statistics rollup job starting");
 
-            var now = DateTime.UtcNow;
+            var now = clock.GetUtcNow().UtcDateTime;
             var previousMonth = now.AddMonths(-1);
             var monthStart = new DateTime(previousMonth.Year, previousMonth.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var monthEnd = monthStart.AddMonths(1);
@@ -341,7 +351,7 @@ public class SponsorStatisticsRollupJob(
         lifetime.ApplicationStarted.Register(() => tcs.TrySetResult());
         await tcs.Task;
         // Additional delay for K8s DNS/networking to fully stabilize
-        await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
+        await Task.Delay(TimeSpan.FromSeconds(3), clock, stoppingToken);
         logger.LogInformation("Host started, beginning rollup job");
     }
 
