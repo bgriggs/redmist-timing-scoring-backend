@@ -44,8 +44,5 @@
 		<ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
 	</ItemGroup>
 
-	<ItemGroup>
-		<InternalsVisibleTo Include="RedMist.TimingAndScoringService.Tests" />
-	</ItemGroup>
 
 </Project>

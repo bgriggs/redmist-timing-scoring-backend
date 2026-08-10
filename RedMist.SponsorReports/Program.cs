@@ -15,7 +15,6 @@ string sqlConn = builder.Configuration["ConnectionStrings:Default"] ?? throw new
 builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
 
 builder.Services.AddTransient<EmailHelper>();
-builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHostedService<SponsorReportJob>();
 
 builder.Services.AddHealthChecks()

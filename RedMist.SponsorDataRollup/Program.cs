@@ -16,7 +16,6 @@ builder.Services.AddDbContextFactory<TsContext>(op => op.UseNpgsql(sqlConn));
 builder.Services.AddHealthChecks()
     .AddNpgSql(sqlConn, name: "postgres", tags: ["db", "postgres"]);
 
-builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHostedService<SponsorStatisticsRollupJob>();
 
 var app = builder.Build();

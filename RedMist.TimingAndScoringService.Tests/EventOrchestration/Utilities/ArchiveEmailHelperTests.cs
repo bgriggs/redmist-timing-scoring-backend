@@ -64,11 +64,24 @@ public class ArchiveEmailHelperTests
         StringAssert.Contains(email.Body, "End Date: 2026-07-04");
     }
 
+    /// <summary>
+    /// A missing transport must stay survivable: the hosted services that build this helper do so from
+    /// their own constructors, so throwing here would fault host startup. The failure has to surface
+    /// from the send instead, where it is logged and swallowed.
+    /// </summary>
     [TestMethod]
-    public void Constructor_WithNoEmailHelperAndNoSendDelegate_Throws()
+    public async Task SendArchiveFailureEmailAsync_WithNoEmailHelperAndNoSendDelegate_LogsInsteadOfThrowing()
     {
-        Assert.ThrowsExactly<ArgumentNullException>(
-            () => new ArchiveEmailHelper(new Mock<ILogger>().Object, dbFactory, emailHelper: null));
+        var logger = new Mock<ILogger>();
+        var helper = new ArchiveEmailHelper(logger.Object, dbFactory, emailHelper: null);
+
+        // Constructing is fine; only the send trips over the missing transport, and it is contained.
+        await helper.SendArchiveFailureEmailAsync("Failed to archive laps", eventId: null, retryCount: 0, exception: null);
+
+        logger.Verify(
+            l => l.Log(LogLevel.Error, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(),
+                It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
     }
 
     [TestMethod]
