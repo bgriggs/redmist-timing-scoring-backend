@@ -347,10 +347,63 @@ public class EventAggregatorServiceTests
         /// last entry is acknowledged, so the loop exits on its own condition with the startup work
         /// and one full read behind it, and nothing waits on a timer.
         /// </summary>
+        /// <remarks>
+        /// The acknowledgement is the only thing that stops the loop, and it stops it only for as long
+        /// as one particular <c>StreamAcknowledgeAsync</c> overload keeps matching the production call.
+        /// If it stops matching - a StackExchange.Redis overload change, or an argument added at the call
+        /// site - the read keeps returning entries and the loop spins with nothing to slow it down. The
+        /// read budget turns that into a failure in milliseconds instead of a hot spin that runs until the
+        /// 30 second timeout, which MSTest abandons rather than kills, leaving the loop running for the
+        /// rest of the suite.
+        ///
+        /// The failsafe covers the other half: if a <c>StreamReadGroupAsync</c> setup stops matching,
+        /// <see cref="ServeEntries"/> is never reached, so the budget cannot trip. The loop then retries
+        /// behind its real five second throttle and would otherwise also run to the timeout.
+        /// </remarks>
         public async Task RunAsync()
         {
-            await _service.StartAsync(_cts.Token);
-            await _service.ExecuteTask!;
+            using var failsafe = new CancellationTokenSource(FailsafeTimeout);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, failsafe.Token);
+
+            await _service.StartAsync(linked.Token);
+            try
+            {
+                await _service.ExecuteTask!;
+            }
+            catch (OperationCanceledException) when (_readBudgetExhausted || failsafe.IsCancellationRequested)
+            {
+                // Reachable only on the two stop-it-from-outside paths below: the loop was still mid-poll
+                // when it was stopped, so its inter-poll delay observes the canceled token. Both are
+                // asserted on immediately after, and the normal exit throws nothing.
+            }
+
+            Assert.IsFalse(failsafe.IsCancellationRequested,
+                $"The read loop did not stop within {FailsafeTimeout.TotalSeconds:0}s. The mocked stream read is "
+                + "no longer matching the production call, so the loop never saw an entry to acknowledge.");
+            Assert.IsFalse(_readBudgetExhausted,
+                $"The read loop made more than {MaxReadPasses} passes. Nothing acknowledged an entry, so the "
+                + "StreamAcknowledgeAsync setup is no longer matching the production call and the loop had "
+                + "no way to stop.");
+        }
+
+        /// <summary>Backstop for a loop that never reaches <see cref="ServeEntries"/>. See <see cref="RunAsync"/>.</summary>
+        private static readonly TimeSpan FailsafeTimeout = TimeSpan.FromSeconds(15);
+
+        /// <summary>A healthy run reads once: the batch is served, acknowledged, and the loop exits.</summary>
+        private const int MaxReadPasses = 5;
+        private int _readPasses;
+        private volatile bool _readBudgetExhausted;
+
+        /// <summary>Serves <see cref="Entries"/>, stopping the run if the loop will not stop itself.</summary>
+        private StreamEntry[] ServeEntries()
+        {
+            if (Interlocked.Increment(ref _readPasses) > MaxReadPasses)
+            {
+                _readBudgetExhausted = true;
+                _cts.Cancel();
+                return [];
+            }
+            return Entries;
         }
 
         private void SetupRedis()
@@ -379,13 +432,13 @@ public class EventAggregatorServiceTests
 
             Database.Setup(x => x.StreamReadGroupAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(),
                     It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<CommandFlags>()))
-                .ReturnsAsync(() => Entries);
+                .ReturnsAsync(ServeEntries);
             Database.Setup(x => x.StreamReadGroupAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(),
                     It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
-                .ReturnsAsync(() => Entries);
+                .ReturnsAsync(ServeEntries);
             Database.Setup(x => x.StreamReadGroupAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(),
                     It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<TimeSpan?>(), It.IsAny<CommandFlags>()))
-                .ReturnsAsync(() => Entries);
+                .ReturnsAsync(ServeEntries);
 
             Database.Setup(x => x.StreamAcknowledgeAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
                 .Callback<RedisKey, RedisValue, RedisValue, CommandFlags>((_, _, id, _) =>

@@ -125,6 +125,14 @@ public class ExternalMessageLogConsumerTests
         Assert.AreEqual("kept", row.Data);
     }
 
+    /// <summary>
+    /// BUG (pinned, not fixed): the two ways a field name can be malformed are handled completely
+    /// differently. A name with too few tags is skipped and the entry is still acknowledged (see the
+    /// mixed-fields test above); a name with the right shape but a non-numeric session id reaches
+    /// <c>int.Parse</c>, which throws out of the whole iteration. The entry is never acknowledged, so it
+    /// is redelivered on every pass for as long as the consumer runs - one poison field wedges the stream
+    /// permanently.
+    /// </summary>
     [TestMethod]
     public async Task ExecuteAsync_NonNumericSessionIdTag_FailsTheIterationWithoutAcknowledging()
     {
@@ -280,6 +288,9 @@ public class ExternalMessageLogConsumerTests
 
         await RunAsync(CreateService().RunAsync, cts.Token);
 
+        mockCache.Verify(x => x.StreamCreateConsumerGroupAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(),
+            It.IsAny<RedisValue?>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()), Times.Once,
+            "The stream is ensured before the loop looks at its token, so a pod stopped at start still leaves it usable.");
         mockCache.Verify(x => x.StreamReadGroupAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(),
             It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<TimeSpan?>(), It.IsAny<CommandFlags>()),
             Times.Never);

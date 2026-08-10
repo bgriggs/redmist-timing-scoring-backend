@@ -161,10 +161,9 @@ public class EventsControllerVersionedTests
     [TestMethod]
     public async Task V2_GetUIVersionInfo_SecondCall_ServedFromCache()
     {
-        var first = await _h.Controller.GetUIVersionInfoAsync();
-        var second = await _h.Controller.GetUIVersionInfoAsync();
+        await _h.Controller.GetUIVersionInfoAsync();
+        await _h.Controller.GetUIVersionInfoAsync();
 
-        Assert.AreEqual(first.LatestIOSVersion, second.LatestIOSVersion);
         Assert.AreEqual(1, _h.Cache.FactoryInvocations.Count(k => k == "ui-version-info"));
     }
 

@@ -137,6 +137,12 @@ public class ControlLogEnricherRefreshTests
 
     /// <summary>
     /// A Redis outage must leave the poll running; it recovers on its own once Redis is back.
+    ///
+    /// BUG (pinned, not fixed): the retry is completely unthrottled. The one-second delay sits at the end
+    /// of the try block, after the read, so a read that throws skips it and the catch goes straight back
+    /// round the loop. During a Redis outage this spins as fast as the connection can fail, hammering the
+    /// log with an error per iteration - every sibling service throttles before retrying. That is why this
+    /// test needs no fake clock to reach its second attempt: the second attempt is immediate.
     /// </summary>
     [TestMethod]
     [Timeout(30_000)]

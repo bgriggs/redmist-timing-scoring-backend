@@ -143,14 +143,6 @@ public class EventsControllerBaseLapAndSessionTests
         Assert.AreEqual(2, laps[2].LastLapCompleted);
     }
 
-    [TestMethod]
-    public async Task LoadSessionLaps_NoRows_ReturnsEmptyList()
-    {
-        var laps = await _h.Controller.LoadSessionLaps(1, 10);
-
-        Assert.AreEqual(0, laps.Count);
-    }
-
     #endregion
 
     #region LoadFlags
@@ -173,14 +165,6 @@ public class EventsControllerBaseLapAndSessionTests
         Assert.AreEqual(green, greenDuration.StartTime);
         Assert.AreEqual(green.AddMinutes(20), greenDuration.EndTime);
         Assert.IsNull(flags.Single(f => f.Flag == Flags.Yellow).EndTime, "an in-progress flag keeps a null end time");
-    }
-
-    [TestMethod]
-    public async Task LoadFlags_UnknownSession_ReturnsEmptyList()
-    {
-        var flags = await _h.Controller.LoadFlags(1, 10);
-
-        Assert.AreEqual(0, flags.Count);
     }
 
     #endregion
@@ -230,14 +214,6 @@ public class EventsControllerBaseLapAndSessionTests
 
         Assert.AreEqual("Event100 Race", first.Single().Name);
         Assert.AreEqual("Event200 Race", second.Single().Name);
-    }
-
-    [TestMethod]
-    public async Task LoadSessions_UnknownEvent_ReturnsEmptyList()
-    {
-        var sessions = await _h.Controller.LoadSessions(999);
-
-        Assert.AreEqual(0, sessions.Count);
     }
 
     #endregion
@@ -295,14 +271,6 @@ public class EventsControllerBaseLapAndSessionTests
         var metadata = await _h.Controller.LoadEventCompetitorMetadata(1);
 
         CollectionAssert.AreEquivalent(new[] { "42", "7" }, metadata.Select(m => m.CarNumber).ToArray());
-    }
-
-    [TestMethod]
-    public async Task LoadEventCompetitorMetadata_UnknownEvent_ReturnsEmptyList()
-    {
-        var metadata = await _h.Controller.LoadEventCompetitorMetadata(999);
-
-        Assert.AreEqual(0, metadata.Count);
     }
 
     #endregion

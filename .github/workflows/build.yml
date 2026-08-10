@@ -10,6 +10,9 @@ jobs:
   build:
 
     runs-on: windows-latest
+    # Without this the job inherits GitHub's 360 minute default, so a single hung test
+    # would burn six hours of runner time before anyone was told the build had failed.
+    timeout-minutes: 20
 
     steps:
     - uses: actions/checkout@v7
@@ -27,6 +30,8 @@ jobs:
   helm:
     name: Helm chart
     runs-on: ubuntu-latest
+    # Seconds of real work; anything longer is a hung fetch, not a slow lint.
+    timeout-minutes: 10
 
     steps:
     - uses: actions/checkout@v7

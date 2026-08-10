@@ -9,15 +9,49 @@ using RedMist.EventOrchestration.Utilities;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.X2;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 
 namespace RedMist.TimingAndScoringService.Tests.EventOrchestration.Utilities;
 
 /// <summary>
-/// Purging is destructive and irreversible, so these pin down exactly which rows go and which stay.
+/// Purging is destructive and irreversible, so these pin down which rows go and which stay - but only
+/// on one of the two code paths <see cref="PurgeUtilities"/> has.
+///
+/// Every delete method tries <c>ExecuteDeleteAsync</c> first and catches
+/// <c>InvalidOperationException ... Contains("ExecuteDelete")</c> to fall back to a load-and-RemoveRange
+/// pass over a second, fully duplicated list of the same tables. Production runs on Npgsql and therefore
+/// takes the <c>ExecuteDeleteAsync</c> path; EF InMemory does not support it, so <em>every row-level test
+/// in this class exercises the fallback</em>. The shipping path is not covered here and cannot be without
+/// a real database.
+///
+/// <see cref="DeleteAllEventDataAsync_BothBranchesTouchTheSameDbSets"/> is what stands in for that: it
+/// reads the compiled method and checks the two duplicated lists have not drifted apart, which is the
+/// failure the row-level tests would sail straight past.
 /// </summary>
 [TestClass]
 public class PurgeUtilitiesTests
 {
+    /// <summary>
+    /// The tables <see cref="PurgeUtilities.DeleteAllEventDataAsync"/> clears, in the order the
+    /// <c>ExecuteDeleteAsync</c> chain visits them (children first, the event itself last). Both of the
+    /// method's duplicated delete lists have to name every one of these.
+    /// </summary>
+    private static readonly string[] PurgedDbSets =
+    [
+        nameof(TsContext.CarLapLogs),
+        nameof(TsContext.CarLastLaps),
+        nameof(TsContext.CompetitorMetadata),
+        nameof(TsContext.EventStatusLogs),
+        nameof(TsContext.FlagLog),
+        nameof(TsContext.SessionResults),
+        nameof(TsContext.Sessions),
+        nameof(TsContext.X2Loops),
+        nameof(TsContext.X2Passings),
+        nameof(TsContext.Events),
+    ];
+
     private IDbContextFactory<TsContext> dbFactory = null!;
     private PurgeUtilities purge = null!;
 
@@ -120,6 +154,146 @@ public class PurgeUtilitiesTests
         Assert.HasCount(1, await db.Events.Where(e => e.Id == 2).ToListAsync());
     }
 
+    /// <summary>
+    /// The two delete lists inside <see cref="PurgeUtilities.DeleteAllEventDataAsync"/> are a copy of each
+    /// other, and nothing in the row-level tests can tell them apart: those all run the fallback, so a table
+    /// added to only the <c>ExecuteDeleteAsync</c> chain (the one production actually uses) or only to the
+    /// fallback leaves every one of them green while an event is left half-purged in production.
+    ///
+    /// This reads the compiled method instead and lists every <see cref="TsContext"/> DbSet fetch it
+    /// contains, in IL order. The <c>ExecuteDeleteAsync</c> chain comes first and fetches each table once;
+    /// the fallback follows and fetches each twice (the <c>Where</c> and the <c>RemoveRange</c>), so every
+    /// table is fetched exactly three times. A table in one list but not the other breaks that count.
+    /// </summary>
+    [TestMethod]
+    public void DeleteAllEventDataAsync_BothBranchesTouchTheSameDbSets()
+    {
+        var references = DbSetReferences(
+            typeof(PurgeUtilities).GetMethod(nameof(PurgeUtilities.DeleteAllEventDataAsync))!);
+
+        CollectionAssert.AreEqual(PurgedDbSets, references.Distinct().ToArray(),
+            "The tables the purge touches, or the order it touches them in, changed. Children must be deleted "
+            + "before the event row they hang off, and any change has to be made to both the ExecuteDeleteAsync "
+            + "chain and the InMemory fallback. Update PurgedDbSets once both are right.");
+
+        // Hard-coded rather than derived from one of the tables: comparing the tables against each other
+        // would go green if a whole branch were deleted, which is the regression this exists to catch.
+        const int perTable = 3;
+        foreach (var (table, count) in references.GroupBy(r => r).Select(g => (g.Key, g.Count())).OrderBy(r => r.Key))
+        {
+            Assert.AreEqual(perTable, count,
+                $"{table} is fetched {count} time(s) rather than {perTable}: once by the ExecuteDeleteAsync chain "
+                + "and twice by the fallback. Either it is missing from one of the two duplicated delete lists, or "
+                + "one of the lists is gone entirely.");
+        }
+    }
+
+    /// <summary>
+    /// Every <see cref="TsContext"/> DbSet fetch in <paramref name="method"/>, in IL order and with repeats.
+    /// Reads the IL of the async method's state machine, since both delete lists are compiled into the
+    /// one <c>MoveNext</c> and there is no other way to see the branch that never runs under InMemory.
+    /// </summary>
+    private static List<string> DbSetReferences(MethodInfo method)
+    {
+        var stateMachine = method.GetCustomAttribute<AsyncStateMachineAttribute>()?.StateMachineType;
+        Assert.IsNotNull(stateMachine, $"{method.Name} is no longer an async method.");
+        var moveNext = stateMachine.GetMethod("MoveNext", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.IsNotNull(moveNext);
+        var il = moveNext.GetMethodBody()?.GetILAsByteArray();
+        Assert.IsNotNull(il, "The method body was not readable.");
+
+        var references = new List<string>();
+        foreach (var token in CallTokens(il))
+        {
+            MethodBase? callee;
+            try
+            {
+                callee = moveNext.Module.ResolveMethod(token);
+            }
+            catch (ArgumentException)
+            {
+                // Generic instantiations (Where<T>, ToListAsync<T>, ...) need a context this does not
+                // have; none of them are TsContext members, so skipping them loses nothing.
+                continue;
+            }
+
+            if (callee?.DeclaringType != typeof(TsContext) || !callee.Name.StartsWith("get_", StringComparison.Ordinal))
+                continue;
+
+            references.Add(callee.Name["get_".Length..]);
+        }
+        return references;
+    }
+
+    /// <summary>
+    /// Walks a method body and yields the metadata token of every <c>call</c>/<c>callvirt</c>. Instruction
+    /// lengths come from <see cref="OpCodes"/> itself rather than a hand-written table.
+    /// </summary>
+    private static IEnumerable<int> CallTokens(byte[] il)
+    {
+        var operandSizes = OperandSizes();
+        int i = 0;
+        while (i < il.Length)
+        {
+            var offset = i;
+            short opCode = il[i];
+            if (il[i] == 0xFE)
+            {
+                opCode = (short)((0xFE << 8) | il[i + 1]);
+                i += 2;
+            }
+            else
+            {
+                i++;
+            }
+
+            if (!operandSizes.TryGetValue(opCode, out var operandSize))
+                throw new InvalidOperationException($"Unrecognized IL opcode 0x{opCode:X4} at offset {offset}.");
+
+            if (operandSize < 0) // switch: a count followed by that many 4 byte targets
+            {
+                i += 4 + (4 * BitConverter.ToInt32(il, i));
+                continue;
+            }
+
+            if (opCode == OpCodes.Call.Value || opCode == OpCodes.Callvirt.Value)
+                yield return BitConverter.ToInt32(il, i);
+
+            i += operandSize;
+        }
+    }
+
+    /// <summary>Operand byte count per opcode; -1 marks the variable-length <c>switch</c>.</summary>
+    private static Dictionary<short, int> OperandSizes()
+    {
+        var sizes = new Dictionary<short, int>();
+        foreach (var field in typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static))
+        {
+            if (field.GetValue(null) is not OpCode op)
+                continue;
+
+            sizes[op.Value] = op.OperandType switch
+            {
+                OperandType.InlineNone => 0,
+                OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
+                OperandType.InlineVar => 2,
+                OperandType.InlineBrTarget or OperandType.InlineField or OperandType.InlineI
+                    or OperandType.InlineMethod or OperandType.InlineSig or OperandType.InlineString
+                    or OperandType.InlineTok or OperandType.InlineType or OperandType.ShortInlineR => 4,
+                OperandType.InlineI8 or OperandType.InlineR => 8,
+                OperandType.InlineSwitch => -1,
+                _ => throw new NotSupportedException($"Unhandled operand type {op.OperandType} on {op.Name}."),
+            };
+        }
+        return sizes;
+    }
+
+    /// <summary>
+    /// The purge opens its transaction <em>before</em> the try block, so a database that refuses one fails
+    /// on the very first statement: "deletes nothing" is true by construction here, and the rollback in the
+    /// catch is never reached. The assertion below is therefore only guarding that the failure is not
+    /// swallowed - a genuine partial-delete-then-rollback needs a real database.
+    /// </summary>
     [TestMethod]
     public async Task DeleteAllEventDataAsync_TransactionCannotStart_ThrowsAndDeletesNothing()
     {

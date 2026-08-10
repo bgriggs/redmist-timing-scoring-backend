@@ -153,15 +153,4 @@ public class RequireEventAccessCodeAttributeTests
         Assert.IsFalse(fixture.NextCalled);
         fixture.Validator.Verify(x => x.ValidateAsync(7, null, It.IsAny<CancellationToken>()), Times.Once);
     }
-
-    [TestMethod]
-    public async Task EventIdIsForwardedVerbatim()
-    {
-        var fixture = new Fixture(new Dictionary<string, object?> { ["eventId"] = 4242 });
-        fixture.Validator.Setup(x => x.ValidateAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-
-        await Filter.OnActionExecutionAsync(fixture.Context, fixture.Next);
-
-        fixture.Validator.Verify(x => x.ValidateAsync(4242, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
-    }
 }

@@ -103,6 +103,12 @@ public class SimulatedEventPurgeServiceTests
         Assert.HasCount(1, await check.Events.ToListAsync());
     }
 
+    /// <summary>
+    /// What is being pinned here is the alert and the containment, not the rollback:
+    /// <c>PurgeUtilities.DeleteAllEventDataAsync</c> opens its transaction before its try block, so a
+    /// database that refuses one fails before a single delete is issued. "Nothing should have been deleted"
+    /// is true by construction, and the rollback in the catch is never reached on this path.
+    /// </summary>
     [TestMethod]
     public async Task RunSimulatedEventPurgeAsync_PurgeThrows_AlertsAndDoesNotPropagate()
     {

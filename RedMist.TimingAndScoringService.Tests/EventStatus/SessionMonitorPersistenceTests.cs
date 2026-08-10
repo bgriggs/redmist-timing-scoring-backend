@@ -359,6 +359,15 @@ public class SessionMonitorPersistenceTests
     /// The shutdown signal is broadcast when the orchestrator retires a processor, and reacting to
     /// it is the only chance a running session gets to be written out before the pod goes away.
     /// </summary>
+    /// <remarks>
+    /// Scope: this covers the subscribe/unsubscribe pair only, not the handler wiring.
+    /// <c>ISubscriber.SubscribeAsync</c> is mocked and returns null, so the <c>ch.OnMessage(HandleEventShutdown)</c>
+    /// that follows it in <c>SessionMonitor.EnsureEventShutdownSubscriptionAsync</c> throws a
+    /// NullReferenceException, which that method's catch logs and swallows. A regression that dropped the
+    /// OnMessage call would not fail this test. <c>ChannelMessageQueue</c> is sealed with no public
+    /// constructor, so there is nothing to hand back in its place; the handler itself is covered directly
+    /// by the EventShutdown_* tests above, which call HandleEventShutdown.
+    /// </remarks>
     [TestMethod]
     [Timeout(30_000)]
     public async Task Start_SubscribesToTheEventShutdownSignal()
@@ -378,6 +387,7 @@ public class SessionMonitorPersistenceTests
     /// Class colors come from the database and are cosmetic. A database that is not up yet at start
     /// must not stop the monitor, which is what finalizes every session for the event.
     /// </summary>
+    /// <remarks>Same scope limit as <see cref="Start_SubscribesToTheEventShutdownSignal"/>.</remarks>
     [TestMethod]
     [Timeout(30_000)]
     public async Task Start_WhenClassMetadataCannotBeLoaded_StillSubscribesToTheShutdownSignal()

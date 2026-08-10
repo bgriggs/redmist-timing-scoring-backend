@@ -45,9 +45,15 @@ public class SponsorTelemetryQueueTests
     /// Waits for the flusher to reach <paramref name="expected"/> persisted rows. Polls a condition
     /// rather than sleeping a fixed interval, so the test is not tied to the 15 second flush timer.
     /// </summary>
+    /// <remarks>
+    /// The deadline is deliberately shorter than the tests' [Timeout(30_000)]: a flusher that never
+    /// writes should fail on the row-count assertion, not be abandoned mid-run by the MSTest timeout.
+    /// The reader wakes on the channel rather than the flush timer, so a healthy flush lands in
+    /// milliseconds and this budget is never approached.
+    /// </remarks>
     private async Task<int> WaitForRowsAsync(int expected)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(30);
+        var deadline = DateTime.UtcNow.AddSeconds(20);
         while (DateTime.UtcNow < deadline)
         {
             using var db = _dbFactory.CreateDbContext();
@@ -66,6 +72,7 @@ public class SponsorTelemetryQueueTests
     /// it can bind a request, which is before the hosted service is guaranteed to be running.
     /// </summary>
     [TestMethod]
+    [Timeout(30_000)]
     public async Task EntriesQueuedBeforeStart_AreFlushedToTheDatabase()
     {
         var queue = CreateQueue();
@@ -85,6 +92,7 @@ public class SponsorTelemetryQueueTests
     /// wake-up here would only make the test flaky on a loaded agent.
     /// </summary>
     [TestMethod]
+    [Timeout(30_000)]
     public async Task EntriesQueuedAfterStart_AreAlsoFlushed()
     {
         var queue = CreateQueue();
@@ -98,6 +106,7 @@ public class SponsorTelemetryQueueTests
     }
 
     [TestMethod]
+    [Timeout(30_000)]
     public async Task FlushedRow_CarriesEverySubmittedField()
     {
         var queue = CreateQueue();
@@ -119,6 +128,7 @@ public class SponsorTelemetryQueueTests
 
     /// <summary>A null duration is the normal case for impressions and clicks and must round-trip as null.</summary>
     [TestMethod]
+    [Timeout(30_000)]
     public async Task FlushedRow_KeepsNullDurationForNonTimedEvents()
     {
         var queue = CreateQueue();
@@ -137,6 +147,7 @@ public class SponsorTelemetryQueueTests
     /// several passes without losing anything.
     /// </summary>
     [TestMethod]
+    [Timeout(30_000)]
     public async Task BacklogLargerThanOneBatch_IsFlushedInFull()
     {
         var queue = CreateQueue();
@@ -158,6 +169,7 @@ public class SponsorTelemetryQueueTests
     /// the oldest telemetry is silently discarded instead.
     /// </summary>
     [TestMethod]
+    [Timeout(30_000)]
     public async Task QueueingBeyondCapacity_ReturnsTrueButSilentlyDropsTheOldestEntries()
     {
         var queue = CreateQueue();
@@ -248,6 +260,7 @@ public class SponsorTelemetryQueueTests
 
     /// <summary>Stopping a queue that never received anything must not write a row or throw.</summary>
     [TestMethod]
+    [Timeout(30_000)]
     public async Task EmptyQueue_StopsCleanlyWithoutWritingAnything()
     {
         var queue = CreateQueue();

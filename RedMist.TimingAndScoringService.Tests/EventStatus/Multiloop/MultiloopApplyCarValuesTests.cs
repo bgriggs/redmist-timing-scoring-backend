@@ -84,8 +84,12 @@ public class MultiloopApplyCarValuesTests
         Assert.AreEqual("RunningStron", car.CurrentStatus);
     }
 
+    /// <summary>
+    /// An empty status from the feed is applied, not ignored: it clears whatever the car was last
+    /// showing rather than leaving a stale "Pit" or "Off" up on screen.
+    /// </summary>
     [TestMethod]
-    public void ApplyCarValues_WithAnEmptyStatus_LeavesTheStatusBlank()
+    public void ApplyCarValues_WithAnEmptyStatus_OverwritesTheStaleStatus()
     {
         Feed(CompletedLap("7", currentStatus: ""));
 

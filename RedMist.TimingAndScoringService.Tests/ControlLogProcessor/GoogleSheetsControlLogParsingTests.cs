@@ -1,6 +1,7 @@
 using Google.Apis.Sheets.v4.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using RedMist.ControlLogs;
@@ -380,19 +381,59 @@ public class GoogleSheetsControlLogParsingTests
         dbFactory.VerifyNoOtherCalls();
     }
 
+    /// <summary>
+    /// With no service-account row the load has to stop at the configuration lookup. Both Google call
+    /// sites swallow their exceptions and return the same <c>(false, [])</c> as this guard, so the return
+    /// value alone cannot tell the two apart - a guard regression would leave a bare assertion green while
+    /// every CI run made a real outbound request to sheets.googleapis.com. The log is what distinguishes
+    /// them, so it is asserted on directly.
+    /// </summary>
     [TestMethod]
-    public async Task LoadControlLogAsync_NoServiceAccountConfigured_FailsWithoutCallingSheets()
+    public async Task LoadControlLogAsync_NoServiceAccountConfigured_FailsAtTheConfigLookupWithoutCallingSheets()
     {
         var options = new DbContextOptionsBuilder<TsContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
-        using var log = new WrlLog(
-            NullLoggerFactory.Instance, new ConfigurationBuilder().Build(), new TestDbContextFactory(options));
+        // Strict, so anything the load reaches for beyond the one configuration read fails the test.
+        var dbFactory = new Mock<IDbContextFactory<TsContext>>(MockBehavior.Strict);
+        dbFactory.Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
+            .Returns(() => Task.FromResult(new TsContext(options)));
+        var (loggerFactory, logged) = RecordingLoggerFactory();
+        using var log = new WrlLog(loggerFactory, new ConfigurationBuilder().Build(), dbFactory.Object);
 
         var (success, logs) = await log.LoadControlLogAsync("sheet-id;Tab 1");
 
         Assert.IsFalse(success);
         Assert.AreEqual(0, logs.Count());
+        Assert.IsTrue(logged.Any(m => m.Contains("Unable to find control log configuration")),
+            "The load should have stopped at the missing service-account configuration.");
+        Assert.IsFalse(logged.Any(m => m.Contains("spreadsheet metadata") || m.Contains("from Google Sheets")),
+            "The load went on to call the Sheets API instead of failing at the configuration guard.");
+        dbFactory.Verify(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()), Times.Once);
+        dbFactory.VerifyNoOtherCalls();
+    }
+
+    /// <summary>A logger factory that appends every formatted message to the returned list.</summary>
+    private static (ILoggerFactory Factory, List<string> Messages) RecordingLoggerFactory()
+    {
+        var messages = new List<string>();
+        var logger = new Mock<ILogger>();
+        logger.Setup(x => x.Log(It.IsAny<LogLevel>(), It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(),
+                It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()))
+            .Callback(new InvocationAction(invocation =>
+            {
+                var formatter = invocation.Arguments[4];
+                var message = formatter?.GetType().GetMethod("Invoke")?
+                    .Invoke(formatter, [invocation.Arguments[2], invocation.Arguments[3] as Exception])?.ToString();
+                lock (messages)
+                {
+                    messages.Add(message ?? string.Empty);
+                }
+            }));
+
+        var factory = new Mock<ILoggerFactory>();
+        factory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(logger.Object);
+        return (factory.Object, messages);
     }
 
     #endregion

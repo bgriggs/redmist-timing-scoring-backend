@@ -149,17 +149,8 @@ public class SheetColumnMappingTests
         Assert.AreEqual(default, entry.Timestamp);
     }
 
-    [TestMethod]
-    public void SetEntryValue_DoesNotTrimCellText()
-    {
-        // Car numbers feed the per-car cache keys verbatim, so padded cells produce their own bucket.
-        var mapping = new SheetColumnMapping { SheetColumn = "Car #", PropertyName = "Car1" };
-        var entry = new ControlLogEntry();
-
-        mapping.SetEntryValue(entry, " 12 ");
-
-        Assert.AreEqual(" 12 ", entry.Car1);
-    }
+    // Cell text is not trimmed; that is asserted where it matters, at the parse level, by
+    // GoogleSheetsControlLogParsingTests.ParseRows_CarNumbersAreNotTrimmed.
 
     #endregion
 

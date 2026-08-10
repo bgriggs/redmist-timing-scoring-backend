@@ -16,6 +16,7 @@ public class ArchiveEmailHelperTests
 {
     private IDbContextFactory<TsContext> dbFactory = null!;
     private ArchiveEmailHelper helper = null!;
+    private Mock<ILogger> helperLogger = null!;
     private readonly List<(string Subject, string Body, string To, string From)> sent = [];
     private Exception? sendError;
 
@@ -26,8 +27,9 @@ public class ArchiveEmailHelperTests
             .UseInMemoryDatabase($"ArchiveEmailHelperTests_{Guid.NewGuid()}")
             .Options;
         dbFactory = new TestDbContextFactory(options);
+        helperLogger = new Mock<ILogger>();
 
-        helper = new ArchiveEmailHelper(new Mock<ILogger>().Object, dbFactory, emailHelper: null,
+        helper = new ArchiveEmailHelper(helperLogger.Object, dbFactory, emailHelper: null,
             (subject, body, to, from) =>
             {
                 if (sendError is not null) throw sendError;
@@ -164,13 +166,28 @@ public class ArchiveEmailHelperTests
         Assert.DoesNotContain("Stack trace not available", body, "Both exceptions were thrown so both have stack traces");
     }
 
+    /// <summary>
+    /// A dead SMTP server must not take the archive service down with it, but the alert being lost is
+    /// exactly the situation nobody would otherwise hear about, so it has to reach the log. Asserting on
+    /// the log rather than on <c>sent</c> is deliberate: the fake throws before it records anything, so an
+    /// empty <c>sent</c> would be true even if the helper had swallowed the failure silently.
+    /// </summary>
     [TestMethod]
-    public async Task SendArchiveFailureEmailAsync_SendFails_DoesNotPropagate()
+    public async Task SendArchiveFailureEmailAsync_SendFails_LogsItAndDoesNotPropagate()
     {
         sendError = new InvalidOperationException("smtp unavailable");
 
         await helper.SendArchiveFailureEmailAsync("failed", null, 0, null);
 
-        Assert.IsEmpty(sent);
+        helperLogger.Verify(
+            l => l.Log(LogLevel.Error, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(),
+                It.Is<Exception>(e => e == sendError),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+        helperLogger.Verify(
+            l => l.Log(LogLevel.Information, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(),
+                It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Never,
+            "A send that threw must not also report success.");
     }
 }
