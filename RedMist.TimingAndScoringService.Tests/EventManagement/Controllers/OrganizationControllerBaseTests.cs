@@ -11,6 +11,7 @@ using RedMist.Database.Models;
 using RedMist.EventManagement.Controllers;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
+using RedMist.TimingCommon.Models.Configuration;
 using System.Security.Claims;
 using ConfigEvent = RedMist.TimingCommon.Models.Configuration.Event;
 using Organization = RedMist.TimingCommon.Models.Organization;
@@ -72,11 +73,13 @@ public class OrganizationControllerBaseTests
         _dbContext?.Dispose();
     }
 
-    private void SetupDefaultUser()
+    private void SetupDefaultUser() => SetUser("test-client-id");
+
+    private void SetUser(string clientId)
     {
         var claims = new List<Claim>
         {
-            new Claim("client_id", "test-client-id")
+            new Claim("client_id", clientId)
         };
         var identity = new ClaimsIdentity(claims, "TestAuthType");
         var claimsPrincipal = new ClaimsPrincipal(identity);
@@ -84,6 +87,17 @@ public class OrganizationControllerBaseTests
         {
             HttpContext = new DefaultHttpContext { User = claimsPrincipal }
         };
+    }
+
+    /// <summary>
+    /// Seeds the caller's organization (id 1) and an unrelated organization (id 2) so ownership
+    /// filtering can be asserted.
+    /// </summary>
+    private async Task SeedOrganizationsAsync()
+    {
+        _dbContext.Organizations.Add(new Organization { Id = 1, ClientId = "test-client-id", Name = "Mine", ShortName = "M" });
+        _dbContext.Organizations.Add(new Organization { Id = 2, ClientId = "other-client-id", Name = "Theirs", ShortName = "T" });
+        await _dbContext.SaveChangesAsync();
     }
 
     #region GetControlLogStatistics Tests
@@ -494,6 +508,383 @@ public class OrganizationControllerBaseTests
 
         // Assert
         Assert.IsFalse(result.IsStaleWarning); // Should ignore empty sessions
+    }
+
+    /// <summary>
+    /// Every compared field must take part in the stale-log comparison. If any one of them stopped
+    /// being compared, an organization that re-uploaded a genuinely new control log would be warned
+    /// that it is stale.
+    /// </summary>
+    [TestMethod]
+    [DataRow("OrderId")]
+    [DataRow("Car1")]
+    [DataRow("Car2")]
+    [DataRow("Timestamp")]
+    [DataRow("Status")]
+    [DataRow("Corner")]
+    [DataRow("Note")]
+    [DataRow("OtherNotes")]
+    public async Task DetermineControlLogStale_SingleFieldDiffers_IsNotConsideredStale(string changedField)
+    {
+        var organization = new Organization { Id = 1, ClientId = "test-client-id", ControlLogType = "TestType", ControlLogParams = "p" };
+        _dbContext.Organizations.Add(organization);
+        _dbContext.Events.Add(new ConfigEvent { Id = 10, OrganizationId = 1, Name = "Test Event" });
+
+        var timestamp = new DateTime(2026, 3, 1, 10, 0, 0);
+        ControlLogEntry MakeEntry() => new()
+        {
+            OrderId = 1,
+            Car1 = "1",
+            Car2 = "2",
+            Timestamp = timestamp,
+            Status = "Warning",
+            Corner = "T1",
+            Note = "Note",
+            OtherNotes = "Other",
+        };
+
+        _dbContext.SessionResults.Add(new SessionResult
+        {
+            EventId = 10,
+            SessionId = 1,
+            Start = new DateTime(2026, 2, 1),
+            ControlLogs = [MakeEntry()],
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var current = MakeEntry();
+        switch (changedField)
+        {
+            case "OrderId": current.OrderId = 99; break;
+            case "Car1": current.Car1 = "99"; break;
+            case "Car2": current.Car2 = "99"; break;
+            case "Timestamp": current.Timestamp = timestamp.AddSeconds(1); break;
+            case "Status": current.Status = "Different"; break;
+            case "Corner": current.Corner = "T9"; break;
+            case "Note": current.Note = "Different"; break;
+            case "OtherNotes": current.OtherNotes = "Different"; break;
+            default: Assert.Fail($"Unhandled field {changedField}"); break;
+        }
+
+        _mockControlLog.Setup(x => x.LoadControlLogAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((true, new[] { current }.AsEnumerable()));
+        _mockControlLogFactory.Setup(x => x.CreateControlLog("TestType")).Returns(_mockControlLog.Object);
+
+        var result = await _controller.GetControlLogStatistics(organization);
+
+        Assert.IsFalse(result.IsStaleWarning, $"A difference in {changedField} should not be treated as the same log.");
+    }
+
+    #endregion
+
+    #region GetControlLogStatistics branch coverage
+
+    [TestMethod]
+    [DataRow("Default")]
+    [DataRow("None")]
+    public async Task GetControlLogStatistics_SentinelControlLogType_NeverConnects(string controlLogType)
+    {
+        var organization = new Organization { Id = 1, ControlLogType = controlLogType, ControlLogParams = "p" };
+
+        var result = await _controller.GetControlLogStatistics(organization);
+
+        Assert.IsFalse(result.IsConnected);
+        Assert.AreEqual(0, result.TotalEntries);
+        _mockControlLogFactory.Verify(x => x.CreateControlLog(It.IsAny<string>()), Times.Never);
+    }
+
+    [TestMethod]
+    public async Task GetControlLogStatistics_ControlLogThrows_ReturnsEmptyStatisticsInsteadOfFailing()
+    {
+        var organization = new Organization { Id = 1, ControlLogType = "TestType", ControlLogParams = "p" };
+        _mockControlLogFactory.Setup(x => x.CreateControlLog("TestType")).Returns(_mockControlLog.Object);
+        _mockControlLog.Setup(x => x.LoadControlLogAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("control log unavailable"));
+
+        var result = await _controller.GetControlLogStatistics(organization);
+
+        Assert.IsFalse(result.IsConnected);
+        Assert.AreEqual(0, result.TotalEntries);
+        Assert.IsFalse(result.IsStaleWarning);
+    }
+
+    #endregion
+
+    #region LoadOrganization
+
+    [TestMethod]
+    public async Task LoadOrganization_NoOrganizationForClient_ReturnsNotFound()
+    {
+        await SeedOrganizationsAsync();
+        SetUser("unknown-client-id");
+
+        var result = await _controller.LoadOrganization();
+
+        Assert.IsInstanceOfType<NotFoundResult>(result.Result);
+    }
+
+    [TestMethod]
+    public async Task LoadOrganization_ReturnsOrganizationMatchingClientIdOnly()
+    {
+        await SeedOrganizationsAsync();
+
+        var result = await _controller.LoadOrganization();
+
+        var org = (result.Result as OkObjectResult)?.Value as Organization;
+        Assert.IsNotNull(org);
+        Assert.AreEqual(1, org.Id);
+        Assert.AreEqual("Mine", org.Name);
+    }
+
+    [TestMethod]
+    public async Task LoadOrganization_NoLogo_SubstitutesDefaultImage()
+    {
+        await SeedOrganizationsAsync();
+        _dbContext.DefaultOrgImages.Add(new DefaultOrgImage { Id = 1, ImageData = [1, 2, 3] });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.LoadOrganization();
+
+        var org = (result.Result as OkObjectResult)?.Value as Organization;
+        Assert.IsNotNull(org);
+        CollectionAssert.AreEqual(new byte[] { 1, 2, 3 }, org.Logo);
+        // The substitution is for the response only and must not be written back to the organization row.
+        Assert.IsNull(_dbContext.Organizations.AsNoTracking().Single(o => o.Id == 1).Logo);
+    }
+
+    [TestMethod]
+    public async Task LoadOrganization_WithLogo_KeepsOrganizationLogo()
+    {
+        _dbContext.Organizations.Add(new Organization { Id = 1, ClientId = "test-client-id", Name = "Mine", ShortName = "M", Logo = [9, 9] });
+        _dbContext.DefaultOrgImages.Add(new DefaultOrgImage { Id = 1, ImageData = [1, 2, 3] });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.LoadOrganization();
+
+        var org = (result.Result as OkObjectResult)?.Value as Organization;
+        Assert.IsNotNull(org);
+        CollectionAssert.AreEqual(new byte[] { 9, 9 }, org.Logo);
+    }
+
+    #endregion
+
+    #region UpdateOrganization
+
+    [TestMethod]
+    public async Task UpdateOrganization_NoOrganizationForClient_ReturnsNotFound()
+    {
+        await SeedOrganizationsAsync();
+        SetUser("unknown-client-id");
+
+        var result = await _controller.UpdateOrganization(new Organization { Id = 1, Website = "https://hijack.test" });
+
+        Assert.IsInstanceOfType<NotFoundResult>(result);
+        // Website is one of the fields UpdateOrganization actually copies, so this proves nothing was written.
+        Assert.IsNull(_dbContext.Organizations.AsNoTracking().Single(o => o.Id == 1).Website);
+    }
+
+    [TestMethod]
+    public async Task LoadOrganization_TokenWithoutClientIdClaim_ReturnsNotFound()
+    {
+        await SeedOrganizationsAsync();
+        _controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([], "TestAuthType")) }
+        };
+
+        var result = await _controller.LoadOrganization();
+
+        Assert.IsInstanceOfType<NotFoundResult>(result.Result);
+    }
+
+    [TestMethod]
+    public async Task UpdateOrganization_UpdatesCallersOrganizationOnly_IgnoringSuppliedId()
+    {
+        await SeedOrganizationsAsync();
+
+        // Id 2 belongs to another organization; the caller's client_id is what selects the row.
+        var result = await _controller.UpdateOrganization(new Organization
+        {
+            Id = 2,
+            Website = "https://mine.test",
+            ControlLogType = "Sheets",
+            ControlLogParams = "params",
+            RMonitorIp = "10.0.0.1",
+            RMonitorPort = 1234,
+            MultiloopIp = "10.0.0.2",
+            MultiloopPort = 5678,
+            OrbitsLogsPath = @"C:\logs",
+            FlagtronicsUrl = "https://flags.test",
+            FlagtronicsApiKey = "key",
+            ShowControlLogConnection = true,
+            ShowX2Connection = true,
+            ShowMultiloopConnection = true,
+            ShowOrbitsLogsConnection = true,
+            ShowFlagtronicsConnection = true,
+            Classes = [new ClassMetadata { Name = "GT", Order = 1, ColorHex = "#00FF00" }],
+            X2 = new X2Configuration { Server = "x2.test", Username = "u", Password = "p" },
+        });
+
+        Assert.IsInstanceOfType<OkResult>(result);
+        var mine = _dbContext.Organizations.AsNoTracking().Single(o => o.Id == 1);
+        Assert.AreEqual("https://mine.test", mine.Website);
+        Assert.AreEqual("Sheets", mine.ControlLogType);
+        Assert.AreEqual("params", mine.ControlLogParams);
+        Assert.AreEqual("10.0.0.1", mine.RMonitorIp);
+        Assert.AreEqual(1234, mine.RMonitorPort);
+        Assert.AreEqual("10.0.0.2", mine.MultiloopIp);
+        Assert.AreEqual(5678, mine.MultiloopPort);
+        Assert.AreEqual(@"C:\logs", mine.OrbitsLogsPath);
+        Assert.AreEqual("https://flags.test", mine.FlagtronicsUrl);
+        Assert.AreEqual("key", mine.FlagtronicsApiKey);
+        Assert.IsTrue(mine.ShowControlLogConnection);
+        Assert.IsTrue(mine.ShowX2Connection);
+        Assert.IsTrue(mine.ShowMultiloopConnection);
+        Assert.IsTrue(mine.ShowOrbitsLogsConnection);
+        Assert.IsTrue(mine.ShowFlagtronicsConnection);
+        Assert.AreEqual("GT", mine.Classes.Single().Name);
+        Assert.AreEqual("x2.test", mine.X2.Server);
+
+        var theirs = _dbContext.Organizations.AsNoTracking().Single(o => o.Id == 2);
+        Assert.IsNull(theirs.Website);
+        Assert.AreEqual(string.Empty, theirs.ControlLogType);
+    }
+
+    [TestMethod]
+    public async Task UpdateOrganization_DoesNotOverwriteIdentityFields()
+    {
+        await SeedOrganizationsAsync();
+
+        await _controller.UpdateOrganization(new Organization
+        {
+            Id = 1,
+            ClientId = "stolen-client-id",
+            Name = "Renamed",
+            ShortName = "R",
+            Website = "https://mine.test",
+        });
+
+        var mine = _dbContext.Organizations.AsNoTracking().Single(o => o.Id == 1);
+        Assert.AreEqual("test-client-id", mine.ClientId);
+        Assert.AreEqual("Mine", mine.Name);
+        Assert.AreEqual("M", mine.ShortName);
+        Assert.AreEqual("https://mine.test", mine.Website);
+    }
+
+    [TestMethod]
+    public async Task UpdateOrganization_NullLogo_LeavesStoredLogoUntouched()
+    {
+        _dbContext.Organizations.Add(new Organization { Id = 1, ClientId = "test-client-id", Name = "Mine", ShortName = "M", Logo = [7, 7] });
+        await _dbContext.SaveChangesAsync();
+
+        await _controller.UpdateOrganization(new Organization { Id = 1, Logo = null });
+
+        CollectionAssert.AreEqual(new byte[] { 7, 7 }, _dbContext.Organizations.AsNoTracking().Single().Logo);
+    }
+
+    [TestMethod]
+    public async Task UpdateOrganization_EmptyLogo_ClearsStoredLogo()
+    {
+        _dbContext.Organizations.Add(new Organization { Id = 1, ClientId = "test-client-id", Name = "Mine", ShortName = "M", Logo = [7, 7] });
+        await _dbContext.SaveChangesAsync();
+
+        // No DefaultOrgImage row, so the clear happens without a CDN round trip.
+        var result = await _controller.UpdateOrganization(new Organization { Id = 1, Logo = [] });
+
+        Assert.IsInstanceOfType<OkResult>(result);
+        Assert.IsNull(_dbContext.Organizations.AsNoTracking().Single().Logo);
+    }
+
+    #endregion
+
+    #region Organization administrators
+
+    [TestMethod]
+    public async Task LoadOrganizationAdministratorsAsync_NoOrganizationForClient_ReturnsNotFound()
+    {
+        await SeedOrganizationsAsync();
+        SetUser("unknown-client-id");
+
+        var result = await _controller.LoadOrganizationAdministratorsAsync();
+
+        Assert.IsInstanceOfType<NotFoundResult>(result.Result);
+    }
+
+    [TestMethod]
+    public async Task LoadOrganizationAdministratorsAsync_ReturnsAdminsOfCallersOrganizationOnly()
+    {
+        await SeedOrganizationsAsync();
+        _dbContext.UserOrganizationMappings.AddRange(
+            new UserOrganizationMapping { OrganizationId = 1, Username = "admin@mine.test", Role = "admin" },
+            new UserOrganizationMapping { OrganizationId = 1, Username = "viewer@mine.test", Role = "viewer" },
+            new UserOrganizationMapping { OrganizationId = 2, Username = "admin@theirs.test", Role = "admin" });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.LoadOrganizationAdministratorsAsync();
+
+        var emails = (result.Result as OkObjectResult)?.Value as List<string>;
+        Assert.IsNotNull(emails);
+        CollectionAssert.AreEqual(new[] { "admin@mine.test" }, emails);
+    }
+
+    [TestMethod]
+    public async Task SaveOrganizationAdministratorsAsync_NoOrganizationForClient_ReturnsNotFound()
+    {
+        await SeedOrganizationsAsync();
+        SetUser("unknown-client-id");
+
+        var result = await _controller.SaveOrganizationAdministratorsAsync(["a@b.test"]);
+
+        Assert.IsInstanceOfType<NotFoundResult>(result);
+        Assert.AreEqual(0, _dbContext.UserOrganizationMappings.Count());
+    }
+
+    [TestMethod]
+    public async Task SaveOrganizationAdministratorsAsync_ReplacesMappingsForCallersOrganizationOnly()
+    {
+        await SeedOrganizationsAsync();
+        _dbContext.UserOrganizationMappings.AddRange(
+            new UserOrganizationMapping { OrganizationId = 1, Username = "old@mine.test", Role = "admin" },
+            new UserOrganizationMapping { OrganizationId = 1, Username = "viewer@mine.test", Role = "viewer" },
+            new UserOrganizationMapping { OrganizationId = 2, Username = "admin@theirs.test", Role = "admin" });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.SaveOrganizationAdministratorsAsync(["new@mine.test"]);
+
+        Assert.IsInstanceOfType<OkResult>(result);
+        var mine = _dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1).ToList();
+        Assert.AreEqual(1, mine.Count);
+        Assert.AreEqual("new@mine.test", mine[0].Username);
+        Assert.AreEqual("admin", mine[0].Role);
+        Assert.AreEqual(1, _dbContext.UserOrganizationMappings.AsNoTracking().Count(m => m.OrganizationId == 2));
+    }
+
+    [TestMethod]
+    public async Task SaveOrganizationAdministratorsAsync_EmptyList_RemovesAllMappingsForOrganization()
+    {
+        await SeedOrganizationsAsync();
+        _dbContext.UserOrganizationMappings.Add(new UserOrganizationMapping { OrganizationId = 1, Username = "old@mine.test", Role = "admin" });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.SaveOrganizationAdministratorsAsync([]);
+
+        Assert.IsInstanceOfType<OkResult>(result);
+        Assert.AreEqual(0, _dbContext.UserOrganizationMappings.AsNoTracking().Count(m => m.OrganizationId == 1));
+    }
+
+    [TestMethod]
+    public async Task SaveOrganizationAdministratorsAsync_ResavingAnUnchangedAdministrator_KeepsTheMapping()
+    {
+        await SeedOrganizationsAsync();
+        _dbContext.UserOrganizationMappings.Add(new UserOrganizationMapping { OrganizationId = 1, Username = "admin@mine.test", Role = "admin" });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.SaveOrganizationAdministratorsAsync(["admin@mine.test"]);
+
+        Assert.IsInstanceOfType<OkResult>(result);
+        var mine = _dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1).ToList();
+        Assert.AreEqual(1, mine.Count);
+        Assert.AreEqual("admin@mine.test", mine[0].Username);
     }
 
     #endregion
