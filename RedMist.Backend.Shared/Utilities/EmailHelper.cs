@@ -26,6 +26,15 @@ public class EmailHelper
         await SendEmailAsync(subject, bodyHtml, to, from, bcc: null);
     }
 
+    /// <summary>
+    /// Creates the SMTP client a send runs through.
+    /// </summary>
+    /// <remarks>
+    /// Virtual only to give tests a seam; without it there is no way to exercise a send without a
+    /// real mail server. Production always uses MailKit's <see cref="SmtpClient"/>.
+    /// </remarks>
+    protected virtual ISmtpClient CreateSmtpClient() => new SmtpClient();
+
     public async Task SendEmailAsync(string subject, string bodyHtml, string to, string from, string? bcc)
     {
         var message = new MimeMessage();
@@ -43,7 +52,7 @@ public class EmailHelper
         };
         message.Body = bodyBuilder.ToMessageBody();
 
-        using var client = new SmtpClient();
+        using var client = CreateSmtpClient();
         await client.ConnectAsync(host, port, SecureSocketOptions.StartTls);
         await client.AuthenticateAsync(username, password);
         await client.SendAsync(message);
