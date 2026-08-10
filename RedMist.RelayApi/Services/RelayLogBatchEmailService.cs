@@ -13,20 +13,25 @@ public class RelayLogBatchEmailService : BackgroundService
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly EmailHelper emailHelper;
+    private readonly TimeProvider timeProvider;
     private const int InactivityThresholdSeconds = 60;
     private const int CheckIntervalSeconds = 15;
+    internal const string ReportRecipient = "support@redmist.racing";
+    internal const string ReportSender = "noreply@redmist.racing";
 
 
     public RelayLogBatchEmailService(
         ILogger<RelayLogBatchEmailService> logger,
         IConnectionMultiplexer cacheMux,
         IDbContextFactory<TsContext> tsContext,
-        EmailHelper emailHelper)
+        EmailHelper emailHelper,
+        TimeProvider? timeProvider = null)
     {
         this.logger = logger;
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
         this.emailHelper = emailHelper;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -54,7 +59,7 @@ public class RelayLogBatchEmailService : BackgroundService
         logger.LogInformation("RelayLogBatchEmailService stopped");
     }
 
-    private async Task ProcessBatchesAsync(CancellationToken stoppingToken)
+    internal async Task ProcessBatchesAsync(CancellationToken stoppingToken)
     {
         var cache = cacheMux.GetDatabase();
         
@@ -71,7 +76,7 @@ public class RelayLogBatchEmailService : BackgroundService
         }
     }
 
-    private async Task ProcessClientBatchAsync(string clientId, IDatabase cache, CancellationToken stoppingToken)
+    internal async Task ProcessClientBatchAsync(string clientId, IDatabase cache, CancellationToken stoppingToken)
     {
         try
         {
@@ -90,7 +95,7 @@ public class RelayLogBatchEmailService : BackgroundService
                 return;
 
             var lastLogTimestamp = new DateTime(long.Parse(lastLogTicksValue!));
-            var timeSinceLastLog = DateTime.UtcNow - lastLogTimestamp;
+            var timeSinceLastLog = timeProvider.GetUtcNow().UtcDateTime - lastLogTimestamp;
 
             // Check if batch is ready to send (no logs for 1 minute)
             if (timeSinceLastLog.TotalSeconds < InactivityThresholdSeconds)
@@ -152,46 +157,62 @@ public class RelayLogBatchEmailService : BackgroundService
         try
         {
             var subject = $"Red Mist Relay Log Report - {clientId}";
+            var body = BuildBatchEmailBody(clientId, orgName, count, batchData, timeProvider.GetUtcNow().UtcDateTime);
 
-            var bodyBuilder = new StringBuilder();
-            bodyBuilder.AppendLine("<html><body>");
-            bodyBuilder.AppendLine("<h2>Relay Log Batch Report</h2>");
-            bodyBuilder.AppendLine($"<p><strong>Client ID:</strong> {clientId}</p>");
-            bodyBuilder.AppendLine($"<p><strong>Organization:</strong> {orgName}</p>");
-            bodyBuilder.AppendLine($"<p><strong>Total Logs:</strong> {count}</p>");
-            bodyBuilder.AppendLine($"<p><strong>Report Time:</strong> {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</p>");
+            await SendEmailAsync(subject, body, ReportRecipient, ReportSender);
 
-            // Add log level breakdown
-            var levelCounts = batchData
-                .Where(kvp => kvp.Key.StartsWith("level_"))
-                .OrderByDescending(kvp => int.Parse(kvp.Value))
-                .ToList();
-
-            if (levelCounts.Any())
-            {
-                bodyBuilder.AppendLine("<h3>Log Levels:</h3>");
-                bodyBuilder.AppendLine("<ul>");
-                foreach (var levelCount in levelCounts)
-                {
-                    var level = levelCount.Key.Replace("level_", "");
-                    var levelCountValue = levelCount.Value;
-                    bodyBuilder.AppendLine($"<li><strong>{level}:</strong> {levelCountValue}</li>");
-                }
-                bodyBuilder.AppendLine("</ul>");
-            }
-
-            bodyBuilder.AppendLine("<p>This is an automated notification that relay logs have been received and saved to the database.</p>");
-            bodyBuilder.AppendLine("</body></html>");
-
-            var body = bodyBuilder.ToString();
-
-            await emailHelper.SendEmailAsync(subject, body, "support@redmist.racing", "noreply@redmist.racing");
-            
             logger.LogInformation("Successfully sent relay log batch email for client {ClientId}", clientId);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to send relay log batch email for client {ClientId}", clientId);
         }
+    }
+
+    /// <summary>
+    /// The mail transport, isolated to a single overridable call. Tests substitute this so that no
+    /// code path — including one that changes which exception is thrown first inside
+    /// <see cref="SendBatchEmailAsync"/> — can reach a live SMTP connection.
+    /// </summary>
+    internal virtual Task SendEmailAsync(string subject, string bodyHtml, string to, string from)
+        => emailHelper.SendEmailAsync(subject, bodyHtml, to, from);
+
+    /// <summary>
+    /// Renders the HTML report body for a client's batch. Levels are listed most-frequent first;
+    /// the section is omitted entirely when the batch carries no <c>level_*</c> counters.
+    /// </summary>
+    internal static string BuildBatchEmailBody(string clientId, string orgName, int count, Dictionary<string, string> batchData, DateTime reportTimeUtc)
+    {
+        var bodyBuilder = new StringBuilder();
+        bodyBuilder.AppendLine("<html><body>");
+        bodyBuilder.AppendLine("<h2>Relay Log Batch Report</h2>");
+        bodyBuilder.AppendLine($"<p><strong>Client ID:</strong> {clientId}</p>");
+        bodyBuilder.AppendLine($"<p><strong>Organization:</strong> {orgName}</p>");
+        bodyBuilder.AppendLine($"<p><strong>Total Logs:</strong> {count}</p>");
+        bodyBuilder.AppendLine($"<p><strong>Report Time:</strong> {reportTimeUtc:yyyy-MM-dd HH:mm:ss} UTC</p>");
+
+        // Add log level breakdown
+        var levelCounts = batchData
+            .Where(kvp => kvp.Key.StartsWith("level_"))
+            .OrderByDescending(kvp => int.Parse(kvp.Value))
+            .ToList();
+
+        if (levelCounts.Count != 0)
+        {
+            bodyBuilder.AppendLine("<h3>Log Levels:</h3>");
+            bodyBuilder.AppendLine("<ul>");
+            foreach (var levelCount in levelCounts)
+            {
+                var level = levelCount.Key.Replace("level_", "");
+                var levelCountValue = levelCount.Value;
+                bodyBuilder.AppendLine($"<li><strong>{level}:</strong> {levelCountValue}</li>");
+            }
+            bodyBuilder.AppendLine("</ul>");
+        }
+
+        bodyBuilder.AppendLine("<p>This is an automated notification that relay logs have been received and saved to the database.</p>");
+        bodyBuilder.AppendLine("</body></html>");
+
+        return bodyBuilder.ToString();
     }
 }

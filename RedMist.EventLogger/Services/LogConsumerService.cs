@@ -23,17 +23,19 @@ public class LogConsumerService : BackgroundService
     private readonly Queue<DateTime> logTimestamps = new();
     private readonly TimeSpan window = TimeSpan.FromMinutes(1);
     private readonly SemaphoreSlim streamCheckLock = new(1);
+    private readonly TimeProvider timeProvider;
 
     private ILogger Logger { get; }
 
 
-    public LogConsumerService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration, 
-        IDbContextFactory<TsContext> tsContext, HybridCache hcache)
+    public LogConsumerService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
+        IDbContextFactory<TsContext> tsContext, HybridCache hcache, TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
         this.hcache = hcache;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
         eventId = configuration.GetValue("event_id", 0);
         streamKey = string.Format(Consts.EVENT_STATUS_STREAM_KEY, eventId);
         cacheMux.ConnectionRestored += CacheMux_ConnectionRestored;
@@ -48,7 +50,7 @@ public class LogConsumerService : BackgroundService
         var logsPending = Metrics.CreateCounter("logger_logs_pending", "Total logs in stream to be processed");
         var rateGauge = Metrics.CreateGauge("logger_logs_rate", "Log save rate");
 
-        DateTime lastMetricUpdate = DateTime.UtcNow;
+        DateTime lastMetricUpdate = timeProvider.GetUtcNow().UtcDateTime;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -115,14 +117,14 @@ public class LogConsumerService : BackgroundService
                 }
 
                 // Update metrics
-                if ((DateTime.UtcNow - lastMetricUpdate) > interval)
+                if ((timeProvider.GetUtcNow().UtcDateTime - lastMetricUpdate) > interval)
                 {
                     var rate = GetRate();
                     rateGauge.Set(rate);
                     var streamLength = await cache.StreamPendingAsync(streamKey, CONSUMER_GROUP);
                     logsPending.IncTo(streamLength.PendingMessageCount);
                     Logger.LogInformation("Total: {t} Rate: {r:0.0}/min Stream: {s}", counter.Value, rate, streamLength.PendingMessageCount);
-                    lastMetricUpdate = DateTime.UtcNow;
+                    lastMetricUpdate = timeProvider.GetUtcNow().UtcDateTime;
                 }
             }
             catch (Exception ex)
@@ -172,7 +174,7 @@ public class LogConsumerService : BackgroundService
                 Type = type,
                 EventId = eventId,
                 SessionId = sessionId,
-                Timestamp = DateTime.UtcNow,
+                Timestamp = timeProvider.GetUtcNow().UtcDateTime,
                 Data = data,
             };
             db.EventStatusLogs.Add(log);
@@ -265,16 +267,16 @@ public class LogConsumerService : BackgroundService
 
     #region Metrics
 
-    private void RecordLogSave()
+    internal void RecordLogSave()
     {
-        var now = DateTime.UtcNow;
+        var now = timeProvider.GetUtcNow().UtcDateTime;
         logTimestamps.Enqueue(now);
         CleanupOld(now);
     }
 
-    private double GetRate()
+    internal double GetRate()
     {
-        var now = DateTime.UtcNow;
+        var now = timeProvider.GetUtcNow().UtcDateTime;
         CleanupOld(now);
         return logTimestamps.Count;
     }
