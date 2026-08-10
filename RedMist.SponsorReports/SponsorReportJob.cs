@@ -15,18 +15,37 @@ public class SponsorReportJob(
     ILoggerFactory loggerFactory,
     IDbContextFactory<TsContext> contextFactory,
     EmailHelper emailHelper,
-    IHostApplicationLifetime lifetime) : BackgroundService
+    IHostApplicationLifetime lifetime,
+    TimeProvider? timeProvider = null) : BackgroundService
 {
     private const string FROM_EMAIL = "Red Mist <support@redmist.racing>";
     private const string BCC_EMAIL = "brian@bigmissionmotorsports.com";
 
     private readonly ILogger logger = loggerFactory.CreateLogger<SponsorReportJob>();
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
+
+    /// <summary>
+    /// Sends a single email. Seam that isolates the concrete <see cref="EmailHelper"/> SMTP client
+    /// from the report generation logic.
+    /// </summary>
+    protected virtual Task SendEmailAsync(string subject, string bodyHtml, string to, string from, string? bcc)
+    {
+        return emailHelper.SendEmailAsync(subject, bodyHtml, to, from, bcc);
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Wait for the host to fully start before executing (K8s networking/DNS readiness)
         await WaitForStartupAsync(stoppingToken);
+        await RunReportsAsync(stoppingToken);
+    }
 
+    /// <summary>
+    /// Runs the report pass once. Separated from <see cref="ExecuteAsync"/> so the work can be
+    /// invoked without the host-startup wait.
+    /// </summary>
+    internal async Task RunReportsAsync(CancellationToken stoppingToken)
+    {
         try
         {
             logger.LogInformation("Sponsor report job starting");
@@ -84,17 +103,18 @@ public class SponsorReportJob(
 
                     var monthName = stats.Month.ToString("MMMM yyyy");
                     var subject = $"Red Mist Sponsor Report - {monthName}";
-                    var html = BuildReportHtml(stats, sponsor, monthName, eventNames);
+                    var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+                    var html = BuildReportHtml(stats, sponsor, monthName, eventNames, today);
 
                     if (sponsor.SendMonthlyReport && !string.IsNullOrWhiteSpace(sponsor.ContactEmail))
                     {
-                        await emailHelper.SendEmailAsync(subject, html, sponsor.ContactEmail, FROM_EMAIL, BCC_EMAIL);
+                        await SendEmailAsync(subject, html, sponsor.ContactEmail, FROM_EMAIL, BCC_EMAIL);
                         logger.LogInformation("Report sent to {Email} for SponsorId {SponsorId} ({Name}) - {Month}",
                             sponsor.ContactEmail, sponsor.Id, sponsor.Name, monthName);
                     }
                     else
                     {
-                        await emailHelper.SendEmailAsync(subject, html, BCC_EMAIL, FROM_EMAIL);
+                        await SendEmailAsync(subject, html, BCC_EMAIL, FROM_EMAIL, bcc: null);
                         logger.LogInformation("Report sent to admin for SponsorId {SponsorId} ({Name}) - {Month} (SendMonthlyReport={Flag}, ContactEmail={Email})",
                             sponsor.Id, sponsor.Name, monthName, sponsor.SendMonthlyReport, sponsor.ContactEmail);
                     }
@@ -128,7 +148,7 @@ public class SponsorReportJob(
         }
     }
 
-    private static string BuildReportHtml(SponsorStatistics stats, Sponsor sponsor, string monthName, Dictionary<int, string> eventNames)
+    internal static string BuildReportHtml(SponsorStatistics stats, Sponsor sponsor, string monthName, Dictionary<int, string> eventNames, DateOnly today)
     {
         var sb = new StringBuilder();
 
@@ -190,7 +210,6 @@ public class SponsorReportJob(
         // Sponsorship details
         if (sponsor.SubscriptionStart > DateOnly.MinValue && sponsor.SubscriptionEnd.HasValue)
         {
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
             var monthsRemaining = ((sponsor.SubscriptionEnd.Value.Year - today.Year) * 12) + sponsor.SubscriptionEnd.Value.Month - today.Month;
             if (monthsRemaining < 0)
                 monthsRemaining = 0;
@@ -216,7 +235,7 @@ public class SponsorReportJob(
         try
         {
             var body = $"<html><body><p>A sponsor report processing error occurred:</p><pre>{System.Net.WebUtility.HtmlEncode(errorDetails)}</pre></body></html>";
-            await emailHelper.SendEmailAsync("Red Mist Sponsor Report - Processing Error", body, BCC_EMAIL, FROM_EMAIL);
+            await SendEmailAsync("Red Mist Sponsor Report - Processing Error", body, BCC_EMAIL, FROM_EMAIL, bcc: null);
         }
         catch (Exception ex)
         {
@@ -257,7 +276,7 @@ public class SponsorReportJob(
         lifetime.ApplicationStarted.Register(() => tcs.TrySetResult());
         await tcs.Task;
         // Additional delay for K8s DNS/networking to fully stabilize
-        await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
+        await Task.Delay(TimeSpan.FromSeconds(3), clock, stoppingToken);
         logger.LogInformation("Host started, beginning report job");
     }
 
