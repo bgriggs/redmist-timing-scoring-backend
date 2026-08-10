@@ -544,7 +544,8 @@ public class SponsorReportJobTests
             await seed.SaveChangesAsync();
         }
 
-        var job = CreateJob(h, new ImmediateTimerTimeProvider(RunTime));
+        var clock = new ImmediateTimerTimeProvider(RunTime);
+        var job = CreateJob(h, clock);
         await job.StartAsync(CancellationToken.None);
         Assert.IsNotNull(job.ExecuteTask);
         Assert.AreEqual(0, job.Sent.Count, "Nothing may be sent before the host has started.");
@@ -554,6 +555,10 @@ public class SponsorReportJobTests
 
         Assert.AreEqual(1, job.Sent.Count);
         h.Lifetime.Verify(l => l.StopApplication(), Times.AtLeastOnce);
+        // The fake clock records rather than throws, so without these the run could pass while
+        // the timer misfired or a callback failed on the thread pool.
+        Assert.IsNull(clock.MisuseException, "The job asked the fake clock for a timer it does not support.");
+        Assert.IsNull(clock.CallbackException, "A timer callback failed.");
     }
 
     /// <summary>
