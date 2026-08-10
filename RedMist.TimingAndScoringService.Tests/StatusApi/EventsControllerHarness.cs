@@ -49,10 +49,20 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
 
     public List<string> RequestedUris { get; } = [];
 
+    /// <summary>Set when the owning HttpClient is disposed, for tests that assert a streamed
+    /// response is not torn down before the caller has read it.</summary>
+    public bool Disposed { get; private set; }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         RequestedUris.Add(request.RequestUri!.ToString());
         return Task.FromResult(responder(request));
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        Disposed = true;
+        base.Dispose(disposing);
     }
 }
 
@@ -109,12 +119,16 @@ internal sealed class EventsControllerHarness : IDisposable
     public void SetRedisThrows(Exception ex) =>
         Redis.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>())).ThrowsAsync(ex);
 
-    /// <summary>Installs the handler behind the named "EventProcessor" client, returning a fresh HttpClient per call
-    /// because the controller disposes the one it is handed.</summary>
-    public StubHttpMessageHandler SetUpstream(StubHttpMessageHandler handler)
+    /// <summary>Installs the handler behind the named "EventProcessor" client, returning a fresh HttpClient per call.</summary>
+    /// <param name="disposeHandler">
+    /// When true the returned client owns the handler, so disposing the client marks
+    /// <see cref="StubHttpMessageHandler.Disposed"/>. That makes an early disposal by the controller
+    /// observable, which is otherwise invisible to a stubbed transport.
+    /// </param>
+    public StubHttpMessageHandler SetUpstream(StubHttpMessageHandler handler, bool disposeHandler = false)
     {
         HttpClientFactory.Setup(x => x.CreateClient(It.IsAny<string>()))
-            .Returns(() => new HttpClient(handler, disposeHandler: false));
+            .Returns(() => new HttpClient(handler, disposeHandler));
         return handler;
     }
 

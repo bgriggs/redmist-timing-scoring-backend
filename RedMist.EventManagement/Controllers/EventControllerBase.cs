@@ -372,6 +372,9 @@ public abstract class EventControllerBase : ControllerBase
         Logger.LogMethodEntry();
         var cappedTake = Math.Min(take, 10000);
         await using var context = await tsContext.CreateDbContextAsync(cancellationToken);
+        if (!await CallerOwnsEventAsync(context, eventId, cancellationToken))
+            yield break;
+
         await foreach (var log in context.EventStatusLogs
             .AsNoTracking()
             .Where(x => x.EventId == eventId && (!sessionId.HasValue || x.SessionId == sessionId.Value))
@@ -407,9 +410,32 @@ public abstract class EventControllerBase : ControllerBase
     {
         Logger.LogMethodEntry();
         await using var context = await tsContext.CreateDbContextAsync(cancellationToken);
+        if (!await CallerOwnsEventAsync(context, eventId, cancellationToken))
+            return 0;
+
         return await context.EventStatusLogs
             .AsNoTracking()
             .Where(x => x.EventId == eventId && (!sessionId.HasValue || x.SessionId == sessionId.Value))
             .CountAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns true when the event belongs to the organization of the authenticated caller.
+    /// </summary>
+    /// <remarks>
+    /// The log endpoints are keyed only by event id, so without this an authenticated organizer could
+    /// page another organization's status logs by guessing an id. Every other endpoint on this
+    /// controller scopes its query by <c>client_id</c> directly.
+    /// </remarks>
+    private async Task<bool> CallerOwnsEventAsync(TsContext context, int eventId, CancellationToken cancellationToken)
+    {
+        var clientId = User.FindFirstValue("client_id");
+        if (string.IsNullOrEmpty(clientId))
+            return false;
+
+        return await context.Events
+            .AsNoTracking()
+            .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
+            .AnyAsync(s => s.e.Id == eventId && s.o.ClientId == clientId, cancellationToken);
     }
 }

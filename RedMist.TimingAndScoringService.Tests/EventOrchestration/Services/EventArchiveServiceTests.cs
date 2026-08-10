@@ -180,15 +180,15 @@ public class EventArchiveServiceTests
         Assert.IsEmpty(failureReasons);
     }
 
+    /// <summary>
+    /// The archived flag is only committed once the CarLastLaps cleanup has succeeded. Flagging first
+    /// made a failed cleanup permanent: LoadEventsToArchiveAsync skips archived events, so the retry
+    /// could never pick the event up again and its CarLastLaps rows leaked forever.
+    /// </summary>
+    /// <remarks>The InMemory provider has no ExecuteDelete, which is what makes the cleanup fail here.</remarks>
     [TestMethod]
-    public async Task ArchiveSingleEventAsync_LastLapCleanupFails_EventIsAlreadyMarkedArchived()
+    public async Task ArchiveSingleEventAsync_LastLapCleanupFails_LeavesTheEventRetryable()
     {
-        // Characterization test, not a specification: the event row is flagged and saved before
-        // CarLastLaps is cleaned up, so a failure in that last step leaves an archived event behind
-        // while still reporting failure. LoadEventsToArchiveAsync skips archived events, so the retry
-        // cannot pick the event up again and the CarLastLaps rows leak. If that ordering is ever
-        // fixed, update this test to match the new behavior.
-        // (The InMemory provider has no ExecuteDelete, which is what makes the cleanup fail here.)
         await SeedArchivableEventAsync(1);
         await using (var db = await dbFactory.CreateDbContextAsync())
         {
@@ -201,8 +201,9 @@ public class EventArchiveServiceTests
         Assert.IsFalse(result);
         StringAssert.Contains(failureReasons.Single(), "Failed to cleanup CarLastLaps");
         await using var check = await dbFactory.CreateDbContextAsync();
-        Assert.IsTrue((await check.Events.SingleAsync(e => e.Id == 1)).IsArchived);
-        Assert.IsEmpty(await CreateService().LoadEventsToArchiveAsync());
+        Assert.IsFalse((await check.Events.SingleAsync(e => e.Id == 1)).IsArchived,
+            "A failed cleanup must not leave the event flagged, or it can never be retried.");
+        Assert.ContainsSingle(await CreateService().LoadEventsToArchiveAsync());
     }
 
     #endregion

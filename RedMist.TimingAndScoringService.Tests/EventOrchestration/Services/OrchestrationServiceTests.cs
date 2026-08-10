@@ -507,18 +507,17 @@ public class OrchestrationServiceTests
     }
 
     /// <summary>
-    /// BUG (pinned, not fixed): a job belongs to the event being torn down if its name
-    /// <c>Contains("evt-{id}")</c>, which is a substring test, not a segment one. Retiring event 4
-    /// therefore also matches "tst-evt-42-..." and "tst-evt-400-...", and deletes the jobs of an event
-    /// that may be mid-race. Job names are generated as "{org}-evt-{id}-{role}", so a segment-aware
-    /// match ("evt-{id}-") would fix it.
+    /// Job ownership is matched on the "evt-{id}-" segment, not on "evt-{id}" as a bare substring.
+    /// Without the trailing hyphen, retiring event 4 also matched "tst-evt-42-..." and
+    /// "tst-evt-400-..." and deleted the jobs of events that may be mid-race.
     /// </summary>
     [TestMethod]
-    public async Task DisposeEventAsync_EventIdIsAPrefixOfAnotherEventsId_AlsoDeletesThatOtherEventsJobs()
+    public async Task DisposeEventAsync_EventIdIsAPrefixOfAnotherEventsId_LeavesThatOtherEventsJobsAlone()
     {
         var svc = CreateService();
         var jobs = JobList(
             NewJob("tst-evt-4-logger", 0, 0),
+            NewJob("tst-evt-4-event-processor", 0, 0),
             NewJob("tst-evt-42-event-processor", 0, 0),
             NewJob("tst-evt-400-logger", 0, 0));
 
@@ -526,8 +525,40 @@ public class OrchestrationServiceTests
             k8s.Object, Namespace, jobs, CancellationToken.None);
 
         CollectionAssert.AreEquivalent(
-            new[] { "tst-evt-4-logger", "tst-evt-42-event-processor", "tst-evt-400-logger" }, k8s.DeletedJobs,
-            "Only tst-evt-4-logger belongs to event 4; the other two are live events being torn down with it.");
+            new[] { "tst-evt-4-logger", "tst-evt-4-event-processor" }, k8s.DeletedJobs,
+            "Only event 4's own jobs may be deleted; events 42 and 400 are separate, possibly live, events.");
+    }
+
+    [TestMethod]
+    [DataRow(4, "tst-evt-4-logger", true)]
+    [DataRow(4, "tst-evt-42-logger", false)]
+    [DataRow(4, "tst-evt-400-logger", false)]
+    [DataRow(42, "tst-evt-42-event-processor", true)]
+    [DataRow(42, "tst-evt-4-event-processor", false)]
+    public void EventJobKey_MatchesTheEventsOwnJobsOnly(int eventId, string jobName, bool expected)
+    {
+        Assert.AreEqual(expected, jobName.Contains(OrchestrationService.EventJobKey(eventId)));
+    }
+
+    /// <summary>
+    /// The orphan sweep is the more destructive matcher — it reaps jobs whose event is not live at
+    /// all — so it has to use the same segment-aware key. With a bare "evt-{id}" substring, event 4
+    /// being live kept event 42's and 400's orphans alive indefinitely.
+    /// </summary>
+    [TestMethod]
+    public void IsOrphanedJob_LiveEventIdIsAPrefixOfTheJobsEventId_StillReapsTheOrphan()
+    {
+        int[] live = [4];
+
+        Assert.IsFalse(OrchestrationService.IsOrphanedJob("tst-evt-4-logger", live), "event 4 is live");
+        Assert.IsTrue(OrchestrationService.IsOrphanedJob("tst-evt-42-event-processor", live));
+        Assert.IsTrue(OrchestrationService.IsOrphanedJob("tst-evt-400-logger", live));
+    }
+
+    [TestMethod]
+    public void IsOrphanedJob_NoLiveEvents_ReapsEverything()
+    {
+        Assert.IsTrue(OrchestrationService.IsOrphanedJob("tst-evt-7-logger", []));
     }
 
     [TestMethod]

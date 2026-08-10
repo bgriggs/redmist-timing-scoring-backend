@@ -201,11 +201,9 @@ public class EventArchiveService : BackgroundService
 
         if (ev != null)
         {
-            ev.IsArchived = true;
-            await dbContext.SaveChangesAsync(stoppingToken);
-            Logger.LogInformation("Event {eventId} archived successfully.", eventId);
-
-            // Cleanup CarLastLaps for this event
+            // Cleanup CarLastLaps for this event before marking it archived. LoadEventsToArchiveAsync
+            // filters on !IsArchived, so flipping the flag first would make a failed cleanup permanent:
+            // the event could never be selected again and its CarLastLaps rows would leak forever.
             Logger.LogInformation("Cleaning up CarLastLaps for event {eventId}...", eventId);
             var (lastLapsCleanedUp, cleanupException) = await CleanupCarLastLapsAsync(eventId, stoppingToken);
             lastException = cleanupException;
@@ -216,6 +214,10 @@ public class EventArchiveService : BackgroundService
                 await archiveEmailHelper.SendArchiveFailureEmailAsync("Failed to cleanup CarLastLaps", eventId, 0, lastException);
                 return false;
             }
+
+            ev.IsArchived = true;
+            await dbContext.SaveChangesAsync(stoppingToken);
+            Logger.LogInformation("Event {eventId} archived successfully.", eventId);
 
             return true;
         }

@@ -153,6 +153,31 @@ public class EventsControllerBaseProcessorAndCacheTests
     }
 
     /// <summary>
+    /// The action must not dispose the HttpClient it used, because the body is streamed and MVC (and
+    /// GetCurrentSessionStateJson / GetCurrentLegacySessionPayload) read it after the action returns.
+    /// In production the factory hands out a client wrapping a pooled handler, so Dispose() releases
+    /// nothing but does cancel the pending-request token, aborting the still-open response mid-body.
+    /// </summary>
+    /// <remarks>
+    /// A stubbed transport cannot reproduce that cancellation — the content here is already buffered —
+    /// so this pins the observable precondition instead: the client is never disposed. The harness
+    /// hands over a client built with <c>disposeHandler: true</c> purely to make disposal detectable;
+    /// that is the inverse of production, where the handler is pooled.
+    /// </remarks>
+    [TestMethod]
+    public async Task GetCurrentSessionState_UpstreamOk_DoesNotDisposeTheClientItStreamsFrom()
+    {
+        _h.SetRedisString(EndpointKey(7), "evt-7-processor.timing:8080");
+        var handler = _h.SetUpstream(StubHttpMessageHandler.Returning(SessionStateBytes(7, 3)), disposeHandler: true);
+
+        var result = await _h.Controller.GetCurrentSessionState(7);
+
+        Assert.IsFalse(handler.Disposed,
+            "The action disposed its HttpClient before the caller read the stream it returned.");
+        Assert.IsInstanceOfType<FileStreamResult>(result);
+    }
+
+    /// <summary>
     /// A timed-out poll must be distinguishable from a missing event: the apps back off on 408 but
     /// treat 404 as "this event has no live data".
     /// </summary>

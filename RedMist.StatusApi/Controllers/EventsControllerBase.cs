@@ -278,9 +278,11 @@ public abstract class EventsControllerBase : ControllerBase
     /// <response code="200">Returns the event details.</response>
     /// <response code="404">Event not found.</response>
     [AllowAnonymous]
+    [RequireEventAccessCode]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<Event>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public virtual async Task<ActionResult<Event>> LoadEvent(int eventId)
     {
@@ -484,7 +486,10 @@ public abstract class EventsControllerBase : ControllerBase
         url = url.TrimEnd('/') + "/status/GetStatus";
         var sw = Stopwatch.StartNew();
 
-        using var httpClient = httpClientFactory.CreateClient("EventProcessor");
+        // Deliberately not disposed: the stream below is read by MVC after this method returns, and
+        // HttpClient.Dispose() cancels its pending-request token, which aborts the still-open response
+        // mid-body. The handler is pooled by IHttpClientFactory, so there is nothing here to release.
+        var httpClient = httpClientFactory.CreateClient("EventProcessor");
 
         try
         {

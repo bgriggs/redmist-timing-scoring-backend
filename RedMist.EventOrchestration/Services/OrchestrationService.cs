@@ -205,7 +205,7 @@ public class OrchestrationService : BackgroundService
                 }
                 // Check for orphaned jobs
                 var eventIds = currentEvents.Select(e => e.EventId).ToArray();
-                var jobsToDelete = currentJobs.Items.Where(job => !eventIds.Any(id => job.Metadata.Name.Contains($"evt-{id}"))).ToList();
+                var jobsToDelete = currentJobs.Items.Where(job => IsOrphanedJob(job.Metadata.Name, eventIds)).ToList();
                 var deleteOptions = new V1DeleteOptions { PropagationPolicy = "Foreground" };
                 foreach (var job in jobsToDelete)
                 {
@@ -314,6 +314,27 @@ public class OrchestrationService : BackgroundService
     }
 
     /// <summary>
+    /// The fragment of a job name that identifies the event it belongs to.
+    /// </summary>
+    /// <remarks>
+    /// The trailing hyphen is load-bearing. Job names are built as <c>{org}-evt-{eventId}-{role}</c>,
+    /// so matching on <c>evt-{id}</c> alone makes every id a prefix match for the ids that extend it —
+    /// tearing down event 4 would delete the running jobs of events 40-49 and 400+ mid-race.
+    /// </remarks>
+    internal static string EventJobKey(int eventId) => $"evt-{eventId}-";
+
+    /// <summary>
+    /// True when a job does not belong to any of the events that are currently live, and so should be reaped.
+    /// </summary>
+    /// <remarks>
+    /// This is the more destructive of the two matching sites — it deletes jobs whose event is not in the
+    /// live set at all — so it must use the same segment-aware key as teardown. Matching on a bare
+    /// "evt-{id}" substring here kept orphans alive whenever a live event's id extended theirs.
+    /// </remarks>
+    internal static bool IsOrphanedJob(string jobName, IReadOnlyCollection<int> liveEventIds) =>
+        !liveEventIds.Any(id => jobName.Contains(EventJobKey(id)));
+
+    /// <summary>
     /// Cleans up expired events and their associated jobs.
     /// </summary>
     internal async Task DisposeEventAsync(RelayConnectionEventEntry eventEntry, IKubernetes client, string ns, V1JobList jobs, CancellationToken stoppingToken)
@@ -326,7 +347,7 @@ public class OrchestrationService : BackgroundService
         await cache.HashDeleteAsync(hashKey, entryKey);
 
         // Remove any associated jobs and services that are running
-        var eventKey = $"evt-{eventEntry.EventId}";
+        var eventKey = EventJobKey(eventEntry.EventId);
         var deleteOptions = new V1DeleteOptions { PropagationPolicy = "Foreground" };
 
         foreach (var job in jobs.Items)

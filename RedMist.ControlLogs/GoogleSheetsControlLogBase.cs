@@ -250,7 +250,10 @@ public abstract class GoogleSheetsControlLogBase : IControlLog
                 }
             }
 
-            if (requiredColumns.Count == 0 && entry.Timestamp > new DateTime(MinimumTimestampYear))
+            // The (year, month, day) overload is deliberate: new DateTime(MinimumTimestampYear) binds
+            // the DateTime(long ticks) constructor, which put the floor at 0001-01-01 instead of the
+            // year, so the filter only ever rejected default(DateTime).
+            if (requiredColumns.Count == 0 && entry.Timestamp > new DateTime(MinimumTimestampYear, 1, 1))
             {
                 log.Add(entry);
             }

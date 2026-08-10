@@ -611,21 +611,36 @@ public class EventControllerBaseTests
 
     #endregion
 
-    // NOTE: LoadEventLogsAsync and LoadEventLogsCountAsync filter by eventId/sessionId only - unlike every
-    // other endpoint on this controller they do not resolve the caller's organization from client_id, so an
-    // authenticated caller can read another organization's status logs. The tests below cover the filtering
-    // and paging that is implemented; they are not an endorsement of the missing ownership check.
     #region Event status logs
 
+    /// <summary>
+    /// Events 10 and 11 belong to the caller's organization; event 12 belongs to another one, so the
+    /// ownership check the log endpoints apply is exercised alongside the eventId/sessionId filtering.
+    /// </summary>
     private async Task SeedLogsAsync()
     {
+        await SeedOrganizationsAsync();
+        var start = new DateTime(2026, 4, 1);
+        _dbContext.Events.Add(NewEvent(10, OrgId, "Mine A", start));
+        _dbContext.Events.Add(NewEvent(11, OrgId, "Mine B", start));
+        _dbContext.Events.Add(NewEvent(12, OtherOrgId, "Theirs", start));
+
         var baseTime = new DateTime(2026, 4, 1, 12, 0, 0);
         _dbContext.EventStatusLogs.AddRange(
             new EventStatusLog { Id = 1, EventId = 10, SessionId = 100, Timestamp = baseTime, Data = "a" },
             new EventStatusLog { Id = 2, EventId = 10, SessionId = 100, Timestamp = baseTime, Data = "b" },
             new EventStatusLog { Id = 3, EventId = 10, SessionId = 101, Timestamp = baseTime.AddMinutes(1), Data = "c" },
-            new EventStatusLog { Id = 4, EventId = 11, SessionId = 100, Timestamp = baseTime.AddMinutes(2), Data = "d" });
+            new EventStatusLog { Id = 4, EventId = 11, SessionId = 100, Timestamp = baseTime.AddMinutes(2), Data = "d" },
+            new EventStatusLog { Id = 5, EventId = 12, SessionId = 100, Timestamp = baseTime.AddMinutes(3), Data = "e" });
         await _dbContext.SaveChangesAsync();
+    }
+
+    private async Task<List<EventStatusLog>> ReadLogsAsync(int eventId, int? sessionId, int skip = 0, int take = 1000)
+    {
+        var logs = new List<EventStatusLog>();
+        await foreach (var log in _controller.LoadEventLogsAsync(eventId, sessionId, skip, take))
+            logs.Add(log);
+        return logs;
     }
 
     [TestMethod]
@@ -633,9 +648,7 @@ public class EventControllerBaseTests
     {
         await SeedLogsAsync();
 
-        var logs = new List<EventStatusLog>();
-        await foreach (var log in _controller.LoadEventLogsAsync(10, 100))
-            logs.Add(log);
+        var logs = await ReadLogsAsync(10, 100);
 
         CollectionAssert.AreEqual(new[] { 2L, 1L }, logs.Select(l => l.Id).ToArray());
     }
@@ -645,9 +658,7 @@ public class EventControllerBaseTests
     {
         await SeedLogsAsync();
 
-        var logs = new List<EventStatusLog>();
-        await foreach (var log in _controller.LoadEventLogsAsync(10, null))
-            logs.Add(log);
+        var logs = await ReadLogsAsync(10, null);
 
         CollectionAssert.AreEqual(new[] { 3L, 2L, 1L }, logs.Select(l => l.Id).ToArray());
     }
@@ -657,9 +668,7 @@ public class EventControllerBaseTests
     {
         await SeedLogsAsync();
 
-        var logs = new List<EventStatusLog>();
-        await foreach (var log in _controller.LoadEventLogsAsync(10, null, skip: 1, take: 1))
-            logs.Add(log);
+        var logs = await ReadLogsAsync(10, null, skip: 1, take: 1);
 
         CollectionAssert.AreEqual(new[] { 2L }, logs.Select(l => l.Id).ToArray());
     }
@@ -680,6 +689,31 @@ public class EventControllerBaseTests
         // Event 11 also has a log row, so this proves the eventId filter is applied.
         Assert.AreEqual(3, await _controller.LoadEventLogsCountAsync(10, null));
         Assert.AreEqual(1, await _controller.LoadEventLogsCountAsync(11, null));
+    }
+
+    /// <summary>
+    /// These endpoints are keyed only by event id, so without an ownership check an authenticated
+    /// organizer could page another organization's status logs by guessing an id.
+    /// </summary>
+    [TestMethod]
+    public async Task LoadEventLogsAsync_EventBelongsToAnotherOrganization_ReturnsNothing()
+    {
+        await SeedLogsAsync();
+
+        // Event 12 has a log row seeded, so an empty result can only come from the ownership check.
+        Assert.AreEqual(1, _dbContext.EventStatusLogs.Count(l => l.EventId == 12));
+        Assert.IsEmpty(await ReadLogsAsync(12, null));
+        Assert.AreEqual(0, await _controller.LoadEventLogsCountAsync(12, null));
+    }
+
+    [TestMethod]
+    public async Task LoadEventLogsAsync_WithoutAClientIdClaim_ReturnsNothing()
+    {
+        await SeedLogsAsync();
+        SetUser(null);
+
+        Assert.IsEmpty(await ReadLogsAsync(10, null));
+        Assert.AreEqual(0, await _controller.LoadEventLogsCountAsync(10, null));
     }
 
     #endregion

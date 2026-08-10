@@ -344,21 +344,24 @@ public class GoogleSheetsControlLogParsingTests
         Assert.AreEqual("3", entries.Single().Car1);
     }
 
+    /// <summary>
+    /// The minimum timestamp is a year, not a tick count. Written as <c>new DateTime(2025)</c> it bound
+    /// the <c>DateTime(long ticks)</c> overload, putting the floor at 0001-01-01 — so the filter only
+    /// ever rejected <c>default(DateTime)</c> and a stale row from a reused worksheet was published as
+    /// if it were current.
+    /// </summary>
     [TestMethod]
-    public void ParseRows_MinimumTimestampYearIsAppliedAsTicksNotAsAYear()
+    public void ParseRows_RowOlderThanTheMinimumTimestampYear_IsDropped()
     {
-        // BUG (pinned, not fixed): the filter is `entry.Timestamp > new DateTime(MinimumTimestampYear)`,
-        // and that DateTime overload takes *ticks*, so the threshold is 2025 ticks past 0001-01-01 rather
-        // than the year 2025. In practice it only rejects default(DateTime), and a stale 1998 row from a
-        // reused worksheet is published as if it were current.
         using var log = new ThrowingTimeControlLog(maxMissedTimestamps: 5, minimumTimestampYear: 2025);
         var header = Row("Time", "Car #");
         log.InitializeColumnMappings(header);
 
-        var entries = log.ParseRows([header, Row("1998-05-01 10:00:00", "7")]);
+        var entries = log.ParseRows([header, Row("1998-05-01 10:00:00", "7"), Row("2026-05-01 10:00:00", "8")]);
 
-        Assert.AreEqual(1, entries.Count, "the year threshold does not actually filter pre-2025 rows");
-        Assert.AreEqual(1998, entries.Single().Timestamp.Year);
+        Assert.ContainsSingle(entries);
+        Assert.AreEqual(2026, entries.Single().Timestamp.Year);
+        Assert.AreEqual("8", entries.Single().Car1);
     }
 
     #endregion

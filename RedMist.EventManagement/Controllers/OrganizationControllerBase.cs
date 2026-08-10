@@ -28,6 +28,19 @@ public abstract class OrganizationControllerBase : Controller
     protected readonly IControlLogFactory controlLogFactory;
     private readonly AssetsCdn assetsCdn;
 
+    /// <summary>
+    /// The organization role this controller manages, and the value it writes.
+    /// </summary>
+    /// <remarks>
+    /// Matched case-insensitively: RedMist.UserManagement records the organization creator as
+    /// "Admin" (its <c>Consts.DEFAULT_ORGANIZATION_ROLE</c>) while this controller writes "admin".
+    /// Postgres compares case-sensitively, so an exact match hid the owner from the administrator
+    /// list and the following save then deleted their mapping.
+    /// </remarks>
+    private const string AdminRole = "admin";
+
+    private static bool IsAdmin(string role) => string.Equals(role, AdminRole, StringComparison.OrdinalIgnoreCase);
+
     protected ILogger Logger { get; }
 
     private static readonly Counter ControlLogStatsRequestCounter = Metrics.CreateCounter(
@@ -313,7 +326,8 @@ public abstract class OrganizationControllerBase : Controller
         var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
         if (org == null)
             return NotFound();
-        var adminEmails = await db.UserOrganizationMappings.Where(uom => uom.OrganizationId == org.Id && uom.Role == "admin")
+        var adminEmails = await db.UserOrganizationMappings
+            .Where(uom => uom.OrganizationId == org.Id && uom.Role.ToLower() == AdminRole)
             .Select(uom => uom.Username)
             .ToListAsync();
         return Ok(adminEmails);
@@ -334,19 +348,38 @@ public abstract class OrganizationControllerBase : Controller
         if (org == null)
             return NotFound();
 
-        var existingAdmins = await db.UserOrganizationMappings
+        // Only the administrator mappings are replaced. A blanket RemoveRange would also drop
+        // every other role this organization has, none of which this endpoint can re-create.
+        var existing = await db.UserOrganizationMappings
             .Where(uom => uom.OrganizationId == org.Id)
             .ToListAsync();
-        db.UserOrganizationMappings.RemoveRange(existingAdmins);
-        foreach (var username in usernames)
+
+        // Ordinal throughout: (Username, OrganizationId) is the primary key and Postgres compares it
+        // case sensitively, so matching any other way would target a row the database considers distinct.
+        var posted = usernames.Distinct(StringComparer.Ordinal).ToList();
+
+        foreach (var staleAdmin in existing.Where(uom => IsAdmin(uom.Role) && !posted.Contains(uom.Username, StringComparer.Ordinal)))
         {
-            var newMapping = new UserOrganizationMapping
+            db.UserOrganizationMappings.Remove(staleAdmin);
+        }
+
+        foreach (var username in posted)
+        {
+            // Role is not part of the primary key, so a user who already holds a mapping has to be
+            // promoted in place. Removing and re-adding would collide with the tracked instance.
+            var current = existing.FirstOrDefault(uom => string.Equals(uom.Username, username, StringComparison.Ordinal));
+            if (current != null)
+            {
+                current.Role = AdminRole;
+                continue;
+            }
+
+            db.UserOrganizationMappings.Add(new UserOrganizationMapping
             {
                 OrganizationId = org.Id,
                 Username = username,
-                Role = "admin"
-            };
-            db.UserOrganizationMappings.Add(newMapping);
+                Role = AdminRole
+            });
         }
         await db.SaveChangesAsync();
         return Ok();

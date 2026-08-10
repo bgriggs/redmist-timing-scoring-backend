@@ -153,4 +153,56 @@ public class RequireEventAccessCodeAttributeTests
         Assert.IsFalse(fixture.NextCalled);
         fixture.Validator.Verify(x => x.ValidateAsync(7, null, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    /// <summary>
+    /// The filter only protects the endpoints that carry it, and it is applied per action, so a new
+    /// per-event endpoint is one forgotten attribute away from leaking a private event's data. This
+    /// sweeps the controller so the omission fails here instead of in production — which is exactly
+    /// how <c>LoadEvent</c> came to be reachable without a code.
+    /// </summary>
+    /// <remarks>
+    /// The allowlist is for actions that take an <c>eventId</c> but are deliberately public. Adding to
+    /// it should be a deliberate act, not a side effect of writing a new endpoint.
+    /// </remarks>
+    [TestMethod]
+    // The routable controllers, not the base: version-specific endpoints are declared on these, and
+    // reflecting over the base alone would not see them.
+    [DataRow(typeof(RedMist.StatusApi.Controllers.V1.EventsController))]
+    [DataRow(typeof(RedMist.StatusApi.Controllers.V2.EventsController))]
+    public void EveryPerEventEndpoint_CarriesTheAccessCodeFilter(Type controller)
+    {
+        var deliberatelyPublic = new HashSet<string>();
+
+        var unprotected = controller
+            .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Where(m => !m.IsSpecialName && m.DeclaringType != typeof(object) && m.DeclaringType != typeof(ControllerBase))
+            // The filter reads the action argument literally named "eventId"; anything else is invisible
+            // to it, so this mirrors that exactly rather than matching on the parameter type.
+            .Where(m => m.GetParameters().Any(p => p.Name == "eventId"))
+            .Where(m => !deliberatelyPublic.Contains(m.Name))
+            .Where(m => m.GetCustomAttributes(typeof(RequireEventAccessCodeAttribute), inherit: true).Length == 0)
+            .Select(m => m.Name)
+            .Distinct()
+            .OrderBy(n => n)
+            .ToList();
+
+        Assert.IsEmpty(unprotected,
+            $"{controller.Name} has per-event endpoints with no [RequireEventAccessCode]: {string.Join(", ", unprotected)}");
+    }
+
+    /// <summary>
+    /// Guards the sweep above: if the per-event endpoints ever stop being discoverable this way, the
+    /// test would pass vacuously while protecting nothing.
+    /// </summary>
+    [TestMethod]
+    [DataRow(typeof(RedMist.StatusApi.Controllers.V1.EventsController))]
+    [DataRow(typeof(RedMist.StatusApi.Controllers.V2.EventsController))]
+    public void ThePerEventEndpointSweep_ActuallyFindsEndpoints(Type controller)
+    {
+        var perEvent = controller
+            .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Count(m => !m.IsSpecialName && m.GetParameters().Any(p => p.Name == "eventId"));
+
+        Assert.IsGreaterThan(10, perEvent, $"{controller.Name} exposes {perEvent} per-event endpoints");
+    }
 }

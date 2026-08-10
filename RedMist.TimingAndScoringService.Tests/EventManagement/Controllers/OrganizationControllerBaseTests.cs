@@ -917,17 +917,22 @@ public class OrganizationControllerBaseTests
     }
 
     /// <summary>
-    /// A save replaces the caller's organization's mappings wholesale and leaves other organizations
-    /// alone. "Wholesale" is not scoped to the admin role, which is the data loss pinned below.
+    /// A save replaces only the administrator mappings of the caller's organization. Other roles and
+    /// other organizations are left alone.
     /// </summary>
+    /// <remarks>
+    /// This previously RemoveRange'd every mapping for the organization regardless of role, which
+    /// destroyed non-admin mappings outright and — because RedMist.UserManagement writes the creator's
+    /// mapping as "Admin" while this endpoint matched "admin" — silently deleted the organization
+    /// owner on the first save, locking them out of their own organization.
+    /// </remarks>
     [TestMethod]
-    public async Task SaveOrganizationAdministratorsAsync_DeletesEveryMappingForTheCallersOrganizationRegardlessOfRole()
+    public async Task SaveOrganizationAdministratorsAsync_ReplacesOnlyTheAdminMappingsOfTheCallersOrganization()
     {
         await SeedOrganizationsAsync();
         _dbContext.UserOrganizationMappings.AddRange(
             new UserOrganizationMapping { OrganizationId = 1, Username = "old@mine.test", Role = "admin" },
             new UserOrganizationMapping { OrganizationId = 1, Username = "viewer@mine.test", Role = "viewer" },
-            new UserOrganizationMapping { OrganizationId = 1, Username = "owner@mine.test", Role = "Admin" },
             new UserOrganizationMapping { OrganizationId = 2, Username = "admin@theirs.test", Role = "admin" });
         await _dbContext.SaveChangesAsync();
 
@@ -936,57 +941,93 @@ public class OrganizationControllerBaseTests
         Assert.IsInstanceOfType<OkResult>(result);
         var mine = _dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1).ToList();
 
-        // BUG (pinned, not fixed): SaveOrganizationAdministratorsAsync RemoveRange's every mapping for
-        // the organization without filtering on Role, then re-adds only the posted usernames as
-        // Role = "admin". Two things follow, and both are pinned here rather than fixed:
-        //  1. Non-admin mappings ("viewer@mine.test") are destroyed by an admin-list save.
-        //  2. RedMist.UserManagement.Consts.DEFAULT_ORGANIZATION_ROLE writes the organization creator's
-        //     mapping as Role = "Admin" (capital A), while the read in LoadOrganizationAdministratorsAsync
-        //     filters on Role == "admin". Postgres string comparison is case sensitive, so the owner
-        //     never appears in the list the UI posts back, and the first save silently deletes their
-        //     mapping - locking the owner out of their own organization.
-        // The seeded viewer and the seeded "Admin" owner are both gone: only the posted username is left.
-        Assert.AreEqual(1, mine.Count);
-        Assert.AreEqual("new@mine.test", mine[0].Username);
-        Assert.AreEqual("admin", mine[0].Role);
+        // The previous admin is replaced by the posted one...
+        var admins = mine.Where(m => string.Equals(m.Role, "admin", StringComparison.OrdinalIgnoreCase)).ToList();
+        Assert.AreEqual(1, admins.Count);
+        Assert.AreEqual("new@mine.test", admins[0].Username);
+        Assert.AreEqual("admin", admins[0].Role);
+
+        // ...and the unrelated role survives, because this endpoint cannot re-create it.
+        Assert.ContainsSingle(mine.Where(m => m.Username == "viewer@mine.test" && m.Role == "viewer"));
 
         Assert.AreEqual(1, _dbContext.UserOrganizationMappings.AsNoTracking().Count(m => m.OrganizationId == 2));
     }
 
     /// <summary>
-    /// The other half of the case mismatch: the read filters on lowercase "admin", so the mapping the
-    /// organization creator is given is invisible to the administrator list.
+    /// Role is not part of the primary key — (Username, OrganizationId) is — so a user who already
+    /// holds a mapping has to be promoted in place. Removing the old row and adding a new one collides
+    /// with the tracked instance and throws before anything is saved.
     /// </summary>
     [TestMethod]
-    public async Task LoadOrganizationAdministratorsAsync_DoesNotSeeTheOwnersCapitalizedAdminRole()
+    public async Task SaveOrganizationAdministratorsAsync_UsernameAlreadyHasAnotherRole_IsPromotedInPlace()
+    {
+        await SeedOrganizationsAsync();
+        _dbContext.UserOrganizationMappings.AddRange(
+            new UserOrganizationMapping { OrganizationId = 1, Username = "viewer@mine.test", Role = "viewer" },
+            new UserOrganizationMapping { OrganizationId = 1, Username = "owner@mine.test", Role = "Admin" });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.SaveOrganizationAdministratorsAsync(["viewer@mine.test", "owner@mine.test"]);
+
+        Assert.IsInstanceOfType<OkResult>(result);
+        var mine = _dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1).ToList();
+        Assert.AreEqual(2, mine.Count, "Promotion must not duplicate the mapping.");
+        Assert.IsTrue(mine.All(m => string.Equals(m.Role, "admin", StringComparison.OrdinalIgnoreCase)));
+        CollectionAssert.AreEquivalent(
+            new[] { "viewer@mine.test", "owner@mine.test" }, mine.Select(m => m.Username).ToList());
+    }
+
+    /// <summary>
+    /// A duplicated username in the posted list must not produce a second insert for the same
+    /// primary key.
+    /// </summary>
+    [TestMethod]
+    public async Task SaveOrganizationAdministratorsAsync_DuplicateUsernamesPosted_AreCollapsed()
+    {
+        await SeedOrganizationsAsync();
+
+        var result = await _controller.SaveOrganizationAdministratorsAsync(["dup@mine.test", "dup@mine.test"]);
+
+        Assert.IsInstanceOfType<OkResult>(result);
+        Assert.ContainsSingle(_dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1));
+    }
+
+    /// <summary>
+    /// The read matches the role case-insensitively, so the creator's "Admin" mapping appears in the
+    /// list the UI posts back rather than being invisible to it.
+    /// </summary>
+    [TestMethod]
+    public async Task LoadOrganizationAdministratorsAsync_IncludesTheOwnersCapitalizedAdminRole()
     {
         await SeedOrganizationsAsync();
         _dbContext.UserOrganizationMappings.AddRange(
             new UserOrganizationMapping { OrganizationId = 1, Username = "owner@mine.test", Role = "Admin" },
-            new UserOrganizationMapping { OrganizationId = 1, Username = "added@mine.test", Role = "admin" });
+            new UserOrganizationMapping { OrganizationId = 1, Username = "added@mine.test", Role = "admin" },
+            new UserOrganizationMapping { OrganizationId = 1, Username = "viewer@mine.test", Role = "viewer" });
         await _dbContext.SaveChangesAsync();
 
         var result = await _controller.LoadOrganizationAdministratorsAsync();
 
-        // BUG (pinned, not fixed): see SaveOrganizationAdministratorsAsync above. The role written at
-        // organization creation is "Admin" and the read here matches "admin". Two mappings differing
-        // only in the case of their role, and only one of them comes back.
         var emails = (result.Result as OkObjectResult)?.Value as List<string>;
         Assert.IsNotNull(emails);
-        CollectionAssert.AreEqual(new[] { "added@mine.test" }, emails);
+        CollectionAssert.AreEquivalent(new[] { "owner@mine.test", "added@mine.test" }, emails);
     }
 
     [TestMethod]
-    public async Task SaveOrganizationAdministratorsAsync_EmptyList_RemovesAllMappingsForOrganization()
+    public async Task SaveOrganizationAdministratorsAsync_EmptyList_RemovesAllAdminMappingsButKeepsOtherRoles()
     {
         await SeedOrganizationsAsync();
-        _dbContext.UserOrganizationMappings.Add(new UserOrganizationMapping { OrganizationId = 1, Username = "old@mine.test", Role = "admin" });
+        _dbContext.UserOrganizationMappings.AddRange(
+            new UserOrganizationMapping { OrganizationId = 1, Username = "old@mine.test", Role = "admin" },
+            new UserOrganizationMapping { OrganizationId = 1, Username = "viewer@mine.test", Role = "viewer" });
         await _dbContext.SaveChangesAsync();
 
         var result = await _controller.SaveOrganizationAdministratorsAsync([]);
 
         Assert.IsInstanceOfType<OkResult>(result);
-        Assert.AreEqual(0, _dbContext.UserOrganizationMappings.AsNoTracking().Count(m => m.OrganizationId == 1));
+        var mine = _dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1).ToList();
+        Assert.ContainsSingle(mine);
+        Assert.AreEqual("viewer@mine.test", mine[0].Username);
     }
 
     [TestMethod]
