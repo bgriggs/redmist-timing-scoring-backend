@@ -8,13 +8,21 @@ public class ArchiveEmailHelper
 {
     private readonly ILogger logger;
     private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly EmailHelper emailHelper;
+    private readonly Func<string, string, string, string, Task> sendEmailAsync;
 
-    public ArchiveEmailHelper(ILogger logger, IDbContextFactory<TsContext> tsContext, EmailHelper emailHelper)
+    /// <param name="emailHelper">SMTP transport. May be null only when <paramref name="sendEmailAsync"/> is supplied.</param>
+    /// <param name="sendEmailAsync">
+    /// Transport used to deliver the message, taking subject, HTML body, to and from addresses.
+    /// Defaults to <paramref name="emailHelper"/>'s SMTP send; tests supply a stand-in so no mail is sent.
+    /// </param>
+    public ArchiveEmailHelper(ILogger logger, IDbContextFactory<TsContext> tsContext, EmailHelper? emailHelper,
+        Func<string, string, string, string, Task>? sendEmailAsync = null)
     {
         this.logger = logger;
         this.tsContext = tsContext;
-        this.emailHelper = emailHelper;
+        this.sendEmailAsync = sendEmailAsync
+            ?? (emailHelper ?? throw new ArgumentNullException(nameof(emailHelper),
+                    "An EmailHelper is required when no send delegate is supplied.")).SendEmailAsync;
     }
 
     public async Task SendArchiveFailureEmailAsync(string failureReason, int? eventId, int retryCount, Exception? exception)
@@ -89,7 +97,7 @@ public class ArchiveEmailHelper
         </body>
         </html>";
 
-            await emailHelper.SendEmailAsync(subject, body, "support@redmist.racing", "noreply@redmist.racing");
+            await sendEmailAsync(subject, body, "support@redmist.racing", "noreply@redmist.racing");
             logger.LogInformation("Archive failure email sent successfully for: {failureReason}", failureReason);
         }
         catch (Exception ex)

@@ -10,20 +10,24 @@ public class EventArchiveService : BackgroundService
     private readonly ILoggerFactory loggerFactory;
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly IArchiveStorage archiveStorage;
-    private readonly EmailHelper emailHelper;
     private readonly ArchiveEmailHelper archiveEmailHelper;
 
     private ILogger Logger { get; }
 
 
-    public EventArchiveService(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext, IArchiveStorage archiveStorage, EmailHelper emailHelper)
+    /// <param name="emailHelper">SMTP transport. May be null only when <paramref name="archiveEmailHelper"/> is supplied.</param>
+    /// <param name="archiveEmailHelper">
+    /// Sends the failure notifications. Defaults to an SMTP-backed helper built from
+    /// <paramref name="emailHelper"/>; tests supply a stand-in so no mail is sent.
+    /// </param>
+    public EventArchiveService(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
+        IArchiveStorage archiveStorage, EmailHelper? emailHelper, ArchiveEmailHelper? archiveEmailHelper = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.loggerFactory = loggerFactory;
         this.tsContext = tsContext;
         this.archiveStorage = archiveStorage;
-        this.emailHelper = emailHelper;
-        archiveEmailHelper = new ArchiveEmailHelper(Logger, tsContext, emailHelper);
+        this.archiveEmailHelper = archiveEmailHelper ?? new ArchiveEmailHelper(Logger, tsContext, emailHelper);
     }
 
 
@@ -129,7 +133,7 @@ public class EventArchiveService : BackgroundService
         }
     }
 
-    private async Task<bool> ArchiveSingleEventAsync(int eventId, CancellationToken stoppingToken)
+    internal async Task<bool> ArchiveSingleEventAsync(int eventId, CancellationToken stoppingToken)
     {
         Exception? lastException = null;
 
@@ -222,7 +226,7 @@ public class EventArchiveService : BackgroundService
         }
     }
 
-    private async Task<List<int>> LoadEventsToArchiveAsync()
+    internal async Task<List<int>> LoadEventsToArchiveAsync()
     {
         await using var dbContext = await tsContext.CreateDbContextAsync();
         var eventIds = await dbContext.Events
@@ -232,7 +236,7 @@ public class EventArchiveService : BackgroundService
         return eventIds;
     }
 
-    private async Task<(bool success, Exception? exception)> ArchiveEventLapsAsync(int eventId, CancellationToken stoppingToken)
+    internal async Task<(bool success, Exception? exception)> ArchiveEventLapsAsync(int eventId, CancellationToken stoppingToken)
     {
         try
         {
@@ -295,7 +299,7 @@ public class EventArchiveService : BackgroundService
         }
     }
 
-    private async Task<(bool success, Exception? exception)> ArchiveEventFlagsAsync(int eventId, CancellationToken stoppingToken)
+    internal async Task<(bool success, Exception? exception)> ArchiveEventFlagsAsync(int eventId, CancellationToken stoppingToken)
     {
         try
         {

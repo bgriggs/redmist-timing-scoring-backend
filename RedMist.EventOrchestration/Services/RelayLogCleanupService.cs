@@ -48,7 +48,7 @@ public class RelayLogCleanupService : BackgroundService
         }
     }
 
-    private DateTime CalculateNextRunTime(DateTime currentMountainTime)
+    internal DateTime CalculateNextRunTime(DateTime currentMountainTime)
     {
         var targetTime = new TimeSpan(12, 0, 0); // 12:00 PM
         var currentDate = currentMountainTime.Date;

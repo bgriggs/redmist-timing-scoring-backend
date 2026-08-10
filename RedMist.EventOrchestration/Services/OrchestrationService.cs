@@ -37,17 +37,22 @@ public class OrchestrationService : BackgroundService
     // Source container for events whose timing data comes from an external source.
     // Image is supplied via configuration (helm values) so no source-specific name lives here.
     private readonly ContainerDetails? externalSourceContainerDetails;
+    // Creates the Kubernetes client used for each reconciliation pass. Defaults to the in-cluster
+    // client; tests supply a stand-in so no cluster is required.
+    private readonly Func<IKubernetes> kubernetesFactory;
     // Track last known Redis replica count to avoid unnecessary patches
     private int lastRedisReplicas = -1;
 
 
     public OrchestrationService(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux,
-        IDbContextFactory<TsContext> tsContext, EventsChecker eventsChecker, IConfiguration configuration)
+        IDbContextFactory<TsContext> tsContext, EventsChecker eventsChecker, IConfiguration configuration,
+        Func<IKubernetes>? kubernetesFactory = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
         this.eventsChecker = eventsChecker;
+        this.kubernetesFactory = kubernetesFactory ?? (() => new Kubernetes(KubernetesClientConfiguration.InClusterConfig()));
         redisFailoverName = configuration["Redis:FailoverName"] ?? "redis";
 
         // Get the current assembly version for container tags
@@ -154,8 +159,7 @@ public class OrchestrationService : BackgroundService
                 await UpdateLiveEventsAsync(currentEvents);
 
                 string currentNamespace = await GetCurrentNamespaceAsync(stoppingToken);
-                var config = KubernetesClientConfiguration.InClusterConfig();
-                using var client = new Kubernetes(config);
+                using var client = kubernetesFactory();
 
                 // Get currently active jobs in the namespace
                 var currentJobs = await GetJobsAsync(client, currentNamespace, stoppingToken);
@@ -208,13 +212,13 @@ public class OrchestrationService : BackgroundService
                     Logger.LogInformation("Job {jobName} is orphaned, deleting.", job.Metadata.Name);
                     try
                     {
-                        await client.DeleteNamespacedJobAsync(job.Metadata.Name, currentNamespace, body: deleteOptions, cancellationToken: stoppingToken);
+                        await client.BatchV1.DeleteNamespacedJobAsync(job.Metadata.Name, currentNamespace, body: deleteOptions, cancellationToken: stoppingToken);
 
                         // Also try to delete the associated service if it exists
                         var serviceName = $"{job.Metadata.Name}-service";
                         try
                         {
-                            await client.DeleteNamespacedServiceAsync(serviceName, currentNamespace, body: deleteOptions, cancellationToken: stoppingToken);
+                            await client.CoreV1.DeleteNamespacedServiceAsync(serviceName, currentNamespace, body: deleteOptions, cancellationToken: stoppingToken);
                             Logger.LogInformation("Deleted orphaned service {serviceName}", serviceName);
                         }
                         catch (k8s.Autorest.HttpOperationException ex) when (ex.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -253,9 +257,9 @@ public class OrchestrationService : BackgroundService
     /// <summary>
     /// Gets the jobs active in kubernetes for the current namespace.
     /// </summary>
-    private async Task<V1JobList> GetJobsAsync(Kubernetes client, string ns, CancellationToken stoppingToken)
+    private async Task<V1JobList> GetJobsAsync(IKubernetes client, string ns, CancellationToken stoppingToken)
     {
-        var jobs = await client.ListNamespacedJobAsync(ns, labelSelector: "event_id", cancellationToken: stoppingToken);
+        var jobs = await client.BatchV1.ListNamespacedJobAsync(ns, labelSelector: "event_id", cancellationToken: stoppingToken);
         Logger.LogDebug("Found {jobCount} jobs in namespace {ns}", jobs.Items.Count, ns);
         foreach (var job in jobs.Items)
         {
@@ -295,7 +299,7 @@ public class OrchestrationService : BackgroundService
     /// Sends notification to event processors that the event is shutting down.
     /// </summary>
     /// <param name="eventIds">List of event IDs that are shutting down.</param>
-    private async Task SendPreshutdownNotificationAsync(List<int> eventIds)
+    internal async Task SendPreshutdownNotificationAsync(List<int> eventIds)
     {
         try
         {
@@ -312,7 +316,7 @@ public class OrchestrationService : BackgroundService
     /// <summary>
     /// Cleans up expired events and their associated jobs.
     /// </summary>
-    private async Task DisposeEventAsync(RelayConnectionEventEntry eventEntry, Kubernetes client, string ns, V1JobList jobs, CancellationToken stoppingToken)
+    internal async Task DisposeEventAsync(RelayConnectionEventEntry eventEntry, IKubernetes client, string ns, V1JobList jobs, CancellationToken stoppingToken)
     {
         var cache = cacheMux.GetDatabase();
         var hashKey = new RedisKey(Consts.RELAY_EVENT_CONNECTIONS);
@@ -331,13 +335,13 @@ public class OrchestrationService : BackgroundService
             {
                 try
                 {
-                    await client.DeleteNamespacedJobAsync(job.Metadata.Name, ns, body: deleteOptions, cancellationToken: stoppingToken);
+                    await client.BatchV1.DeleteNamespacedJobAsync(job.Metadata.Name, ns, body: deleteOptions, cancellationToken: stoppingToken);
 
                     // Also try to delete the associated service if it exists
                     var serviceName = $"{job.Metadata.Name}-service";
                     try
                     {
-                        await client.DeleteNamespacedServiceAsync(serviceName, ns, body: deleteOptions, cancellationToken: stoppingToken);
+                        await client.CoreV1.DeleteNamespacedServiceAsync(serviceName, ns, body: deleteOptions, cancellationToken: stoppingToken);
                         Logger.LogInformation("Deleted service {serviceName} for expired event {eventId}", serviceName, eventEntry.EventId);
                     }
                     catch (k8s.Autorest.HttpOperationException ex) when (ex.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -384,7 +388,7 @@ public class OrchestrationService : BackgroundService
     /// <summary>
     /// Make sure the necessary jobs for an event are created.
     /// </summary>
-    private async Task EnsureEventJobsAsync(RelayConnectionEventEntry evt, Kubernetes client, string ns, V1JobList jobs, CancellationToken stoppingToken)
+    internal async Task EnsureEventJobsAsync(RelayConnectionEventEntry evt, IKubernetes client, string ns, V1JobList jobs, CancellationToken stoppingToken)
     {
         using var db = await tsContext.CreateDbContextAsync(stoppingToken);
         var org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == evt.OrganizationId, cancellationToken: stoppingToken);
@@ -433,7 +437,7 @@ public class OrchestrationService : BackgroundService
     /// <summary>
     /// Ensures a job is running. If it's completed or failed, it will be deleted and recreated.
     /// </summary>
-    private async Task EnsureJobRunningAsync(Kubernetes client, string ns, V1JobList jobs, string jobName, int eventId, string eventName, int organizationId, string organizationName, ContainerDetails containerDetails, CancellationToken stoppingToken)
+    internal async Task EnsureJobRunningAsync(IKubernetes client, string ns, V1JobList jobs, string jobName, int eventId, string eventName, int organizationId, string organizationName, ContainerDetails containerDetails, CancellationToken stoppingToken)
     {
         var existingJob = jobs.Items.FirstOrDefault(job => job.Metadata.Name.Equals(jobName, StringComparison.OrdinalIgnoreCase));
 
@@ -454,7 +458,7 @@ public class OrchestrationService : BackgroundService
             var deleteOptions = new V1DeleteOptions { PropagationPolicy = "Foreground" };
             try
             {
-                await client.DeleteNamespacedJobAsync(jobName, ns, body: deleteOptions, cancellationToken: stoppingToken);
+                await client.BatchV1.DeleteNamespacedJobAsync(jobName, ns, body: deleteOptions, cancellationToken: stoppingToken);
 
                 // If this was a service job, also delete the service
                 if (containerDetails.IsService)
@@ -462,7 +466,7 @@ public class OrchestrationService : BackgroundService
                     var serviceName = $"{jobName}-service";
                     try
                     {
-                        await client.DeleteNamespacedServiceAsync(serviceName, ns, body: deleteOptions, cancellationToken: stoppingToken);
+                        await client.CoreV1.DeleteNamespacedServiceAsync(serviceName, ns, body: deleteOptions, cancellationToken: stoppingToken);
                         Logger.LogInformation("Deleted service {serviceName} for completed job {jobName}", serviceName, jobName);
                     }
                     catch (k8s.Autorest.HttpOperationException ex) when (ex.Response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -489,7 +493,7 @@ public class OrchestrationService : BackgroundService
         }
     }
 
-    private async Task CreateJobAsync(Kubernetes client, string name, string ns, ContainerDetails containerDetails, int eventId, string eventName, int organizationId, string organizationName, CancellationToken stoppingToken)
+    internal async Task CreateJobAsync(IKubernetes client, string name, string ns, ContainerDetails containerDetails, int eventId, string eventName, int organizationId, string organizationName, CancellationToken stoppingToken)
     {
         eventName = eventName.Replace(" ", "-").ToLowerInvariant();
         organizationName = organizationName.Replace(" ", "-").ToLowerInvariant();
@@ -564,7 +568,7 @@ public class OrchestrationService : BackgroundService
             }
         };
 
-        await client.CreateNamespacedJobAsync(jobSpec, ns, cancellationToken: stoppingToken);
+        await client.BatchV1.CreateNamespacedJobAsync(jobSpec, ns, cancellationToken: stoppingToken);
 
         // Create a Service if this container should be exposed as a service
         if (containerDetails.IsService)
@@ -590,7 +594,7 @@ public class OrchestrationService : BackgroundService
 
             try
             {
-                await client.CreateNamespacedServiceAsync(serviceSpec, ns, cancellationToken: stoppingToken);
+                await client.CoreV1.CreateNamespacedServiceAsync(serviceSpec, ns, cancellationToken: stoppingToken);
                 Logger.LogInformation("Created service {serviceName} for job {jobName}", $"{name}-service", name);
             }
             catch (Exception ex)
@@ -600,7 +604,7 @@ public class OrchestrationService : BackgroundService
         }
     }
 
-    private static string ResolveKeyName(string @namespace)
+    internal static string ResolveKeyName(string @namespace)
     {
         if (@namespace.Contains("-dev"))
         {
@@ -627,40 +631,8 @@ public class OrchestrationService : BackgroundService
             try
             {
                 string currentNamespace = await GetCurrentNamespaceAsync(stoppingToken);
-                var config = KubernetesClientConfiguration.InClusterConfig();
-                using var client = new Kubernetes(config);
-
-                var pods = await client.ListNamespacedPodAsync(currentNamespace, labelSelector: "event_id", cancellationToken: stoppingToken);
-
-                var eventPodGroups = pods.Items
-                    .Where(p => p.Metadata?.Labels != null && p.Metadata.Labels.ContainsKey("event_id"))
-                    .GroupBy(p => p.Metadata.Labels["event_id"]);
-
-                var cache = cacheMux.GetDatabase();
-
-                foreach (var group in eventPodGroups)
-                {
-                    var statuses = new List<ServiceStatus>();
-
-                    foreach (var pod in group)
-                    {
-                        foreach (var container in pod.Spec.Containers)
-                        {
-                            var serviceName = ExtractServiceName(container.Image);
-                            var podPhase = pod.Status?.Phase ?? "Unknown";
-
-                            statuses.Add(new ServiceStatus
-                            {
-                                ServiceName = serviceName,
-                                Status = podPhase
-                            });
-                        }
-                    }
-
-                    var key = string.Format(Consts.EVENT_SERVICE_STATUSES, group.Key);
-                    var json = JsonSerializer.Serialize(statuses);
-                    await cache.StringSetAsync(key, json, TimeSpan.FromMinutes(1));
-                }
+                using var client = kubernetesFactory();
+                await PublishPodStatusesAsync(client, currentNamespace, stoppingToken);
             }
             catch (Exception ex)
             {
@@ -672,10 +644,48 @@ public class OrchestrationService : BackgroundService
     }
 
     /// <summary>
+    /// Reads the event pods in the namespace and publishes the per-event service statuses to Redis.
+    /// </summary>
+    internal async Task PublishPodStatusesAsync(IKubernetes client, string ns, CancellationToken stoppingToken)
+    {
+        var pods = await client.CoreV1.ListNamespacedPodAsync(ns, labelSelector: "event_id", cancellationToken: stoppingToken);
+
+        var eventPodGroups = pods.Items
+            .Where(p => p.Metadata?.Labels != null && p.Metadata.Labels.ContainsKey("event_id"))
+            .GroupBy(p => p.Metadata.Labels["event_id"]);
+
+        var cache = cacheMux.GetDatabase();
+
+        foreach (var group in eventPodGroups)
+        {
+            var statuses = new List<ServiceStatus>();
+
+            foreach (var pod in group)
+            {
+                foreach (var container in pod.Spec.Containers)
+                {
+                    var serviceName = ExtractServiceName(container.Image);
+                    var podPhase = pod.Status?.Phase ?? "Unknown";
+
+                    statuses.Add(new ServiceStatus
+                    {
+                        ServiceName = serviceName,
+                        Status = podPhase
+                    });
+                }
+            }
+
+            var key = string.Format(Consts.EVENT_SERVICE_STATUSES, group.Key);
+            var json = JsonSerializer.Serialize(statuses);
+            await cache.StringSetAsync(key, json, TimeSpan.FromMinutes(1));
+        }
+    }
+
+    /// <summary>
     /// Extracts the service name from a container image string.
     /// For example, "bigmission/redmist-event-processor:1.0" returns "redmist-event-processor".
     /// </summary>
-    private static string ExtractServiceName(string image)
+    internal static string ExtractServiceName(string image)
     {
         var nameWithTag = image.Contains('/') ? image[(image.LastIndexOf('/') + 1)..] : image;
         var name = nameWithTag.Contains(':') ? nameWithTag[..nameWithTag.IndexOf(':')] : nameWithTag;
@@ -687,7 +697,7 @@ public class OrchestrationService : BackgroundService
     /// 1 replica when idle, 2 replicas while any live event is active.
     /// Patches are skipped when the desired count already matches the last known state.
     /// </summary>
-    private async Task EnsureRedisReplicasAsync(Kubernetes client, string ns, int liveEventCount, CancellationToken stoppingToken)
+    internal async Task EnsureRedisReplicasAsync(IKubernetes client, string ns, int liveEventCount, CancellationToken stoppingToken)
     {
         var desiredReplicas = liveEventCount > 0 ? 2 : 1;
         if (desiredReplicas == lastRedisReplicas)
@@ -699,7 +709,7 @@ public class OrchestrationService : BackgroundService
         {
             var patchBody = new { spec = new { redis = new { replicas = desiredReplicas } } };
             var patch = new V1Patch(JsonSerializer.Serialize(patchBody), V1Patch.PatchType.MergePatch);
-            await client.PatchNamespacedCustomObjectAsync(
+            await client.CustomObjects.PatchNamespacedCustomObjectAsync(
                 patch,
                 "databases.spotahome.com", "v1", ns, "redisfailovers", redisFailoverName,
                 cancellationToken: stoppingToken);
