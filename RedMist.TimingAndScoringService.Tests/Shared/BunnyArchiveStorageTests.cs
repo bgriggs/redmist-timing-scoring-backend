@@ -29,11 +29,20 @@ public class BunnyArchiveStorageTests
     private static IConfiguration Configuration(IDictionary<string, string?> settings)
         => new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
-    /// <summary>Replaces the CDN client with one whose transport is a stub.</summary>
+    /// <summary>
+    /// Builds the real CDN client from the configured settings and only swaps its HTTP transport, so
+    /// the storage zone and keys the archive passes through still have to be the configured ones —
+    /// a wrong zone makes every path fail its "/{zone}/..." check and every upload return false.
+    /// </summary>
     private sealed class TestableArchiveStorage(IConfiguration configuration, ILoggerFactory loggerFactory, StubHttpMessageHandler transport)
         : BunnyArchiveStorage(configuration, loggerFactory, transport.AsClientFactory())
     {
-        protected override BunnyCdn CreateCdnClient() => StubBunnyCdn.Create(transport);
+        protected override BunnyCdn CreateCdnClient()
+        {
+            var cdn = base.CreateCdnClient();
+            StubBunnyCdn.UseStubTransport(cdn, transport);
+            return cdn;
+        }
     }
 
     private static BunnyArchiveStorage CreateStorage(StubHttpMessageHandler transport)
@@ -137,14 +146,5 @@ public class BunnyArchiveStorageTests
 
         Assert.Throws<ArgumentNullException>(() => new BunnyArchiveStorage(
             Configuration(settings), new DebugLoggerFactory(), StubHttpMessageHandler.Returning(HttpStatusCode.OK).AsClientFactory()));
-    }
-
-    [TestMethod]
-    public void Constructor_WithEveryStorageSetting_Succeeds()
-    {
-        var storage = new BunnyArchiveStorage(Configuration(ArchiveSettings), new DebugLoggerFactory(),
-            StubHttpMessageHandler.Returning(HttpStatusCode.OK).AsClientFactory());
-
-        Assert.IsInstanceOfType<IArchiveStorage>(storage);
     }
 }

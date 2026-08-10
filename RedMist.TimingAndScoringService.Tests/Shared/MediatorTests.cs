@@ -47,7 +47,12 @@ public class MediatorTests
         }
     }
 
-    private static Mediator CreateMediator(params INotificationHandler<CarUpdated>[] handlers)
+    private readonly List<ServiceProvider> providers = [];
+
+    [TestCleanup]
+    public void DisposeProviders() => providers.ForEach(p => p.Dispose());
+
+    private Mediator CreateMediator(params INotificationHandler<CarUpdated>[] handlers)
     {
         var services = new ServiceCollection();
         foreach (var handler in handlers)
@@ -55,9 +60,14 @@ public class MediatorTests
             services.AddSingleton(handler);
         }
         var provider = services.BuildServiceProvider();
+        providers.Add(provider);
         return new Mediator(provider, new DebugLoggerFactory().CreateLogger<Mediator>());
     }
 
+    /// <summary>
+    /// Notifications are published from hot paths whether or not anything subscribes to them, so an
+    /// unsubscribed type must be cheap and silent rather than an error.
+    /// </summary>
     [TestMethod]
     public async Task Publish_WithNoHandlersRegistered_IsANoOp()
     {

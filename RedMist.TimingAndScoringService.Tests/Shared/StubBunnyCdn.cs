@@ -35,5 +35,6 @@ internal static class StubBunnyCdn
         var httpField = storage.GetType().GetField("_http", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var original = (HttpClient)httpField.GetValue(storage)!;
         httpField.SetValue(storage, new HttpClient(handler, disposeHandler: false) { BaseAddress = original.BaseAddress });
+        original.Dispose();
     }
 }

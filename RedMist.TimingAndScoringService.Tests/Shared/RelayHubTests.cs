@@ -696,6 +696,7 @@ public class RelayHubTests
         Assert.AreEqual(orgId.ToString(), redis.GetHashValue(batchKey, "orgId"));
         Assert.Contains((Consts.RELAY_LOG_BATCH_TRACKING, ClientId), redis.SetAdds);
         // The batch has to expire on its own in case the reporting service is down.
+        Assert.HasCount(2, redis.KeyExpires);
         Assert.IsTrue(redis.KeyExpires.All(e => e.Key == batchKey && e.Expiry == TimeSpan.FromMinutes(10)));
     }
 

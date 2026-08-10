@@ -17,12 +17,32 @@ namespace RedMist.TimingAndScoringService.Tests.Shared;
 [TestClass]
 public class RateLimitingExtensionsTests
 {
-    private static RateLimiterOptions BuildOptions(Action<RedMistRateLimitOptions>? configure = null)
+    /// <summary>
+    /// Global limiters are built inside the configure delegate, so nothing owns them. Each one starts
+    /// an idle-partition cleanup timer that would otherwise outlive the test for the whole run.
+    /// </summary>
+    private readonly List<PartitionedRateLimiter<HttpContext>> limiters = [];
+
+    [TestCleanup]
+    public async Task DisposeLimiters()
+    {
+        foreach (var limiter in limiters)
+        {
+            await limiter.DisposeAsync();
+        }
+    }
+
+    private RateLimiterOptions BuildOptions(Action<RedMistRateLimitOptions>? configure = null)
     {
         var services = new ServiceCollection();
         services.AddRedMistRateLimiting(configure);
         using var provider = services.BuildServiceProvider();
-        return provider.GetRequiredService<IOptions<RateLimiterOptions>>().Value;
+        var options = provider.GetRequiredService<IOptions<RateLimiterOptions>>().Value;
+        if (options.GlobalLimiter != null)
+        {
+            limiters.Add(options.GlobalLimiter);
+        }
+        return options;
     }
 
     private static DefaultHttpContext RequestFrom(string? ipAddress, string path = "/api/events")
@@ -55,15 +75,13 @@ public class RateLimitingExtensionsTests
     #region Global limiter
 
     [TestMethod]
-    public async Task GlobalLimiter_LimitsEachCallerIndependently()
+    public void GlobalLimiter_LimitsEachCallerIndependently()
     {
         var options = BuildOptions(o => o.GlobalPermitLimit = 2);
         var limiter = options.GlobalLimiter!;
 
         Assert.AreEqual(2, AcquireCount(limiter, RequestFrom("10.0.0.1"), 5), "the third request from a caller is over the limit");
         Assert.AreEqual(2, AcquireCount(limiter, RequestFrom("10.0.0.2"), 5), "a different caller gets its own window");
-
-        await limiter.DisposeAsync();
     }
 
     /// <summary>
@@ -71,18 +89,16 @@ public class RateLimitingExtensionsTests
     /// else on it. Rate limiting them would restart healthy pods.
     /// </summary>
     [TestMethod]
-    public async Task GlobalLimiter_NeverLimitsHealthChecks()
+    public void GlobalLimiter_NeverLimitsHealthChecks()
     {
         var options = BuildOptions(o => o.GlobalPermitLimit = 2);
         var limiter = options.GlobalLimiter!;
 
         Assert.AreEqual(20, AcquireCount(limiter, RequestFrom("10.0.0.1", "/healthz/ready"), 20));
-
-        await limiter.DisposeAsync();
     }
 
     [TestMethod]
-    public async Task GlobalLimiter_NeverLimitsConfiguredExemptPaths()
+    public void GlobalLimiter_NeverLimitsConfiguredExemptPaths()
     {
         var options = BuildOptions(o =>
         {
@@ -94,8 +110,6 @@ public class RateLimitingExtensionsTests
         Assert.AreEqual(20, AcquireCount(limiter, RequestFrom("10.0.0.1", "/metrics"), 20));
         Assert.AreEqual(2, AcquireCount(limiter, RequestFrom("10.0.0.1", "/api/events"), 20),
             "exempting a path must not exempt the caller");
-
-        await limiter.DisposeAsync();
     }
 
     /// <summary>
@@ -103,15 +117,13 @@ public class RateLimitingExtensionsTests
     /// to get it wrong in.
     /// </summary>
     [TestMethod]
-    public async Task GlobalLimiter_TreatsCallersWithNoAddressAsOne()
+    public void GlobalLimiter_TreatsCallersWithNoAddressAsOne()
     {
         var options = BuildOptions(o => o.GlobalPermitLimit = 2);
         var limiter = options.GlobalLimiter!;
 
         Assert.AreEqual(2, AcquireCount(limiter, RequestFrom(null), 5));
         Assert.AreEqual(0, AcquireCount(limiter, RequestFrom(null), 5), "the shared window is already exhausted");
-
-        await limiter.DisposeAsync();
     }
 
     [TestMethod]

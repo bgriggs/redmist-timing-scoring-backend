@@ -117,6 +117,8 @@ public class StatusHubTests
         var hub = CreateHub();
 
         await hub.OnConnectedAsync();
+
+        Assert.IsNull(StoredConnection(), "the write failed, so the connection is simply untracked");
     }
 
     [TestMethod]
@@ -150,8 +152,13 @@ public class StatusHubTests
     {
         redis.FailHashReads();
         var hub = CreateHub();
+        await hub.OnConnectedAsync();
+        await hub.SubscribeToEventV2(EventId);
 
         await hub.OnDisconnectedAsync(new IOException("socket reset"));
+
+        // The read that decides which event entry to clean up is what failed, so nothing was removed.
+        Assert.IsEmpty(redis.HashDeletes);
     }
 
     #endregion
