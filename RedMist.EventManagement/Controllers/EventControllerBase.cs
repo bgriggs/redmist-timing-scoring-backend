@@ -19,7 +19,9 @@ namespace RedMist.EventManagement.Controllers;
 /// </summary>
 /// <remarks>
 /// This is an abstract base controller inherited by versioned controllers.
-/// Requires authentication and validates that users can only manage events for their organization.
+/// Requires authentication and validates that users can only manage events for their organization. The
+/// two event status log endpoints are the exception, and are scoped by event id alone so the relay's
+/// simulation tab can replay another organization's event data.
 /// </remarks>
 [ApiController]
 [Authorize]
@@ -363,6 +365,16 @@ public abstract class EventControllerBase : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Streams the status log entries for an event, optionally scoped to a single session.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately scoped by event id alone, unlike every other endpoint on this controller: the relay's
+    /// simulation tab replays another organization's real event data on a dev or test relay, so it reads
+    /// logs for events its own client does not own. Any authenticated caller can therefore page any
+    /// event's status logs by id. Do not add a <c>client_id</c> filter here without giving the relay
+    /// another way to reach that data.
+    /// </remarks>
     [HttpGet]
     [Produces("application/json")]
     [ProducesResponseType<IEnumerable<EventStatusLog>>(StatusCodes.Status200OK)]
@@ -372,9 +384,6 @@ public abstract class EventControllerBase : ControllerBase
         Logger.LogMethodEntry();
         var cappedTake = Math.Min(take, 10000);
         await using var context = await tsContext.CreateDbContextAsync(cancellationToken);
-        if (!await CallerOwnsEventAsync(context, eventId, cancellationToken))
-            yield break;
-
         await foreach (var log in context.EventStatusLogs
             .AsNoTracking()
             .Where(x => x.EventId == eventId && (!sessionId.HasValue || x.SessionId == sessionId.Value))
@@ -400,7 +409,10 @@ public abstract class EventControllerBase : ControllerBase
     /// <response code="401">If the user is not authenticated.</response>
     /// <remarks>
     /// Intended to be called before <see cref="LoadEventLogsAsync"/> so callers can size a progress indicator
-    /// for the paged log download. Uses the same filter as <see cref="LoadEventLogsAsync"/>.
+    /// for the paged log download. Uses the same filter as <see cref="LoadEventLogsAsync"/>, including its
+    /// deliberate lack of organization scoping - see the remarks there before adding a <c>client_id</c>
+    /// filter to either one, since the relay calls both and scoping only this one silently zeroes the
+    /// progress bar.
     /// </remarks>
     [HttpGet]
     [Produces("application/json")]
@@ -410,32 +422,9 @@ public abstract class EventControllerBase : ControllerBase
     {
         Logger.LogMethodEntry();
         await using var context = await tsContext.CreateDbContextAsync(cancellationToken);
-        if (!await CallerOwnsEventAsync(context, eventId, cancellationToken))
-            return 0;
-
         return await context.EventStatusLogs
             .AsNoTracking()
             .Where(x => x.EventId == eventId && (!sessionId.HasValue || x.SessionId == sessionId.Value))
             .CountAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// Returns true when the event belongs to the organization of the authenticated caller.
-    /// </summary>
-    /// <remarks>
-    /// The log endpoints are keyed only by event id, so without this an authenticated organizer could
-    /// page another organization's status logs by guessing an id. Every other endpoint on this
-    /// controller scopes its query by <c>client_id</c> directly.
-    /// </remarks>
-    private async Task<bool> CallerOwnsEventAsync(TsContext context, int eventId, CancellationToken cancellationToken)
-    {
-        var clientId = User.FindFirstValue("client_id");
-        if (string.IsNullOrEmpty(clientId))
-            return false;
-
-        return await context.Events
-            .AsNoTracking()
-            .Join(context.Organizations, e => e.OrganizationId, o => o.Id, (e, o) => new { e, o })
-            .AnyAsync(s => s.e.Id == eventId && s.o.ClientId == clientId, cancellationToken);
     }
 }

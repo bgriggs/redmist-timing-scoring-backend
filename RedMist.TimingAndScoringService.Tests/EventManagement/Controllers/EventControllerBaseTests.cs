@@ -614,8 +614,8 @@ public class EventControllerBaseTests
     #region Event status logs
 
     /// <summary>
-    /// Events 10 and 11 belong to the caller's organization; event 12 belongs to another one, so the
-    /// ownership check the log endpoints apply is exercised alongside the eventId/sessionId filtering.
+    /// Events 10 and 11 belong to the caller's organization and event 12 belongs to another one, so the
+    /// eventId/sessionId filtering is exercised alongside the absence of any organization scoping.
     /// </summary>
     private async Task SeedLogsAsync()
     {
@@ -692,28 +692,36 @@ public class EventControllerBaseTests
     }
 
     /// <summary>
-    /// These endpoints are keyed only by event id, so without an ownership check an authenticated
-    /// organizer could page another organization's status logs by guessing an id.
+    /// Unlike every other endpoint on this controller, these two are keyed on event id alone. The relay's
+    /// simulation tab downloads another organization's real event data to replay it on a dev or test
+    /// relay, so scoping these to the caller's own organization breaks simulation.
     /// </summary>
     [TestMethod]
-    public async Task LoadEventLogsAsync_EventBelongsToAnotherOrganization_ReturnsNothing()
+    public async Task LoadEventLogsAsync_EventBelongsToAnotherOrganization_StillReturnsTheLogs()
     {
         await SeedLogsAsync();
 
-        // Event 12 has a log row seeded, so an empty result can only come from the ownership check.
-        Assert.AreEqual(1, _dbContext.EventStatusLogs.Count(l => l.EventId == 12));
-        Assert.IsEmpty(await ReadLogsAsync(12, null));
-        Assert.AreEqual(0, await _controller.LoadEventLogsCountAsync(12, null));
+        var logs = await ReadLogsAsync(12, null);
+
+        CollectionAssert.AreEqual(new[] { 5L }, logs.Select(l => l.Id).ToArray());
+        Assert.AreEqual(1, await _controller.LoadEventLogsCountAsync(12, null));
     }
 
+    /// <summary>
+    /// The claim is what would scope these endpoints by organization, so its absence must not empty the
+    /// result either - that would be the same scoping back again, keyed on a missing claim rather than a
+    /// non-matching one, and the relay would be back to downloading nothing.
+    /// </summary>
     [TestMethod]
-    public async Task LoadEventLogsAsync_WithoutAClientIdClaim_ReturnsNothing()
+    public async Task LoadEventLogsAsync_WithoutAClientIdClaim_StillReturnsTheLogs()
     {
         await SeedLogsAsync();
         SetUser(null);
 
-        Assert.IsEmpty(await ReadLogsAsync(10, null));
-        Assert.AreEqual(0, await _controller.LoadEventLogsCountAsync(10, null));
+        var logs = await ReadLogsAsync(10, null);
+
+        CollectionAssert.AreEqual(new[] { 3L, 2L, 1L }, logs.Select(l => l.Id).ToArray());
+        Assert.AreEqual(3, await _controller.LoadEventLogsCountAsync(10, null));
     }
 
     #endregion
