@@ -1,0 +1,1109 @@
+##2026-08-02 12:59:29.363|flags
+[{"f":1,"s":"2026-08-02T08:59:29","e":null}]
+##2026-08-02 13:08:45.374|rmonitor
+$F,9999,"06:50:43","09:08:45","00:09:16","Green "
+##2026-08-02 13:08:45.586|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":63,"lat":36.55267333984375,"lon":-79.2043685913086,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":11,"timingZone":11,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":73,"lat":36.553367614746094,"lon":-79.2061996459961,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:08:46.610|rmonitor
+$F,9999,"06:50:42","09:08:46","00:09:17","Green "
+##2026-08-02 13:08:46.617|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":57,"lat":36.552486419677734,"lon":-79.20436096191406,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":11,"timingZone":11,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":80,"lat":36.55382537841797,"lon":-79.20653533935547,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:08:47.239|rmonitor
+$F,9999,"06:50:41","09:08:47","00:09:18","Green "
+##2026-08-02 13:08:47.647|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":49,"lat":36.55214309692383,"lon":-79.20449829101562,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":11,"timingZone":11,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":106,"lat":36.5688362121582,"lon":-79.20487976074219,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":1,"timingZone":1,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:08:48.269|rmonitor
+$F,9999,"06:50:40","09:08:48","00:09:19","Green "
+##2026-08-02 13:08:48.476|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":43,"lat":36.55202102661133,"lon":-79.20462799072266,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"330","ft200DeviceId":20006227,"class":["F"],"teamName":"HardSix Racing","speed":0,"lat":0,"lon":0,"carFlag":"None","localFlag":null,"fullCourseFlag":"Yellow","flaggingZone":0,"timingZone":0,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":1,"lastLapTime":null,"bestLapTime":null,"pitEntryTime":null,"pitDuration":null,"pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:08:49.286|rmonitor
+$F,9999,"06:50:39","09:08:49","00:09:20","Green "
+##2026-08-02 13:08:49.492|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":40,"lat":36.551944732666016,"lon":-79.20478820800781,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":89,"lat":36.554691314697266,"lon":-79.2071533203125,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":true}]
+##2026-08-02 13:08:50.305|flags
+[{"f":2,"s":"2026-08-02T09:08:50","e":null}]
+##2026-08-02 13:08:50.309|rmonitor
+$F,9999,"06:50:38","09:08:50","00:09:21","Yellow"
+##2026-08-02 13:08:50.523|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":40,"lat":36.551944732666016,"lon":-79.20478820800781,"carFlag":"FCYellow","localFlag":"StYellow","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":89,"lat":36.55493927001953,"lon":-79.20732116699219,"carFlag":"StYellow","localFlag":"StYellow","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":true}]
+##2026-08-02 13:08:51.854|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":38,"lat":36.55195236206055,"lon":-79.205078125,"carFlag":"StYellow","localFlag":"StYellow","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":88,"lat":36.55524826049805,"lon":-79.2075424194336,"carFlag":"StYellow","localFlag":"StYellow","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":true}]
+##2026-08-02 13:08:52.260|rmonitor
+$F,9999,"06:50:36","09:08:52","00:09:23","Yellow"
+##2026-08-02 13:08:52.469|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":41,"lat":36.55203628540039,"lon":-79.2052230834961,"carFlag":"StYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":88,"lat":36.55524826049805,"lon":-79.2075424194336,"carFlag":"StYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":true}]
+##2026-08-02 13:08:53.277|rmonitor
+$F,9999,"06:50:35","09:08:53","00:09:24","Yellow"
+##2026-08-02 13:08:53.492|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":53,"lat":36.55231475830078,"lon":-79.2054672241211,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":38,"lat":36.568702697753906,"lon":-79.2025146484375,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":1,"timingZone":1,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:08:54.300|rmonitor
+$F,9999,"06:50:34","09:08:54","00:09:25","Yellow"
+##2026-08-02 13:08:54.503|ftcar
+[{"carNumber":"865","ft200DeviceId":20000298,"class":["C"],"teamName":"Thr3ve Racing ","speed":52,"lat":36.567138671875,"lon":-79.20634460449219,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":4,"timingZone":4,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:52.764","bestLapTime":"00:02:51.705","pitEntryTime":"0001-04-11T12:21:45Z","pitDuration":"00:25:10.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":75,"lat":36.55621337890625,"lon":-79.2081527709961,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:08:55.307|rmonitor
+$F,9999,"06:50:33","09:08:55","00:09:26","Yellow"
+##2026-08-02 13:08:55.516|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":66,"lat":36.55265808105469,"lon":-79.20570373535156,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":34,"lat":36.56856155395508,"lon":-79.2022705078125,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":1,"timingZone":1,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:08:56.348|rmonitor
+$F,9999,"06:50:32","09:08:56","00:09:27","Yellow"
+##2026-08-02 13:08:56.621|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":70,"lat":36.552852630615234,"lon":-79.2058334350586,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":72,"lat":36.55665969848633,"lon":-79.20842742919922,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:08:57.460|rmonitor
+$F,9999,"06:50:31","09:08:57","00:09:28","Yellow"
+##2026-08-02 13:08:57.468|ftcar
+[{"carNumber":"411","ft200DeviceId":20000176,"class":["C"],"teamName":"RVA Graphics and Wraps (Orange)","speed":37,"lat":36.56232833862305,"lon":-79.2119369506836,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:27.693","bestLapTime":"00:02:27.693","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:01:28.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":80,"lat":36.55486297607422,"lon":-79.20726776123047,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":3,"lastLapTime":"00:03:12.792","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:08:58.335|rmonitor
+$F,9999,"06:50:30","09:08:58","00:09:29","Yellow"
+##2026-08-02 13:08:58.539|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":77,"lat":36.553287506103516,"lon":-79.20614624023438,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":68,"lat":36.55714416503906,"lon":-79.20870971679688,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:08:59.350|rmonitor
+$F,9999,"06:50:29","09:08:59","00:09:30","Yellow"
+##2026-08-02 13:08:59.556|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":84,"lat":36.553794860839844,"lon":-79.2065200805664,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":true},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":64,"lat":36.557533264160156,"lon":-79.20893096923828,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:00.372|rmonitor
+$F,9999,"06:50:28","09:09:00","00:09:31","Yellow"
+##2026-08-02 13:09:00.578|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":85,"lat":36.55403518676758,"lon":-79.2066879272461,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":true},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":63,"lat":36.55772018432617,"lon":-79.20903015136719,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:01.248|rmonitor
+$F,9999,"06:50:27","09:09:01","00:09:32","Yellow"
+##2026-08-02 13:09:01.450|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":66,"lat":36.56454849243164,"lon":-79.20446014404297,"carFlag":"StYellow","localFlag":"StYellow","fullCourseFlag":"Yellow","flaggingZone":6,"timingZone":6,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":62,"lat":36.55792236328125,"lon":-79.20914459228516,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:02.243|rmonitor
+$F,9999,"06:50:26","09:09:02","00:09:33","Yellow"
+##2026-08-02 13:09:02.450|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":85,"lat":36.554542541503906,"lon":-79.2070541381836,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":true},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":46,"lat":36.568016052246094,"lon":-79.20248413085938,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":1,"timingZone":1,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:53.405","bestLapTime":"00:02:50.203","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:03.280|rmonitor
+$F,9999,"06:50:25","09:09:03","00:09:34","Yellow"
+##2026-08-02 13:09:03.495|ftcar
+[{"carNumber":"331","ft200DeviceId":20000730,"class":["C"],"teamName":"ChumpChange ","speed":44,"lat":36.566444396972656,"lon":-79.20608520507812,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":4,"timingZone":4,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:49.449","bestLapTime":"00:02:49.449","pitEntryTime":"0001-04-11T00:00:22Z","pitDuration":"00:40:56.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":49,"lat":36.56793212890625,"lon":-79.2026596069336,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":2,"timingZone":2,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:53.405","bestLapTime":"00:02:50.203","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:04.343|rmonitor
+$F,9999,"06:50:24","09:09:04","00:09:35","Yellow"
+##2026-08-02 13:09:04.557|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":76,"lat":36.56352615356445,"lon":-79.20463562011719,"carFlag":"StYellow","localFlag":"StYellow","fullCourseFlag":"Yellow","flaggingZone":6,"timingZone":6,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":87,"lat":36.55679702758789,"lon":-79.20851135253906,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":13,"timingZone":13,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":3,"lastLapTime":"00:03:12.792","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":true}]
+##2026-08-02 13:09:04.993|rmonitor
+$F,9999,"06:50:23","09:09:04","00:09:36","Yellow"
+##2026-08-02 13:09:05.208|rmonitor
+$F,9999,"06:50:23","09:09:05","00:09:36","Yellow"
+##2026-08-02 13:09:05.422|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":89,"lat":36.555355072021484,"lon":-79.20763397216797,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":true},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":88,"lat":36.557373046875,"lon":-79.20884704589844,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":13,"timingZone":13,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":3,"lastLapTime":"00:03:12.792","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":true}]
+##2026-08-02 13:09:06.720|rmonitor
+$F,9999,"06:50:22","09:09:06","00:09:37","Yellow"
+##2026-08-02 13:09:06.733|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":89,"lat":36.555355072021484,"lon":-79.20763397216797,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":true},{"carNumber":"330","ft200DeviceId":20006227,"class":["F"],"teamName":"HardSix Racing","speed":0,"lat":0,"lon":0,"carFlag":"None","localFlag":null,"fullCourseFlag":"Purple","flaggingZone":0,"timingZone":0,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":1,"lastLapTime":null,"bestLapTime":null,"pitEntryTime":null,"pitDuration":null,"pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:09.322|rmonitor
+$F,9999,"06:50:21","09:09:07","00:09:38","Yellow"
+##2026-08-02 13:09:09.354|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":93,"lat":36.556236267089844,"lon":-79.20819854736328,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":67,"lat":36.56817626953125,"lon":-79.20458984375,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":2,"timingZone":2,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:09.406|rmonitor
+$F,9999,"06:50:20","09:09:08","00:09:39","Yellow"
+##2026-08-02 13:09:09.420|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":93,"lat":36.55657958984375,"lon":-79.20840454101562,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":64,"lat":36.56822204589844,"lon":-79.20487213134766,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":2,"timingZone":2,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:09.453|rmonitor
+$F,9999,"06:50:19","09:09:09","00:09:40","Yellow"
+##2026-08-02 13:09:09.500|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":92,"lat":36.55684280395508,"lon":-79.20856475830078,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":71,"lat":36.568115234375,"lon":-79.20435333251953,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":2,"timingZone":2,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:00:17.399","bestLapTime":"00:02:50.203","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:10.390|rmonitor
+$F,9999,"06:50:18","09:09:10","00:09:41","Yellow"
+##2026-08-02 13:09:10.597|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":89,"lat":36.55717849731445,"lon":-79.20875549316406,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":55,"lat":36.55977249145508,"lon":-79.21015167236328,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:11.051|rmonitor
+$F,9999,"06:50:17","09:09:10","00:09:42","Yellow"
+##2026-08-02 13:09:11.256|rmonitor
+$F,9999,"06:50:17","09:09:11","00:09:42","Yellow"
+##2026-08-02 13:09:11.468|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":82,"lat":36.56117630004883,"lon":-79.20475769042969,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":7,"timingZone":7,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":54,"lat":36.55995178222656,"lon":-79.21024322509766,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:13.915|rmonitor
+$F,9999,"06:50:16","09:09:12","00:09:43","Yellow"
+##2026-08-02 13:09:13.919|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":74,"lat":36.56089782714844,"lon":-79.20479583740234,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":7,"timingZone":7,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":49,"lat":36.56025314331055,"lon":-79.21041870117188,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:13.924|rmonitor
+$F,9999,"06:50:15","09:09:13","00:09:44","Yellow"
+##2026-08-02 13:09:13.927|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":70,"lat":36.56064224243164,"lon":-79.20482635498047,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":7,"timingZone":7,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"842","ft200DeviceId":20000962,"class":["C"],"teamName":"Theoretically Racing","speed":42,"lat":36.568172454833984,"lon":-79.2057113647461,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":3,"timingZone":3,"driverId":71000318,"driverName":"Chad Germaine","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:48.108","bestLapTime":"00:02:45.406","pitEntryTime":"0001-04-11T00:00:59Z","pitDuration":"00:22:05.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:14.406|rmonitor
+$F,9999,"06:50:14","09:09:14","00:09:45","Yellow"
+##2026-08-02 13:09:14.612|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":68,"lat":36.558204650878906,"lon":-79.20933532714844,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":39,"lat":36.567867279052734,"lon":-79.20623016357422,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":3,"timingZone":3,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:15.415|rmonitor
+$F,9999,"06:50:13","09:09:15","00:09:46","Yellow"
+##2026-08-02 13:09:15.418|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":66,"lat":36.55840301513672,"lon":-79.20944213867188,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"347","ft200DeviceId":20001154,"class":["D"],"teamName":"Need 4 Swede ","speed":80,"lat":36.5688591003418,"lon":-79.20442199707031,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":1,"timingZone":1,"driverId":71000388,"driverName":"Donald Davis","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:49.227","bestLapTime":"00:02:49.227","pitEntryTime":"0001-04-11T12:33:25Z","pitDuration":"00:15:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:16.228|rmonitor
+$F,9999,"06:50:12","09:09:16","00:09:47","Yellow"
+##2026-08-02 13:09:16.431|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":54,"lat":36.55997848510742,"lon":-79.20486450195312,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":7,"timingZone":7,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":36,"lat":36.56763458251953,"lon":-79.20637512207031,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":3,"timingZone":3,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:18.253|rmonitor
+$F,9999,"06:50:11","09:09:17","00:09:48","Yellow"
+##2026-08-02 13:09:18.255|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":48,"lat":36.559627532958984,"lon":-79.204833984375,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":42,"lat":36.56093215942383,"lon":-79.2107925415039,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:18.258|rmonitor
+$F,9999,"06:50:10","09:09:18","00:09:49","Yellow"
+##2026-08-02 13:09:18.464|ftcar
+[{"carNumber":"331","ft200DeviceId":20000730,"class":["C"],"teamName":"ChumpChange ","speed":39,"lat":36.565086364746094,"lon":-79.20425415039062,"carFlag":"Purple","localFlag":"StYellow","fullCourseFlag":"Purple","flaggingZone":6,"timingZone":6,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:49.449","bestLapTime":"00:02:49.449","pitEntryTime":"0001-04-11T00:00:22Z","pitDuration":"00:40:56.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":29,"lat":36.56740951538086,"lon":-79.20638275146484,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:19.277|rmonitor
+$F,9999,"06:50:09","09:09:19","00:09:50","Yellow"
+##2026-08-02 13:09:19.483|ftcar
+[{"carNumber":"783","ft200DeviceId":20002462,"class":["F"],"teamName":"PB&J Racing ","speed":35,"lat":36.558528900146484,"lon":-79.20466613769531,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":71000461,"driverName":"Jacob Barone","driverSource":"rfidHelmet","currentLapNumber":3,"lastLapTime":"00:03:13.125","bestLapTime":"00:03:13.125","pitEntryTime":"2026-08-02T12:59:57Z","pitDuration":"00:00:56.181","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":28,"lat":36.56731033325195,"lon":-79.20636749267578,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:20.287|rmonitor
+$F,9999,"06:50:08","09:09:20","00:09:51","Yellow"
+##2026-08-02 13:09:20.490|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":56,"lat":36.55963134765625,"lon":-79.21009063720703,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":43,"lat":36.561134338378906,"lon":-79.21088409423828,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":3,"lastLapTime":"00:03:12.792","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:21.297|rmonitor
+$F,9999,"06:50:07","09:09:21","00:09:52","Yellow"
+##2026-08-02 13:09:21.504|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":38,"lat":36.559059143066406,"lon":-79.2046890258789,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":25,"lat":36.56734848022461,"lon":-79.20635223388672,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:00:17.399","bestLapTime":"00:02:50.203","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:22.821|rmonitor
+$F,9999,"06:50:06","09:09:22","00:09:53","Yellow"
+##2026-08-02 13:09:22.823|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":37,"lat":36.55894088745117,"lon":-79.20465850830078,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":32,"lat":36.5616569519043,"lon":-79.21125793457031,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:23.428|rmonitor
+$F,9999,"06:50:05","09:09:23","00:09:54","Yellow"
+##2026-08-02 13:09:23.431|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":37,"lat":36.55879211425781,"lon":-79.20463562011719,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":29,"lat":36.56678009033203,"lon":-79.2061996459961,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:23.435|ftcar
+[{"carNumber":"9228","ft200DeviceId":20000228,"class":[],"teamName":"","speed":36,"lat":36.564273834228516,"lon":-79.20449829101562,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":6,"timingZone":6,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":1,"lastLapTime":null,"bestLapTime":null,"pitEntryTime":null,"pitDuration":null,"pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"330","ft200DeviceId":20006227,"class":["F"],"teamName":"HardSix Racing","speed":0,"lat":0,"lon":0,"carFlag":"None","localFlag":null,"fullCourseFlag":"Purple","flaggingZone":0,"timingZone":0,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":1,"lastLapTime":null,"bestLapTime":null,"pitEntryTime":null,"pitDuration":null,"pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:24.452|rmonitor
+$F,9999,"06:50:04","09:09:24","00:09:55","Yellow"
+##2026-08-02 13:09:24.455|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":48,"lat":36.5603141784668,"lon":-79.21045684814453,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":true},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":33,"lat":36.56160354614258,"lon":-79.21117401123047,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":3,"lastLapTime":"00:03:12.792","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:25.262|rmonitor
+$F,9999,"06:50:03","09:09:25","00:09:56","Yellow"
+##2026-08-02 13:09:25.469|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":48,"lat":36.56047439575195,"lon":-79.21054077148438,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":true},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":27,"lat":36.56196212768555,"lon":-79.21157836914062,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:26.278|rmonitor
+$F,9999,"06:50:02","09:09:26","00:09:57","Yellow"
+##2026-08-02 13:09:26.482|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":38,"lat":36.55827713012695,"lon":-79.20469665527344,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":30,"lat":36.56637191772461,"lon":-79.2060546875,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":2,"lastLapTime":"00:02:55.898","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:28.514|rmonitor
+$F,9999,"06:50:01","09:09:27","00:09:58","Yellow"
+##2026-08-02 13:09:28.518|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":38,"lat":36.55812454223633,"lon":-79.20471954345703,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":31,"lat":36.56625747680664,"lon":-79.20597076416016,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":2,"lastLapTime":"00:02:55.898","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:28.521|rmonitor
+$F,9999,"06:50:00","09:09:28","00:09:59","Yellow"
+##2026-08-02 13:09:28.526|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":38,"lat":36.55800247192383,"lon":-79.20472717285156,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":29,"lat":36.56667709350586,"lon":-79.20616912841797,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:00:17.399","bestLapTime":"00:02:50.203","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:29.196|rmonitor
+$F,9999,"06:49:59","09:09:29","00:10:00","Yellow"
+##2026-08-02 13:09:29.600|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":38,"lat":36.55788040161133,"lon":-79.20472717285156,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":29,"lat":36.56227111816406,"lon":-79.2119140625,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:30.203|rmonitor
+$F,9999,"06:49:58","09:09:30","00:10:01","Yellow"
+##2026-08-02 13:09:30.411|ftcar
+[{"carNumber":"783","ft200DeviceId":20002462,"class":["F"],"teamName":"PB&J Racing ","speed":35,"lat":36.556880950927734,"lon":-79.20465850830078,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":9,"timingZone":9,"driverId":71000461,"driverName":"Jacob Barone","driverSource":"rfidHelmet","currentLapNumber":3,"lastLapTime":"00:03:13.125","bestLapTime":"00:03:13.125","pitEntryTime":"2026-08-02T12:59:57Z","pitDuration":"00:00:56.181","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":27,"lat":36.56647491455078,"lon":-79.20609283447266,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:00:17.399","bestLapTime":"00:02:50.203","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:31.219|rmonitor
+$F,9999,"06:49:57","09:09:31","00:10:02","Yellow"
+##2026-08-02 13:09:31.421|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":38,"lat":36.557472229003906,"lon":-79.20466613769531,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":9,"timingZone":9,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":30,"lat":36.56245040893555,"lon":-79.21196746826172,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:33.524|rmonitor
+$F,9999,"06:49:56","09:09:32","00:10:03","Yellow"
+##2026-08-02 13:09:33.527|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":37,"lat":36.55731964111328,"lon":-79.20463562011719,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":9,"timingZone":9,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":32,"lat":36.56263732910156,"lon":-79.2118911743164,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":15,"timingZone":15,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:33.533|rmonitor
+$F,9999,"06:49:55","09:09:33","00:10:04","Yellow"
+##2026-08-02 13:09:33.535|ftcar
+[{"carNumber":"331","ft200DeviceId":20000730,"class":["C"],"teamName":"ChumpChange ","speed":35,"lat":36.5628662109375,"lon":-79.20463562011719,"carFlag":"Purple","localFlag":"StYellow","fullCourseFlag":"Purple","flaggingZone":6,"timingZone":6,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:49.449","bestLapTime":"00:02:49.449","pitEntryTime":"0001-04-11T00:00:22Z","pitDuration":"00:40:56.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":33,"lat":36.56272506713867,"lon":-79.21179962158203,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":15,"timingZone":15,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:34.342|rmonitor
+$F,9999,"06:49:54","09:09:34","00:10:05","Yellow"
+##2026-08-02 13:09:34.548|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":37,"lat":36.55707931518555,"lon":-79.20462799072266,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":9,"timingZone":9,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":35,"lat":36.56612014770508,"lon":-79.20486450195312,"carFlag":"Purple","localFlag":"StYellow","fullCourseFlag":"Purple","flaggingZone":5,"timingZone":5,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":2,"lastLapTime":"00:02:55.898","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:35.347|rmonitor
+$F,9999,"06:49:53","09:09:35","00:10:06","Yellow"
+##2026-08-02 13:09:35.551|ftcar
+[{"carNumber":"411","ft200DeviceId":20000176,"class":["C"],"teamName":"RVA Graphics and Wraps (Orange)","speed":33,"lat":36.567501068115234,"lon":-79.21060180664062,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:27.693","bestLapTime":"00:02:27.693","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:01:28.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":37,"lat":36.56610870361328,"lon":-79.20482635498047,"carFlag":"Purple","localFlag":"StYellow","fullCourseFlag":"Purple","flaggingZone":5,"timingZone":5,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:36.367|rmonitor
+$F,9999,"06:49:52","09:09:36","00:10:07","Yellow"
+##2026-08-02 13:09:36.578|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":34,"lat":36.5620231628418,"lon":-79.21166229248047,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":37,"lat":36.56604766845703,"lon":-79.20469665527344,"carFlag":"Purple","localFlag":"StYellow","fullCourseFlag":"Purple","flaggingZone":5,"timingZone":5,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:37.392|rmonitor
+$F,9999,"06:49:51","09:09:37","00:10:08","Yellow"
+##2026-08-02 13:09:37.742|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":34,"lat":36.562110900878906,"lon":-79.21177673339844,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":37,"lat":36.56596374511719,"lon":-79.20457458496094,"carFlag":"Purple","localFlag":"StYellow","fullCourseFlag":"Purple","flaggingZone":5,"timingZone":5,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:38.607|rmonitor
+$F,9999,"06:49:50","09:09:38","00:10:09","Yellow"
+##2026-08-02 13:09:38.610|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":35,"lat":36.556453704833984,"lon":-79.20478820800781,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":9,"timingZone":9,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":38,"lat":36.565635681152344,"lon":-79.20429229736328,"carFlag":"Purple","localFlag":"StYellow","fullCourseFlag":"Purple","flaggingZone":5,"timingZone":5,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":2,"lastLapTime":"00:02:55.898","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:39.224|rmonitor
+$F,9999,"06:49:49","09:09:39","00:10:10","Yellow"
+##2026-08-02 13:09:39.433|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":35,"lat":36.56230545043945,"lon":-79.2119369506836,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:34.094","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":37,"lat":36.56549072265625,"lon":-79.2042236328125,"carFlag":"Purple","localFlag":"StYellow","fullCourseFlag":"Purple","flaggingZone":5,"timingZone":5,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":2,"lastLapTime":"00:02:55.898","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:09:40.256|rmonitor
+$F,9999,"06:49:48","09:09:40","00:10:11","Yellow"
+##2026-08-02 13:09:41.282|rmonitor
+$F,9999,"06:49:47","09:09:41","00:10:12","Yellow"
+##2026-08-02 13:09:42.301|rmonitor
+$F,9999,"06:49:46","09:09:42","00:10:13","Yellow"
+##2026-08-02 13:09:43.463|rmonitor
+$F,9999,"06:49:45","09:09:42","00:10:14","Yellow"
+##2026-08-02 13:09:43.466|rmonitor
+$F,9999,"06:49:45","09:09:43","00:10:14","Yellow"
+##2026-08-02 13:09:44.285|rmonitor
+$F,9999,"06:49:44","09:09:44","00:10:15","Yellow"
+##2026-08-02 13:09:45.310|rmonitor
+$F,9999,"06:49:43","09:09:45","00:10:16","Yellow"
+##2026-08-02 13:09:46.330|rmonitor
+$F,9999,"06:49:42","09:09:46","00:10:17","Yellow"
+##2026-08-02 13:09:47.339|rmonitor
+$F,9999,"06:49:41","09:09:47","00:10:18","Yellow"
+##2026-08-02 13:09:49.042|rmonitor
+$F,9999,"06:49:40","09:09:48","00:10:19","Yellow"
+##2026-08-02 13:09:49.251|rmonitor
+$F,9999,"06:49:39","09:09:49","00:10:20","Yellow"
+##2026-08-02 13:09:50.268|rmonitor
+$F,9999,"06:49:38","09:09:50","00:10:21","Yellow"
+##2026-08-02 13:09:51.280|rmonitor
+$F,9999,"06:49:37","09:09:51","00:10:22","Yellow"
+##2026-08-02 13:09:52.292|rmonitor
+$F,9999,"06:49:36","09:09:52","00:10:23","Yellow"
+##2026-08-02 13:09:53.514|rmonitor
+$F,9999,"06:49:35","09:09:53","00:10:24","Yellow"
+##2026-08-02 13:09:54.328|rmonitor
+$F,9999,"06:49:34","09:09:54","00:10:25","Yellow"
+##2026-08-02 13:09:55.336|rmonitor
+$F,9999,"06:49:33","09:09:55","00:10:26","Yellow"
+##2026-08-02 13:09:56.346|rmonitor
+$F,9999,"06:49:32","09:09:56","00:10:27","Yellow"
+##2026-08-02 13:09:57.365|rmonitor
+$F,9999,"06:49:31","09:09:57","00:10:28","Yellow"
+##2026-08-02 13:09:58.645|rmonitor
+$F,9999,"06:49:30","09:09:58","00:10:29","Yellow"
+##2026-08-02 13:09:59.251|rmonitor
+$F,9999,"06:49:29","09:09:59","00:10:30","Yellow"
+##2026-08-02 13:10:00.279|rmonitor
+$F,9999,"06:49:28","09:10:00","00:10:31","Yellow"
+##2026-08-02 13:10:01.306|rmonitor
+$F,9999,"06:49:27","09:10:01","00:10:32","Yellow"
+##2026-08-02 13:10:02.371|rmonitor
+$F,9999,"06:49:26","09:10:02","00:10:33","Yellow"
+##2026-08-02 13:10:05.692|rmonitor
+$F,9999,"06:49:25","09:10:03","00:10:34","Yellow"
+##2026-08-02 13:10:05.725|rmonitor
+$F,9999,"06:49:24","09:10:04","00:10:35","Yellow"
+##2026-08-02 13:10:05.739|rmonitor
+$F,9999,"06:49:23","09:10:05","00:10:36","Yellow"
+##2026-08-02 13:10:06.360|rmonitor
+$F,9999,"06:49:22","09:10:06","00:10:37","Yellow"
+##2026-08-02 13:10:07.384|rmonitor
+$F,9999,"06:49:21","09:10:07","00:10:38","Yellow"
+##2026-08-02 13:10:10.059|rmonitor
+$F,9999,"06:49:20","09:10:08","00:10:39","Yellow"
+##2026-08-02 13:10:10.062|ftcar
+[{"carNumber":"783","ft200DeviceId":20002462,"class":["F"],"teamName":"PB&J Racing ","speed":30,"lat":36.55200958251953,"lon":-79.20472717285156,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":12,"timingZone":12,"driverId":71000461,"driverName":"Jacob Barone","driverSource":"rfidHelmet","currentLapNumber":3,"lastLapTime":"00:03:13.125","bestLapTime":"00:03:13.125","pitEntryTime":"2026-08-02T12:59:57Z","pitDuration":"00:00:56.181","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":53,"lat":36.56757354736328,"lon":-79.21052551269531,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":3,"lastLapTime":"00:03:08.305","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":true}]
+##2026-08-02 13:10:10.102|rmonitor
+$F,9999,"06:49:19","09:10:09","00:10:40","Yellow"
+##2026-08-02 13:10:10.307|rmonitor
+$F,9999,"06:49:18","09:10:10","00:10:41","Yellow"
+##2026-08-02 13:10:11.331|rmonitor
+$F,9999,"06:49:17","09:10:11","00:10:42","Yellow"
+##2026-08-02 13:10:12.343|rmonitor
+$F,9999,"06:49:16","09:10:12","00:10:43","Yellow"
+##2026-08-02 13:10:14.223|rmonitor
+$F,9999,"06:49:14","09:10:14","00:10:45","Yellow"
+##2026-08-02 13:10:15.243|rmonitor
+$F,9999,"06:49:13","09:10:15","00:10:46","Yellow"
+##2026-08-02 13:10:16.262|rmonitor
+$F,9999,"06:49:12","09:10:16","00:10:47","Yellow"
+##2026-08-02 13:10:17.291|rmonitor
+$F,9999,"06:49:11","09:10:17","00:10:48","Yellow"
+##2026-08-02 13:10:18.318|rmonitor
+$F,9999,"06:49:10","09:10:18","00:10:49","Yellow"
+##2026-08-02 13:10:19.253|rmonitor
+$F,9999,"06:49:09","09:10:19","00:10:50","Yellow"
+##2026-08-02 13:10:20.271|rmonitor
+$F,9999,"06:49:08","09:10:20","00:10:51","Yellow"
+##2026-08-02 13:10:21.293|rmonitor
+$F,9999,"06:49:07","09:10:21","00:10:52","Yellow"
+##2026-08-02 13:10:22.308|rmonitor
+$F,9999,"06:49:06","09:10:22","00:10:53","Yellow"
+##2026-08-02 13:10:23.324|rmonitor
+$F,9999,"06:49:05","09:10:23","00:10:54","Yellow"
+##2026-08-02 13:10:24.356|rmonitor
+$F,9999,"06:49:04","09:10:24","00:10:55","Yellow"
+##2026-08-02 13:10:25.375|rmonitor
+$F,9999,"06:49:03","09:10:25","00:10:56","Yellow"
+##2026-08-02 13:10:26.412|rmonitor
+$F,9999,"06:49:02","09:10:26","00:10:57","Yellow"
+##2026-08-02 13:10:27.233|rmonitor
+$F,9999,"06:49:01","09:10:27","00:10:58","Yellow"
+##2026-08-02 13:10:28.272|rmonitor
+$F,9999,"06:49:00","09:10:28","00:10:59","Yellow"
+##2026-08-02 13:10:29.355|rmonitor
+$F,9999,"06:48:59","09:10:29","00:11:00","Yellow"
+##2026-08-02 13:10:30.370|rmonitor
+$F,9999,"06:48:58","09:10:30","00:11:01","Yellow"
+##2026-08-02 13:10:31.182|rmonitor
+$F,9999,"06:48:57","09:10:31","00:11:02","Yellow"
+##2026-08-02 13:10:32.402|rmonitor
+$F,9999,"06:48:56","09:10:32","00:11:03","Yellow"
+##2026-08-02 13:10:33.424|rmonitor
+$F,9999,"06:48:55","09:10:33","00:11:04","Yellow"
+##2026-08-02 13:10:34.210|rmonitor
+$F,9999,"06:48:54","09:10:34","00:11:05","Yellow"
+##2026-08-02 13:10:35.240|rmonitor
+$F,9999,"06:48:53","09:10:35","00:11:06","Yellow"
+##2026-08-02 13:10:36.255|rmonitor
+$F,9999,"06:48:52","09:10:36","00:11:07","Yellow"
+##2026-08-02 13:10:37.272|rmonitor
+$F,9999,"06:48:51","09:10:37","00:11:08","Yellow"
+##2026-08-02 13:10:38.287|rmonitor
+$F,9999,"06:48:50","09:10:38","00:11:09","Yellow"
+##2026-08-02 13:10:40.105|rmonitor
+$F,9999,"06:48:49","09:10:39","00:11:10","Yellow"
+##2026-08-02 13:10:40.108|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":36,"lat":36.55474090576172,"lon":-79.2071762084961,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":34,"lat":36.557456970214844,"lon":-79.20467376708984,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":9,"timingZone":9,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:10:40.120|rmonitor
+$F,9999,"06:48:48","09:10:39","00:11:11","Yellow"
+##2026-08-02 13:10:40.323|rmonitor
+$F,9999,"06:48:48","09:10:40","00:11:11","Yellow"
+##2026-08-02 13:10:41.333|rmonitor
+$F,9999,"06:48:47","09:10:41","00:11:12","Yellow"
+##2026-08-02 13:10:42.353|rmonitor
+$F,9999,"06:48:46","09:10:42","00:11:13","Yellow"
+##2026-08-02 13:10:43.364|rmonitor
+$F,9999,"06:48:45","09:10:43","00:11:14","Yellow"
+##2026-08-02 13:10:45.537|rmonitor
+$F,9999,"06:48:44","09:10:44","00:11:15","Yellow"
+##2026-08-02 13:10:45.543|rmonitor
+$F,9999,"06:48:43","09:10:45","00:11:16","Yellow"
+##2026-08-02 13:10:46.360|rmonitor
+$F,9999,"06:48:42","09:10:46","00:11:17","Yellow"
+##2026-08-02 13:10:47.180|rmonitor
+$F,9999,"06:48:41","09:10:47","00:11:18","Yellow"
+##2026-08-02 13:10:48.191|rmonitor
+$F,9999,"06:48:40","09:10:48","00:11:19","Yellow"
+##2026-08-02 13:10:50.215|rmonitor
+$F,9999,"06:48:39","09:10:49","00:11:20","Yellow"
+##2026-08-02 13:10:50.253|rmonitor
+$F,9999,"06:48:38","09:10:50","00:11:21","Yellow"
+##2026-08-02 13:10:51.259|rmonitor
+$F,9999,"06:48:37","09:10:51","00:11:22","Yellow"
+##2026-08-02 13:10:51.885|rmonitor
+$F,9999,"06:48:36","09:10:51","00:11:23","Yellow"
+##2026-08-02 13:10:52.307|rmonitor
+$F,9999,"06:48:36","09:10:52","00:11:23","Yellow"
+##2026-08-02 13:10:53.322|rmonitor
+$F,9999,"06:48:35","09:10:53","00:11:24","Yellow"
+##2026-08-02 13:10:55.316|rmonitor
+$F,9999,"06:48:34","09:10:54","00:11:25","Yellow"
+##2026-08-02 13:10:55.321|rmonitor
+$F,9999,"06:48:33","09:10:55","00:11:26","Yellow"
+##2026-08-02 13:10:56.332|rmonitor
+$F,9999,"06:48:32","09:10:56","00:11:27","Yellow"
+##2026-08-02 13:10:57.351|rmonitor
+$F,9999,"06:48:31","09:10:57","00:11:28","Yellow"
+##2026-08-02 13:10:58.368|rmonitor
+$F,9999,"06:48:30","09:10:58","00:11:29","Yellow"
+##2026-08-02 13:11:00.187|rmonitor
+$F,9999,"06:48:29","09:10:59","00:11:30","Yellow"
+##2026-08-02 13:11:00.415|rmonitor
+$F,9999,"06:48:28","09:11:00","00:11:31","Yellow"
+##2026-08-02 13:11:01.236|rmonitor
+$F,9999,"06:48:27","09:11:01","00:11:32","Yellow"
+##2026-08-02 13:11:02.244|rmonitor
+$F,9999,"06:48:26","09:11:02","00:11:33","Yellow"
+##2026-08-02 13:11:03.301|rmonitor
+$F,9999,"06:48:25","09:11:03","00:11:34","Yellow"
+##2026-08-02 13:11:04.729|rmonitor
+$F,9999,"06:48:24","09:11:04","00:11:35","Yellow"
+##2026-08-02 13:11:05.379|rmonitor
+$F,9999,"06:48:23","09:11:05","00:11:36","Yellow"
+##2026-08-02 13:11:06.208|rmonitor
+$F,9999,"06:48:22","09:11:06","00:11:37","Yellow"
+##2026-08-02 13:11:07.435|rmonitor
+$F,9999,"06:48:21","09:11:07","00:11:38","Yellow"
+##2026-08-02 13:11:08.249|rmonitor
+$F,9999,"06:48:20","09:11:08","00:11:39","Yellow"
+##2026-08-02 13:11:10.452|rmonitor
+$F,9999,"06:48:18","09:11:10","00:11:41","Yellow"
+##2026-08-02 13:11:10.475|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":33,"lat":36.5587272644043,"lon":-79.2095947265625,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:02:46.808","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":33,"lat":36.55337905883789,"lon":-79.20457458496094,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":11,"timingZone":11,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:02:43.998","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:11:11.312|rmonitor
+$F,9999,"06:48:17","09:11:11","00:11:42","Yellow"
+##2026-08-02 13:11:12.319|rmonitor
+$F,9999,"06:48:16","09:11:12","00:11:43","Yellow"
+##2026-08-02 13:11:13.331|rmonitor
+$F,9999,"06:48:15","09:11:13","00:11:44","Yellow"
+##2026-08-02 13:11:15.327|rmonitor
+$F,9999,"06:48:13","09:11:15","00:11:46","Yellow"
+##2026-08-02 13:11:16.340|rmonitor
+$F,9999,"06:48:12","09:11:16","00:11:47","Yellow"
+##2026-08-02 13:11:17.352|rmonitor
+$F,9999,"06:48:11","09:11:17","00:11:48","Yellow"
+##2026-08-02 13:11:18.368|rmonitor
+$F,9999,"06:48:10","09:11:18","00:11:49","Yellow"
+##2026-08-02 13:11:19.389|rmonitor
+$F,9999,"06:48:09","09:11:19","00:11:50","Yellow"
+##2026-08-02 13:11:20.247|rmonitor
+$F,9999,"06:48:08","09:11:20","00:11:51","Yellow"
+##2026-08-02 13:11:21.264|rmonitor
+$F,9999,"06:48:07","09:11:21","00:11:52","Yellow"
+##2026-08-02 13:11:22.283|rmonitor
+$F,9999,"06:48:06","09:11:22","00:11:53","Yellow"
+##2026-08-02 13:11:23.296|rmonitor
+$F,9999,"06:48:05","09:11:23","00:11:54","Yellow"
+##2026-08-02 13:11:24.310|rmonitor
+$F,9999,"06:48:04","09:11:24","00:11:55","Yellow"
+##2026-08-02 13:11:25.412|rmonitor
+$F,9999,"06:48:03","09:11:25","00:11:56","Yellow"
+##2026-08-02 13:11:26.430|rmonitor
+$F,9999,"06:48:02","09:11:26","00:11:57","Yellow"
+##2026-08-02 13:11:27.449|rmonitor
+$F,9999,"06:48:01","09:11:27","00:11:58","Yellow"
+##2026-08-02 13:11:28.262|rmonitor
+$F,9999,"06:48:00","09:11:28","00:11:59","Yellow"
+##2026-08-02 13:11:29.275|rmonitor
+$F,9999,"06:47:59","09:11:29","00:12:00","Yellow"
+##2026-08-02 13:11:30.352|rmonitor
+$F,9999,"06:47:58","09:11:30","00:12:01","Yellow"
+##2026-08-02 13:11:31.371|rmonitor
+$F,9999,"06:47:57","09:11:31","00:12:02","Yellow"
+##2026-08-02 13:11:32.382|rmonitor
+$F,9999,"06:47:56","09:11:32","00:12:03","Yellow"
+##2026-08-02 13:11:33.198|rmonitor
+$F,9999,"06:47:55","09:11:33","00:12:04","Yellow"
+##2026-08-02 13:11:34.060|rmonitor
+$F,9999,"06:47:54","09:11:33","00:12:05","Yellow"
+##2026-08-02 13:11:34.265|rmonitor
+$F,9999,"06:47:54","09:11:34","00:12:05","Yellow"
+##2026-08-02 13:11:35.238|rmonitor
+$F,9999,"06:47:53","09:11:35","00:12:06","Yellow"
+##2026-08-02 13:11:36.259|rmonitor
+$F,9999,"06:47:52","09:11:36","00:12:07","Yellow"
+##2026-08-02 13:11:37.300|rmonitor
+$F,9999,"06:47:51","09:11:37","00:12:08","Yellow"
+##2026-08-02 13:11:38.317|rmonitor
+$F,9999,"06:47:50","09:11:38","00:12:09","Yellow"
+##2026-08-02 13:11:39.333|rmonitor
+$F,9999,"06:47:49","09:11:39","00:12:10","Yellow"
+##2026-08-02 13:11:40.363|rmonitor
+$F,9999,"06:47:48","09:11:40","00:12:11","Yellow"
+##2026-08-02 13:11:40.570|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":35,"lat":36.56813430786133,"lon":-79.20581817626953,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":3,"timingZone":3,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":32,"lat":36.55403518676758,"lon":-79.20668029785156,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":2,"lastLapTime":"00:02:55.898","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:11:41.381|rmonitor
+$F,9999,"06:47:47","09:11:41","00:12:12","Yellow"
+##2026-08-02 13:11:42.227|rmonitor
+$F,9999,"06:47:46","09:11:42","00:12:13","Yellow"
+##2026-08-02 13:11:43.246|rmonitor
+$F,9999,"06:47:45","09:11:43","00:12:14","Yellow"
+##2026-08-02 13:11:44.260|rmonitor
+$F,9999,"06:47:44","09:11:44","00:12:15","Yellow"
+##2026-08-02 13:11:45.343|rmonitor
+$F,9999,"06:47:43","09:11:45","00:12:16","Yellow"
+##2026-08-02 13:11:46.367|rmonitor
+$F,9999,"06:47:42","09:11:46","00:12:17","Yellow"
+##2026-08-02 13:11:47.208|rmonitor
+$F,9999,"06:47:41","09:11:47","00:12:18","Yellow"
+##2026-08-02 13:11:48.226|rmonitor
+$F,9999,"06:47:40","09:11:48","00:12:19","Yellow"
+##2026-08-02 13:11:49.235|rmonitor
+$F,9999,"06:47:39","09:11:49","00:12:20","Yellow"
+##2026-08-02 13:11:51.373|rmonitor
+$F,9999,"06:47:37","09:11:51","00:12:22","Yellow"
+##2026-08-02 13:11:52.382|rmonitor
+$F,9999,"06:47:36","09:11:52","00:12:23","Yellow"
+##2026-08-02 13:11:53.421|rmonitor
+$F,9999,"06:47:35","09:11:53","00:12:24","Yellow"
+##2026-08-02 13:11:54.437|rmonitor
+$F,9999,"06:47:34","09:11:54","00:12:25","Yellow"
+##2026-08-02 13:11:55.670|rmonitor
+$F,9999,"06:47:33","09:11:55","00:12:26","Yellow"
+##2026-08-02 13:11:56.308|rmonitor
+$F,9999,"06:47:32","09:11:56","00:12:27","Yellow"
+##2026-08-02 13:11:57.319|rmonitor
+$F,9999,"06:47:31","09:11:57","00:12:28","Yellow"
+##2026-08-02 13:11:58.330|rmonitor
+$F,9999,"06:47:30","09:11:58","00:12:29","Yellow"
+##2026-08-02 13:11:59.352|rmonitor
+$F,9999,"06:47:29","09:11:59","00:12:30","Yellow"
+##2026-08-02 13:12:00.369|rmonitor
+$F,9999,"06:47:28","09:12:00","00:12:31","Yellow"
+##2026-08-02 13:12:01.344|rmonitor
+$F,9999,"06:47:27","09:12:01","00:12:32","Yellow"
+##2026-08-02 13:12:02.373|rmonitor
+$F,9999,"06:47:26","09:12:02","00:12:33","Yellow"
+##2026-08-02 13:12:03.392|rmonitor
+$F,9999,"06:47:25","09:12:03","00:12:34","Yellow"
+##2026-08-02 13:12:04.423|rmonitor
+$F,9999,"06:47:24","09:12:04","00:12:35","Yellow"
+##2026-08-02 13:12:05.252|rmonitor
+$F,9999,"06:47:23","09:12:05","00:12:36","Yellow"
+##2026-08-02 13:12:06.370|rmonitor
+$F,9999,"06:47:22","09:12:06","00:12:37","Yellow"
+##2026-08-02 13:12:07.404|rmonitor
+$F,9999,"06:47:21","09:12:07","00:12:38","Yellow"
+##2026-08-02 13:12:08.255|rmonitor
+$F,9999,"06:47:20","09:12:08","00:12:39","Yellow"
+##2026-08-02 13:12:09.272|rmonitor
+$F,9999,"06:47:19","09:12:09","00:12:40","Yellow"
+##2026-08-02 13:12:10.293|rmonitor
+$F,9999,"06:47:18","09:12:10","00:12:41","Yellow"
+##2026-08-02 13:12:11.328|rmonitor
+$F,9999,"06:47:17","09:12:11","00:12:42","Yellow"
+##2026-08-02 13:12:11.532|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":32,"lat":36.5651969909668,"lon":-79.20417785644531,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":5,"timingZone":5,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":30,"lat":36.55796813964844,"lon":-79.20919036865234,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":13,"timingZone":13,"driverId":71000347,"driverName":"Ken Rutledge","driverSource":"manualOverride","currentLapNumber":2,"lastLapTime":"00:02:55.898","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:12:12.340|rmonitor
+$F,9999,"06:47:16","09:12:12","00:12:43","Yellow"
+##2026-08-02 13:12:13.351|rmonitor
+$F,9999,"06:47:15","09:12:13","00:12:44","Yellow"
+##2026-08-02 13:12:14.161|rmonitor
+$F,9999,"06:47:14","09:12:14","00:12:45","Yellow"
+##2026-08-02 13:12:15.375|rmonitor
+$F,9999,"06:47:13","09:12:15","00:12:46","Yellow"
+##2026-08-02 13:12:16.380|rmonitor
+$F,9999,"06:47:12","09:12:16","00:12:47","Yellow"
+##2026-08-02 13:12:17.196|rmonitor
+$F,9999,"06:47:11","09:12:17","00:12:48","Yellow"
+##2026-08-02 13:12:18.206|rmonitor
+$F,9999,"06:47:10","09:12:18","00:12:49","Yellow"
+##2026-08-02 13:12:19.214|rmonitor
+$F,9999,"06:47:09","09:12:19","00:12:50","Yellow"
+##2026-08-02 13:12:20.227|rmonitor
+$F,9999,"06:47:08","09:12:20","00:12:51","Yellow"
+##2026-08-02 13:12:22.372|rmonitor
+$F,9999,"06:47:06","09:12:22","00:12:53","Yellow"
+##2026-08-02 13:12:23.392|rmonitor
+$F,9999,"06:47:05","09:12:23","00:12:54","Yellow"
+##2026-08-02 13:12:24.228|rmonitor
+$F,9999,"06:47:04","09:12:24","00:12:55","Yellow"
+##2026-08-02 13:12:25.444|rmonitor
+$F,9999,"06:47:03","09:12:25","00:12:56","Yellow"
+##2026-08-02 13:12:27.266|rmonitor
+$F,9999,"06:47:01","09:12:27","00:12:58","Yellow"
+##2026-08-02 13:12:28.283|rmonitor
+$F,9999,"06:47:00","09:12:28","00:12:59","Yellow"
+##2026-08-02 13:12:29.290|rmonitor
+$F,9999,"06:46:59","09:12:29","00:13:00","Yellow"
+##2026-08-02 13:12:30.298|rmonitor
+$F,9999,"06:46:58","09:12:30","00:13:01","Yellow"
+##2026-08-02 13:12:31.337|rmonitor
+$F,9999,"06:46:57","09:12:31","00:13:02","Yellow"
+##2026-08-02 13:12:32.353|rmonitor
+$F,9999,"06:46:56","09:12:32","00:13:03","Yellow"
+##2026-08-02 13:12:33.366|rmonitor
+$F,9999,"06:46:55","09:12:33","00:13:04","Yellow"
+##2026-08-02 13:12:34.381|rmonitor
+$F,9999,"06:46:54","09:12:34","00:13:05","Yellow"
+##2026-08-02 13:12:35.205|rmonitor
+$F,9999,"06:46:53","09:12:35","00:13:06","Yellow"
+##2026-08-02 13:12:36.229|rmonitor
+$F,9999,"06:46:52","09:12:36","00:13:07","Yellow"
+##2026-08-02 13:12:37.214|rmonitor
+$F,9999,"06:46:51","09:12:37","00:13:08","Yellow"
+##2026-08-02 13:12:38.222|rmonitor
+$F,9999,"06:46:50","09:12:38","00:13:09","Yellow"
+##2026-08-02 13:12:39.236|rmonitor
+$F,9999,"06:46:49","09:12:39","00:13:10","Yellow"
+##2026-08-02 13:12:40.259|rmonitor
+$F,9999,"06:46:48","09:12:40","00:13:11","Yellow"
+##2026-08-02 13:12:41.289|rmonitor
+$F,9999,"06:46:47","09:12:41","00:13:12","Yellow"
+##2026-08-02 13:12:42.265|rmonitor
+$F,9999,"06:46:46","09:12:42","00:13:13","Yellow"
+##2026-08-02 13:12:42.470|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":34,"lat":36.5610237121582,"lon":-79.20475006103516,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":7,"timingZone":7,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":35,"lat":36.55654525756836,"lon":-79.20471954345703,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":9,"timingZone":9,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:12:43.281|rmonitor
+$F,9999,"06:46:45","09:12:43","00:13:14","Yellow"
+##2026-08-02 13:12:44.294|rmonitor
+$F,9999,"06:46:44","09:12:44","00:13:15","Yellow"
+##2026-08-02 13:12:45.309|rmonitor
+$F,9999,"06:46:43","09:12:45","00:13:16","Yellow"
+##2026-08-02 13:12:46.318|rmonitor
+$F,9999,"06:46:42","09:12:46","00:13:17","Yellow"
+##2026-08-02 13:12:47.750|rmonitor
+$F,9999,"06:46:41","09:12:47","00:13:18","Yellow"
+##2026-08-02 13:12:48.368|rmonitor
+$F,9999,"06:46:40","09:12:48","00:13:19","Yellow"
+##2026-08-02 13:12:49.383|rmonitor
+$F,9999,"06:46:39","09:12:49","00:13:20","Yellow"
+##2026-08-02 13:12:50.419|rmonitor
+$F,9999,"06:46:38","09:12:50","00:13:21","Yellow"
+##2026-08-02 13:12:51.431|rmonitor
+$F,9999,"06:46:37","09:12:51","00:13:22","Yellow"
+##2026-08-02 13:12:52.321|rmonitor
+$F,9999,"06:46:36","09:12:52","00:13:23","Yellow"
+##2026-08-02 13:12:53.332|rmonitor
+$F,9999,"06:46:35","09:12:53","00:13:24","Yellow"
+##2026-08-02 13:12:54.151|rmonitor
+$F,9999,"06:46:34","09:12:54","00:13:25","Yellow"
+##2026-08-02 13:12:55.168|rmonitor
+$F,9999,"06:46:33","09:12:55","00:13:26","Yellow"
+##2026-08-02 13:12:56.182|rmonitor
+$F,9999,"06:46:32","09:12:56","00:13:27","Yellow"
+##2026-08-02 13:12:58.217|rmonitor
+$F,9999,"06:46:30","09:12:58","00:13:29","Yellow"
+##2026-08-02 13:12:59.225|rmonitor
+$F,9999,"06:46:29","09:12:59","00:13:30","Yellow"
+##2026-08-02 13:13:00.243|rmonitor
+$F,9999,"06:46:28","09:13:00","00:13:31","Yellow"
+##2026-08-02 13:13:01.261|rmonitor
+$F,9999,"06:46:27","09:13:01","00:13:32","Yellow"
+##2026-08-02 13:13:02.722|rmonitor
+$F,9999,"06:46:26","09:13:02","00:13:33","Yellow"
+##2026-08-02 13:13:03.337|rmonitor
+$F,9999,"06:46:25","09:13:03","00:13:34","Yellow"
+##2026-08-02 13:13:04.356|rmonitor
+$F,9999,"06:46:24","09:13:04","00:13:35","Yellow"
+##2026-08-02 13:13:05.370|rmonitor
+$F,9999,"06:46:23","09:13:05","00:13:36","Yellow"
+##2026-08-02 13:13:06.380|rmonitor
+$F,9999,"06:46:22","09:13:06","00:13:37","Yellow"
+##2026-08-02 13:13:07.456|rmonitor
+$F,9999,"06:46:21","09:13:07","00:13:38","Yellow"
+##2026-08-02 13:13:08.288|rmonitor
+$F,9999,"06:46:20","09:13:08","00:13:39","Yellow"
+##2026-08-02 13:13:09.304|rmonitor
+$F,9999,"06:46:19","09:13:09","00:13:40","Yellow"
+##2026-08-02 13:13:10.322|rmonitor
+$F,9999,"06:46:18","09:13:10","00:13:41","Yellow"
+##2026-08-02 13:13:11.343|rmonitor
+$F,9999,"06:46:17","09:13:11","00:13:42","Yellow"
+##2026-08-02 13:13:12.152|rmonitor
+$F,9999,"06:46:16","09:13:12","00:13:43","Yellow"
+##2026-08-02 13:13:12.555|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":32,"lat":36.56879806518555,"lon":-79.2032699584961,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":1,"timingZone":1,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":35,"lat":36.556053161621094,"lon":-79.20497131347656,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":9,"timingZone":9,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:03:44.331","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:13:13.235|rmonitor
+$F,9999,"06:46:15","09:13:13","00:13:44","Yellow"
+##2026-08-02 13:13:14.250|rmonitor
+$F,9999,"06:46:14","09:13:14","00:13:45","Yellow"
+##2026-08-02 13:13:15.258|rmonitor
+$F,9999,"06:46:13","09:13:15","00:13:46","Yellow"
+##2026-08-02 13:13:16.275|rmonitor
+$F,9999,"06:46:12","09:13:16","00:13:47","Yellow"
+##2026-08-02 13:13:17.089|rmonitor
+$F,9999,"06:46:11","09:13:16","00:13:48","Yellow"
+##2026-08-02 13:13:17.291|rmonitor
+$F,9999,"06:46:11","09:13:17","00:13:48","Yellow"
+##2026-08-02 13:13:18.233|rmonitor
+$F,9999,"06:46:10","09:13:18","00:13:49","Yellow"
+##2026-08-02 13:13:19.247|rmonitor
+$F,9999,"06:46:09","09:13:19","00:13:50","Yellow"
+##2026-08-02 13:13:20.255|rmonitor
+$F,9999,"06:46:08","09:13:20","00:13:51","Yellow"
+##2026-08-02 13:13:21.271|rmonitor
+$F,9999,"06:46:07","09:13:21","00:13:52","Yellow"
+##2026-08-02 13:13:22.288|rmonitor
+$F,9999,"06:46:06","09:13:22","00:13:53","Yellow"
+##2026-08-02 13:13:23.331|rmonitor
+$F,9999,"06:46:05","09:13:23","00:13:54","Yellow"
+##2026-08-02 13:13:24.339|rmonitor
+$F,9999,"06:46:04","09:13:24","00:13:55","Yellow"
+##2026-08-02 13:13:24.960|rmonitor
+$F,9999,"06:46:03","09:13:24","00:13:56","Yellow"
+##2026-08-02 13:13:25.371|rmonitor
+$F,9999,"06:46:03","09:13:25","00:13:56","Yellow"
+##2026-08-02 13:13:26.389|rmonitor
+$F,9999,"06:46:02","09:13:26","00:13:57","Yellow"
+##2026-08-02 13:13:27.407|rmonitor
+$F,9999,"06:46:01","09:13:27","00:13:58","Yellow"
+##2026-08-02 13:13:27.953|rmonitor
+$F,9999,"06:46:00","09:13:27","00:13:59","Yellow"
+##2026-08-02 13:13:28.355|rmonitor
+$F,9999,"06:46:00","09:13:28","00:13:59","Yellow"
+##2026-08-02 13:13:29.380|rmonitor
+$F,9999,"06:45:59","09:13:29","00:14:00","Yellow"
+##2026-08-02 13:13:30.398|rmonitor
+$F,9999,"06:45:58","09:13:30","00:14:01","Yellow"
+##2026-08-02 13:13:31.425|rmonitor
+$F,9999,"06:45:57","09:13:31","00:14:02","Yellow"
+##2026-08-02 13:13:32.245|rmonitor
+$F,9999,"06:45:56","09:13:32","00:14:03","Yellow"
+##2026-08-02 13:13:32.936|rmonitor
+$F,9999,"06:45:55","09:13:32","00:14:04","Yellow"
+##2026-08-02 13:13:33.345|rmonitor
+$F,9999,"06:45:55","09:13:33","00:14:04","Yellow"
+##2026-08-02 13:13:34.369|rmonitor
+$F,9999,"06:45:54","09:13:34","00:14:05","Yellow"
+##2026-08-02 13:13:35.186|rmonitor
+$F,9999,"06:45:53","09:13:35","00:14:06","Yellow"
+##2026-08-02 13:13:36.204|rmonitor
+$F,9999,"06:45:52","09:13:36","00:14:07","Yellow"
+##2026-08-02 13:13:37.235|rmonitor
+$F,9999,"06:45:51","09:13:37","00:14:08","Yellow"
+##2026-08-02 13:13:38.324|rmonitor
+$F,9999,"06:45:50","09:13:38","00:14:09","Yellow"
+##2026-08-02 13:13:39.339|rmonitor
+$F,9999,"06:45:49","09:13:39","00:14:10","Yellow"
+##2026-08-02 13:13:40.352|rmonitor
+$F,9999,"06:45:48","09:13:40","00:14:11","Yellow"
+##2026-08-02 13:13:41.366|rmonitor
+$F,9999,"06:45:47","09:13:41","00:14:12","Yellow"
+##2026-08-02 13:13:42.395|rmonitor
+$F,9999,"06:45:46","09:13:42","00:14:13","Yellow"
+##2026-08-02 13:13:42.602|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":32,"lat":36.55289840698242,"lon":-79.20441436767578,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":11,"timingZone":11,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":27,"lat":36.552207946777344,"lon":-79.20447540283203,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":11,"timingZone":11,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:03:44.331","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:13:43.248|rmonitor
+$F,9999,"06:45:45","09:13:43","00:14:14","Yellow"
+##2026-08-02 13:13:44.255|rmonitor
+$F,9999,"06:45:44","09:13:44","00:14:15","Yellow"
+##2026-08-02 13:13:45.271|rmonitor
+$F,9999,"06:45:43","09:13:45","00:14:16","Yellow"
+##2026-08-02 13:13:46.286|rmonitor
+$F,9999,"06:45:42","09:13:46","00:14:17","Yellow"
+##2026-08-02 13:13:47.300|rmonitor
+$F,9999,"06:45:41","09:13:47","00:14:18","Yellow"
+##2026-08-02 13:13:48.324|rmonitor
+$F,9999,"06:45:40","09:13:48","00:14:19","Yellow"
+##2026-08-02 13:13:49.342|rmonitor
+$F,9999,"06:45:39","09:13:49","00:14:20","Yellow"
+##2026-08-02 13:13:50.350|rmonitor
+$F,9999,"06:45:38","09:13:50","00:14:21","Yellow"
+##2026-08-02 13:13:51.358|rmonitor
+$F,9999,"06:45:37","09:13:51","00:14:22","Yellow"
+##2026-08-02 13:13:52.375|rmonitor
+$F,9999,"06:45:36","09:13:52","00:14:23","Yellow"
+##2026-08-02 13:13:53.751|rmonitor
+$F,9999,"06:45:35","09:13:53","00:14:24","Yellow"
+##2026-08-02 13:13:54.370|rmonitor
+$F,9999,"06:45:34","09:13:54","00:14:25","Yellow"
+##2026-08-02 13:13:54.987|rmonitor
+$F,9999,"06:45:33","09:13:54","00:14:26","Yellow"
+##2026-08-02 13:13:55.191|rmonitor
+$F,9999,"06:45:33","09:13:55","00:14:26","Yellow"
+##2026-08-02 13:13:56.208|rmonitor
+$F,9999,"06:45:32","09:13:56","00:14:27","Yellow"
+##2026-08-02 13:13:57.232|rmonitor
+$F,9999,"06:45:31","09:13:57","00:14:28","Yellow"
+##2026-08-02 13:13:58.304|rmonitor
+$F,9999,"06:45:30","09:13:58","00:14:29","Yellow"
+##2026-08-02 13:13:59.334|rmonitor
+$F,9999,"06:45:29","09:13:59","00:14:30","Yellow"
+##2026-08-02 13:14:00.351|rmonitor
+$F,9999,"06:45:28","09:14:00","00:14:31","Yellow"
+##2026-08-02 13:14:01.372|rmonitor
+$F,9999,"06:45:27","09:14:01","00:14:32","Yellow"
+##2026-08-02 13:14:02.399|rmonitor
+$F,9999,"06:45:26","09:14:02","00:14:33","Yellow"
+##2026-08-02 13:14:03.037|rmonitor
+$F,9999,"06:45:25","09:14:02","00:14:34","Yellow"
+##2026-08-02 13:14:03.869|rmonitor
+$F,9999,"06:45:25","09:14:03","00:14:34","Yellow"
+##2026-08-02 13:14:04.307|rmonitor
+$F,9999,"06:45:24","09:14:04","00:14:35","Yellow"
+##2026-08-02 13:14:05.334|rmonitor
+$F,9999,"06:45:23","09:14:05","00:14:36","Yellow"
+##2026-08-02 13:14:06.371|rmonitor
+$F,9999,"06:45:22","09:14:06","00:14:37","Yellow"
+##2026-08-02 13:14:07.201|rmonitor
+$F,9999,"06:45:21","09:14:07","00:14:38","Yellow"
+##2026-08-02 13:14:08.435|rmonitor
+$F,9999,"06:45:20","09:14:08","00:14:39","Yellow"
+##2026-08-02 13:14:09.446|rmonitor
+$F,9999,"06:45:19","09:14:09","00:14:40","Yellow"
+##2026-08-02 13:14:10.259|rmonitor
+$F,9999,"06:45:18","09:14:10","00:14:41","Yellow"
+##2026-08-02 13:14:11.284|rmonitor
+$F,9999,"06:45:17","09:14:11","00:14:42","Yellow"
+##2026-08-02 13:14:12.293|rmonitor
+$F,9999,"06:45:16","09:14:12","00:14:43","Yellow"
+##2026-08-02 13:14:13.316|rmonitor
+$F,9999,"06:45:15","09:14:13","00:14:44","Yellow"
+##2026-08-02 13:14:13.523|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":35,"lat":36.55428695678711,"lon":-79.20684051513672,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":12,"timingZone":12,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":33,"lat":36.568824768066406,"lon":-79.20540618896484,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":1,"timingZone":1,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":6,"lastLapTime":"00:05:01.927","bestLapTime":"00:02:50.203","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:14:14.365|rmonitor
+$F,9999,"06:45:14","09:14:14","00:14:45","Yellow"
+##2026-08-02 13:14:15.376|rmonitor
+$F,9999,"06:45:13","09:14:15","00:14:46","Yellow"
+##2026-08-02 13:14:16.383|rmonitor
+$F,9999,"06:45:12","09:14:16","00:14:47","Yellow"
+##2026-08-02 13:14:17.226|rmonitor
+$F,9999,"06:45:11","09:14:17","00:14:48","Yellow"
+##2026-08-02 13:14:18.247|rmonitor
+$F,9999,"06:45:10","09:14:18","00:14:49","Yellow"
+##2026-08-02 13:14:19.296|rmonitor
+$F,9999,"06:45:09","09:14:19","00:14:50","Yellow"
+##2026-08-02 13:14:20.316|rmonitor
+$F,9999,"06:45:08","09:14:20","00:14:51","Yellow"
+##2026-08-02 13:14:21.332|rmonitor
+$F,9999,"06:45:07","09:14:21","00:14:52","Yellow"
+##2026-08-02 13:14:22.343|rmonitor
+$F,9999,"06:45:06","09:14:22","00:14:53","Yellow"
+##2026-08-02 13:14:23.360|rmonitor
+$F,9999,"06:45:05","09:14:23","00:14:54","Yellow"
+##2026-08-02 13:14:24.206|rmonitor
+$F,9999,"06:45:04","09:14:24","00:14:55","Yellow"
+##2026-08-02 13:14:25.233|rmonitor
+$F,9999,"06:45:03","09:14:25","00:14:56","Yellow"
+##2026-08-02 13:14:26.245|rmonitor
+$F,9999,"06:45:02","09:14:26","00:14:57","Yellow"
+##2026-08-02 13:14:27.070|rmonitor
+$F,9999,"06:45:01","09:14:26","00:14:58","Yellow"
+##2026-08-02 13:14:27.275|rmonitor
+$F,9999,"06:45:01","09:14:27","00:14:58","Yellow"
+##2026-08-02 13:14:28.105|rmonitor
+$F,9999,"06:45:00","09:14:27","00:14:59","Yellow"
+##2026-08-02 13:14:28.311|rmonitor
+$F,9999,"06:45:00","09:14:28","00:14:59","Yellow"
+##2026-08-02 13:14:29.246|rmonitor
+$F,9999,"06:44:59","09:14:29","00:15:00","Yellow"
+##2026-08-02 13:14:30.412|rmonitor
+$F,9999,"06:44:58","09:14:30","00:15:01","Yellow"
+##2026-08-02 13:14:31.227|rmonitor
+$F,9999,"06:44:57","09:14:31","00:15:02","Yellow"
+##2026-08-02 13:14:32.442|rmonitor
+$F,9999,"06:44:56","09:14:32","00:15:03","Yellow"
+##2026-08-02 13:14:32.858|rmonitor
+$F,9999,"06:44:55","09:14:32","00:15:04","Yellow"
+##2026-08-02 13:14:34.425|rmonitor
+$F,9999,"06:44:54","09:14:34","00:15:05","Yellow"
+##2026-08-02 13:14:35.249|rmonitor
+$F,9999,"06:44:53","09:14:35","00:15:06","Yellow"
+##2026-08-02 13:14:36.266|rmonitor
+$F,9999,"06:44:52","09:14:36","00:15:07","Yellow"
+##2026-08-02 13:14:37.279|rmonitor
+$F,9999,"06:44:51","09:14:37","00:15:08","Yellow"
+##2026-08-02 13:14:38.303|rmonitor
+$F,9999,"06:44:50","09:14:38","00:15:09","Yellow"
+##2026-08-02 13:14:39.363|rmonitor
+$F,9999,"06:44:49","09:14:39","00:15:10","Yellow"
+##2026-08-02 13:14:40.372|rmonitor
+$F,9999,"06:44:48","09:14:40","00:15:11","Yellow"
+##2026-08-02 13:14:41.379|rmonitor
+$F,9999,"06:44:47","09:14:41","00:15:12","Yellow"
+##2026-08-02 13:14:42.392|rmonitor
+$F,9999,"06:44:46","09:14:42","00:15:13","Yellow"
+##2026-08-02 13:14:43.208|rmonitor
+$F,9999,"06:44:45","09:14:43","00:15:14","Yellow"
+##2026-08-02 13:14:43.610|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":34,"lat":36.558040618896484,"lon":-79.209228515625,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":13,"timingZone":13,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":40,"lat":36.56350326538086,"lon":-79.2114028930664,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":15,"timingZone":15,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:14:44.232|rmonitor
+$F,9999,"06:44:44","09:14:44","00:15:15","Yellow"
+##2026-08-02 13:14:45.241|rmonitor
+$F,9999,"06:44:43","09:14:45","00:15:16","Yellow"
+##2026-08-02 13:14:46.251|rmonitor
+$F,9999,"06:44:42","09:14:46","00:15:17","Yellow"
+##2026-08-02 13:14:47.262|rmonitor
+$F,9999,"06:44:41","09:14:47","00:15:18","Yellow"
+##2026-08-02 13:14:48.283|rmonitor
+$F,9999,"06:44:40","09:14:48","00:15:19","Yellow"
+##2026-08-02 13:14:49.827|rmonitor
+$F,9999,"06:44:39","09:14:49","00:15:20","Yellow"
+##2026-08-02 13:14:50.248|rmonitor
+$F,9999,"06:44:38","09:14:50","00:15:21","Yellow"
+##2026-08-02 13:14:51.273|rmonitor
+$F,9999,"06:44:37","09:14:51","00:15:22","Yellow"
+##2026-08-02 13:14:52.292|rmonitor
+$F,9999,"06:44:36","09:14:52","00:15:23","Yellow"
+##2026-08-02 13:14:53.312|rmonitor
+$F,9999,"06:44:35","09:14:53","00:15:24","Yellow"
+##2026-08-02 13:14:54.971|rmonitor
+$F,9999,"06:44:33","09:14:54","00:15:26","Yellow"
+$J,"226?","00:05:44.381","00:15:25.524"
+$G,34,"226?",4,"00:15:25.524"
+$H,19,"226?",3,"00:02:45.366"
+##2026-08-02 13:14:55.379|rmonitor
+$F,9999,"06:44:33","09:14:55","00:15:26","Yellow"
+##2026-08-02 13:14:55.585|ftcar
+[{"carNumber":"783","ft200DeviceId":20002462,"class":["F"],"teamName":"PB&J Racing ","speed":36,"lat":36.559627532958984,"lon":-79.204833984375,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":71000461,"driverName":"Jacob Barone","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:00:32.099","bestLapTime":"00:00:32.099","pitEntryTime":"2026-08-02T12:59:57Z","pitDuration":"00:00:56.181","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":38,"lat":36.56513214111328,"lon":-79.21257019042969,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":16,"timingZone":16,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:14:56.402|rmonitor
+$F,9999,"06:44:32","09:14:56","00:15:27","Yellow"
+##2026-08-02 13:14:56.405|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":35,"lat":36.56023025512695,"lon":-79.20480346679688,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":7,"timingZone":7,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":38,"lat":36.565250396728516,"lon":-79.21269226074219,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":16,"timingZone":16,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:14:57.410|rmonitor
+$F,9999,"06:44:31","09:14:57","00:15:28","Yellow"
+##2026-08-02 13:14:57.413|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":37,"lat":36.56010055541992,"lon":-79.20481872558594,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":7,"timingZone":7,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":39,"lat":36.565372467041016,"lon":-79.2127685546875,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":16,"timingZone":16,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:14:58.216|rmonitor
+$F,9999,"06:44:30","09:14:58","00:15:29","Yellow"
+##2026-08-02 13:14:58.419|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":37,"lat":36.559959411621094,"lon":-79.21028137207031,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":35,"lat":36.56753158569336,"lon":-79.20639038085938,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":3,"timingZone":3,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:05:17.022","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:14:59.618|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":40,"lat":36.55983352661133,"lon":-79.20484161376953,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":7,"timingZone":7,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":34,"lat":36.566993713378906,"lon":-79.20629119873047,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":71000347,"driverName":"Ken Rutledge","driverSource":"manualOverride","currentLapNumber":3,"lastLapTime":"24:11:14.027","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:00.236|rmonitor
+$F,9999,"06:44:28","09:15:00","00:15:31","Yellow"
+##2026-08-02 13:15:00.443|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":37,"lat":36.5601921081543,"lon":-79.21041107177734,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":32,"lat":36.56687927246094,"lon":-79.20625305175781,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":71000347,"driverName":"Ken Rutledge","driverSource":"manualOverride","currentLapNumber":3,"lastLapTime":"24:11:14.027","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:01.253|rmonitor
+$F,9999,"06:44:27","09:15:01","00:15:32","Yellow"
+##2026-08-02 13:15:01.460|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":37,"lat":36.559452056884766,"lon":-79.20480346679688,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":35,"lat":36.567787170410156,"lon":-79.20633697509766,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":3,"timingZone":3,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":7,"lastLapTime":"00:00:32.104","bestLapTime":"00:00:32.104","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:02.277|rmonitor
+$F,9999,"06:44:26","09:15:02","00:15:33","Yellow"
+##2026-08-02 13:15:02.485|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":35,"lat":36.5604362487793,"lon":-79.21054077148438,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"346","ft200DeviceId":20003359,"class":["C"],"teamName":"NoMoMoney Racing ","speed":31,"lat":36.56886291503906,"lon":-79.20516967773438,"carFlag":"Purple","localFlag":null,"fullCourseFlag":"Purple","flaggingZone":255,"timingZone":255,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":1,"lastLapTime":null,"bestLapTime":null,"pitEntryTime":null,"pitDuration":null,"pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:03.209|rmonitor
+$F,9999,"06:44:25","09:15:03","00:15:34","Yellow"
+##2026-08-02 13:15:03.424|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":35,"lat":36.560646057128906,"lon":-79.21065521240234,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"10470","ft200DeviceId":20001470,"class":[],"teamName":"","speed":254,"lat":36.56772994995117,"lon":-79.20958709716797,"carFlag":"Purple","localFlag":null,"fullCourseFlag":"Purple","flaggingZone":0,"timingZone":0,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":1,"lastLapTime":null,"bestLapTime":null,"pitEntryTime":null,"pitDuration":null,"pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:04.900|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":35,"lat":36.56074523925781,"lon":-79.21070861816406,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":25,"lat":36.56648254394531,"lon":-79.20609283447266,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":71000347,"driverName":"Ken Rutledge","driverSource":"manualOverride","currentLapNumber":3,"lastLapTime":"24:11:14.027","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:05.323|rmonitor
+$F,9999,"06:44:23","09:15:05","00:15:36","Yellow"
+##2026-08-02 13:15:05.534|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":34,"lat":36.56087112426758,"lon":-79.21077728271484,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":25,"lat":36.56639862060547,"lon":-79.2060546875,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":71000347,"driverName":"Ken Rutledge","driverSource":"manualOverride","currentLapNumber":3,"lastLapTime":"24:11:14.027","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:06.344|rmonitor
+$F,9999,"06:44:22","09:15:06","00:15:37","Yellow"
+##2026-08-02 13:15:06.551|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":34,"lat":36.560997009277344,"lon":-79.2108383178711,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":34,"lat":36.56654739379883,"lon":-79.21241760253906,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:07.381|rmonitor
+$F,9999,"06:44:21","09:15:07","00:15:38","Yellow"
+##2026-08-02 13:15:07.588|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":34,"lat":36.561100006103516,"lon":-79.21089935302734,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":31,"lat":36.566959381103516,"lon":-79.20628356933594,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":7,"lastLapTime":"00:00:32.104","bestLapTime":"00:00:32.104","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:08.223|rmonitor
+$F,9999,"06:44:20","09:15:08","00:15:39","Yellow"
+##2026-08-02 13:15:08.433|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":34,"lat":36.55847930908203,"lon":-79.20467376708984,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":8,"timingZone":8,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":30,"lat":36.566097259521484,"lon":-79.20572662353516,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":4,"timingZone":4,"driverId":71000347,"driverName":"Ken Rutledge","driverSource":"manualOverride","currentLapNumber":3,"lastLapTime":"24:11:14.027","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:09.513|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":35,"lat":36.56132507324219,"lon":-79.21102142333984,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":35,"lat":36.56679916381836,"lon":-79.21205139160156,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:10.328|rmonitor
+$F,9999,"06:44:18","09:15:10","00:15:41","Yellow"
+##2026-08-02 13:15:10.533|ftcar
+[{"carNumber":"726","ft200DeviceId":20002315,"class":["C"],"teamName":"Full-O-Krapf Racing ","speed":35,"lat":36.560848236083984,"lon":-79.20478057861328,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":7,"timingZone":7,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:05:14.198","bestLapTime":"00:02:46.099","pitEntryTime":"0001-04-11T00:00:32Z","pitDuration":"00:25:07.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":33,"lat":36.56694412231445,"lon":-79.21182250976562,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Purple","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:11.354|rmonitor
+$F,9999,"06:44:17","09:15:11","00:15:42","Yellow"
+##2026-08-02 13:15:11.558|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":35,"lat":36.56132507324219,"lon":-79.21102142333984,"carFlag":"Purple","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"10470","ft200DeviceId":20001470,"class":[],"teamName":"","speed":254,"lat":36.56772994995117,"lon":-79.20958709716797,"carFlag":"Purple","localFlag":null,"fullCourseFlag":"Yellow","flaggingZone":0,"timingZone":0,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":1,"lastLapTime":null,"bestLapTime":null,"pitEntryTime":null,"pitDuration":null,"pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:12.380|rmonitor
+$F,9999,"06:44:16","09:15:12","00:15:43","Yellow"
+##2026-08-02 13:15:12.583|ftcar
+[{"carNumber":"411","ft200DeviceId":20000176,"class":["C"],"teamName":"RVA Graphics and Wraps (Orange)","speed":33,"lat":36.567176818847656,"lon":-79.21133422851562,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:02:57.730","bestLapTime":"00:02:27.693","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:01:28.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":35,"lat":36.56610107421875,"lon":-79.20547485351562,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":5,"timingZone":5,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:05:17.022","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:13.404|rmonitor
+$F,9999,"06:44:15","09:15:13","00:15:44","Yellow"
+##2026-08-02 13:15:13.409|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":33,"lat":36.56183624267578,"lon":-79.21141815185547,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":40,"lat":36.566097259521484,"lon":-79.20482635498047,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":5,"timingZone":5,"driverId":71000347,"driverName":"Ken Rutledge","driverSource":"manualOverride","currentLapNumber":3,"lastLapTime":"24:11:14.027","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:14.947|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":43,"lat":36.557559967041016,"lon":-79.20469665527344,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":9,"timingZone":9,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":42,"lat":36.56603240966797,"lon":-79.2046890258789,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":5,"timingZone":5,"driverId":71000347,"driverName":"Ken Rutledge","driverSource":"manualOverride","currentLapNumber":3,"lastLapTime":"24:11:14.027","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:15.169|rmonitor
+$F,9999,"06:44:13","09:15:15","00:15:46","Yellow"
+##2026-08-02 13:15:15.372|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":35,"lat":36.56199645996094,"lon":-79.21161651611328,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":36,"lat":36.5628776550293,"lon":-79.21165466308594,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":15,"timingZone":15,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:03:44.331","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:16.179|rmonitor
+$F,9999,"06:44:12","09:15:16","00:15:47","Yellow"
+##2026-08-02 13:15:16.382|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":40,"lat":36.56209182739258,"lon":-79.21173858642578,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":41,"lat":36.56734848022461,"lon":-79.21102142333984,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:17.396|rmonitor
+$F,9999,"06:44:11","09:15:17","00:15:48","Yellow"
+##2026-08-02 13:15:17.400|ftcar
+[{"carNumber":"411","ft200DeviceId":20000176,"class":["C"],"teamName":"RVA Graphics and Wraps (Orange)","speed":62,"lat":36.567665100097656,"lon":-79.21022033691406,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:02:57.730","bestLapTime":"00:02:27.693","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:01:28.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":44,"lat":36.56572723388672,"lon":-79.20435333251953,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":5,"timingZone":5,"driverId":71000347,"driverName":"Ken Rutledge","driverSource":"manualOverride","currentLapNumber":3,"lastLapTime":"24:11:14.027","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:18.403|rmonitor
+$F,9999,"06:44:10","09:15:18","00:15:49","Yellow"
+##2026-08-02 13:15:18.407|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":55,"lat":36.55683898925781,"lon":-79.20467376708984,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":9,"timingZone":9,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":52,"lat":36.56566619873047,"lon":-79.20430755615234,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":5,"timingZone":5,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:05:17.022","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:19.422|rmonitor
+$F,9999,"06:44:09","09:15:19","00:15:50","Yellow"
+##2026-08-02 13:15:19.426|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":42,"lat":36.562625885009766,"lon":-79.21192169189453,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":14,"timingZone":14,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":52,"lat":36.56549072265625,"lon":-79.20423126220703,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":5,"timingZone":5,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:05:17.022","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:20.564|rmonitor
+$F,9999,"06:44:08","09:15:20","00:15:51","Yellow"
+##2026-08-02 13:15:20.575|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":56,"lat":36.5562858581543,"lon":-79.20486450195312,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":9,"timingZone":9,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":52,"lat":36.56532287597656,"lon":-79.20420837402344,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":5,"timingZone":5,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:05:17.022","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:21.389|rmonitor
+$F,9999,"06:44:07","09:15:21","00:15:52","Yellow"
+##2026-08-02 13:15:21.392|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":51,"lat":36.562862396240234,"lon":-79.2116928100586,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":15,"timingZone":15,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":49,"lat":36.56495666503906,"lon":-79.20430755615234,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":6,"timingZone":6,"driverId":71000347,"driverName":"Ken Rutledge","driverSource":"manualOverride","currentLapNumber":3,"lastLapTime":"24:11:14.027","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:22.397|rmonitor
+$F,9999,"06:44:06","09:15:22","00:15:53","Yellow"
+##2026-08-02 13:15:22.402|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":58,"lat":36.555885314941406,"lon":-79.20506286621094,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":9,"timingZone":9,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"346","ft200DeviceId":20003359,"class":["C"],"teamName":"NoMoMoney Racing ","speed":36,"lat":36.56820297241211,"lon":-79.20223236083984,"carFlag":"FCYellow","localFlag":null,"fullCourseFlag":"Yellow","flaggingZone":255,"timingZone":255,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":1,"lastLapTime":null,"bestLapTime":null,"pitEntryTime":null,"pitDuration":null,"pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:23.406|rmonitor
+$F,9999,"06:44:05","09:15:23","00:15:54","Yellow"
+##2026-08-02 13:15:23.409|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":59,"lat":36.55571365356445,"lon":-79.20515441894531,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":9,"timingZone":9,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":62,"lat":36.56801986694336,"lon":-79.20941925048828,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:24.213|rmonitor
+$F,9999,"06:44:04","09:15:24","00:15:55","Yellow"
+##2026-08-02 13:15:24.418|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":57,"lat":36.56355667114258,"lon":-79.21143341064453,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":15,"timingZone":15,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":65,"lat":36.56822204589844,"lon":-79.20890045166016,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:25.221|rmonitor
+$F,9999,"06:44:03","09:15:25","00:15:56","Yellow"
+##2026-08-02 13:15:25.422|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":58,"lat":36.55532455444336,"lon":-79.2052993774414,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":9,"timingZone":9,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":66,"lat":36.568321228027344,"lon":-79.20863342285156,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":18,"timingZone":18,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:26.239|rmonitor
+$F,9999,"06:44:02","09:15:26","00:15:57","Yellow"
+##2026-08-02 13:15:26.443|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":59,"lat":36.55511474609375,"lon":-79.20532989501953,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":9,"timingZone":9,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":67,"lat":36.56841278076172,"lon":-79.20838928222656,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":18,"timingZone":18,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:27.248|rmonitor
+$F,9999,"06:44:01","09:15:27","00:15:58","Yellow"
+##2026-08-02 13:15:27.455|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":58,"lat":36.56414794921875,"lon":-79.21160125732422,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":16,"timingZone":16,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":69,"lat":36.563697814941406,"lon":-79.2046127319336,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":6,"timingZone":6,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:05:17.022","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:27.895|rmonitor
+$F,9999,"06:44:00","09:15:27","00:15:59","Yellow"
+##2026-08-02 13:15:28.304|rmonitor
+$F,9999,"06:44:00","09:15:28","00:15:59","Yellow"
+##2026-08-02 13:15:28.507|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":62,"lat":36.55470657348633,"lon":-79.20525360107422,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":10,"timingZone":10,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":71,"lat":36.56858444213867,"lon":-79.20784759521484,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":18,"timingZone":18,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:28.511|ftcar
+[{"carNumber":"9228","ft200DeviceId":20000228,"class":[],"teamName":"","speed":36,"lat":36.564273834228516,"lon":-79.20449829101562,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":6,"timingZone":6,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":1,"lastLapTime":null,"bestLapTime":null,"pitEntryTime":null,"pitDuration":null,"pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"10470","ft200DeviceId":20001470,"class":[],"teamName":"","speed":254,"lat":36.56772994995117,"lon":-79.20958709716797,"carFlag":"Purple","localFlag":null,"fullCourseFlag":"Yellow","flaggingZone":0,"timingZone":0,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":1,"lastLapTime":null,"bestLapTime":null,"pitEntryTime":null,"pitDuration":null,"pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:29.329|rmonitor
+$F,9999,"06:43:59","09:15:29","00:16:00","Yellow"
+##2026-08-02 13:15:29.536|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":64,"lat":36.554264068603516,"lon":-79.20502471923828,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":10,"timingZone":10,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"842","ft200DeviceId":20000962,"class":["C"],"teamName":"Theoretically Racing","speed":82,"lat":36.56365966796875,"lon":-79.20462036132812,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":6,"timingZone":6,"driverId":71000318,"driverName":"Chad Germaine","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:05:20.511","bestLapTime":"00:02:45.406","pitEntryTime":"0001-04-11T00:00:59Z","pitDuration":"00:22:05.000","pitActive":false,"enforced":false,"speedViolation":true}]
+##2026-08-02 13:15:30.278|rmonitor
+$F,9999,"06:43:58","09:15:30","00:16:01","Yellow"
+##2026-08-02 13:15:30.483|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":50,"lat":36.5648307800293,"lon":-79.21208953857422,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":16,"timingZone":16,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":77,"lat":36.56877136230469,"lon":-79.20691680908203,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":18,"timingZone":18,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:31.319|rmonitor
+$F,9999,"06:43:57","09:15:31","00:16:02","Yellow"
+##2026-08-02 13:15:31.521|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":67,"lat":36.553836822509766,"lon":-79.20476531982422,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":10,"timingZone":10,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":79,"lat":36.56880187988281,"lon":-79.20661163330078,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":1,"timingZone":1,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:32.335|rmonitor
+$F,9999,"06:43:56","09:15:32","00:16:03","Yellow"
+##2026-08-02 13:15:32.340|ftcar
+[{"carNumber":"783","ft200DeviceId":20002462,"class":["F"],"teamName":"PB&J Racing ","speed":60,"lat":36.552982330322266,"lon":-79.20445251464844,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":11,"timingZone":11,"driverId":71000461,"driverName":"Jacob Barone","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:00:32.099","bestLapTime":"00:00:32.099","pitEntryTime":"2026-08-02T12:59:57Z","pitDuration":"00:00:56.181","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":47,"lat":36.5656623840332,"lon":-79.21280670166016,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Yellow","flaggingZone":17,"timingZone":17,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:03:44.331","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:33.347|rmonitor
+$F,9999,"06:43:55","09:15:33","00:16:04","Yellow"
+##2026-08-02 13:15:33.552|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":50,"lat":36.5648307800293,"lon":-79.21208953857422,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":16,"timingZone":16,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"10470","ft200DeviceId":20001470,"class":[],"teamName":"","speed":254,"lat":36.56772994995117,"lon":-79.20958709716797,"carFlag":"Purple","localFlag":null,"fullCourseFlag":"Green","flaggingZone":0,"timingZone":0,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":1,"lastLapTime":null,"bestLapTime":null,"pitEntryTime":null,"pitDuration":null,"pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:34.156|flags
+[{"f":2,"s":"2026-08-02T09:08:50","e":"2026-08-02T09:15:33"},{"f":1,"s":"2026-08-02T09:15:34","e":null}]
+##2026-08-02 13:15:34.365|rmonitor
+$F,9999,"06:43:54","09:15:34","00:16:05","Green "
+##2026-08-02 13:15:34.369|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":61,"lat":36.55320739746094,"lon":-79.20450592041016,"carFlag":"FCYellow","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":11,"timingZone":11,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":80,"lat":36.568851470947266,"lon":-79.2054672241211,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":1,"timingZone":1,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":4,"lastLapTime":"00:03:42.805","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:35.242|rmonitor
+$F,9999,"06:43:53","09:15:35","00:16:06","Green "
+##2026-08-02 13:15:35.448|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":48,"lat":36.5528450012207,"lon":-79.20439910888672,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":11,"timingZone":11,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":80,"lat":36.568851470947266,"lon":-79.2054672241211,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":1,"timingZone":1,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:05:05.133","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:36.255|rmonitor
+$F,9999,"06:43:52","09:15:36","00:16:07","Green "
+##2026-08-02 13:15:36.459|ftcar
+[{"carNumber":"331","ft200DeviceId":20000730,"class":["C"],"teamName":"ChumpChange ","speed":72,"lat":36.55653762817383,"lon":-79.20474243164062,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":9,"timingZone":9,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:05:06.411","bestLapTime":"00:02:49.449","pitEntryTime":"0001-04-11T00:00:22Z","pitDuration":"00:40:56.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":51,"lat":36.56631851196289,"lon":-79.21260833740234,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":17,"timingZone":17,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:03:44.331","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:37.268|rmonitor
+$F,9999,"06:43:51","09:15:37","00:16:08","Green "
+##2026-08-02 13:15:37.475|ftcar
+[{"carNumber":"783","ft200DeviceId":20002462,"class":["F"],"teamName":"PB&J Racing ","speed":39,"lat":36.5521354675293,"lon":-79.20457458496094,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":11,"timingZone":11,"driverId":71000461,"driverName":"Jacob Barone","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:00:32.099","bestLapTime":"00:00:32.099","pitEntryTime":"2026-08-02T12:59:57Z","pitDuration":"00:00:56.181","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":58,"lat":36.56661605834961,"lon":-79.21229553222656,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":17,"timingZone":17,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:03:44.331","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:38.288|rmonitor
+$F,9999,"06:43:50","09:15:38","00:16:09","Green "
+##2026-08-02 13:15:38.491|ftcar
+[{"carNumber":"783","ft200DeviceId":20002462,"class":["F"],"teamName":"PB&J Racing ","speed":37,"lat":36.552059173583984,"lon":-79.2046890258789,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":12,"timingZone":12,"driverId":71000461,"driverName":"Jacob Barone","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:00:32.099","bestLapTime":"00:00:32.099","pitEntryTime":"2026-08-02T12:59:57Z","pitDuration":"00:00:56.181","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":81,"lat":36.56228256225586,"lon":-79.20464324951172,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":6,"timingZone":6,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":7,"lastLapTime":"00:00:32.104","bestLapTime":"00:00:32.104","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:39.299|rmonitor
+$F,9999,"06:43:49","09:15:39","00:16:10","Green "
+##2026-08-02 13:15:39.501|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":40,"lat":36.552207946777344,"lon":-79.2044677734375,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":11,"timingZone":11,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":83,"lat":36.561988830566406,"lon":-79.20466613769531,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":7,"timingZone":7,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":7,"lastLapTime":"00:00:32.104","bestLapTime":"00:00:32.104","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:40.352|rmonitor
+$F,9999,"06:43:48","09:15:40","00:16:11","Green "
+##2026-08-02 13:15:40.559|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":79,"lat":36.56671905517578,"lon":-79.21220397949219,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"228","ft200DeviceId":20005122,"class":["A"],"teamName":"Edmonson Motorsports","speed":82,"lat":36.55952835083008,"lon":-79.204833984375,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":8,"timingZone":8,"driverId":71000335,"driverName":"Seth Tozer","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:05:17.022","bestLapTime":"00:02:42.205","pitEntryTime":"0001-04-11T00:00:42Z","pitDuration":"00:28:31.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:41.372|rmonitor
+$F,9999,"06:43:47","09:15:41","00:16:12","Green "
+##2026-08-02 13:15:41.781|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":39,"lat":36.55209732055664,"lon":-79.2045669555664,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":11,"timingZone":11,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":54,"lat":36.56879806518555,"lon":-79.20309448242188,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":1,"timingZone":1,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:05:05.133","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:42.388|rmonitor
+$F,9999,"06:43:46","09:15:42","00:16:13","Green "
+##2026-08-02 13:15:42.591|ftcar
+[{"carNumber":"783","ft200DeviceId":20002462,"class":["F"],"teamName":"PB&J Racing ","speed":29,"lat":36.55202865600586,"lon":-79.20521545410156,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":12,"timingZone":12,"driverId":71000461,"driverName":"Jacob Barone","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:00:32.099","bestLapTime":"00:00:32.099","pitEntryTime":"2026-08-02T12:59:57Z","pitDuration":"00:00:56.181","pitActive":false,"enforced":false,"speedViolation":true},{"carNumber":"218","ft200DeviceId":20000770,"class":["D"],"teamName":"Blue Stone Racing","speed":66,"lat":36.568050384521484,"lon":-79.20403289794922,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":2,"timingZone":2,"driverId":71000502,"driverName":"Craig Watkins","driverSource":"rfidHelmet","currentLapNumber":5,"lastLapTime":"00:05:29.696","bestLapTime":"00:03:07.801","pitEntryTime":"0001-04-11T12:25:38Z","pitDuration":"00:23:16.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:43.400|rmonitor
+$F,9999,"06:43:45","09:15:43","00:16:14","Green "
+##2026-08-02 13:15:43.603|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":37,"lat":36.55194854736328,"lon":-79.20499420166016,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":12,"timingZone":12,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":37,"lat":36.56871795654297,"lon":-79.20254516601562,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":1,"timingZone":1,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:05:05.133","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:44.211|rmonitor
+$F,9999,"06:43:44","09:15:44","00:16:15","Green "
+##2026-08-02 13:15:44.620|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":38,"lat":36.552005767822266,"lon":-79.20516967773438,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":12,"timingZone":12,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":35,"lat":36.568660736083984,"lon":-79.20240783691406,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":1,"timingZone":1,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:05:05.133","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:45.340|rmonitor
+$F,9999,"06:43:43","09:15:45","00:16:16","Green "
+##2026-08-02 13:15:45.543|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":46,"lat":36.552207946777344,"lon":-79.20539093017578,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":12,"timingZone":12,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"111","ft200DeviceId":20005542,"class":["A"],"teamName":"Lateral Grip Racing","speed":80,"lat":36.55772018432617,"lon":-79.20471954345703,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":8,"timingZone":8,"driverId":71000347,"driverName":"Ken Rutledge","driverSource":"manualOverride","currentLapNumber":3,"lastLapTime":"24:11:14.027","bestLapTime":"00:02:55.898","pitEntryTime":"0001-04-11T00:00:12Z","pitDuration":"13:01:51.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:46.347|rmonitor
+$F,9999,"06:43:42","09:15:46","00:16:17","Green "
+##2026-08-02 13:15:46.555|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":52,"lat":36.5523681640625,"lon":-79.20549011230469,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":12,"timingZone":12,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":32,"lat":36.5684700012207,"lon":-79.20223999023438,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":1,"timingZone":1,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:05:05.133","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:47.376|rmonitor
+$F,9999,"06:43:41","09:15:47","00:16:18","Green "
+##2026-08-02 13:15:47.578|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":102,"lat":36.56797409057617,"lon":-79.20948028564453,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"267","ft200DeviceId":20000389,"class":["A"],"teamName":"DKW Racing","speed":80,"lat":36.56803894042969,"lon":-79.20947265625,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":17,"timingZone":17,"driverId":71000353,"driverName":"Wayne Nordstrom","driverSource":"rfidHelmet","currentLapNumber":4,"lastLapTime":"00:03:44.331","bestLapTime":"00:03:12.792","pitEntryTime":"0001-04-11T00:00:33Z","pitDuration":"00:02:32.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:48.384|rmonitor
+$F,9999,"06:43:40","09:15:48","00:16:19","Green "
+##2026-08-02 13:15:48.587|ftcar
+[{"carNumber":"442","ft200DeviceId":20000228,"class":["C"],"teamName":"TATR RACING","speed":104,"lat":36.56812286376953,"lon":-79.20911407470703,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":17,"timingZone":17,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:03:26.331","bestLapTime":"00:02:34.094","pitEntryTime":"0001-04-11T00:00:31Z","pitDuration":"00:02:24.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"916","ft200DeviceId":20005319,"class":["B"],"teamName":"Hot Curl Racing","speed":87,"lat":36.558528900146484,"lon":-79.20468139648438,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":8,"timingZone":8,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":7,"lastLapTime":"00:00:32.104","bestLapTime":"00:00:32.104","pitEntryTime":"0001-04-11T00:00:21Z","pitDuration":"00:03:26.000","pitActive":false,"enforced":false,"speedViolation":false}]
+##2026-08-02 13:15:49.395|rmonitor
+$F,9999,"06:43:39","09:15:49","00:16:20","Green "
+##2026-08-02 13:15:49.399|ftcar
+[{"carNumber":"316","ft200DeviceId":20001202,"class":["EC"],"teamName":"The Green Machine ","speed":68,"lat":36.552940368652344,"lon":-79.20588684082031,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":12,"timingZone":12,"driverId":71000410,"driverName":"John Hutton","driverSource":"manualOverride","currentLapNumber":5,"lastLapTime":"00:04:43.009","bestLapTime":"00:02:46.808","pitEntryTime":"0001-04-11T00:00:35Z","pitDuration":"00:06:35.000","pitActive":false,"enforced":false,"speedViolation":false},{"carNumber":"414","ft200DeviceId":20002391,"class":["C"],"teamName":"Henderson Racing","speed":42,"lat":36.56804656982422,"lon":-79.20246124267578,"carFlag":"Green","localFlag":"Green","fullCourseFlag":"Green","flaggingZone":1,"timingZone":1,"driverId":null,"driverName":null,"driverSource":"none","currentLapNumber":5,"lastLapTime":"00:05:05.133","bestLapTime":"00:03:08.305","pitEntryTime":"0001-04-11T00:00:18Z","pitDuration":"00:02:08.000","pitActive":false,"enforced":false,"speedViolation":false}]

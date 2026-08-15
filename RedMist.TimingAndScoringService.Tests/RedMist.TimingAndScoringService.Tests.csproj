@@ -73,6 +73,9 @@
 		<None Update="EventStatus\ProcessingPipeline\TestEventEndSessionFinialization.txt">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+		<None Update="EventStatus\ProcessingPipeline\TestFlagtronicsPurple.txt">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 		<None Update="EventStatus\ProcessingPipeline\TestGap.txt">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>

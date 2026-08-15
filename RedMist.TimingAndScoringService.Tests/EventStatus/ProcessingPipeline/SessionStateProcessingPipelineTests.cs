@@ -1745,6 +1745,132 @@ public class SessionStateProcessingPipelineTests
         }
     }
 
+    /// <summary>
+    /// Replays a caution captured from event 334 session 3 (2 Aug 2026) as the event processor
+    /// received it: the relay's flag list, the RMonitor heartbeat and the Flagtronics vehicle
+    /// records interleaved in log order. RMonitor has no purple full-course flag, so its flag list
+    /// carries a plain yellow for the whole caution while Flagtronics reports the slow zone, and the
+    /// flag log the flags tab reads showed no purple at all.
+    ///
+    /// The capture is the log's own records, in its own order, and every flag record is whole. Two
+    /// reductions keep it to a size worth committing: of the timing feed only the $F heartbeat is
+    /// kept, being the only packet carrying the flag and the clock; and each vehicle record keeps
+    /// the first car and the last one reporting a full-course flag - the one the processor reads -
+    /// each with its captured text untouched, out of the two dozen the record was sent with. The
+    /// vehicle records also run at full rate either side of both flag changes and every thirty
+    /// seconds through the steady middle.
+    ///
+    /// On the timing system's clock, which is what the flag times are kept in, the capture runs:
+    /// yellow at 09:08:50, purple from 09:09:06, purple released back to yellow at 09:15:11, and the
+    /// track green at 09:15:34. Two clocks appear throughout: the record headers are the capture's
+    /// own timestamps (13:xx here), four hours ahead of the timing system's (09:xx) that the flag
+    /// payloads and the log are kept in.
+    ///
+    /// This caution ran clean, so what it covers is the override itself end to end. The feed
+    /// flickering, and a caution that ends while the slow zone is still running, are in
+    /// FlagProcessorPurpleOverrideTests.
+    /// </summary>
+    [TestMethod]
+    public async Task FlagtronicsPurple_OverridesTheYellowInTheFlagLog_Test()
+    {
+        // Arrange - the capture is from event 334, replayed here under the harness's own event.
+        const int SessionId = 3;
+        var log = new EventLogReplayHelper(FilePrefix + "TestFlagtronicsPurple.txt");
+        await log.LoadAsync();
+        Assert.IsGreaterThan(0, log.Count);
+
+        var session = new Session { EventId = 1, Id = SessionId, Name = "Saturday Race" };
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE,
+            JsonSerializer.Serialize(session), SessionId, DateTime.Now));
+
+        // Act
+        while (!log.IsFinished)
+        {
+            var d = log.GetNextRecord();
+            await _pipeline.PostAsync(new TimingMessage(d.type, d.data, SessionId, d.ts));
+        }
+
+        // Assert - the caution reads as it was run: yellow, slow zone, yellow again, then green.
+        await using var db = await _dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
+        var flags = db.FlagLog
+            .Where(f => f.EventId == session.EventId && f.SessionId == SessionId)
+            .OrderBy(f => f.StartTime)
+            .ToList();
+
+        Assert.HasCount(5, flags);
+
+        Assert.AreEqual(Flags.Green, flags[0].Flag);
+        // The relay dropped the green from its list rather than sending an end time for it, so this
+        // is the auto-complete closing it against the caution that replaced it.
+        Assert.AreEqual(new DateTime(2026, 8, 2, 9, 8, 50), flags[0].EndTime);
+
+        Assert.AreEqual(Flags.Yellow, flags[1].Flag);
+        Assert.AreEqual(new DateTime(2026, 8, 2, 9, 8, 50), flags[1].StartTime, "The caution starts where the relay logged it.");
+        Assert.AreEqual(new DateTime(2026, 8, 2, 9, 9, 5), flags[1].EndTime, "The caution runs until the slow zone takes over.");
+
+        Assert.AreEqual(Flags.Purple35, flags[2].Flag, "The slow zone Flagtronics reported has to be in the log.");
+        Assert.AreEqual(new DateTime(2026, 8, 2, 9, 9, 6), flags[2].StartTime, "Purple starts on the record that first reported it.");
+        Assert.AreEqual(new DateTime(2026, 8, 2, 9, 15, 10), flags[2].EndTime, "Purple runs until Flagtronics went back to yellow.");
+
+        Assert.AreEqual(Flags.Yellow, flags[3].Flag, "The caution resumes: the slow zone lifted before the track went green.");
+        Assert.AreEqual(new DateTime(2026, 8, 2, 9, 15, 11), flags[3].StartTime);
+        // Closed by the auto-complete against the green that replaced the caution. The relay's own
+        // list ends its yellow a second earlier, at 09:15:33.
+        Assert.AreEqual(new DateTime(2026, 8, 2, 9, 15, 34), flags[3].EndTime);
+
+        Assert.AreEqual(Flags.Green, flags[4].Flag);
+        Assert.AreEqual(new DateTime(2026, 8, 2, 9, 15, 34), flags[4].StartTime);
+        Assert.IsNull(flags[4].EndTime, "The green is still running at the end of the capture.");
+
+        // Clients are sent the list rather than reading the database, so the two have to say the
+        // same thing - a purple only the flags tab's endpoint can see is half a fix.
+        var published = _sessionContext.SessionState.FlagDurations.OrderBy(f => f.StartTime).ToList();
+        CollectionAssert.AreEqual(
+            flags.Select(f => (f.Flag, f.StartTime, f.EndTime)).ToList(),
+            published.Select(f => (f.Flag, f.StartTime, f.EndTime)).ToList());
+
+        // And the overall flag ends where the capture does, back under green.
+        Assert.AreEqual(Flags.Green, _sessionContext.SessionState.CurrentFlag);
+    }
+
+    /// <summary>
+    /// The same capture, up to the point the slow zone was called: the overall flag and the log have
+    /// to agree while the override is running, not only once it has released.
+    /// </summary>
+    [TestMethod]
+    public async Task FlagtronicsPurple_WhileTheSlowZoneIsRunning_ShowsPurpleInBothTheFlagAndTheLog_Test()
+    {
+        // Arrange
+        const int SessionId = 3;
+        var log = new EventLogReplayHelper(FilePrefix + "TestFlagtronicsPurple.txt");
+        await log.LoadAsync();
+
+        var session = new Session { EventId = 1, Id = SessionId, Name = "Saturday Race" };
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE,
+            JsonSerializer.Serialize(session), SessionId, DateTime.Now));
+
+        // Act - stop part-way through the slow zone, well before it was lifted. This is the capture's
+        // own clock, which the record headers are in; the timing system's, which the flags are in,
+        // reads 09:12:00 at this point and the slow zone runs to 09:15:11.
+        var stopAtCaptureTime = new DateTime(2026, 8, 2, 13, 12, 0);
+        while (!log.IsFinished)
+        {
+            var d = log.GetNextRecord();
+            if (d.ts >= stopAtCaptureTime)
+                break;
+            await _pipeline.PostAsync(new TimingMessage(d.type, d.data, SessionId, d.ts));
+        }
+
+        // Assert
+        Assert.AreEqual(Flags.Purple35, _sessionContext.SessionState.CurrentFlag,
+            "The overall flag is the purple upgrade of the timing system's yellow.");
+
+        await using var db = await _dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken);
+        var running = db.FlagLog.Single(f => f.EventId == session.EventId && f.SessionId == SessionId && f.EndTime == null);
+        Assert.AreEqual(Flags.Purple35, running.Flag, "The entry still running in the log is the slow zone.");
+        Assert.AreEqual(new DateTime(2026, 8, 2, 9, 9, 6), running.StartTime);
+    }
+
     #region Database Initialization
 
     private void InitializeDatabase()

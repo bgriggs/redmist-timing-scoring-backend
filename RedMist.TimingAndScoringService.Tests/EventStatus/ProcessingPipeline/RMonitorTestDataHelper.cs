@@ -11,7 +11,7 @@ internal class RMonitorTestDataHelper(string filePath)
     public int MaxRecords { get; set; } = int.MaxValue;
 
 
-    public async Task LoadAsync()
+    public virtual async Task LoadAsync()
     {
         var raw = await File.ReadAllTextAsync(filePath);
         var packets = raw.Split("##");
