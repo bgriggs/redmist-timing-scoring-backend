@@ -296,7 +296,14 @@ public class SessionContext
             EventId = EventId,
             EventName = eventName,
             SessionId = sessionId,
-            SessionName = sessionName
+            SessionName = sessionName,
+            // Derived from the name here rather than left to the feed. The RMonitor $B update that
+            // would otherwise set it only produces a patch when the run number or the name differs
+            // from the state's, and adopting the session has just made both match - so on an
+            // RMonitor-only event nothing ever set it and every practice and qualifying session was
+            // recorded, and served back, as a race. A Multiloop feed still corrects it from the run
+            // type when its $R arrives, which is the better answer where there is one.
+            IsPracticeQualifying = SessionHelper.IsPracticeOrQualifyingSession(sessionName)
         };
 
         // Reset the track-flag sources so a stale flag from the prior session cannot leak
@@ -432,6 +439,16 @@ public class SessionContext
         SessionState.EventName = eventName;
         SessionState.SessionId = sessionId;
         SessionState.SessionName = sessionName;
+        // Follows the name for the same reason a new session's does: a restart mid-session is not
+        // told the run type either, and the $B that would have named it went by long before this
+        // process started. Multiloop is the exception - its run type is the better answer, and it
+        // only re-sends the run information when it changes, so there is nothing to correct a value
+        // overwritten here. That is reachable: on a restart the backlog can carry the run
+        // information in ahead of the relay's replayed session change, which is what brings us here.
+        if (!IsMultiloopActive)
+        {
+            SessionState.IsPracticeQualifying = SessionHelper.IsPracticeOrQualifyingSession(sessionName);
+        }
 
         Logger.LogInformation("Resumed session {sessionId} ({sessionName}) holding {cars} cars",
             sessionId, sessionName, SessionState.CarPositions.Count);

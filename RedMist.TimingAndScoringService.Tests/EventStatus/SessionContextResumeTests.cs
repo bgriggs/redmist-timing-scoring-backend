@@ -123,6 +123,91 @@ public class SessionContextResumeTests
     }
 
     /// <summary>
+    /// Clients rank practice and qualifying by best lap off this flag. The RMonitor $B update that
+    /// would set it is skipped whenever the run number and name already match the state's - which
+    /// adopting the session has just made true - so the session itself has to derive it.
+    /// </summary>
+    [TestMethod]
+    public async Task NewSession_ForAPracticeOrQualifyingName_MarksTheSessionPracticeQualifying()
+    {
+        var (context, db) = CreateContext();
+        await using (db)
+        {
+            await context.NewSessionWithLockHeldAsync(42, "Sat Qual");
+
+            Assert.IsTrue(context.SessionState.IsPracticeQualifying);
+        }
+    }
+
+    [TestMethod]
+    public async Task NewSession_ForARaceName_LeavesTheSessionAsARace()
+    {
+        var (context, db) = CreateContext();
+        await using (db)
+        {
+            await context.NewSessionWithLockHeldAsync(42, "Sat 7Hr");
+
+            Assert.IsFalse(context.SessionState.IsPracticeQualifying);
+        }
+    }
+
+    /// <summary>
+    /// A race following a qualifying session must not inherit its ranking: the state is rebuilt from
+    /// scratch, so the flag has to come down with it.
+    /// </summary>
+    [TestMethod]
+    public async Task NewSession_AfterAQualifyingSession_ClearsThePracticeQualifyingFlag()
+    {
+        var (context, db) = CreateContext();
+        await using (db)
+        {
+            await context.NewSessionWithLockHeldAsync(42, "Qualifying");
+
+            await context.NewSessionWithLockHeldAsync(43, "Sat 7Hr");
+
+            Assert.IsFalse(context.SessionState.IsPracticeQualifying);
+        }
+    }
+
+    /// <summary>
+    /// A restart mid-session is not told the run type either, and the $B naming the session went by
+    /// long before this process started.
+    /// </summary>
+    [TestMethod]
+    public async Task ResumeSession_ForAPracticeOrQualifyingName_MarksTheSessionPracticeQualifying()
+    {
+        var (context, db) = CreateContext();
+        await using (db)
+        {
+            await context.ResumeSessionWithLockHeldAsync(42, "Team Practice");
+
+            Assert.IsTrue(context.SessionState.IsPracticeQualifying);
+        }
+    }
+
+    /// <summary>
+    /// Multiloop reports the run type outright, which beats reading the session's name, and it only
+    /// re-sends that information when it changes - so nothing would put back a value overwritten
+    /// here. A restart can apply the backlogged run information before the relay's replayed session
+    /// change reaches this method, so the name must not have the last word.
+    /// </summary>
+    [TestMethod]
+    public async Task ResumeSession_OnAMultiloopEvent_LeavesThePracticeQualifyingFlagAlone()
+    {
+        var (context, db) = CreateContext();
+        await using (db)
+        {
+            context.IsMultiloopActive = true;
+            // As the run type reported it, under a name the term match does not recognize.
+            context.SessionState.IsPracticeQualifying = true;
+
+            await context.ResumeSessionWithLockHeldAsync(42, "Q1");
+
+            Assert.IsTrue(context.SessionState.IsPracticeQualifying);
+        }
+    }
+
+    /// <summary>
     /// Class colors and ordering come from the organization behind the event. Every car's class
     /// marker is drawn from them, so the join has to reach the organization through the event.
     /// </summary>
