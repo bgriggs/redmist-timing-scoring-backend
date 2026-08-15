@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.EventProcessor.EventStatus.FlagData.StateChanges;
@@ -17,6 +18,31 @@ public class FlagProcessor
     private readonly SessionContext? sessionContext;
     private readonly List<FlagDuration> flags = [];
     private readonly SemaphoreSlim flagsLock = new(1, 1);
+
+    /// <summary>
+    /// A change in the override that has not yet held for <see cref="OverrideConfirmWindow"/>, and
+    /// the timing system clock reading it was first seen at. Also throttles the paths that give up
+    /// after reading the log, which would otherwise re-read it for every record.
+    /// </summary>
+    private (bool OverrideActive, DateTime Since)? pendingOverride;
+
+    /// <summary>
+    /// How long a change in the purple override has to hold before it is written to the log. The
+    /// full-course flag is taken from whichever car reported one last in a message, so it flickers
+    /// either side of a real transition much as the same feed's pit readings do. The overall flag
+    /// absorbs that because it is a level clients re-read; the log is a record, and a flicker
+    /// written into it leaves a permanent pair of entries behind. Waiting costs no accuracy: the
+    /// boundary is back-dated to when the change was first seen.
+    /// </summary>
+    private static readonly TimeSpan OverrideConfirmWindow = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How far past the entry being split the timing system's clock may read before its time of
+    /// day is treated as unusable. The clock carries no date, so it is anchored to that entry and
+    /// rolled forward for a session that has passed midnight; a clock that has jumped backwards
+    /// instead would be rolled a full day forward and would reorder the whole list.
+    /// </summary>
+    private static readonly TimeSpan MaxTimingSystemClockLead = TimeSpan.FromHours(12);
 
 
     public FlagProcessor(IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory, SessionContext sessionContext)
@@ -46,16 +72,211 @@ public class FlagProcessor
             return null;
 
         var fs = JsonSerializer.Deserialize<List<FlagDuration>>(message.Data);
-        if (fs != null)
+        if (fs == null)
+            return null;
+
+        await ProcessFlags(sessionContext.SessionState.SessionId, fs, sessionContext.CancellationToken);
+
+        // A caution logged while Flagtronics is already reporting purple has to be split as soon as
+        // the relay logs it, and a relay flag change may equally have ended one.
+        await ApplyPurpleOverrideAsync(sessionContext.CancellationToken);
+
+        return await PublishFlagsAsync(sessionContext.CancellationToken);
+    }
+
+    /// <summary>
+    /// Brings the flag log in line with the Flagtronics purple override that
+    /// <see cref="SessionContext.GetEffectiveTrackFlag"/> applies to the overall flag. RMonitor has
+    /// no purple full-course flag to send, so a purple slow zone reaches the system on the
+    /// Flagtronics feed alone while the relay's flag list keeps showing the yellow underneath it.
+    /// The log is what the flags tab, the session results and the archive are all read from, so the
+    /// caution is split there the same way the overall flag is overridden: the yellow ends where
+    /// purple takes over, a Purple35 entry covers the override, and a fresh yellow entry resumes
+    /// the caution when purple releases.
+    /// </summary>
+    /// <returns>The flag durations to publish, or null when the log was left unchanged.</returns>
+    public async Task<PatchUpdates?> ReconcilePurpleOverrideAsync(CancellationToken cancellationToken)
+    {
+        if (!await ApplyPurpleOverrideAsync(cancellationToken))
+            return null;
+
+        return await PublishFlagsAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes the flag log side of the purple override, returning whether it changed anything.
+    /// </summary>
+    private async Task<bool> ApplyPurpleOverrideAsync(CancellationToken cancellationToken)
+    {
+        if (sessionContext == null)
+            return false;
+
+        // A purple effective flag can only be the override: a timing system's own purple, where one
+        // exists, arrives on the relay's flag list like any other flag and needs no help here.
+        var underCaution = sessionContext.RMonitorTrackFlag == Flags.Yellow;
+        var overrideActive = underCaution && sessionContext.GetEffectiveTrackFlag() == Flags.Purple35;
+
+        // The cached list belongs to the session the relay last sent flags for; until it has sent
+        // this session's there is nothing to override.
+        var sessionId = sessionContext.SessionState.SessionId;
+        if (sessionId != SessionId)
         {
-            await ProcessFlags(sessionContext.SessionState.SessionId, fs, sessionContext.CancellationToken);
-            var flagDurations = await GetFlagsAsync(sessionContext.CancellationToken);
-            var flagChange = new FlagsStateChange(flagDurations);
-            var sp = flagChange.ApplySessionChange(sessionContext.SessionState);
-            if (sp != null)
-                return new PatchUpdates([sp], []);
+            pendingOverride = null;
+            return false;
         }
-        return null;
+
+        var logged = await GetFlagsAsync(cancellationToken);
+
+        // Read from the log rather than remembered, so that a restart part-way through an override
+        // picks the entry back up. An open purple entry is the override's only while the timing
+        // system itself shows yellow: one logged by a timing system that sends its own purple
+        // belongs to that system, and once RMonitor has left yellow the entry is the relay's next
+        // flag to close, through the auto-complete in SaveAndUpdateFlagsAsync, which dates it
+        // against the flag that actually replaced the caution.
+        var openPurple = underCaution ? LatestOpen(logged, Flags.Purple35) : null;
+        if (overrideActive == (openPurple != null))
+        {
+            pendingOverride = null;
+            return false;
+        }
+
+        // The entry the boundary falls inside: the caution when purple takes over, the purple
+        // itself when it releases.
+        var split = overrideActive ? LatestOpen(logged, Flags.Yellow) : openPurple;
+        if (split == null)
+        {
+            // Nothing to override: a purple entry with no caution under it would put a flag change
+            // in the log that the timing system never made.
+            Logger.LogDebug("Flagtronics reports purple with no open yellow in the flag log for event {eventId} session {sessionId}",
+                eventId, sessionId);
+            return false;
+        }
+
+        if (GetTimingSystemNow(split.StartTime) is not DateTime now)
+            return false;
+
+        if (pendingOverride is not { } pending || pending.OverrideActive != overrideActive)
+        {
+            pendingOverride = (overrideActive, now);
+            return false;
+        }
+
+        if (now - pending.Since < OverrideConfirmWindow)
+            return false;
+
+        // Back-dated to when the change was first seen, and never dated past the clock: the relay
+        // ends an entry the second before the next one begins, and an entry ahead of the timing
+        // system's own flags could not be closed by an auto-complete that only looks backwards.
+        var boundary = Later(pending.Since, split.StartTime.AddSeconds(1));
+        if (boundary > now)
+            return false;
+
+        try
+        {
+            using var context = await tsContext.CreateDbContextAsync(cancellationToken);
+            var dbFlags = await context.FlagLog
+                .Where(f => f.EventId == eventId && f.SessionId == sessionId)
+                .ToListAsync(cancellationToken);
+
+            var splitRow = dbFlags.FirstOrDefault(f => f.Flag == split.Flag && f.StartTime == split.StartTime && f.EndTime == null);
+
+            // Anything the relay has logged at or past the boundary owns the timeline from there,
+            // and an entry written behind it would never be closed.
+            if (splitRow == null || dbFlags.Any(f => f != splitRow && f.StartTime >= boundary))
+            {
+                // Re-confirmed before the log is read again, rather than on every record.
+                pendingOverride = null;
+                return false;
+            }
+
+            // Purple takes over the caution; when it releases the caution resumes, the override
+            // being open only while RMonitor still shows yellow.
+            var resumingFlag = overrideActive ? Flags.Purple35 : Flags.Yellow;
+            splitRow.EndTime = boundary.AddSeconds(-1);
+            await context.FlagLog.AddAsync(new FlagLog
+            {
+                EventId = eventId,
+                SessionId = sessionId,
+                Flag = resumingFlag,
+                StartTime = boundary,
+            }, cancellationToken);
+
+            await context.SaveChangesAsync(cancellationToken);
+            await ReloadFlagsAsync(context, sessionId, cancellationToken);
+            pendingOverride = null;
+
+            Logger.LogInformation("Flagtronics purple {change} at {boundary}: ended the {splitFlag} started at {splitStart} and logged a {resumingFlag} for event {eventId} session {sessionId}",
+                overrideActive ? "took over the caution" : "released", boundary, split.Flag, split.StartTime, resumingFlag, eventId, sessionId);
+            return true;
+        }
+        catch (DbUpdateException ex)
+        {
+            // Concurrent updates, as in SaveAndUpdateFlagsAsync. Cleared so the change has to be
+            // re-confirmed before it is retried, rather than retried on every record.
+            Logger.LogWarning(ex, "Database update exception applying the Flagtronics purple override for event {eventId} session {sessionId}",
+                eventId, sessionId);
+            pendingOverride = null;
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error applying the Flagtronics purple override to the flag log for event {eventId} session {sessionId}",
+                eventId, sessionId);
+            pendingOverride = null;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// "Now" on the clock the flag log is kept in. The relay stamps each flag with the timing
+    /// system's own wall clock rather than with UTC - a production feed was observed running three
+    /// hours from UTC and the better part of an hour from the track's local time - so a purple
+    /// boundary taken from any other clock would land hours away from the entries around it. The
+    /// heartbeat carries a time of day with no date, so it is anchored to the entry being split.
+    /// </summary>
+    /// <param name="anchor">Start of the entry the new boundary falls inside.</param>
+    private DateTime? GetTimingSystemNow(DateTime anchor)
+    {
+        var timeOfDay = RaceTimeParser.Parse(sessionContext!.SessionState.LocalTimeOfDay);
+        if (timeOfDay == TimeSpan.Zero)
+        {
+            // No heartbeat read yet: there is no clock to place the boundary on. Midnight exactly
+            // is indistinguishable from that and is given up on for the second it lasts.
+            Logger.LogDebug("No usable timing system time of day for event {eventId}; leaving the flag log unchanged", eventId);
+            return null;
+        }
+
+        var now = anchor.Date + timeOfDay;
+        if (now < anchor)
+            now = now.AddDays(1);
+
+        if (now - anchor > MaxTimingSystemClockLead)
+        {
+            Logger.LogWarning("Timing system time of day {timeOfDay} cannot be placed against the flag starting {anchor} for event {eventId}; leaving the flag log unchanged",
+                sessionContext.SessionState.LocalTimeOfDay, anchor, eventId);
+            return null;
+        }
+
+        return now;
+    }
+
+    private static DateTime Later(DateTime a, DateTime b) => a > b ? a : b;
+
+    /// <summary>
+    /// The entry of the given flag that is still running, i.e. the latest one with no end time.
+    /// </summary>
+    private static FlagDuration? LatestOpen(List<FlagDuration> flagDurations, Flags flag)
+        => flagDurations.Where(f => f.Flag == flag && f.EndTime == null).MaxBy(f => f.StartTime);
+
+    /// <summary>
+    /// Applies the current flag list to the session state and returns it for the clients, or null
+    /// when they already have it.
+    /// </summary>
+    private async Task<PatchUpdates?> PublishFlagsAsync(CancellationToken cancellationToken)
+    {
+        var flagDurations = await GetFlagsAsync(cancellationToken);
+        var sp = new FlagsStateChange(flagDurations).ApplySessionChange(sessionContext!.SessionState);
+        return sp != null ? new PatchUpdates([sp], []) : null;
     }
 
 
@@ -65,6 +286,10 @@ public class FlagProcessor
         {
             Logger.LogDebug("SessionId changed from {s1} to {s2}. Attempting flag reload.", SessionId, sessionId);
             SessionId = sessionId;
+
+            // An override change the previous session was part-way through says nothing about this
+            // one, whose flags are a fresh list.
+            pendingOverride = null;
         }
 
         await SaveAndUpdateFlagsAsync(sessionId, fs, cancellationToken);
@@ -193,6 +418,11 @@ public class FlagProcessor
             }
         }
 
+        await ReloadFlagsAsync(context, sessionId, cancellationToken);
+    }
+
+    private async Task ReloadFlagsAsync(TsContext context, int sessionId, CancellationToken cancellationToken)
+    {
         // Reload flags from database
         Logger.LogDebug("Reloading flags for event {eventId} session {sessionId}", eventId, sessionId);
         var reloadedFlags = await context.FlagLog

@@ -547,6 +547,13 @@ public class SessionStateProcessingPipeline
                 sessionPatches.AddRange(signalChanges.SessionPatches);
             }
 
+            // The purple override the processor above applied to the overall flag has to reach the
+            // flag log too: the flags tab, the session results and the archive are all read from
+            // the log, and the relay's flag list only ever carries the yellow underneath it.
+            var flagLogChanges = await flagProcessor.ReconcilePurpleOverrideAsync(sessionContext.CancellationToken);
+            if (flagLogChanges != null)
+                sessionPatches.AddRange(flagLogChanges.SessionPatches);
+
             if (carPatches.Count == 0 && sessionPatches.Count == 0)
                 return null;
 
