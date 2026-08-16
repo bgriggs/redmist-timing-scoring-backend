@@ -156,6 +156,193 @@ public class FlagProcessorPurpleOverrideTests
     }
 
     /// <summary>
+    /// The timing system and Flagtronics are not synchronized, so a caution and the slow zone called
+    /// with it land moments apart. Logging both leaves a sliver of yellow in front of the purple
+    /// that reads as a flag change of its own, so the purple takes the caution's entry over.
+    /// </summary>
+    [TestMethod]
+    public async Task Reconcile_PurpleCalledWithTheCaution_TakesOverItsEntryInsteadOfSplittingIt()
+    {
+        var (processor, context, dbFactory) = await CreateWithOpenYellowAsync();
+
+        // Three seconds after the caution the relay logged at 13:10:00.
+        var updates = await ReportPurpleAsync(processor, context, from: "13:10:03");
+
+        Assert.IsNotNull(updates);
+        var logged = Logged(dbFactory);
+        Assert.HasCount(1, logged, "The caution and the slow zone are one flag change, not two.");
+        Assert.AreEqual(Flags.Purple35, logged[0].Flag);
+        Assert.AreEqual(YellowStart, logged[0].StartTime, "The purple stands where the caution did.");
+        Assert.IsNull(logged[0].EndTime);
+    }
+
+    /// <summary>
+    /// The other order, which is as common: Flagtronics calls the slow zone before the timing system
+    /// shows the caution. Nothing can be overridden until the caution is logged, and when it is, the
+    /// purple is already there to take it over.
+    /// </summary>
+    [TestMethod]
+    public async Task Reconcile_PurpleCalledBeforeTheCaution_TakesOverTheCautionsEntry()
+    {
+        // A session already running under green, so the processor has this session's flag list.
+        var (processor, context, dbFactory) = await CreateAsync();
+        context.RMonitorTrackFlag = Flags.Green;
+        context.SessionState.LocalTimeOfDay = "13:09:50";
+        await SendFlagsAsync(processor, context,
+            [new FlagDuration { Flag = Flags.Green, StartTime = new DateTime(2026, 8, 14, 13, 0, 0) }]);
+
+        // Flagtronics calls the slow zone first: there is no caution to take over yet.
+        context.FlagtronicsFullCourseFlag = Flags.Purple35;
+        context.SessionState.LocalTimeOfDay = "13:09:55";
+        Assert.IsNull(await processor.ReconcilePurpleOverrideAsync(TestContext.CancellationToken));
+        Assert.HasCount(1, Logged(dbFactory), "A purple with no caution under it is not logged.");
+
+        // The timing system catches up and the relay logs the caution.
+        context.RMonitorTrackFlag = Flags.Yellow;
+        context.SessionState.LocalTimeOfDay = "13:10:00";
+        await SendFlagsAsync(processor, context,
+        [
+            new FlagDuration { Flag = Flags.Green, StartTime = new DateTime(2026, 8, 14, 13, 0, 0), EndTime = YellowStart.AddSeconds(-1) },
+            new FlagDuration { Flag = Flags.Yellow, StartTime = YellowStart },
+        ]);
+        context.SessionState.LocalTimeOfDay = "13:10:10";
+        await processor.ReconcilePurpleOverrideAsync(TestContext.CancellationToken);
+
+        var logged = Logged(dbFactory);
+        Assert.HasCount(2, logged);
+        Assert.AreEqual(Flags.Green, logged[0].Flag);
+        Assert.AreEqual(Flags.Purple35, logged[1].Flag);
+        Assert.AreEqual(YellowStart, logged[1].StartTime, "The purple stands where the caution did.");
+    }
+
+    /// <summary>
+    /// A slow zone that comes back moments after lifting takes over nothing: the caution underneath
+    /// it is one this override resumed, and deleting that would leave two purple entries with a gap
+    /// between them, reading as two slow zones rather than the one the field ran under.
+    /// </summary>
+    [TestMethod]
+    public async Task Reconcile_PurpleReturningJustAfterItLifted_DoesNotTakeOverTheResumedCaution()
+    {
+        var (processor, context, dbFactory) = await CreateWithOpenYellowAsync();
+        await ReportPurpleAsync(processor, context, from: "13:12:30");
+
+        // The slow zone lifts, is registered once the caution has held, and comes straight back.
+        await ReportFullCourseFlagAsync(processor, context, Flags.Yellow, from: "13:20:00");
+        await ReportPurpleAsync(processor, context, from: "13:20:05");
+
+        var logged = Logged(dbFactory);
+        Assert.HasCount(4, logged);
+        Assert.AreEqual(Flags.Yellow, logged[0].Flag);
+        Assert.AreEqual(Flags.Purple35, logged[1].Flag);
+        Assert.AreEqual(new DateTime(2026, 8, 14, 13, 19, 59), logged[1].EndTime);
+        Assert.AreEqual(Flags.Yellow, logged[2].Flag, "The caution between the two slow zones stands.");
+        Assert.AreEqual(new DateTime(2026, 8, 14, 13, 20, 0), logged[2].StartTime);
+        Assert.AreEqual(new DateTime(2026, 8, 14, 13, 20, 4), logged[2].EndTime);
+        Assert.AreEqual(Flags.Purple35, logged[3].Flag);
+        Assert.AreEqual(new DateTime(2026, 8, 14, 13, 20, 5), logged[3].StartTime);
+    }
+
+    /// <summary>
+    /// The edge of the window: a slow zone called exactly at it still takes the caution over, which
+    /// is the case the resumed-caution rule above has to be measured against.
+    /// </summary>
+    [TestMethod]
+    public async Task Reconcile_PurpleCalledExactlyAtTheEdgeOfTheWindow_TakesTheCautionOver()
+    {
+        var (processor, context, dbFactory) = await CreateWithOpenYellowAsync();
+
+        // Five seconds after the caution the relay logged at 13:10:00.
+        await ReportPurpleAsync(processor, context, from: "13:10:05");
+
+        var logged = Logged(dbFactory);
+        Assert.HasCount(1, logged);
+        Assert.AreEqual(Flags.Purple35, logged[0].Flag);
+        Assert.AreEqual(YellowStart, logged[0].StartTime);
+    }
+
+    /// <summary>
+    /// The relay sends its whole flag list on every change, and it goes on carrying the caution the
+    /// purple replaced - including once it has an end time. Nothing may put it back.
+    /// </summary>
+    [TestMethod]
+    public async Task Process_AfterThePurpleTookOverTheCaution_TheRelaysListDoesNotPutItBack()
+    {
+        var (processor, context, dbFactory) = await CreateWithOpenYellowAsync();
+        await ReportPurpleAsync(processor, context, from: "13:10:03");
+        Assert.HasCount(1, Logged(dbFactory));
+
+        // The relay resends the caution, still running and then finished.
+        await SendFlagsAsync(processor, context, [new FlagDuration { Flag = Flags.Yellow, StartTime = YellowStart }]);
+        var greenStart = new DateTime(2026, 8, 14, 13, 25, 0);
+        context.RMonitorTrackFlag = Flags.Green;
+        await SendFlagsAsync(processor, context,
+        [
+            new FlagDuration { Flag = Flags.Yellow, StartTime = YellowStart, EndTime = greenStart.AddSeconds(-1) },
+            new FlagDuration { Flag = Flags.Green, StartTime = greenStart },
+        ]);
+
+        var logged = Logged(dbFactory);
+        Assert.HasCount(2, logged);
+        Assert.AreEqual(Flags.Purple35, logged[0].Flag);
+        Assert.AreEqual(greenStart, logged[0].EndTime);
+        Assert.AreEqual(Flags.Green, logged[1].Flag);
+    }
+
+    /// <summary>
+    /// A caution the slow zone only takes over well into it is a flag the field did run under, so it
+    /// stays in the log and the purple splits it.
+    /// </summary>
+    [TestMethod]
+    public async Task Reconcile_PurpleCalledWellIntoTheCaution_SplitsItInstead()
+    {
+        var (processor, context, dbFactory) = await CreateWithOpenYellowAsync();
+
+        var updates = await ReportPurpleAsync(processor, context, from: "13:10:06");
+
+        Assert.IsNotNull(updates);
+        var logged = Logged(dbFactory);
+        Assert.HasCount(2, logged);
+        Assert.AreEqual(Flags.Yellow, logged[0].Flag);
+        Assert.AreEqual(new DateTime(2026, 8, 14, 13, 10, 5), logged[0].EndTime);
+        Assert.AreEqual(Flags.Purple35, logged[1].Flag);
+        Assert.AreEqual(new DateTime(2026, 8, 14, 13, 10, 6), logged[1].StartTime);
+    }
+
+    /// <summary>
+    /// The tail of a slow zone, which needs no rule of its own: the caution left behind is only
+    /// written once it has held for the confirm window, so a track that goes green before then
+    /// leaves the purple running to the green rather than a few seconds of yellow between them.
+    /// </summary>
+    [TestMethod]
+    public async Task Reconcile_WhenTheCautionEndsJustAfterThePurpleLifts_NoYellowIsLogged()
+    {
+        var (processor, context, dbFactory) = await CreateWithOpenYellowAsync();
+        await ReportPurpleAsync(processor, context, from: "13:12:30");
+
+        // The slow zone lifts, and the track goes green two seconds later.
+        context.FlagtronicsFullCourseFlag = Flags.Yellow;
+        context.SessionState.LocalTimeOfDay = "13:20:00";
+        await processor.ReconcilePurpleOverrideAsync(TestContext.CancellationToken);
+
+        var greenStart = new DateTime(2026, 8, 14, 13, 20, 2);
+        context.RMonitorTrackFlag = Flags.Green;
+        context.FlagtronicsFullCourseFlag = Flags.Green;
+        context.SessionState.LocalTimeOfDay = "13:20:02";
+        await SendFlagsAsync(processor, context,
+        [
+            new FlagDuration { Flag = Flags.Yellow, StartTime = YellowStart, EndTime = greenStart.AddSeconds(-1) },
+            new FlagDuration { Flag = Flags.Green, StartTime = greenStart },
+        ]);
+
+        var logged = Logged(dbFactory);
+        Assert.HasCount(3, logged);
+        Assert.AreEqual(Flags.Yellow, logged[0].Flag, "The caution before the slow zone stands.");
+        Assert.AreEqual(Flags.Purple35, logged[1].Flag);
+        Assert.AreEqual(greenStart, logged[1].EndTime, "The purple runs to the green rather than to a moment of yellow.");
+        Assert.AreEqual(Flags.Green, logged[2].Flag);
+    }
+
+    /// <summary>
     /// The override is only ever an upgrade of a yellow. Anything else the timing system is showing
     /// is its own to report, so the log is left alone.
     /// </summary>
@@ -281,30 +468,6 @@ public class FlagProcessorPurpleOverrideTests
         Assert.AreEqual(greenStart, logged[1].EndTime, "The purple ends where the relay's green begins.");
         Assert.AreEqual(Flags.Green, logged[2].Flag);
         Assert.IsNull(logged[2].EndTime);
-    }
-
-    /// <summary>
-    /// A caution called while the slow zone is already running: the relay logs a plain yellow and
-    /// the purple takes over from it, however little of the caution was left underneath.
-    /// </summary>
-    [TestMethod]
-    public async Task Process_AYellowLoggedWhilePurpleIsAlreadyReported_IsSplitFromItsStart()
-    {
-        var (processor, context, dbFactory) = await CreateAsync();
-        context.FlagtronicsFullCourseFlag = Flags.Purple35;
-        context.RMonitorTrackFlag = Flags.Yellow;
-
-        context.SessionState.LocalTimeOfDay = "13:10:00";
-        await SendFlagsAsync(processor, context, [new FlagDuration { Flag = Flags.Yellow, StartTime = YellowStart }]);
-        context.SessionState.LocalTimeOfDay = "13:10:20";
-        await processor.ReconcilePurpleOverrideAsync(TestContext.CancellationToken);
-
-        var logged = Logged(dbFactory);
-        Assert.HasCount(2, logged);
-        Assert.AreEqual(new DateTime(2026, 8, 14, 13, 10, 0), logged[0].EndTime);
-        Assert.AreEqual(Flags.Purple35, logged[1].Flag);
-        Assert.AreEqual(new DateTime(2026, 8, 14, 13, 10, 1), logged[1].StartTime,
-            "The purple cannot start before the caution it is overriding.");
     }
 
     /// <summary>

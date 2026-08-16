@@ -37,6 +37,23 @@ public class FlagProcessor
     private static readonly TimeSpan OverrideConfirmWindow = TimeSpan.FromSeconds(5);
 
     /// <summary>
+    /// How soon after a caution starts the override has to become applicable for the purple to take
+    /// the caution's entry over rather than split it. The timing system and Flagtronics are not
+    /// synchronized, so the two arrive moments apart in whichever order; within this window they
+    /// describe one flag change rather than two, and the yellow half of it is not a flag the field
+    /// ever ran under. The same length as <see cref="OverrideConfirmWindow"/>, so a caution the slow
+    /// zone never confirms over is also one too short to have been absorbed.
+    /// </summary>
+    /// <remarks>
+    /// Measured from the caution to the override becoming applicable, not to the slow zone being
+    /// called: a slow zone already running when the caution is called was seen at the same moment as
+    /// far as the log is concerned, and takes the caution over however long it has been up. That
+    /// also means a purple stuck on for an hour takes over the next caution entirely rather than
+    /// leaving a sliver of it, which is the same exposure the override itself carries.
+    /// </remarks>
+    private static readonly TimeSpan CautionAbsorbWindow = TimeSpan.FromSeconds(5);
+
+    /// <summary>
     /// How far past the entry being split the timing system's clock may read before its time of
     /// day is treated as unusable. The clock carries no date, so it is anchored to that entry and
     /// rolled forward for a session that has passed midnight; a clock that has jumped backwards
@@ -164,10 +181,19 @@ public class FlagProcessor
         if (now - pending.Since < OverrideConfirmWindow)
             return false;
 
+        // The two systems are not synchronized, so a caution and the slow zone called with it arrive
+        // moments apart in either order. A caution the slow zone took over within a few seconds was
+        // never a flag anyone ran under, and logging it leaves a sliver of yellow in front of every
+        // purple that reads as a flag change of its own. The purple takes the caution's entry over
+        // instead of splitting it, which is also why it can start where the caution did.
+        var absorbsCaution = overrideActive
+            && pending.Since - split.StartTime <= CautionAbsorbWindow
+            && !IsResumedCaution(logged, split);
+
         // Back-dated to when the change was first seen, and never dated past the clock: the relay
         // ends an entry the second before the next one begins, and an entry ahead of the timing
         // system's own flags could not be closed by an auto-complete that only looks backwards.
-        var boundary = Later(pending.Since, split.StartTime.AddSeconds(1));
+        var boundary = absorbsCaution ? split.StartTime : Later(pending.Since, split.StartTime.AddSeconds(1));
         if (boundary > now)
             return false;
 
@@ -192,7 +218,23 @@ public class FlagProcessor
             // Purple takes over the caution; when it releases the caution resumes, the override
             // being open only while RMonitor still shows yellow.
             var resumingFlag = overrideActive ? Flags.Purple35 : Flags.Yellow;
-            splitRow.EndTime = boundary.AddSeconds(-1);
+            if (absorbsCaution)
+            {
+                // The purple stands in its place, from the same moment. The relay goes on sending
+                // the entry in every list it publishes; SaveAndUpdateFlagsAsync reads the start time
+                // now being a purple's as the mark of an entry that was taken over.
+                //
+                // Starting the purple at exactly the caution's start matters beyond reading well:
+                // the relay's entry stays forever new to the auto-complete in SaveAndUpdateFlagsAsync,
+                // which closes the latest open entry starting strictly before it. A purple even a
+                // second later would be closed and reopened by every list the relay sends.
+                context.FlagLog.Remove(splitRow);
+            }
+            else
+            {
+                splitRow.EndTime = boundary.AddSeconds(-1);
+            }
+
             await context.FlagLog.AddAsync(new FlagLog
             {
                 EventId = eventId,
@@ -205,8 +247,9 @@ public class FlagProcessor
             await ReloadFlagsAsync(context, sessionId, cancellationToken);
             pendingOverride = null;
 
-            Logger.LogInformation("Flagtronics purple {change} at {boundary}: ended the {splitFlag} started at {splitStart} and logged a {resumingFlag} for event {eventId} session {sessionId}",
-                overrideActive ? "took over the caution" : "released", boundary, split.Flag, split.StartTime, resumingFlag, eventId, sessionId);
+            Logger.LogInformation("Flagtronics purple {change} at {boundary}: {disposition} the {splitFlag} started at {splitStart} and logged a {resumingFlag} for event {eventId} session {sessionId}",
+                overrideActive ? "took over the caution" : "released", boundary,
+                absorbsCaution ? "replaced" : "ended", split.Flag, split.StartTime, resumingFlag, eventId, sessionId);
             return true;
         }
         catch (DbUpdateException ex)
@@ -267,6 +310,18 @@ public class FlagProcessor
     /// </summary>
     private static FlagDuration? LatestOpen(List<FlagDuration> flagDurations, Flags flag)
         => flagDurations.Where(f => f.Flag == flag && f.EndTime == null).MaxBy(f => f.StartTime);
+
+    /// <summary>
+    /// Whether a caution entry is one this override resumed when a slow zone lifted, rather than one
+    /// the timing system called. The purple it resumed from ends the second before it begins.
+    /// </summary>
+    /// <remarks>
+    /// Only a caution the timing system called is taken over: a slow zone that comes back moments
+    /// after lifting would otherwise delete the resumption and leave two purple entries with a gap
+    /// between them, reading as two slow zones where the field saw its caution come back briefly.
+    /// </remarks>
+    private static bool IsResumedCaution(List<FlagDuration> flagDurations, FlagDuration caution)
+        => flagDurations.Any(f => f.Flag == Flags.Purple35 && f.EndTime == caution.StartTime.AddSeconds(-1));
 
     /// <summary>
     /// Applies the current flag list to the session state and returns it for the clients, or null
@@ -374,6 +429,18 @@ public class FlagProcessor
             var exists = dbFlags.Any(x => x.Flag == f.Flag && x.StartTime == f.StartTime);
             if (exists)
                 continue;
+
+            // A caution the purple override replaced keeps its start time, so a start time that now
+            // belongs to a purple is one that was taken over rather than a flag change still to be
+            // logged. The relay sends its whole list on every change and would otherwise put the
+            // caution back beside the purple that stands in its place. Read from the log rather than
+            // remembered, so a restart cannot resurrect it either.
+            if (f.Flag == Flags.Yellow && dbFlags.Any(x => x.Flag == Flags.Purple35 && x.StartTime == f.StartTime))
+            {
+                Logger.LogDebug("Skipping the caution at {start} for event {eventId} session {sessionId}: the purple override stands in its place",
+                    f.StartTime, eventId, sessionId);
+                continue;
+            }
 
             try
             {
