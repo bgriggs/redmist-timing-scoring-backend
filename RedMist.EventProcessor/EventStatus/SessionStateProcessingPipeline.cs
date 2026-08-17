@@ -367,8 +367,9 @@ public class SessionStateProcessingPipeline
                 }
 
                 // ** Phase 3: Client Notification (outside the lock) **
-                // Must stay outside: this reaches StatusAggregator, which takes the read lock, and
-                // the lock is not reentrant - dispatching it from inside the block above would hang.
+                // Kept outside so the fan-out to clients is never on the pipeline's critical path:
+                // it is debounced and dispatched separately, and nothing it does needs the session
+                // state held still - it sends patches describing changes already applied above.
                 if (allAppliedChanges.Count > 0)
                 {
                     _ = Task.Run(async () => await NotifyClients(allAppliedChanges));

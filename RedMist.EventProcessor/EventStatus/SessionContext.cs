@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using MessagePack;
+using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.EventProcessor.EventStatus.LapData;
@@ -263,6 +264,7 @@ public class SessionContext
         transponderToNumberLookup.Clear();
         SessionState.EventEntries.Clear();
         SessionState.CarPositions.Clear();
+        InvalidateSnapshot();
 
         Logger.LogDebug("Session state reset cleared car positions");
     }
@@ -312,6 +314,10 @@ public class SessionContext
         FlagtronicsFullCourseFlag = Flags.Unknown;
         flagtronicsPitOwners.Clear();
         pitOwnershipHoldReleased.Clear();
+
+        // Again after the state object itself has been replaced: the reset above invalidated the
+        // snapshot as it stood before any of this.
+        InvalidateSnapshot();
     }
 
     #region Starting Positions
@@ -470,6 +476,123 @@ public class SessionContext
             SessionState.ClassOrder = organization.Classes.ToDictionary(cm => cm.Name, cm => cm.Order.ToString());
         }
     }
+
+    #region Serialized state snapshot
+
+    /// <summary>
+    /// How old a snapshot handed to the status endpoint is allowed to be before it is taken again.
+    /// Callers poll that endpoint every few seconds and receive changes over the patch feed in
+    /// between, so a snapshot this fresh is indistinguishable to them from one taken per request.
+    /// </summary>
+    private static readonly TimeSpan SnapshotMaxAge = TimeSpan.FromMilliseconds(100);
+
+    private readonly Lock snapshotGate = new();
+    private byte[]? snapshot;
+    private DateTimeOffset snapshotTakenUtc = DateTimeOffset.MinValue;
+    private TaskCompletionSource<byte[]>? snapshotInFlight;
+
+    /// <summary>
+    /// Counts session changes, so a snapshot taken across one can be recognized and dropped.
+    /// </summary>
+    private int snapshotVersion;
+
+    /// <summary>
+    /// The session state, serialized, for the status endpoint to return.
+    ///
+    /// Serializing per request would put a read lock acquisition on the pipeline for every poller,
+    /// so the cost of watching an event would scale with how many people were watching it - and
+    /// the read lock genuinely excludes the pipeline now. Instead callers arriving while a snapshot
+    /// is being taken wait for that one rather than starting their own, and a completed snapshot
+    /// serves any caller arriving within <see cref="SnapshotMaxAge"/> of it. The pipeline is then
+    /// interrupted at a fixed rate no matter how large the audience is.
+    /// </summary>
+    public virtual Task<byte[]> GetSerializedStateAsync()
+    {
+        TaskCompletionSource<byte[]> pending;
+        lock (snapshotGate)
+        {
+            if (snapshot != null && _timeProvider.GetUtcNow() - snapshotTakenUtc < SnapshotMaxAge)
+                return Task.FromResult(snapshot);
+
+            if (snapshotInFlight != null)
+                return snapshotInFlight.Task;
+
+            pending = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+            snapshotInFlight = pending;
+        }
+
+        // Started outside the gate: acquiring the read lock can complete synchronously, and the
+        // serialization would then run with the gate held, blocking every other caller on it.
+        _ = TakeSnapshotAsync(pending);
+        return pending.Task;
+    }
+
+    private async Task TakeSnapshotAsync(TaskCompletionSource<byte[]> pending)
+    {
+        try
+        {
+            byte[] serialized;
+            int version;
+            using (await SessionStateLock.AcquireReadLockAsync(CancellationToken))
+            {
+                serialized = MessagePackSerializer.Serialize(SessionState);
+                // Read under the read lock, where a session change - which happens under the write
+                // lock - cannot be in progress, so the version and the bytes describe one another.
+                lock (snapshotGate)
+                {
+                    version = snapshotVersion;
+                }
+            }
+
+            lock (snapshotGate)
+            {
+                // The state is cached only if it still describes the current session. A session
+                // change can land between the read lock being released above and this point, and
+                // caching over it would go on handing out the previous session's field to callers
+                // that have already been told to reset. That interleaving is too narrow to reach
+                // from a test without a seam here, so this stands on the ordering rather than on
+                // coverage - what the tests pin is the reachable case, a reset dropping the cache.
+                if (snapshotVersion == version)
+                {
+                    snapshot = serialized;
+                    snapshotTakenUtc = _timeProvider.GetUtcNow();
+                }
+                snapshotInFlight = null;
+            }
+            pending.TrySetResult(serialized);
+        }
+        catch (Exception ex)
+        {
+            // Clear the in-flight slot before completing, so the next caller starts a fresh attempt
+            // instead of being handed this failure forever.
+            lock (snapshotGate)
+            {
+                if (ReferenceEquals(snapshotInFlight, pending))
+                    snapshotInFlight = null;
+            }
+            pending.TrySetException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Drops the cached snapshot so the next caller serializes the state as it now stands.
+    ///
+    /// <see cref="SnapshotMaxAge"/> is a tolerance for ordinary field updates, which reach clients
+    /// over the patch feed regardless. A session change is different in kind: it clears the field
+    /// or replaces the state outright, and a client is told to reset and re-read at that moment -
+    /// so serving it even a slightly old snapshot would repopulate it with the session that just
+    /// ended.
+    /// </summary>
+    private void InvalidateSnapshot()
+    {
+        lock (snapshotGate)
+        {
+            snapshot = null;
+            snapshotVersion++;
+        }
+    }
+
+    #endregion
 
     /// <summary>
     /// Gets the current flag in thread-safe manner.

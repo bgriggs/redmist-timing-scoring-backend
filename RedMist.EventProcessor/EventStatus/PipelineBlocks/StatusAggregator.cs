@@ -26,40 +26,47 @@ public class StatusAggregator
     }
 
 
+    /// <summary>
+    /// Sends a batch of patches to the event's subscribers.
+    ///
+    /// Deliberately takes no session state lock. Everything sent here is a patch the consolidator
+    /// owns outright - a delta describing a change already applied - and nothing in this method
+    /// reads <see cref="SessionContext.SessionState"/>, so there is no state to hold still. The
+    /// read lock this used to take never excluded anything either, because the reader side of the
+    /// lock was a no-op until it was fixed; taking it now would put the whole client fan-out, which
+    /// runs on every debounce interval, in line against the processing pipeline for no benefit.
+    /// </summary>
     public async Task Process(PatchUpdates updates)
     {
         var tasks = new List<Task>();
         var eventId = sessionContext.EventId.ToString();
         var subKey = string.Format(Consts.EVENT_SUB_V2, eventId);
 
-        using (await sessionContext.SessionStateLock.AcquireReadLockAsync())
+        foreach (var sp in updates.SessionPatches)
         {
-            foreach (var sp in updates.SessionPatches)
-            {
-                var st = hubContext.Clients.Group(subKey).SendAsync("ReceiveSessionPatch", sp, sessionContext.CancellationToken);
-                tasks.Add(st);
-                OnSessionPatch?.Invoke(sp);
-            }
-
-            // Legacy support
-            //var payload = sessionContext.SessionState.ToPayload();
-            //payload.EventEntries.Clear(); // Event entries are sent separately as patches
-            if (updates.CarPatches.Count > 0)
-            {
-                var ct = hubContext.Clients.Group(subKey).SendAsync("ReceiveCarPatches", updates.CarPatches, sessionContext.CancellationToken);
-                tasks.Add(ct);
-                OnCarPatch?.Invoke(updates.CarPatches);
-
-                //var updatedCarNumbers = updates.CarPatches.Select(p => p.Number).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                //payload.CarPositionUpdates.AddRange(payload.CarPositions.Where(c => updatedCarNumbers.Contains(c.Number)));
-            }
-            //payload.CarPositions.Clear();
-
-            //// Legacy support
-            //var json = JsonSerializer.Serialize(payload);
-            //var pt = hubContext.Clients.Group(eventId).SendAsync("ReceiveMessage", json, sessionContext.CancellationToken);
-            //tasks.Add(pt);
+            var st = hubContext.Clients.Group(subKey).SendAsync("ReceiveSessionPatch", sp, sessionContext.CancellationToken);
+            tasks.Add(st);
+            OnSessionPatch?.Invoke(sp);
         }
+
+        // Legacy support
+        //var payload = sessionContext.SessionState.ToPayload();
+        //payload.EventEntries.Clear(); // Event entries are sent separately as patches
+        if (updates.CarPatches.Count > 0)
+        {
+            var ct = hubContext.Clients.Group(subKey).SendAsync("ReceiveCarPatches", updates.CarPatches, sessionContext.CancellationToken);
+            tasks.Add(ct);
+            OnCarPatch?.Invoke(updates.CarPatches);
+
+            //var updatedCarNumbers = updates.CarPatches.Select(p => p.Number).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            //payload.CarPositionUpdates.AddRange(payload.CarPositions.Where(c => updatedCarNumbers.Contains(c.Number)));
+        }
+        //payload.CarPositions.Clear();
+
+        //// Legacy support
+        //var json = JsonSerializer.Serialize(payload);
+        //var pt = hubContext.Clients.Group(eventId).SendAsync("ReceiveMessage", json, sessionContext.CancellationToken);
+        //tasks.Add(pt);
 
         try
         {

@@ -1,5 +1,4 @@
-﻿using MessagePack;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using RedMist.EventProcessor.EventStatus;
 
 namespace RedMist.EventProcessor.Controllers;
@@ -24,15 +23,16 @@ public class StatusController(SessionContext sessionContext) : ControllerBase
     /// <remarks>
     /// <para>This endpoint ignores Accept headers and always returns MessagePack format for maximum efficiency.</para>
     /// <para>The SessionState object contains all current timing data including car positions, flags, and event status.</para>
-    /// <para>Thread-safe: Uses a read lock to ensure data consistency during serialization.</para>
+    /// <para>
+    /// Thread-safe: the state is serialized under a read lock, and the result is shared by every
+    /// caller arriving within a short window of it, so a large audience polling this endpoint does
+    /// not hold the processing pipeline off once per poller.
+    /// </para>
     /// </remarks>
     [HttpGet]
     public async Task<IActionResult> GetStatus()
     {
-        using (await sessionContext.SessionStateLock.AcquireReadLockAsync(sessionContext.CancellationToken))
-        {
-            var serialized = MessagePackSerializer.Serialize(sessionContext.SessionState);
-            return File(serialized, "application/x-msgpack");
-        }
+        var serialized = await sessionContext.GetSerializedStateAsync();
+        return File(serialized, "application/x-msgpack");
     }
 }
