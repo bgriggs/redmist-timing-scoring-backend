@@ -205,12 +205,18 @@ public class SessionStateProcessingPipeline
                                     allAppliedChanges.Add(new PatchUpdates([], [.. ftLapPatches]));
                             }
 
-                            // Apply pit data in case of reset
+                            // Apply pit data in case of reset.
+                            // Materialized: allAppliedChanges grows as the stages below append to
+                            // it, and a deferred query would re-run over the longer list each time
+                            // it was enumerated. The set it yields does not change - every patch
+                            // appended below is for a car already named here - so this is the same
+                            // set of cars, computed once.
                             var distinctNumbers = allAppliedChanges
                                 .SelectMany(c => c.CarPatches)
                                 .Select(c => c.Number)
                                 .Distinct()
-                                .Where(n => !string.IsNullOrWhiteSpace(n));
+                                .Where(n => !string.IsNullOrWhiteSpace(n))
+                                .ToList();
 
                             var pitPatches = new List<CarPositionPatch>();
                             foreach (var cn in distinctNumbers)
@@ -230,28 +236,13 @@ public class SessionStateProcessingPipeline
                             }
                             allAppliedChanges.Add(new PatchUpdates([], [.. pitPatches]));
 
-                            // Apply driver data in case of reset
-                            var driverPatches = new List<CarPositionPatch>();
-                            foreach (var cn in distinctNumbers)
-                            {
-                                var driverPatch = await driverEnricher.ProcessCarAsync(cn ?? string.Empty);
-                                if (driverPatch != null)
-                                {
-                                    driverPatches.Add(driverPatch);
-                                }
-                            }
+                            // Apply driver and video data in case of reset. Both look their cars up
+                            // in the cache, and both are asked for the whole set at once: a lookup
+                            // per car put a round trip per car per message inside this lock.
+                            var driverPatches = await driverEnricher.ProcessCarsAsync(distinctNumbers!);
                             allAppliedChanges.Add(new PatchUpdates([], [.. driverPatches]));
 
-                            // Apply video data in case of reset
-                            var videoPatches = new List<CarPositionPatch>();
-                            foreach (var cn in distinctNumbers)
-                            {
-                                var videoPatch = await videoEnricher.ProcessCarAsync(cn ?? string.Empty);
-                                if (videoPatch != null)
-                                {
-                                    videoPatches.Add(videoPatch);
-                                }
-                            }
+                            var videoPatches = await videoEnricher.ProcessCarsAsync(distinctNumbers!);
                             allAppliedChanges.Add(new PatchUpdates([], [.. videoPatches]));
 
                             // Apply multiloop data in case of reset
@@ -529,12 +520,12 @@ public class SessionStateProcessingPipeline
             // screen until their next change.
             try
             {
-                foreach (var carNumber in await flagtronicsProcessor.PublishDriverInfoAsync())
-                {
-                    var driverPatch = await driverEnricher.ProcessCarAsync(carNumber);
-                    if (driverPatch != null)
-                        carPatches.Add(driverPatch);
-                }
+                // Read for the whole set at once, as the primary lane does: a lookup per car put a
+                // cache round trip per car inside the write lock. Doing so also makes the read all
+                // or nothing, where before a fault part way through left the cars already handled
+                // mutated but their patches discarded with the loop.
+                var publishedTo = await flagtronicsProcessor.PublishDriverInfoAsync();
+                carPatches.AddRange(await driverEnricher.ProcessCarsAsync(publishedTo));
             }
             catch (Exception ex)
             {

@@ -1,4 +1,5 @@
 ﻿using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Backend.Shared.Models;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
@@ -99,26 +100,135 @@ public class DriverEnricher
     /// </summary>
     public async Task<PatchUpdates?> ProcessApplyFullAsync()
     {
-        var patches = new List<CarPositionPatch>();
-        var cache = cacheMux.GetDatabase();
-        var cars = sessionContext.SessionState.CarPositions.ToArray();
-        foreach (var car in cars)
-        {
-            if (!string.IsNullOrEmpty(car.Number))
-            {
-                var patch = await ProcessCarAsync(car.Number, cache);
-                if (patch != null)
-                {
-                    patches.Add(patch);
-                }
-            }
-        }
+        var carNumbers = sessionContext.SessionState.CarPositions
+            .Select(c => c.Number)
+            .Where(n => !string.IsNullOrEmpty(n))
+            .ToArray();
 
+        var patches = await ProcessCarsAsync(carNumbers!);
         if (patches.Count > 0)
         {
             return new PatchUpdates([], [.. patches]);
         }
         return null;
+    }
+
+    /// <summary>
+    /// Resolves and applies driver information for a set of cars.
+    ///
+    /// The cache reads are issued a tier at a time rather than a car at a time. This runs inside
+    /// the pipeline's write lock on every message that touches cars, so a round trip per car put
+    /// the whole field's worth of cache latency on the critical path - one lookup per car, and
+    /// another for each car falling back to its transponder. Batching each tier costs at most two
+    /// round trips however many cars are in the set.
+    /// </summary>
+    public async Task<List<CarPositionPatch>> ProcessCarsAsync(IEnumerable<string> carNumbers, IDatabase? cache = null)
+    {
+        var cars = new List<CarPosition>();
+        foreach (var carNumber in carNumbers)
+        {
+            if (string.IsNullOrEmpty(carNumber))
+            {
+                Logger.LogWarning("Car number is null or empty in ProcessCarAsync");
+                continue;
+            }
+
+            var car = sessionContext.GetCarByNumber(carNumber);
+            if (car == null)
+            {
+                Logger.LogWarning("Car not found for number {CarNumber} in ProcessCarAsync", carNumber);
+                continue;
+            }
+            cars.Add(car);
+        }
+
+        if (cars.Count == 0)
+            return [];
+
+        cache ??= cacheMux.GetDatabase();
+        var drivers = new DriverInfo?[cars.Count];
+
+        // Event and Car Number
+        var keys = cars
+            .Select(c => string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, c.Number))
+            .ToArray();
+        var values = await cache.StringGetAllAsync(keys);
+
+        var byTransponder = new List<int>();
+        for (var i = 0; i < cars.Count; i++)
+        {
+            if (values[i].HasValue)
+            {
+                // Only a key that is absent falls through to the transponder. One that is present
+                // but unreadable leaves the car without a driver, as it always has.
+                drivers[i] = Deserialize(values[i], cars[i].Number, keys[i]);
+            }
+            else if (cars[i].TransponderId > 0)
+            {
+                byTransponder.Add(i);
+            }
+        }
+
+        // Transponder only
+        if (byTransponder.Count > 0)
+        {
+            var transponderKeys = byTransponder
+                .Select(i => string.Format(Consts.DRIVER_TRANSPONDER_KEY, cars[i].TransponderId))
+                .ToArray();
+            var transponderValues = await cache.StringGetAllAsync(transponderKeys);
+
+            for (var j = 0; j < byTransponder.Count; j++)
+            {
+                if (transponderValues[j].HasValue)
+                {
+                    var i = byTransponder[j];
+                    drivers[i] = Deserialize(transponderValues[j], cars[i].Number, transponderKeys[j]);
+                }
+            }
+        }
+
+        var patches = new List<CarPositionPatch>();
+        for (var i = 0; i < cars.Count; i++)
+        {
+            var patch = ApplyDriver(drivers[i], cars[i]);
+            if (patch != null)
+                patches.Add(patch);
+        }
+        return patches;
+    }
+
+    private DriverInfo? Deserialize(RedisValue json, string? carNumber, string key)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<DriverInfoSource>(json!.ToString())?.DriverInfo;
+        }
+        catch (JsonException ex)
+        {
+            Logger.LogWarning(ex, "Unable to deserialize DriverInfo from cache for car {CarNumber}, key {Key}", carNumber, key);
+            return null;
+        }
+    }
+
+    private static CarPositionPatch? ApplyDriver(DriverInfo? driverInfo, CarPosition car)
+    {
+        if (driverInfo != null)
+        {
+            return UpdateCar(driverInfo, car);
+        }
+
+        // No driver info found, clear out any existing status
+        car.DriverId = string.Empty;
+        car.DriverName = string.Empty;
+
+        // Send "empty" status since null will be ignored. The car number is required:
+        // the consolidator drops any patch without one, so it would never reach clients.
+        return new CarPositionPatch()
+        {
+            Number = car.Number,
+            DriverId = string.Empty,
+            DriverName = string.Empty
+        };
     }
 
     /// <summary>
@@ -135,78 +245,8 @@ public class DriverEnricher
     /// langword="null"/> if the car number is invalid or the car cannot be found.</returns>
     public async Task<CarPositionPatch?> ProcessCarAsync(string carNumber, IDatabase? cache = null)
     {
-        if (string.IsNullOrEmpty(carNumber))
-        {
-            Logger.LogWarning("Car number is null or empty in ProcessCarAsync");
-            return null;
-        }
-
-        DriverInfo? driverInfo = null;
-        var car = sessionContext.GetCarByNumber(carNumber);
-        if (car == null)
-        {
-            Logger.LogWarning("Car not found for number {CarNumber} in ProcessCarAsync", carNumber);
-            return null;
-        }
-        CarPositionPatch? patch;
-        cache ??= cacheMux.GetDatabase();
-
-        // Event and Car Number
-        var key1 = string.Format(Consts.EVENT_DRIVER_KEY, sessionContext.EventId, car.Number);
-        var json = await cache.StringGetAsync(key1);
-        if (json.HasValue)
-        {
-            try
-            {
-                var dis = JsonSerializer.Deserialize<DriverInfoSource>(json!.ToString());
-                driverInfo = dis?.DriverInfo;
-            }
-            catch (JsonException ex)
-            {
-                Logger.LogWarning(ex, "Unable to deserialize DriverInfo from cache for car {CarNumber}, key {Key}", car.Number, key1);
-            }
-        }
-        else if (car.TransponderId > 0)
-        {
-            // Transponder only
-            var key2 = string.Format(Consts.DRIVER_TRANSPONDER_KEY, car.TransponderId);
-            json = await cache.StringGetAsync(key2);
-            if (json.HasValue)
-            {
-                try
-                {
-                    var dis = JsonSerializer.Deserialize<DriverInfoSource>(json!.ToString());
-                    driverInfo = dis?.DriverInfo;
-                }
-                catch (JsonException ex)
-                {
-                    Logger.LogWarning(ex, "Unable to deserialize DriverInfo from cache for car {CarNumber}, key {Key}", car.Number, key2);
-                }
-            }
-        }
-
-        if (driverInfo != null)
-        {
-            patch = UpdateCar(driverInfo, car);
-        }
-        else
-        {
-            // No driver info found, clear out any existing status
-
-            car.DriverId = string.Empty;
-            car.DriverName = string.Empty;
-
-            // Send "empty" status since null will be ignored. The car number is required:
-            // the consolidator drops any patch without one, so it would never reach clients.
-            patch = new CarPositionPatch()
-            {
-                Number = car.Number,
-                DriverId = string.Empty,
-                DriverName = string.Empty
-            };
-        }
-
-        return patch;
+        var patches = await ProcessCarsAsync([carNumber], cache);
+        return patches.Count > 0 ? patches[0] : null;
     }
 
     private static CarPositionPatch? UpdateCar(DriverInfo driverInfo, CarPosition car)
