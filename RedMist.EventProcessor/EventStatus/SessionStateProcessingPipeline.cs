@@ -699,13 +699,9 @@ public class SessionStateProcessingPipeline
     {
         try
         {
-            await _updateConsolidatorMetrics.TrackAsync(async () =>
-            {
-                foreach (var ap in appliedChanges)
-                {
-                    await updateConsolidator.Process(ap);
-                }
-            });
+            // Handed over whole rather than a stage at a time: each call waits out the debounce
+            // interval, so publishing them one by one cost that interval once per populated stage.
+            await _updateConsolidatorMetrics.TrackAsync(() => updateConsolidator.Process(appliedChanges));
         }
         catch (Exception ex)
         {

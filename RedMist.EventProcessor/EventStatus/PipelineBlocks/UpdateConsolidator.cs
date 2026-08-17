@@ -29,46 +29,88 @@ public class UpdateConsolidator
     }
 
 
-    public async Task Process(PatchUpdates? update)
+    public Task Process(PatchUpdates? update)
     {
-        if (update == null || (update.SessionPatches.Count == 0 && update.CarPatches.Count == 0))
+        if (update == null)
+            return Task.CompletedTask;
+        return Process([update]);
+    }
+
+    /// <summary>
+    /// Takes everything one pipeline pass produced and publishes it as a single update.
+    ///
+    /// A pass yields a patch set per stage - the timing source's own changes, then position, pit,
+    /// driver, video, penalty and telemetry enrichment layered on top - and all of them describe
+    /// the same instant. Debouncing them one at a time charged the interval once per stage and put
+    /// the field out in as many pieces: the caller waits out the delay on every call, so a message
+    /// with eight populated stages spent most of a second publishing work that had already been
+    /// computed. Merging first means one interval and one send per pass however many stages it
+    /// touched.
+    /// </summary>
+    public async Task Process(IReadOnlyList<PatchUpdates>? updates)
+    {
+        if (updates == null || updates.Count == 0)
             return;
 
+        var accumulated = false;
         await processLock.WaitAsync(sessionContext.CancellationToken);
         try
         {
-            // Apply the new update immediately to accumulated patches
-            ApplyUpdateToAccumulatedPatches(update);
+            foreach (var update in updates)
+            {
+                if (update == null || (update.SessionPatches.Count == 0 && update.CarPatches.Count == 0))
+                    continue;
+
+                // Apply the new update immediately to accumulated patches
+                ApplyUpdateToAccumulatedPatches(update);
+                accumulated = true;
+            }
         }
         finally
         {
             processLock.Release();
         }
 
-        await debouncer.ExecuteAsync(async () =>
+        if (!accumulated)
+            return;
+
+        await debouncer.ExecuteAsync(SendAccumulatedAsync);
+    }
+
+    /// <summary>
+    /// Sends whatever has accumulated since the last send.
+    ///
+    /// One drain covers everything, because the debouncer only turns calls away during its delay,
+    /// not while this is running - and a call it turns away has already merged its patches, since
+    /// <see cref="Process(IReadOnlyList{PatchUpdates})"/> merges before it ever reaches the
+    /// debouncer. So the cycle already pending when a call is dropped is guaranteed to drain after
+    /// that call's patches were put in, and a call arriving while this is in flight starts a cycle
+    /// of its own.
+    /// </summary>
+    private async Task SendAccumulatedAsync()
+    {
+        PatchUpdates patchesToSend;
+        await processLock.WaitAsync(sessionContext.CancellationToken);
+        try
         {
-            PatchUpdates patchesToSend;
-            await processLock.WaitAsync(sessionContext.CancellationToken);
-            try
-            {
-                patchesToSend = GetAndResetAccumulatedPatches();
-            }
-            finally
-            {
-                processLock.Release();
-            }
-            if (patchesToSend.SessionPatches.Count > 0 || patchesToSend.CarPatches.Count > 0)
-            {
-                try
-                {
-                    await statusAggregator.Process(patchesToSend);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError(ex, "Error sending consolidated updates to clients");
-                }
-            }
-        });
+            patchesToSend = GetAndResetAccumulatedPatches();
+        }
+        finally
+        {
+            processLock.Release();
+        }
+
+        if (patchesToSend.SessionPatches.Count == 0 && patchesToSend.CarPatches.Count == 0)
+            return;
+
+        try
+        {
+            await statusAggregator.Process(patchesToSend);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error sending consolidated updates to clients");
+        }
     }
 
     private void ApplyUpdateToAccumulatedPatches(PatchUpdates update)
