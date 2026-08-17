@@ -493,7 +493,7 @@ public class SessionContext
     /// holding every poller with it, when a serviceable copy is already in hand, is the worst of
     /// both.
     /// </summary>
-    private static readonly TimeSpan SnapshotStallTimeout = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan SnapshotStallTimeout = TimeSpan.FromMilliseconds(100);
 
     /// <summary>
     /// The oldest a snapshot may be and still stand in for one that has stalled. Past this the

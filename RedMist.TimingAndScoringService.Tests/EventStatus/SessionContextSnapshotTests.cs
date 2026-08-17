@@ -184,7 +184,7 @@ public class SessionContextSnapshotTests
         {
             // Pending for less than the stall bound, so this is ordinary contention rather than a
             // pipeline sitting on the lock, and freshness still wins.
-            fakeTimeProvider.Advance(TimeSpan.FromMilliseconds(100));
+            fakeTimeProvider.Advance(TimeSpan.FromMilliseconds(50));
             var second = sessionContext.GetSerializedStateAsync();
 
             Assert.IsFalse(stalled.IsCompleted);
