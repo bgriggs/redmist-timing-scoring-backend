@@ -486,6 +486,24 @@ public class SessionContext
     /// </summary>
     private static readonly TimeSpan SnapshotMaxAge = TimeSpan.FromMilliseconds(100);
 
+    /// <summary>
+    /// How long a snapshot may wait for the read lock before the callers waiting on it are handed
+    /// the previous one instead. The pipeline holds the write lock across database and Redis work
+    /// for the whole of each message, so one slow message is enough to hold a snapshot off - and
+    /// holding every poller with it, when a serviceable copy is already in hand, is the worst of
+    /// both.
+    /// </summary>
+    private static readonly TimeSpan SnapshotStallTimeout = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// The oldest a snapshot may be and still stand in for one that has stalled. Past this the
+    /// callers wait after all: they apply the full state over patches they have already been sent,
+    /// and nothing carries a sequence number to reconcile the two by, so state old enough to
+    /// contradict those patches would visibly rewind the timing screen. No age is provably safe -
+    /// this is a judgment about how much rewind is worth avoiding a wait, not a derived bound.
+    /// </summary>
+    private static readonly TimeSpan SnapshotMaxServedAge = TimeSpan.FromSeconds(2);
+
     private readonly Lock snapshotGate = new();
     private byte[]? snapshot;
     private DateTimeOffset snapshotTakenUtc = DateTimeOffset.MinValue;
@@ -505,6 +523,11 @@ public class SessionContext
     /// is being taken wait for that one rather than starting their own, and a completed snapshot
     /// serves any caller arriving within <see cref="SnapshotMaxAge"/> of it. The pipeline is then
     /// interrupted at a fixed rate no matter how large the audience is.
+    ///
+    /// A snapshot that cannot get the read lock degrades rather than holding everyone: see
+    /// <see cref="SnapshotStallTimeout"/> and <see cref="SnapshotMaxServedAge"/>. That releases
+    /// every caller waiting on it, not only those arriving after the bound - a caller that has
+    /// been waiting longer is the last one that should go on waiting.
     /// </summary>
     public virtual Task<byte[]> GetSerializedStateAsync()
     {
@@ -514,6 +537,8 @@ public class SessionContext
             if (snapshot != null && _timeProvider.GetUtcNow() - snapshotTakenUtc < SnapshotMaxAge)
                 return Task.FromResult(snapshot);
 
+            // Already completed, if the one in flight has stalled and given its waiters the
+            // previous snapshot; this caller is then served from it immediately too.
             if (snapshotInFlight != null)
                 return snapshotInFlight.Task;
 
@@ -531,9 +556,16 @@ public class SessionContext
     {
         try
         {
+            // Kept as a task rather than awaited straight away so the wait can be given up on.
+            // The acquisition itself is always awaited below whatever happens: walking away from a
+            // grant still in flight would leave the lock held by someone who never takes it.
+            var acquisition = SessionStateLock.AcquireReadLockAsync(CancellationToken);
+            if (!acquisition.IsCompleted)
+                await ServeStaleIfStalledAsync(acquisition, pending);
+
             byte[] serialized;
             int version;
-            using (await SessionStateLock.AcquireReadLockAsync(CancellationToken))
+            using (await acquisition)
             {
                 serialized = MessagePackSerializer.Serialize(SessionState);
                 // Read under the read lock, where a session change - which happens under the write
@@ -557,7 +589,8 @@ public class SessionContext
                     snapshot = serialized;
                     snapshotTakenUtc = _timeProvider.GetUtcNow();
                 }
-                snapshotInFlight = null;
+                if (ReferenceEquals(snapshotInFlight, pending))
+                    snapshotInFlight = null;
             }
             pending.TrySetResult(serialized);
         }
@@ -571,6 +604,58 @@ public class SessionContext
                     snapshotInFlight = null;
             }
             pending.TrySetException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Hands the callers waiting on a snapshot the previous one, once this one has been queued for
+    /// the read lock for <see cref="SnapshotStallTimeout"/>.
+    ///
+    /// The snapshot itself carries on regardless - it still takes the lock, still serializes, and
+    /// still replaces the cached copy. Only the waiting is given up on, and the acquisition is
+    /// still awaited by the caller of this, so no grant is ever abandoned.
+    /// </summary>
+    private async Task ServeStaleIfStalledAsync(Task<IDisposable> acquisition, TaskCompletionSource<byte[]> pending)
+    {
+        using var stallTimer = new CancellationTokenSource();
+        var stalled = Task.Delay(SnapshotStallTimeout, _timeProvider, stallTimer.Token);
+        if (await Task.WhenAny(acquisition, stalled) != stalled)
+        {
+            // Cancels the timer rather than letting it run out. That leaves the delay canceled
+            // rather than faulted, so there is no exception for anyone to observe.
+            stallTimer.Cancel();
+            return;
+        }
+
+        byte[]? previous;
+        DateTimeOffset takenUtc;
+        lock (snapshotGate)
+        {
+            previous = snapshot;
+            takenUtc = snapshotTakenUtc;
+        }
+
+        // Nothing to fall back on before the first snapshot - and nothing after a session change,
+        // which drops the copy precisely so the field it describes cannot be handed out once that
+        // session is over.
+        if (previous == null)
+            return;
+
+        var age = _timeProvider.GetUtcNow() - takenUtc;
+        if (age > SnapshotMaxServedAge)
+        {
+            Logger.LogWarning(
+                "Session state snapshot has been waiting {wait:F0} ms on the pipeline and the previous one is {age:F0} ms old, " +
+                "past the {max:F0} ms it may stand in for; callers are waiting for a fresh one",
+                SnapshotStallTimeout.TotalMilliseconds, age.TotalMilliseconds, SnapshotMaxServedAge.TotalMilliseconds);
+            return;
+        }
+
+        if (pending.TrySetResult(previous))
+        {
+            Logger.LogWarning(
+                "Session state snapshot has been waiting {wait:F0} ms on the pipeline; serving the previous one, {age:F0} ms old",
+                SnapshotStallTimeout.TotalMilliseconds, age.TotalMilliseconds);
         }
     }
 
