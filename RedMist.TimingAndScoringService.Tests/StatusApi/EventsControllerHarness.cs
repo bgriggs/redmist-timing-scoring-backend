@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
@@ -171,9 +171,18 @@ internal sealed class EventsControllerHarness : IDisposable
         return evt;
     }
 
-    public void AddSession(int id, int eventId, string name = "Race")
+    /// <summary>
+    /// Adds a session that produced results, which is what the session lists are for. Pass
+    /// <paramref name="withResults"/> false for a session the timing system announced but that never
+    /// saw a car - the lists leave those out, so a test wanting one in a list has to give it laps.
+    /// </summary>
+    public void AddSession(int id, int eventId, string name = "Race", bool withResults = true)
     {
         Db.Sessions.Add(new Session { Id = id, EventId = eventId, Name = name });
+        if (withResults)
+        {
+            Db.SessionResults.Add(new RedMist.Database.Models.SessionResult { EventId = eventId, SessionId = id });
+        }
     }
 
     public void AddLap(int eventId, int sessionId, string carNumber, int lapNumber, string? lapData = null)

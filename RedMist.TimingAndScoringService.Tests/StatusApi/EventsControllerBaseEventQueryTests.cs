@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
 
@@ -143,6 +143,26 @@ public class EventsControllerBaseEventQueryTests
         CollectionAssert.AreEquivalent(new[] { "A-Practice", "A-Race" },
             events.Single(e => e.EventName == "A").Sessions.Select(s => s.Name).ToArray());
         Assert.AreEqual("B-Race", events.Single(e => e.EventName == "B").Sessions.Single().Name);
+    }
+
+    /// <summary>
+    /// The list endpoint attaches sessions the same way the single-event one does, so the scratch
+    /// run the timing system announces at a run change has to be left out of both.
+    /// </summary>
+    [TestMethod]
+    public async Task LoadEvents_LeavesOutASessionThatSawNoCars()
+    {
+        var start = DateTime.UtcNow.AddDays(-10);
+        _h.AddOrganization(1);
+        var evt = _h.AddEvent("A", startDate: start.AddDays(1));
+        await _h.Db.SaveChangesAsync();
+        _h.AddSession(4, evt.Id, "New run");
+        _h.AddSession(95, evt.Id, "New run", withResults: false);
+        await _h.Db.SaveChangesAsync();
+
+        var events = Events(await _h.Controller.LoadEvents(start));
+
+        Assert.AreEqual(4, events.Single(e => e.EventName == "A").Sessions.Single().Id);
     }
 
     #endregion
@@ -350,6 +370,25 @@ public class EventsControllerBaseEventQueryTests
         Assert.IsTrue(loaded.IsPrivate);
         Assert.IsTrue(loaded.IsSimulation);
         Assert.AreEqual("Qualifying", loaded.Sessions.Single().Name);
+    }
+
+    /// <summary>
+    /// The apps build their results list from the sessions on the event as well as from LoadSessions,
+    /// so the scratch run the timing system announces at a run change has to be left out of both.
+    /// </summary>
+    [TestMethod]
+    public async Task LoadEvent_LeavesOutASessionThatSawNoCars()
+    {
+        _h.AddOrganization(1);
+        var evt = _h.AddEvent("Spring Enduro");
+        await _h.Db.SaveChangesAsync();
+        _h.AddSession(4, evt.Id, "New run");
+        _h.AddSession(95, evt.Id, "New run", withResults: false);
+        await _h.Db.SaveChangesAsync();
+
+        var result = await _h.Controller.LoadEvent(evt.Id);
+
+        Assert.AreEqual(4, result.Value!.Sessions.Single().Id);
     }
 
     [TestMethod]

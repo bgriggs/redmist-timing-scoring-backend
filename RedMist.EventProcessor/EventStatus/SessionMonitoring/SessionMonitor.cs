@@ -515,6 +515,90 @@ public class SessionMonitor : BackgroundService
     }
 
     /// <summary>
+    /// Whether a finished session has anything worth keeping results for.
+    ///
+    /// The timing system announces a scratch run of its own at every run change - Orbits sends
+    /// $B,95,"&lt;name of the run that is ending&gt;" - and that arrives here as a session change like any
+    /// other, so the scratch run becomes a session in its own right. It is normally superseded by the
+    /// real run a moment later, but when it is the last one of an event nothing is ever applied to it,
+    /// and writing its results out leaves a second, empty entry beside the real one on the event's
+    /// results list.
+    ///
+    /// Neither the control log nor the flag durations count towards it. The control log is cached
+    /// per event rather than per session, so a session that saw no cars would still pick up a copy
+    /// of the log belonging to the session that really ran - it is carried over to that session
+    /// instead, by <see cref="CarryControlLogForward"/>. Flags are recorded in their own table, so
+    /// a scratch run that saw a flag change but never a car has nothing of its own to lose.
+    /// </summary>
+    private static bool HasSomethingToShow(SessionState sessionState)
+        => sessionState.CarPositions.Count > 0 || sessionState.EventEntries.Count > 0;
+
+    /// <summary>
+    /// The event's control log as it currently stands. Throws rather than returning what it has:
+    /// the caller is about to write the results out, and a log that could not be read would be
+    /// saved as an empty one over a session that may well have had entries.
+    /// </summary>
+    private List<ControlLogEntry> ReadControlLog()
+    {
+        var logCacheKey = string.Format(Consts.CONTROL_LOG, eventId);
+        var cache = cacheMux.GetDatabase();
+        var json = cache.StringGet(logCacheKey);
+        if (json.IsNullOrEmpty)
+            return [];
+
+        var ccl = JsonSerializer.Deserialize<CarControlLogs>(json.ToString());
+        return ccl?.ControlLogEntries ?? [];
+    }
+
+    /// <summary>
+    /// Hands the control log to the session that really ran, for a session that ended with nothing
+    /// of its own to save.
+    ///
+    /// The log is cached per event, not per session, and it keeps growing after the session that
+    /// earned it has been written out - a steward posting a penalty minutes after the checkered
+    /// flag is ordinary. Those late entries used to be kept only because the scratch run that
+    /// follows the real one was written out later and took a fresher copy of the log with it, which
+    /// is why a handful of events have their only control log sitting on an empty session. Now that
+    /// nothing is written for those sessions, the log is carried to the results of the last session
+    /// that has any, rather than being dropped.
+    ///
+    /// Does not throw. There is nothing to save for this session either way, so a cache that cannot
+    /// be reached must not stop its row being retired - and no retry would have anything to come
+    /// back for.
+    /// </summary>
+    private void CarryControlLogForward(TsContext db, int sessionId)
+    {
+        try
+        {
+            var controlLogs = ReadControlLog();
+            if (controlLogs.Count == 0)
+                return;
+
+            var latest = db.SessionResults
+                .Where(r => r.EventId == eventId)
+                .OrderByDescending(r => r.Start)
+                .FirstOrDefault();
+            if (latest == null)
+            {
+                Logger.LogWarning("Control log for event {eventId} has {count} entries, but no session has results to keep it with.",
+                    eventId, controlLogs.Count);
+                return;
+            }
+
+            if (controlLogs.Count > latest.ControlLogs.Count)
+            {
+                Logger.LogInformation("Carrying {count} control log entries from session {sessionId} to session {target}.",
+                    controlLogs.Count, sessionId, latest.SessionId);
+                latest.ControlLogs = controlLogs;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error carrying the control log forward from session {sessionId}", sessionId);
+        }
+    }
+
+    /// <summary>
     /// Writes out a session that has already ended. Takes no lock: the state was copied when the
     /// session ended, so nothing here reads anything the pipeline can still be changing.
     /// </summary>
@@ -540,18 +624,18 @@ public class SessionMonitor : BackgroundService
                     session.EndTime = DateTime.UtcNow;
                 }
 
-                // Get control logs for the session
-                var logCacheKey = string.Format(Consts.CONTROL_LOG, eventId);
-                var cache = cacheMux.GetDatabase();
-                var json = cache.StringGet(logCacheKey);
-                var controlLogs = new List<ControlLogEntry>();
-                if (!json.IsNullOrEmpty)
+                var existingResult = db.SessionResults.FirstOrDefault(r => r.EventId == eventId && r.SessionId == sessionId);
+                if (existingResult == null && !HasSomethingToShow(sessionState))
                 {
-                    var ccl = JsonSerializer.Deserialize<CarControlLogs>(json.ToString());
-                    controlLogs = ccl?.ControlLogEntries ?? [];
+                    // The session row is still retired above - it existed, and it ended - but there
+                    // is nothing to write results for. See HasSomethingToShow.
+                    Logger.LogInformation("Session {sessionId} finished with no cars. Not saving results.", sessionId);
+                    CarryControlLogForward(db, sessionId);
+                    db.SaveChanges();
+                    return true;
                 }
 
-                var existingResult = db.SessionResults.FirstOrDefault(r => r.EventId == eventId && r.SessionId == sessionId);
+                var controlLogs = ReadControlLog();
                 if (existingResult != null)
                 {
                     Logger.LogWarning("Session was already finalized for session {sessionId}. Checking for inconsistencies...", sessionId);

@@ -1,4 +1,4 @@
-using RedMist.Backend.Shared;
+﻿using RedMist.Backend.Shared;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
 
@@ -199,6 +199,52 @@ public class EventsControllerBaseLapAndSessionTests
         Assert.AreEqual(1, first.Count);
         Assert.AreEqual(1, second.Count);
         Assert.AreEqual(1, _h.Cache.FactoryInvocations.Count(k => k == "sessions:100"));
+    }
+
+    /// <summary>
+    /// The timing system announces a scratch run of its own at every run change, and one that lands
+    /// at the end of an event is never superseded by a real run. It ends with no cars and no laps,
+    /// and listing it puts a second, empty entry beside the session that actually ran.
+    /// </summary>
+    [TestMethod]
+    public async Task LoadSessions_LeavesOutASessionThatSawNoCars()
+    {
+        _h.AddSession(1, 100, "New run");
+        _h.AddSession(95, 100, "New run", withResults: false);
+        await _h.Db.SaveChangesAsync();
+
+        var sessions = await _h.Controller.LoadSessions(100);
+
+        Assert.AreEqual(1, sessions.Single().Id, "Only the session that produced results should be listed.");
+    }
+
+    /// <summary>
+    /// Results and laps are written by different services, so a session whose results did not make
+    /// it has to stay reachable for the laps that did.
+    /// </summary>
+    [TestMethod]
+    public async Task LoadSessions_KeepsASessionThatHasLapsButNoResults()
+    {
+        _h.AddSession(7, 100, "Race", withResults: false);
+        _h.AddLap(100, 7, "42", 1);
+        await _h.Db.SaveChangesAsync();
+
+        var sessions = await _h.Controller.LoadSessions(100);
+
+        Assert.AreEqual(7, sessions.Single().Id);
+    }
+
+    /// <summary>The live session has no results yet - they are written when it ends.</summary>
+    [TestMethod]
+    public async Task LoadSessions_KeepsTheLiveSession()
+    {
+        _h.AddSession(8, 100, "Race", withResults: false);
+        _h.Db.Sessions.Local.Single(s => s.Id == 8 && s.EventId == 100).IsLive = true;
+        await _h.Db.SaveChangesAsync();
+
+        var sessions = await _h.Controller.LoadSessions(100);
+
+        Assert.AreEqual(8, sessions.Single().Id);
     }
 
     /// <summary>Two events served by one process must not share a session list.</summary>

@@ -12,6 +12,7 @@ using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
 using StackExchange.Redis;
 using System.Diagnostics;
+using System.Linq.Expressions;
 using System.Runtime.ConstrainedExecution;
 using System.Security.Claims;
 using System.Text.Json;
@@ -128,7 +129,7 @@ public abstract class EventsControllerBase : ControllerBase
                 OrganizationName = o.Name,
                 OrganizationWebsite = o.Website,
                 o.ControlLogType,
-                Sessions = context.Sessions.Where(s => s.EventId == e.Id).ToArray()
+                Sessions = context.Sessions.Where(s => s.EventId == e.Id).Where(HasSomethingToShow(context)).ToArray()
             }).ToListAsync();
 
         // Map to Event DTOs
@@ -314,7 +315,7 @@ public abstract class EventsControllerBase : ControllerBase
                 OrganizationName = o.Name,
                 OrganizationWebsite = o.Website,
                 o.ControlLogType,
-                Sessions = context.Sessions.Where(s => s.EventId == e.Id).ToArray()
+                Sessions = context.Sessions.Where(s => s.EventId == e.Id).Where(HasSomethingToShow(context)).ToArray()
             }).FirstOrDefaultAsync();
 
         if (result == null)
@@ -432,6 +433,23 @@ public abstract class EventsControllerBase : ControllerBase
     #region Sessions
 
     /// <summary>
+    /// Whether a session has anything for the results list to show. The timing system announces a
+    /// scratch run of its own at every run change - Orbits sends $B,95,"&lt;name of the run that is
+    /// ending&gt;" - and that becomes a session here like any other. It is normally superseded by the
+    /// real run seconds later, but one that lands at the end of an event is never superseded, and
+    /// shows up as a second, empty entry beside the session that actually ran.
+    ///
+    /// Laps count as well as results, so a session whose results did not get written is still
+    /// reachable for the laps that did - until the event is archived, which uploads the laps and
+    /// deletes them, at which point there really is nothing left to show. The live session is
+    /// always kept: its results are written when it ends.
+    /// </summary>
+    internal static Expression<Func<Session, bool>> HasSomethingToShow(TsContext context) =>
+        s => s.IsLive
+            || context.SessionResults.Any(r => r.EventId == s.EventId && r.SessionId == s.Id)
+            || context.CarLapLogs.Any(l => l.EventId == s.EventId && l.SessionId == s.Id);
+
+    /// <summary>
     /// Loads all sessions for a specific event.
     /// </summary>
     /// <param name="eventId">The unique identifier of the event.</param>
@@ -451,7 +469,9 @@ public abstract class EventsControllerBase : ControllerBase
             async cancel =>
             {
                 using var context = await tsContext.CreateDbContextAsync(cancel);
-                return await context.Sessions.Where(s => s.EventId == eventId).ToListAsync(cancel);
+                return await context.Sessions.Where(s => s.EventId == eventId)
+                    .Where(HasSomethingToShow(context))
+                    .ToListAsync(cancel);
             },
             sessionsCacheOptions);
     }

@@ -28,6 +28,9 @@ public class SessionMonitorPersistenceTests
     private const int EventId = 1;
     private const int SessionId = 36;
 
+    /// <summary>The session that really ran, for the tests about what an empty one hands over.</summary>
+    private const int RanSessionId = 4;
+
     public TestContext TestContext { get; set; } = null!;
 
     #region Writing the results out
@@ -54,6 +57,119 @@ public class SessionMonitorPersistenceTests
         Assert.HasCount(3, result.SessionState!.CarPositions);
         Assert.HasCount(2, result.ControlLogs);
         Assert.AreEqual(session.StartTime, result.Start);
+    }
+
+    /// <summary>
+    /// The timing system announces a scratch run of its own at every run change, and one that lands
+    /// at the end of an event never has anything applied to it. Writing results for it puts a second,
+    /// empty entry beside the session that actually ran.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_ForASessionThatSawNoCars_RetiresTheRowWithoutWritingResults()
+    {
+        var harness = await CreateHarnessAsync(controlLogEntries: 2);
+
+        var saved = harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, StateWith(cars: 0, entries: 0)));
+
+        Assert.IsTrue(saved, "There was nothing to write, which is not a failure to write it.");
+        await using var db = harness.CreateDb();
+        var session = db.Sessions.Single(s => s.Id == SessionId && s.EventId == EventId);
+        Assert.IsFalse(session.IsLive, "The session still ended, whether or not it produced anything.");
+        Assert.IsNotNull(session.EndTime);
+        Assert.IsEmpty(db.SessionResults.Where(r => r.EventId == EventId && r.SessionId == SessionId),
+            "A session that saw no cars has nothing to show, and its control log belongs to the session that ran.");
+    }
+
+    /// <summary>
+    /// The control log keeps growing after the session that earned it has been written out - a
+    /// penalty posted minutes after the checkered flag is ordinary. Those late entries used to be
+    /// kept only because the scratch run that follows was written out later and took a fresher copy
+    /// of the log with it, so with nothing written for it they have to go to the session that ran.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_ForASessionThatSawNoCars_CarriesAFresherControlLogToTheSessionThatRan()
+    {
+        var harness = await CreateHarnessAsync(controlLogEntries: 6);
+        await SeedResultsForTheSessionThatRanAsync(harness, controlLogEntries: 2);
+
+        harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, StateWith(cars: 0, entries: 0)));
+
+        await using var db = harness.CreateDb();
+        Assert.IsEmpty(db.SessionResults.Where(r => r.SessionId == SessionId));
+        Assert.HasCount(6, db.SessionResults.Single(r => r.SessionId == RanSessionId).ControlLogs,
+            "The entries that arrived after the real session was written out should have been kept.");
+    }
+
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_ForASessionThatSawNoCars_DoesNotShortenTheSavedControlLog()
+    {
+        var harness = await CreateHarnessAsync(controlLogEntries: 1);
+        await SeedResultsForTheSessionThatRanAsync(harness, controlLogEntries: 5);
+
+        harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, StateWith(cars: 0, entries: 0)));
+
+        await using var db = harness.CreateDb();
+        Assert.HasCount(5, db.SessionResults.Single(r => r.SessionId == RanSessionId).ControlLogs,
+            "A log that has since been trimmed must not replace the longer saved one.");
+    }
+
+    /// <summary>
+    /// There is nothing to save for a session that saw no cars, so a cache that cannot be reached
+    /// must not stop its row being retired - no retry would have anything to come back for, and the
+    /// row would be left live, which is exactly what puts the empty entry back on the results list.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_ForASessionThatSawNoCars_WhenTheCacheIsUnreachable_StillRetiresTheRow()
+    {
+        var harness = await CreateHarnessAsync();
+        harness.Cache.Setup(x => x.StringGet(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .Throws(new RedisConnectionException(ConnectionFailureType.SocketFailure, "down"));
+
+        var saved = harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, StateWith(cars: 0, entries: 0)));
+
+        Assert.IsTrue(saved);
+        await using var db = harness.CreateDb();
+        var session = db.Sessions.Single(s => s.Id == SessionId && s.EventId == EventId);
+        Assert.IsFalse(session.IsLive);
+        Assert.IsNotNull(session.EndTime);
+    }
+
+    /// <summary>
+    /// Skipping the write leaves no row behind, so a second finalize that does have data takes the
+    /// insert path rather than the update path.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_AfterASkippedEmptyWrite_StillWritesTheResultsThatFollow()
+    {
+        var harness = await CreateHarnessAsync();
+        harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, StateWith(cars: 0, entries: 0)));
+
+        harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, StateWith(cars: 3, entries: 3)));
+
+        await using var db = harness.CreateDb();
+        Assert.HasCount(3, db.SessionResults.Single(r => r.SessionId == SessionId).SessionState!.CarPositions);
+    }
+
+    /// <summary>
+    /// The field being registered is enough to be worth keeping: an entry list with no positions is
+    /// a session where the cars were entered but never took to the track, not a phantom.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_ForASessionWithEntriesButNoPositions_WritesTheResults()
+    {
+        var harness = await CreateHarnessAsync();
+
+        var saved = harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, StateWith(cars: 0, entries: 4)));
+
+        Assert.IsTrue(saved);
+        await using var db = harness.CreateDb();
+        Assert.HasCount(4, db.SessionResults.Single(r => r.SessionId == SessionId).SessionState!.EventEntries);
     }
 
     /// <summary>
@@ -447,6 +563,32 @@ public class SessionMonitorPersistenceTests
     {
         var session = new Session { Id = sessionId, EventId = EventId, Name = name, IsLive = true };
         return new TimingMessage(Consts.EVENT_SESSION_CHANGED_TYPE, JsonSerializer.Serialize(session), sessionId, DateTime.UtcNow);
+    }
+
+    /// <summary>
+    /// Adds the results of the session that really ran, which is where the control log of an event
+    /// belongs. Started before the harness's own session, so it is the one a carried-over log lands
+    /// on regardless of the order the rows come back in.
+    /// </summary>
+    private async Task SeedResultsForTheSessionThatRanAsync(PersistenceHarness harness, int controlLogEntries)
+    {
+        await using var db = harness.CreateDb();
+        db.Sessions.Add(new Session
+        {
+            Id = RanSessionId,
+            EventId = EventId,
+            Name = "Race",
+            StartTime = new DateTime(2026, 4, 26, 8, 0, 0, DateTimeKind.Utc),
+        });
+        db.SessionResults.Add(new RedMist.Database.Models.SessionResult
+        {
+            EventId = EventId,
+            SessionId = RanSessionId,
+            Start = new DateTime(2026, 4, 26, 8, 0, 0, DateTimeKind.Utc),
+            SessionState = StateWith(cars: 3, entries: 3),
+            ControlLogs = [.. Enumerable.Range(0, controlLogEntries).Select(i => new ControlLogEntry { OrderId = i })],
+        });
+        await db.SaveChangesAsync(TestContext.CancellationToken);
     }
 
     private static SessionState StateWith(int cars = 0, int entries = 0, int flags = 0) => new()
