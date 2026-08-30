@@ -20,6 +20,40 @@ keycloak:
       memory: "1Gi"
       cpu: "500m"
 
+  # Opt-in knobs. All three default to the production behaviour -- `start` against
+  # the configured Postgres, no theme volume, no realm import -- so leaving them
+  # alone changes nothing for an existing deployment. See "Keycloak login theme"
+  # in DEPLOYMENT.md.
+
+  # start-dev instead of start: in-memory H2, no external database, and theme and
+  # template caching off so an edited theme shows up on the next page load. When
+  # true the KC_DB* and KC_HOSTNAME* settings below are not applied at all, which
+  # also means keycloak-db-secret does not need to exist in the namespace.
+  #
+  # NEVER for a real deployment: it would replace every realm, user and client
+  # with an empty database. deployment.yaml refuses to render this with an ingress
+  # or in the `keycloak` namespace, but those guards only cover the obvious cases.
+  devMode: false
+
+  # Writable volume mounted at /opt/keycloak/themes/<name>. Writable rather than a
+  # plain ConfigMap mount so revised files can be kubectl cp'd straight into a
+  # running pod while a theme is being worked on.
+  #   enabled + fromChart=false -> empty dir, kubectl cp the theme in yourself
+  #   enabled + fromChart=true  -> seeded from the chart's theme/ directory
+  themeVolume:
+    enabled: false
+    name: redmist
+    fromChart: false
+
+  # Mounts a ConfigMap of realm JSON at /opt/keycloak/data/import and adds
+  # --import-realm, so a fresh instance comes up with a real realm and clients
+  # rather than a bare master realm. Mainly for devMode, where the in-memory
+  # database is empty on every start, but not restricted to it -- Keycloak's
+  # default import strategy leaves existing realms alone.
+  importRealm:
+    enabled: false
+    configMap: ""
+
 database:
   host: ""  # Will be set via helm install
   port: 25060

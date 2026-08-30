@@ -1,0 +1,39 @@
+{{- if .Values.keycloak.themeVolume.fromChart }}
+{{- /*
+Built from the files under the chart's theme/ directory. A Keycloak theme is a
+directory tree (login/theme.properties, login/resources/css/...) but ConfigMap
+keys cannot contain "/", so each path is flattened to a key here and mapped back
+to its real path by the volume's items list in deployment.yaml. Change the
+separator in one place and it has to change in the other.
+
+Every file goes into binaryData, text included. The obvious alternative -- a `|-`
+block scalar under `data` -- infers its indentation from the content's first
+non-empty line, so a file that is itself indented (any .ftl override, most .svg)
+silently loses that leading indentation on the way through. base64 has no such
+ambiguity, and it costs only that `kubectl get cm -o yaml` is no longer readable;
+the files themselves are in git, and the pod has them at
+/opt/keycloak/themes/<name>/.
+*/}}
+{{- $files := dict }}
+{{- range $path, $_ := .Files.Glob "theme/**" }}
+{{-   $key := $path | trimPrefix "theme/" | replace "/" "_" }}
+{{-   if not (regexMatch "^[-._a-zA-Z0-9]+$" $key) }}
+{{-     fail (printf "theme file %q flattens to %q, which is not a valid ConfigMap key. Restrict theme file and directory names to letters, digits, '-', '_' and '.'." $path $key) }}
+{{-   end }}
+{{-   if hasKey $files $key }}
+{{-     fail (printf "theme files %q and %q both flatten to the key %q, so one would silently overwrite the other. Rename one of them." (get $files $key) $path $key) }}
+{{-   end }}
+{{-   $_ := set $files $key $path }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-theme-{{ .Values.keycloak.themeVolume.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: keycloak
+binaryData:
+{{- range $key, $path := $files }}
+  {{ $key }}: {{ $.Files.Get $path | b64enc }}
+{{- end }}
+{{- end }}
