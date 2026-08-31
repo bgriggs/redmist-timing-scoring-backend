@@ -1,3 +1,17 @@
+{{- if .Values.keycloak.devMode }}
+{{- /*
+devMode swaps the configured Postgres for an empty in-memory database. Pointed at
+the production release it would replace every realm, user and client with nothing
+until someone reverted it -- and because the strategy is Recreate, the running pod
+is deleted first. These two checks make that mistake fail at render time instead.
+*/}}
+{{-   if .Values.ingress.enabled }}
+{{-     fail "keycloak.devMode=true with ingress.enabled=true would publish a throwaway in-memory Keycloak on keycloak.hostname (default auth.redmist.racing) and collide with the production Ingress. Set ingress.enabled=false and reach the instance with `kubectl port-forward`." }}
+{{-   end }}
+{{-   if eq .Values.namespace "keycloak" }}
+{{-     fail "keycloak.devMode=true targets namespace 'keycloak', which holds the production release. Deploy a dev instance into its own namespace: --namespace <ns> --set namespace=<ns>." }}
+{{-   end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,19 +32,80 @@ spec:
       app: keycloak
   template:
     metadata:
+      {{- if and .Values.keycloak.themeVolume.enabled .Values.keycloak.themeVolume.fromChart }}
+      annotations:
+        # Rolls the pod whenever the theme's contents change. The theme is seeded by
+        # an initContainer, which only runs at pod creation, and outside devMode
+        # Keycloak caches themes for the life of the process -- so without this a
+        # theme edit would update the ConfigMap and the running pod would go on
+        # serving the old one.
+        checksum/theme: {{ include (print $.Template.BasePath "/configmap-theme.yaml") . | sha256sum }}
+      {{- end }}
       labels:
         app: keycloak
     spec:
+      {{- if and .Values.keycloak.themeVolume.enabled .Values.keycloak.themeVolume.fromChart }}
+      # The theme directory is an emptyDir seeded from the ConfigMap rather than the
+      # ConfigMap mounted directly, because a ConfigMap mount is read-only and theme
+      # work needs to kubectl cp revised files into a running pod. Note cp -RL: the
+      # ConfigMap mount is a tree of symlinks into ..data, which cp -R would copy as
+      # dangling links once the source mount is out of scope.
+      initContainers:
+      - name: seed-theme
+        image: {{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}
+        # /theme-src/* rather than /theme-src/. -- a ConfigMap mount keeps its real
+        # files under dot-prefixed ..data/..<timestamp> directories, and copying those
+        # too would triple the payload. The unquoted glob skips them; cp -L then
+        # resolves the visible symlinks into real files.
+        command:
+          - /bin/bash
+          - -c
+          - |
+            set -eu
+            # An empty projected dir means the chart's theme/ directory has no files.
+            # Without this check cp fails on an unmatched glob, and the pod sits in
+            # Init:Error behind a message that does not explain itself.
+            if [ -z "$(ls -A /theme-src)" ]; then
+              echo "ERROR: the theme ConfigMap projected no files; is the chart's theme/ directory empty?" >&2
+              exit 1
+            fi
+            cp -RL /theme-src/* /theme/
+        volumeMounts:
+        - name: theme-src
+          mountPath: /theme-src
+        - name: theme
+          mountPath: /theme
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+      {{- end }}
       containers:
       - name: keycloak
         image: {{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}
         args:
+          {{- if .Values.keycloak.devMode }}
+          # start-dev brings up an in-memory H2 database and turns theme and template
+          # caching off, so a kubectl cp'd theme change shows on the next page load.
+          # Never for a real deployment: nothing it stores survives a restart.
+          - start-dev
+          {{- else }}
           - start
+          {{- end }}
+          {{- if .Values.keycloak.importRealm.enabled }}
+          - --import-realm
+          {{- end }}
         env:
+        {{- if not .Values.keycloak.devMode }}
         # Hostname v2 (v1 was removed in Keycloak 26.0). The server is only ever
         # reached through the ingress, so pinning an explicit hostname stops URLs
         # being derived from request headers. hostname-strict is deliberately not
         # set: it is ignored whenever hostname is configured.
+        # Left unset in devMode so URLs follow the request instead, which is what
+        # makes the server usable over `kubectl port-forward` on an arbitrary port.
         - name: KC_HOSTNAME
           value: "https://{{ .Values.keycloak.hostname }}"
         - name: KC_HOSTNAME_ADMIN
@@ -44,12 +119,14 @@ spec:
           value: "false"
         - name: KC_PROXY_HEADERS
           value: "xforwarded"
+        {{- end }}
         - name: KC_HTTP_ENABLED
           value: "true"
         - name: KC_HEALTH_ENABLED
           value: "true"
         - name: KC_METRICS_ENABLED
           value: "true"
+        {{- if not .Values.keycloak.devMode }}
         - name: KC_DB
           value: postgres
         - name: KC_DB_URL
@@ -64,6 +141,7 @@ spec:
             secretKeyRef:
               name: keycloak-db-secret
               key: password
+        {{- end }}
         # Only consulted on the very first start, before the master realm exists.
         # KEYCLOAK_ADMIN/_PASSWORD were deprecated in Keycloak 26.0.
         - name: KC_BOOTSTRAP_ADMIN_USERNAME
@@ -112,3 +190,40 @@ spec:
           limits:
             memory: {{ .Values.keycloak.resources.limits.memory }}
             cpu: {{ .Values.keycloak.resources.limits.cpu }}
+        {{- if or .Values.keycloak.themeVolume.enabled .Values.keycloak.importRealm.enabled }}
+        volumeMounts:
+          {{- if .Values.keycloak.themeVolume.enabled }}
+          # Mounted at the individual theme directory, never at /opt/keycloak/themes:
+          # a volume on the parent would shadow the built-in base/keycloak/keycloak.v2
+          # themes that a custom theme inherits from.
+          - name: theme
+            mountPath: /opt/keycloak/themes/{{ .Values.keycloak.themeVolume.name }}
+          {{- end }}
+          {{- if .Values.keycloak.importRealm.enabled }}
+          - name: realm-import
+            mountPath: /opt/keycloak/data/import
+            readOnly: true
+          {{- end }}
+        {{- end }}
+      {{- if or .Values.keycloak.themeVolume.enabled .Values.keycloak.importRealm.enabled }}
+      volumes:
+        {{- if .Values.keycloak.themeVolume.enabled }}
+        - name: theme
+          emptyDir: {}
+        {{- if .Values.keycloak.themeVolume.fromChart }}
+        - name: theme-src
+          configMap:
+            name: keycloak-theme-{{ .Values.keycloak.themeVolume.name }}
+            items:
+            {{- range $path, $_ := $.Files.Glob "theme/**" }}
+            - key: {{ $path | trimPrefix "theme/" | replace "/" "_" }}
+              path: {{ $path | trimPrefix "theme/" }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.keycloak.importRealm.enabled }}
+        - name: realm-import
+          configMap:
+            name: {{ required "keycloak.importRealm.configMap must name the ConfigMap holding the realm JSON when keycloak.importRealm.enabled is true" .Values.keycloak.importRealm.configMap }}
+        {{- end }}
+      {{- end }}

@@ -4,6 +4,17 @@
 * text=auto
 
 ###############################################################################
+# Keycloak login theme.
+#
+# The Helm chart hashes these files into a checksum/theme pod annotation, and a
+# changed hash rolls the Keycloak pod (Recreate strategy: a brief auth outage).
+# Without this, `* text=auto` above plus core.autocrlf gives a Windows checkout
+# CRLF and Linux/CI LF, so the *same commit* produces two different hashes and
+# deploying from a different machine restarts Keycloak for no reason.
+###############################################################################
+redmist-deploy/infrastructure/keycloak/theme/** -text
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by

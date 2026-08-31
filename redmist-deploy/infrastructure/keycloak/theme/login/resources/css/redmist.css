@@ -1,0 +1,229 @@
+/*
+ * RedMist login theme.
+ *
+ * Colors are copied from the landing UI's design tokens (src/styles/_variables.scss
+ * in redmist-landing-ui) so the login page reads as the same product as the page
+ * that redirected here. They are duplicated rather than imported: Keycloak serves
+ * this stylesheet from its own origin. Keep the two in step.
+ *
+ * The approach is to reassign PatternFly's and keycloak.v2's own variables rather
+ * than out-specify their rules component by component. Buttons, links, inputs,
+ * focus rings, and validation states all resolve from a handful of globals, so
+ * setting those recolors the whole login flow -- including pages nobody has looked
+ * at yet, like OTP, email verification, and the error screens.
+ */
+
+/* ------------------------------------------------------------ rm tokens ---- */
+
+:root {
+  --rm-surface: #ffffff;
+  --rm-ink: #111827;
+  --rm-ink-mute: #5b6472;
+  --rm-rule: #e5e7eb;
+  --rm-rule-strong: #d1d5db;
+  --rm-brand: #c9523d;
+  --rm-brand-ink: #a33d2b;
+  /* Not from the app's palette. The app only ever uses --site-brand (#c9523d) as
+     text or a thin accent; as a filled button it puts white on 4.41:1, under the
+     4.5:1 AA floor. So on light ground the hover goes *darker* than the resting
+     fill rather than lighter -- this tone is 7.76:1. */
+  --rm-brand-deep: #8f3526;
+  --rm-danger: #dc2626;
+  --rm-radius: 4px;
+  --rm-shadow: 0 1px 2px rgba(17, 24, 39, 0.06);
+
+  /* Which of the two brand tones is a fill and which is its hover. On light ground
+     the darker tone fills and the lighter one lifts on hover; on dark ground the
+     roles swap. Declaring that once here keeps every consumer below free of
+     light/dark branching. */
+  --rm-fill: var(--rm-brand-ink);
+  --rm-fill-hover: var(--rm-brand-deep);
+  --rm-on-fill: #ffffff;
+  --rm-link-hover: var(--rm-brand-deep);
+
+  /* The hero scrim. Same color as .hero in home.component.scss but lighter:
+     the app runs it at 0.72/0.82 because white headings sit directly on it,
+     whereas here the only text on the ground is the wordmark and everything else
+     is inside an opaque card -- so the photo can come through more. Not redefined
+     for dark mode, because the app doesn't either; the photo and its scrim are the
+     same in both themes. --rm-hero-ground is what shows if the photo fails to
+     load: dark, so the white wordmark over it stays legible. */
+  --rm-hero-from: rgba(28, 10, 8, 0.55);
+  --rm-hero-to: rgba(28, 10, 8, 0.65);
+  --rm-hero-ground: #1c0a08;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --rm-surface: #1f2937;
+    --rm-ink: #f9fafb;
+    --rm-ink-mute: #9ca3af;
+    --rm-rule: #374151;
+    --rm-rule-strong: #4b5563;
+    /* Lightened on dark ground so the brand red still clears AA as text, and the
+       fill label flips to dark -- the same swap the app makes between
+       --site-badge-bg and --site-badge-fg. */
+    --rm-brand: #e4735c;
+    --rm-brand-ink: #f0937f;
+    --rm-fill: var(--rm-brand);
+    --rm-fill-hover: var(--rm-brand-ink);
+    --rm-on-fill: #1f2937;
+    /* Dark ground needs no deep tone: both brand tones already clear AA on the
+       card, so the link hover just steps to the other one. */
+    --rm-link-hover: var(--rm-brand);
+    --rm-danger: #f87171;
+    --rm-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* ------------------------------------------------- patternfly + parent ---- */
+
+:root {
+  /* PatternFly globals. primary-color--100 is what paints the primary button,
+     the input underline on hover and focus, and the focus ring. */
+  --pf-v5-global--primary-color--100: var(--rm-fill);
+  --pf-v5-global--primary-color--200: var(--rm-fill-hover);
+  --pf-v5-global--link--Color: var(--rm-brand-ink);
+  --pf-v5-global--link--Color--hover: var(--rm-link-hover);
+  --pf-v5-global--danger-color--100: var(--rm-danger);
+  /* Reassigned rather than overriding .pf-v5-u-color-200, which patternfly-addons
+     declares !important -- a plain rule can never win against it. That utility is
+     what keycloak.v2 puts on the footer helper text and the whole
+     select-authenticator page. */
+  --pf-v5-global--Color--200: var(--rm-ink-mute);
+  --pf-v5-global--BorderRadius--sm: var(--rm-radius);
+
+  /* keycloak.v2's own two hooks: the background photo and the card accent bar. */
+  --keycloak-bg-logo-url: none;
+  --keycloak-card-top-color: var(--rm-fill);
+}
+
+/* ---------------------------------------------------------------- page ---- */
+
+/* background-color and background-image separately, never the `background`
+   shorthand: the parent's own `.login-pf body` rule is a shorthand, and matching
+   it with another would reset whichever half is not restated. */
+.login-pf body {
+  background-color: var(--rm-hero-ground);
+  background-image:
+    linear-gradient(var(--rm-hero-from), var(--rm-hero-to)),
+    url("../img/hero.jpg");
+  background-size: cover;
+  background-position: center;
+  /* Holds the photo still while a long form (registration, OTP) scrolls over it.
+     iOS Safari ignores fixed and falls back to scroll, which is fine here. */
+  background-attachment: fixed;
+  color: var(--rm-ink);
+  font-family: Roboto, "Helvetica Neue", sans-serif;
+}
+
+/* The realm-name wordmark above the card. keycloak.v2 already pins it white for a
+   photo background, so no color is restated here -- only the tracking, and a
+   shadow to hold it against the brighter part of the image. */
+#kc-header-wrapper {
+  letter-spacing: 2px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+/* ---------------------------------------------------------------- card ---- */
+
+.pf-v5-c-login__main {
+  background: var(--rm-surface);
+  border: 1px solid var(--rm-rule);
+  border-radius: var(--rm-radius);
+  box-shadow: var(--rm-shadow);
+  /* The parent puts a 4px border-top on __main-header; without clipping it squares
+     off the two top corners the radius just rounded. */
+  overflow: hidden;
+}
+
+.pf-v5-c-login__main-header,
+.pf-v5-c-login__main-body,
+.pf-v5-c-login__main-footer {
+  background: transparent;
+}
+
+.pf-v5-c-title {
+  color: var(--rm-ink);
+}
+
+.pf-v5-c-login__main-footer-band,
+.pf-v5-c-login__main-footer-band-item {
+  color: var(--rm-ink-mute);
+}
+
+/* --------------------------------------------------------------- forms ---- */
+
+.pf-v5-c-form__label-text {
+  color: var(--rm-ink);
+  font-weight: 500;
+}
+
+/* PatternFly v5.2 moved this class onto a wrapper <span>; the real <input> sits
+   inside it carrying no class at all. Two consequences, both handled below.
+   First: the component's own variables have to be set here rather than inherited
+   from the globals above. PatternFly's light-surface reset lists
+   .pf-v5-c-form-control among its selectors and re-declares
+   --pf-v5-global--primary-color--100 there, so the :root assignment is shadowed
+   and the underline would go back to its blue. */
+.pf-v5-c-form-control {
+  background: var(--rm-surface);
+  color: var(--rm-ink);
+  --pf-v5-c-form-control--after--BorderBottomColor: var(--rm-rule-strong);
+  --pf-v5-c-form-control--hover--after--BorderBottomColor: var(--rm-fill);
+  --pf-v5-c-form-control--focus--after--BorderBottomColor: var(--rm-fill);
+  --pf-v5-c-form-control--m-error--after--BorderBottomColor: var(--rm-danger);
+}
+
+/* Second: the unclassed <input> keeps the browser's native focus ring, which
+   lands on top of PatternFly's underline in the wrong color. Move the ring to the
+   wrapper rather than just removing it -- a 2px underline on its own is a weaker
+   focus affordance than keyboard users should be left with. */
+.pf-v5-c-form-control :is(input, select, textarea):focus,
+.pf-v5-c-form-control :is(input, select, textarea):focus-visible {
+  outline: none;
+}
+
+.pf-v5-c-form-control:focus-within {
+  outline: 2px solid var(--rm-fill);
+  outline-offset: 1px;
+}
+
+/* Native controls that paint themselves rather than from PatternFly. */
+.pf-v5-c-check__input,
+input[type="checkbox"] {
+  accent-color: var(--rm-fill);
+}
+
+/* -------------------------------------------------------------- button ---- */
+
+/* Set at component scope rather than left to primary-color--100 above, because
+   PatternFly's dark theme hardcodes this button's background instead of deriving
+   it from the global -- so the global alone recolors the button in light mode and
+   leaves it PatternFly blue in dark. */
+.pf-v5-c-button.pf-m-primary {
+  --pf-v5-c-button--m-primary--BackgroundColor: var(--rm-fill);
+  --pf-v5-c-button--m-primary--hover--BackgroundColor: var(--rm-fill-hover);
+  --pf-v5-c-button--m-primary--focus--BackgroundColor: var(--rm-fill-hover);
+  --pf-v5-c-button--m-primary--active--BackgroundColor: var(--rm-fill-hover);
+  --pf-v5-c-button--m-primary--Color: var(--rm-on-fill);
+  --pf-v5-c-button--m-primary--hover--Color: var(--rm-on-fill);
+  --pf-v5-c-button--m-primary--focus--Color: var(--rm-on-fill);
+  --pf-v5-c-button--m-primary--active--Color: var(--rm-on-fill);
+}
+
+/* PatternFly sets `border: 0` on .pf-v5-c-button and draws the outline on ::after
+   from --pf-v5-c-button--m-secondary--after--BorderColor, which defaults to
+   primary-color--100 -- now brand red. A plain `border-color` here does nothing,
+   so the component variables are set instead. Covers Cancel/Back and every social
+   identity-provider button. */
+.pf-v5-c-button.pf-m-secondary {
+  --pf-v5-c-button--m-secondary--after--BorderColor: var(--rm-rule-strong);
+  --pf-v5-c-button--m-secondary--hover--after--BorderColor: var(--rm-fill);
+  --pf-v5-c-button--m-secondary--focus--after--BorderColor: var(--rm-fill);
+  --pf-v5-c-button--m-secondary--active--after--BorderColor: var(--rm-fill);
+  --pf-v5-c-button--m-secondary--Color: var(--rm-ink);
+  --pf-v5-c-button--m-secondary--hover--Color: var(--rm-ink);
+  --pf-v5-c-button--m-secondary--focus--Color: var(--rm-ink);
+  --pf-v5-c-button--m-secondary--active--Color: var(--rm-ink);
+}
