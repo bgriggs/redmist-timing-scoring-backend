@@ -23,6 +23,20 @@ public sealed class ExportContext
 
     /// <summary>When the export was produced, in UTC.</summary>
     public DateTime GeneratedUtc { get; set; }
+
+    /// <summary>
+    /// Whether the session was still flagged live when this file was produced, despite having an end
+    /// time.
+    /// </summary>
+    /// <remarks>
+    /// Such a session ended at least once and may then have been picked up again, so it can still be
+    /// gaining laps - which would make this file a partial record of it. It is exported anyway,
+    /// because the far more common cause is a session monitor that died and left the flag stuck on a
+    /// session that really did finish, and refusing those makes the feature useless for them. What
+    /// the export cannot do is stay quiet about it: every format says so on the file, so that
+    /// somebody opening it a month later can tell.
+    /// </remarks>
+    public bool SessionStillLive { get; set; }
 }
 
 /// <summary>

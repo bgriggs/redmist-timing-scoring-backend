@@ -43,15 +43,15 @@ public class ExportsControllerTests
     }
 
     /// <summary>
-    /// A live session short-circuits: no export can be produced from one, so the endpoint does not
-    /// pay for the lap probes to describe it. Everything reads false, which is what the client needs
-    /// to hide the options anyway.
+    /// A session with no end time short-circuits: no export can be produced from one, so the endpoint
+    /// does not pay for the lap probes to describe it. Everything reads false, which is what the
+    /// client needs to hide the options anyway.
     /// </summary>
     [TestMethod]
-    public async Task GetAvailability_LiveSession_ReturnsEverythingFalseWithoutProbingLaps()
+    public async Task GetAvailability_SessionThatHasNotEnded_ReturnsEverythingFalseWithoutProbingLaps()
     {
         _h.AddEvent(EventId);
-        _h.AddSession(EventId, SessionId, isLive: true);
+        _h.AddSession(EventId, SessionId, isLive: true, ended: false);
         _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1, "Alice", "blePuck",
             pitEntry: new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc), pitDurationMs: 60_000));
         await _h.SaveAsync();
@@ -202,6 +202,107 @@ public class ExportsControllerTests
 
     #region GetCarLaps
 
+    /// <summary>
+    /// The real state this feature has to cope with: a session that plainly ended - it has an end
+    /// time and a full session of laps - while its live flag was never cleared, because the session
+    /// monitor is what clears it and a monitor that dies leaves it stuck true. Event 5 session 68 in
+    /// the test environment is exactly this. Keying on the flag made the feature silently unavailable
+    /// for those sessions.
+    /// </summary>
+    [TestMethod]
+    public async Task GetAvailability_EndedButStillFlaggedLive_ReportsCompletedWithItsCars()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId, name: "Sunday 7 Hour", isLive: true, ended: true);
+        SeedPittingCar("42", "Alice", "Bob");
+        await _h.SaveAsync();
+
+        var availability = await AvailabilityAsync(EventId, SessionId);
+
+        Assert.IsTrue(availability.SessionCompleted);
+        Assert.IsTrue(availability.LapDataAvailable);
+        Assert.IsTrue(availability.PitReportAvailable);
+        CollectionAssert.AreEqual(new[] { "42" }, availability.CarNumbers);
+    }
+
+    /// <summary>
+    /// The other half of the union: a session whose row was orphaned before an end time was ever
+    /// written - the processor dies mid-session, so finalization writes no end time while the flag
+    /// still gets cleared - plus any row old enough to predate the column being populated. These
+    /// exported before this rule existed and must keep exporting.
+    /// </summary>
+    [TestMethod]
+    public async Task GetAvailability_NoEndTimeButNotFlaggedLive_IsStillExportable()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId, isLive: false, ended: false);
+        SeedPittingCar("42", "Alice", "Bob");
+        await _h.SaveAsync();
+
+        var availability = await AvailabilityAsync(EventId, SessionId);
+
+        Assert.IsTrue(availability.SessionCompleted);
+        Assert.IsTrue(availability.LapDataAvailable);
+        CollectionAssert.AreEqual(new[] { "42" }, availability.CarNumbers);
+
+        var laps = Assert.IsInstanceOfType<FileStreamResult>(
+            await _h.Controller.GetCarLaps(EventId, SessionId, "42", "csv"));
+        await laps.FileStream.DisposeAsync();
+    }
+
+    /// <summary>
+    /// The stale-entry sequence the bypass alone did not cover: the session ends cleanly and is
+    /// cached, is picked up again, then ends again. Without dropping the entry when the flag is seen
+    /// set, that third call serves the pre-resume answer - so a session that first ended with no cars
+    /// would keep reporting no lap data long after the real race had run.
+    /// </summary>
+    [TestMethod]
+    public async Task GetAvailability_EndedThenResumedThenEndedAgain_DoesNotServeThePreResumeAnswer()
+    {
+        _h.AddEvent(EventId);
+        var session = _h.AddSession(EventId, SessionId, isLive: false, ended: true);
+        await _h.SaveAsync();
+
+        // 1. Ends with nothing to export; that answer is cached.
+        Assert.IsFalse((await AvailabilityAsync(EventId, SessionId)).LapDataAvailable);
+
+        // 2. Picked up again and the real race runs.
+        session.IsLive = true;
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1));
+        await _h.SaveAsync();
+        Assert.IsTrue((await AvailabilityAsync(EventId, SessionId)).LapDataAvailable);
+
+        // 3. Ends again. The pre-resume answer must not come back.
+        session.IsLive = false;
+        await _h.SaveAsync();
+
+        var afterSecondEnd = await AvailabilityAsync(EventId, SessionId);
+        Assert.IsTrue(afterSecondEnd.LapDataAvailable, "the cached pre-resume answer should have been dropped");
+        CollectionAssert.AreEqual(new[] { "42" }, afterSecondEnd.CarNumbers);
+    }
+
+    /// <summary>
+    /// That answer is deliberately not cached: a session still flagged live may have been picked up
+    /// again and may still be gaining laps, and the cache is the one part that would keep serving a
+    /// stale answer after they arrived.
+    /// </summary>
+    [TestMethod]
+    public async Task GetAvailability_EndedButStillFlaggedLive_IsNotCached()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId, isLive: true, ended: true);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1));
+        await _h.SaveAsync();
+
+        Assert.IsTrue((await AvailabilityAsync(EventId, SessionId)).LapDataAvailable);
+
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("7", 1));
+        await _h.SaveAsync();
+
+        var second = await AvailabilityAsync(EventId, SessionId);
+        CollectionAssert.AreEqual(new[] { "7", "42" }, second.CarNumbers, "a session that may still be running must be re-read");
+    }
+
     [TestMethod]
     public async Task GetCarLaps_UnknownSession_Is404()
     {
@@ -210,11 +311,32 @@ public class ExportsControllerTests
         AssertStatus(result, StatusCodes.Status404NotFound);
     }
 
+    /// <summary>
+    /// The file endpoints use the same rule, so a session the availability check offers can actually
+    /// produce its reports. Event 5 session 68 again.
+    /// </summary>
     [TestMethod]
-    public async Task GetCarLaps_LiveSession_Is404()
+    public async Task FileEndpoints_EndedButStillFlaggedLive_AreServed()
     {
         _h.AddEvent(EventId);
-        _h.AddSession(EventId, SessionId, isLive: true);
+        _h.AddSession(EventId, SessionId, isLive: true, ended: true);
+        SeedPittingCar("42", "Alice", "Bob");
+        await _h.SaveAsync();
+
+        var laps = Assert.IsInstanceOfType<FileStreamResult>(
+            await _h.Controller.GetCarLaps(EventId, SessionId, "42", "csv"));
+        await laps.FileStream.DisposeAsync();
+
+        var pits = Assert.IsInstanceOfType<FileStreamResult>(
+            await _h.Controller.GetPitStops(EventId, SessionId, "json"));
+        await pits.FileStream.DisposeAsync();
+    }
+
+    [TestMethod]
+    public async Task GetCarLaps_SessionThatHasNotEnded_Is404()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId, isLive: true, ended: false);
         _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1));
         await _h.SaveAsync();
 
@@ -271,6 +393,146 @@ public class ExportsControllerTests
         var first = JsonSerializer.Deserialize<CarPosition>(laps[0].GetRawText());
         Assert.AreEqual("42", first!.Number);
         Assert.AreEqual(1, first.LastLapCompleted);
+    }
+
+    /// <summary>
+    /// The downloaded JSON is meant to be opened and read, so it is indented - and that has to reach
+    /// the lap payloads too. They are stored compact, so injecting them as raw text would leave every
+    /// lap as one long line inside an otherwise indented document, which is the only part anybody
+    /// actually wants to read.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCarLaps_Json_IsIndentedIncludingTheLapPayloads()
+    {
+        await SeedPlainSessionAsync("42");
+
+        var result = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "json");
+        var (text, _) = await ReadFileAsync(result);
+
+        var lines = SplitLines(text);
+        Assert.IsTrue(lines.Any(l => l.StartsWith("  \"eventId\"")), "the envelope should be indented");
+
+        // "n" is the stored short name for the car number, so finding it on its own line, indented
+        // deeper than the array, proves the nested payload was re-indented rather than injected as
+        // raw text - which would have left the whole lap on one line.
+        Assert.IsTrue(lines.Any(l => l.StartsWith("      \"n\": \"42\"")),
+            "each lap payload should be expanded and indented inside the laps array");
+
+        // Still valid JSON that round-trips to the same laps.
+        using var document = JsonDocument.Parse(text);
+        Assert.AreEqual(3, document.RootElement.GetProperty("laps").GetArrayLength());
+    }
+
+    [TestMethod]
+    public async Task GetPitStops_Json_IsIndented()
+    {
+        await SeedFlagtronicsSessionAsync();
+
+        var result = await _h.Controller.GetPitStops(EventId, SessionId, "json");
+        var (text, _) = await ReadFileAsync(result);
+
+        var lines = SplitLines(text);
+        Assert.IsTrue(lines.Any(l => l.StartsWith("  \"eventId\"")));
+        Assert.IsTrue(lines.Any(l => l.StartsWith("      \"carNumber\"")));
+        using var document2 = JsonDocument.Parse(text);
+        Assert.AreEqual(1, document2.RootElement.GetProperty("pitStops").GetArrayLength());
+    }
+
+    /// <summary>
+    /// The pretty-printing exists so these files can be opened and read, and driver names are the
+    /// field a person actually reads. The HTML-safe default encoder would turn a routine club-racing
+    /// surname into escape sequences - O\u0027Brien, Jos\u00E9 M\u00FCller - which would have made
+    /// the indented file harder to read than the compact one it replaced.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCarLaps_Json_LeavesDriverNamesReadable()
+    {
+        const string driver = "O'Brien Jos\u00E9 M\u00FCller & Co <x>";
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1, driver, "blePuck"));
+        await _h.SaveAsync();
+
+        var result = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "json");
+        var (text, _) = await ReadFileAsync(result);
+
+        StringAssert.Contains(text, driver, "the driver name should appear literally, not escaped");
+        Assert.IsFalse(text.Contains("\\u00", StringComparison.OrdinalIgnoreCase), "nothing should be unicode-escaped");
+
+        // And it is still valid JSON that round-trips to the same name.
+        using var document = JsonDocument.Parse(text);
+        var lap = JsonSerializer.Deserialize<CarPosition>(
+            document.RootElement.GetProperty("laps")[0].GetRawText());
+        Assert.AreEqual(driver, lap!.DriverName);
+    }
+
+    [TestMethod]
+    public async Task GetPitStops_Json_LeavesDriverNamesReadable()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId);
+        SeedPittingCar("42", "O'Brien", "Jos\u00E9 M\u00FCller");
+        await _h.SaveAsync();
+
+        var result = await _h.Controller.GetPitStops(EventId, SessionId, "json");
+        var (text, _) = await ReadFileAsync(result);
+
+        StringAssert.Contains(text, "O'Brien");
+        StringAssert.Contains(text, "Jos\u00E9 M\u00FCller");
+    }
+
+    /// <summary>
+    /// A session that ended but is still flagged live is exported - refusing it is what made the
+    /// feature useless for event 5 session 68 - but the file has to admit it might be partial, since
+    /// nothing about the rows would show it.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCarLaps_EndedButStillFlaggedLive_MarksTheFile()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId, isLive: true, ended: true);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1));
+        await _h.SaveAsync();
+
+        var json = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "json");
+        var (jsonText, _) = await ReadFileAsync(json);
+        using var document = JsonDocument.Parse(jsonText);
+        Assert.IsTrue(document.RootElement.GetProperty("sessionStillLive").GetBoolean());
+
+        var csv = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "csv");
+        var (csvText, _) = await ReadFileAsync(csv);
+        StringAssert.Contains(csvText, LapExportWriter.CsvStillLiveMarker);
+    }
+
+    [TestMethod]
+    public async Task GetPitStops_EndedButStillFlaggedLive_MarksTheFile()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId, isLive: true, ended: true);
+        SeedPittingCar("42", "Alice", "Bob");
+        await _h.SaveAsync();
+
+        var json = await _h.Controller.GetPitStops(EventId, SessionId, "json");
+        var (jsonText, _) = await ReadFileAsync(json);
+        using var document = JsonDocument.Parse(jsonText);
+        Assert.IsTrue(document.RootElement.GetProperty("sessionStillLive").GetBoolean());
+
+        var csv = await _h.Controller.GetPitStops(EventId, SessionId, "csv");
+        var (csvText, _) = await ReadFileAsync(csv);
+        StringAssert.Contains(csvText, PitStopReportWriter.CsvStillLiveMarker);
+    }
+
+    /// <summary>An ordinary finished session carries the flag as false, so the field is stable.</summary>
+    [TestMethod]
+    public async Task GetCarLaps_OrdinarySession_ReportsNotStillLive()
+    {
+        await SeedPlainSessionAsync("42");
+
+        var result = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "json");
+        var (text, _) = await ReadFileAsync(result);
+
+        using var document = JsonDocument.Parse(text);
+        Assert.IsFalse(document.RootElement.GetProperty("sessionStillLive").GetBoolean());
     }
 
     /// <summary>
@@ -712,6 +974,10 @@ public class ExportsControllerTests
         var ok = Assert.IsInstanceOfType<OkObjectResult>(response.Result);
         return Assert.IsInstanceOfType<ExportAvailability>(ok.Value);
     }
+
+    /// <summary>Splits file text into lines, tolerating either line ending.</summary>
+    private static string[] SplitLines(string text) =>
+        text.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
 
     private static void AssertStatus(IActionResult result, int expected)
     {

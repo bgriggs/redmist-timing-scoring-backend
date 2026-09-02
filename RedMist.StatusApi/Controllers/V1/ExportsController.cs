@@ -29,9 +29,10 @@ namespace RedMist.StatusApi.Controllers.V1;
 /// why the whole controller sits behind its own rate limit and a process-wide concurrency cap.
 /// </para>
 /// <para>
-/// Only completed sessions can be exported. A live session's lap rows are still arriving, so an
-/// export of one is a partial snapshot that looks, to whoever opens the file later, like a complete
-/// record of the race.
+/// Only sessions that have ended can be exported - which means having an end time, or no longer
+/// being flagged live, since neither field alone is a reliable answer. A session still running has
+/// lap rows arriving, so an export of one is a partial snapshot that looks, to whoever opens the
+/// file later, like a complete record of the race.
 /// </para>
 /// </remarks>
 [Route("v{version:apiVersion}/[controller]/[action]")]
@@ -102,9 +103,9 @@ public class ExportsController : ControllerBase
     private const string PitEntryTimeMarker = "\"pet\":\"";
 
     /// <summary>
-    /// Cache key for a completed session availability answer. Only completed sessions are cached:
-    /// their answer cannot change again except by the event being archived, which is what the
-    /// expiration covers.
+    /// Cache key for a finished session availability answer. Only sessions that have ended and are
+    /// no longer flagged live are cached: their answer cannot change again except by the event being
+    /// archived, which is what the expiration covers.
     /// </summary>
     private const string AVAILABILITY_KEY = "exports-availability:{0}:{1}"; // {0} = eventId, {1} = sessionId
 
@@ -151,17 +152,21 @@ public class ExportsController : ControllerBase
     /// <response code="429">Too many export requests from this caller.</response>
     /// <remarks>
     /// <para>
-    /// A client calls this on every session view, so the expensive part is avoided twice over. A live
-    /// session returns immediately: no export can be produced from one - every file endpoint answers
-    /// 404 - so paying for the lap probes to describe it would be work for an answer nobody can act
-    /// on. A live session therefore reports every flag false and no car numbers; the real answer
-    /// appears once it ends.
+    /// A session counts as finished when it has an <c>EndTime</c> <em>or</em> its <c>IsLive</c> flag
+    /// is clear - see <see cref="HasEnded"/> for why neither field can be trusted alone. A session
+    /// that is neither returns immediately: no export can be produced from one - every file endpoint
+    /// answers 404 - so paying for the lap probes to describe it would be work for an answer nobody
+    /// can act on. It therefore reports every flag false and no car numbers; the real answer appears
+    /// once the session ends.
     /// </para>
     /// <para>
-    /// For a completed session the answer is cached, because it cannot change again except by the
-    /// event being archived - which is also why the entry expires rather than living forever. The
-    /// file endpoints re-check against the database, so a stale "available" costs a 404, never a bad
-    /// file.
+    /// A finished session answer is cached, because it cannot change again except by the event being
+    /// archived - which is also why the entry expires rather than living forever. The exception is a
+    /// session that has an end time and is still flagged live, which may have been picked up again
+    /// and may still be gaining laps; that answer is read fresh, and any entry cached before the
+    /// session was picked up is dropped so it cannot come back once the flag clears again. The file
+    /// endpoints re-check against the database regardless, so a stale "available" costs a 404, never
+    /// a bad file.
     /// </para>
     /// <para>
     /// It does not take a slot from the export concurrency limit; only the endpoints that actually
@@ -180,22 +185,41 @@ public class ExportsController : ControllerBase
         var cancellationToken = HttpContext.RequestAborted;
         Logger.LogTrace("{m} for event {eventId}, session {sessionId}", nameof(GetAvailability), eventId, sessionId);
 
-        bool completed;
+        bool ended;
+        bool stillFlaggedLive;
         using (var db = await tsContext.CreateDbContextAsync(cancellationToken))
         {
-            // A single primary-key lookup, reading only the flag that decides whether the expensive
-            // part is worth doing at all.
+            // A single primary-key lookup, reading only what decides whether the expensive part is
+            // worth doing at all.
             var session = await db.Sessions.AsNoTracking()
                 .Where(s => s.EventId == eventId && s.Id == sessionId)
-                .Select(s => new { s.IsLive })
+                .Select(s => new { s.EndTime, s.IsLive })
                 .FirstOrDefaultAsync(cancellationToken);
-            completed = session != null && !session.IsLive;
+            ended = session != null && HasEnded(session.EndTime, session.IsLive);
+            stillFlaggedLive = session?.EndTime != null && session.IsLive;
         }
 
-        if (!completed)
+        if (!ended)
             return Ok(new ExportAvailability { SessionCompleted = false });
 
         var key = string.Format(AVAILABILITY_KEY, eventId, sessionId);
+
+        // A session carrying an end time while still flagged live has ended at least once and may
+        // have been picked up again, so its lap data can still be growing. It is served - that is the
+        // whole point of not requiring the flag to be clear - but read fresh, because caching is the
+        // one part of this that would keep showing a stale answer after more laps arrived.
+        //
+        // The entry is dropped rather than merely bypassed. Bypassing protects only while the flag is
+        // set: a session ends cleanly and is cached, is picked up again, then ends again - and that
+        // third call finds the flag clear and serves the pre-resume answer for the rest of the entry
+        // lifetime. A session that first ended with no cars would go on reporting no lap data long
+        // after the real race had run.
+        if (stillFlaggedLive)
+        {
+            await hcache.RemoveAsync(key, cancellationToken);
+            return Ok(await LoadAvailabilityFromDbAsync(eventId, sessionId, cancellationToken));
+        }
+
         var availability = await hcache.GetOrCreateAsync(key,
             async cancel => await LoadAvailabilityFromDbAsync(eventId, sessionId, cancel),
             availabilityCacheOptions,
@@ -243,12 +267,13 @@ public class ExportsController : ControllerBase
     /// <response code="200">Returns the file. Content type is application/json, text/csv or application/pdf.</response>
     /// <response code="400">The requested format is not one of json, csv or pdf.</response>
     /// <response code="401">The event is private and the access code was missing or wrong.</response>
-    /// <response code="404">The session is unknown, has not completed, or has no lap data for the requested car.</response>
+    /// <response code="404">The session is unknown, has not ended, or has no lap data for the requested car.</response>
     /// <response code="429">Too many export requests from this caller.</response>
     /// <response code="503">This replica is already generating its maximum number of exports; retry after the interval in the Retry-After header.</response>
     /// <remarks>
-    /// JSON is the stored lap payload verbatim, wrapped in an envelope naming the event and session:
-    /// it carries every field the system recorded. CSV and PDF are narrower projections meant for a
+    /// JSON carries every field the system recorded for each lap, wrapped in an envelope naming the
+    /// event and session. The rows are re-encoded on the way out - indented, and escaped only where
+    /// JSON requires it - so the file is readable in a text editor. CSV and PDF are narrower projections meant for a
     /// spreadsheet and for reading respectively. The PDF is capped far lower than the other two - see
     /// the response body's truncation marker.
     /// </remarks>
@@ -285,7 +310,7 @@ public class ExportsController : ControllerBase
                         : $"Session {sessionId} of event {eventId} has no lap data for car {carNumber}.");
             }
 
-            context = await BuildContextAsync(db, eventId, sessionId, carNumber, session.Name, cancellationToken);
+            context = await BuildContextAsync(db, eventId, sessionId, carNumber, session, cancellationToken);
         }
 
         if (!stagedExports.HasCapacity)
@@ -323,7 +348,7 @@ public class ExportsController : ControllerBase
     /// <response code="200">Returns the file. Content type is application/json, text/csv or application/pdf.</response>
     /// <response code="400">The requested format is not one of json, csv or pdf.</response>
     /// <response code="401">The event is private and the access code was missing or wrong.</response>
-    /// <response code="404">The session is unknown, has not completed, or has no Flagtronics driver and pit data.</response>
+    /// <response code="404">The session is unknown, has not ended, or has no Flagtronics driver and pit data.</response>
     /// <response code="429">Too many export requests from this caller.</response>
     /// <response code="503">This replica is already generating its maximum number of exports; retry after the interval in the Retry-After header.</response>
     /// <remarks>
@@ -363,7 +388,7 @@ public class ExportsController : ControllerBase
                             "so a pit stop and driver change report cannot be produced for it.");
             }
 
-            context = await BuildContextAsync(db, eventId, sessionId, null, session.Name, cancellationToken);
+            context = await BuildContextAsync(db, eventId, sessionId, null, session, cancellationToken);
         }
 
         if (!stagedExports.HasCapacity)
@@ -415,7 +440,7 @@ public class ExportsController : ControllerBase
                     {
                         var rows = ExportDataSource.StreamLapRowsAsync(tsContext, context.EventId, context.SessionId,
                             context.CarNumber, diagnostics, Logger, token);
-                        var result = await LapExportWriter.WriteCsvAsync(stream, rows, MaxLapRows,
+                        var result = await LapExportWriter.WriteCsvAsync(stream, rows, context, MaxLapRows,
                             ExportBudget.MaxExportBytes, diagnostics, token);
                         LogResult(context, format, result);
                     }, cancellationToken);
@@ -463,7 +488,7 @@ public class ExportsController : ControllerBase
                     {
                         var stops = ExportDataSource.StreamPitStopsAsync(tsContext, context.EventId, context.SessionId,
                             MaxPitStopScanLaps, diagnostics, Logger, token);
-                        var result = await PitStopReportWriter.WriteCsvAsync(stream, stops, MaxPitStopRows,
+                        var result = await PitStopReportWriter.WriteCsvAsync(stream, stops, context, MaxPitStopRows,
                             ExportBudget.MaxExportBytes, diagnostics, token);
                         LogResult(context, format, result);
                     }, cancellationToken);
@@ -506,17 +531,60 @@ public class ExportsController : ControllerBase
     #region Helpers
 
     /// <summary>
-    /// Loads the session, or null when it is unknown or still running. A live session is treated the
-    /// same as a missing one on purpose: from the caller's point of view there is no export of it to
-    /// be had yet, and saying so as a 404 keeps the client from caching a half-finished download.
+    /// Loads the session, or null when it is unknown or has not ended. A session that has not ended
+    /// is treated the same as a missing one on purpose: from the caller's point of view there is no
+    /// export of it to be had yet, and saying so as a 404 keeps the client from caching a
+    /// half-finished download.
     /// </summary>
+    /// <remarks>
+    /// Ending is decided by <c>EndTime</c>, not by <c>IsLive</c>. The two are written together when a
+    /// session finishes, but <c>IsLive</c> is also set on its own by the session monitor picking a
+    /// session up - a bulk update over the event that never clears <c>EndTime</c> - so a monitor that
+    /// dies leaves the flag stuck true on a session that plainly finished. Event 5 session 68 in the
+    /// test environment is in exactly that state: <c>IsLive</c> true, <c>EndTime</c> set, a full
+    /// session of laps behind it. Keying on the flag makes the whole feature silently unavailable for
+    /// those, which is the worse failure: an end time that is stale costs a partial export, a stuck
+    /// flag costs every export.
+    /// </remarks>
     private static async Task<TimingCommon.Models.Session?> LoadCompletedSessionAsync(TsContext db, int eventId,
         int sessionId, CancellationToken cancellationToken)
     {
         var session = await db.Sessions.AsNoTracking()
             .FirstOrDefaultAsync(s => s.EventId == eventId && s.Id == sessionId, cancellationToken);
-        return session == null || session.IsLive ? null : session;
+        return session != null && HasEnded(session.EndTime, session.IsLive) ? session : null;
     }
+
+    /// <summary>
+    /// Whether a session has ended, from the two fields that each independently say so.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The union, not either field alone, because each misses a different set and neither is
+    /// reliable by itself.
+    /// </para>
+    /// <para>
+    /// <c>IsLive</c> alone misses a session that finished while the flag stayed set. The flag is
+    /// cleared by the session monitor, and <c>SetSessionAsLiveAsync</c> also sets it on its own - a
+    /// bulk update across the event that never touches <c>EndTime</c> - so a monitor that dies leaves
+    /// it stuck true. Event 5 session 68 in the test environment is exactly that: flag true, end time
+    /// set, a full session of laps behind it.
+    /// </para>
+    /// <para>
+    /// <c>EndTime</c> alone misses the opposite: a session whose row was orphaned before an end time
+    /// was ever written - the processor dies mid-session, so finalization runs without knowing which
+    /// session it is retiring and writes no end time, while the flag still gets cleared - and any row
+    /// old enough to predate the column being populated. Those export fine and always have.
+    /// </para>
+    /// <para>
+    /// Requiring both would drop both sets. Accepting either drops neither, and leaves exactly one
+    /// ambiguous case - end time set, flag still true - which is served, but marked on the file and
+    /// never cached.
+    /// </para>
+    /// </remarks>
+    /// <param name="endTime">The session end time, if it has one.</param>
+    /// <param name="isLive">The session live flag.</param>
+    /// <returns>True when the session is finished as far as exporting is concerned.</returns>
+    private static bool HasEnded(DateTime? endTime, bool isLive) => endTime != null || !isLive;
 
     /// <summary>
     /// Whether the session carries the Flagtronics data the pit report is built from.
@@ -568,7 +636,7 @@ public class ExportsController : ControllerBase
     }
 
     private static async Task<ExportContext> BuildContextAsync(TsContext db, int eventId, int sessionId,
-        string? carNumber, string sessionName, CancellationToken cancellationToken)
+        string? carNumber, TimingCommon.Models.Session session, CancellationToken cancellationToken)
     {
         // HideName events exist so that a name is not shown before the organizer wants it shown; an
         // export must not be the one place it leaks out.
@@ -582,9 +650,13 @@ public class ExportsController : ControllerBase
             EventId = eventId,
             EventName = eventName ?? string.Empty,
             SessionId = sessionId,
-            SessionName = sessionName,
+            SessionName = session.Name,
             CarNumber = carNumber,
             GeneratedUtc = DateTime.UtcNow,
+            // Marked on the file rather than kept out of it: a session that has ended but is still
+            // flagged live may have been picked up again, and nothing about the rows themselves would
+            // reveal that to whoever opens the export later.
+            SessionStillLive = session.EndTime != null && session.IsLive,
         };
     }
 
@@ -603,8 +675,8 @@ public class ExportsController : ControllerBase
     private ObjectResult SessionNotFound(int eventId, int sessionId)
     {
         return Problem(statusCode: StatusCodes.Status404NotFound, title: "Session not available for export",
-            detail: $"Session {sessionId} of event {eventId} does not exist or has not completed. " +
-                    "Exports are only produced for completed sessions.");
+            detail: $"Session {sessionId} of event {eventId} does not exist or has not ended. " +
+                    "Exports are only produced for sessions that have ended.");
     }
 
     private ObjectResult ExportsBusy(int eventId, int sessionId, string ceiling)

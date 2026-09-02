@@ -8,9 +8,12 @@ namespace RedMist.StatusApi.Services.Exports;
 public class ExportAvailability
 {
     /// <summary>
-    /// Whether the session has ended. Exports are only produced for completed sessions: a live
-    /// session's lap rows are still arriving, so an export of one would be a partial snapshot that
-    /// looks like a complete record.
+    /// Whether the session has ended: either it has an end time, or it is no longer flagged live.
+    /// Either on its own is unreliable - the flag is set independently by the session monitor and
+    /// stays true if the monitor dies, while a session orphaned before it could be finalized never
+    /// gets an end time - so both count. Exports are only produced for sessions that have ended: one
+    /// still running has lap rows arriving, so an export of it would be a partial snapshot that looks
+    /// like a complete record.
     /// </summary>
     public bool SessionCompleted { get; set; }
 

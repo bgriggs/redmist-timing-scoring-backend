@@ -194,7 +194,7 @@ public class ExportFormattingTests
             .ToArray();
 
         using var stream = new MemoryStream();
-        var result = await LapExportWriter.WriteCsvAsync(stream, ToAsync(rows), maxRows: int.MaxValue,
+        var result = await LapExportWriter.WriteCsvAsync(stream, ToAsync(rows), Context(), maxRows: int.MaxValue,
             maxBytes: 100, new ExportScanDiagnostics(), CancellationToken.None);
 
         Assert.IsTrue(result.Truncated);
@@ -247,8 +247,8 @@ public class ExportFormattingTests
         };
 
         using var stream = new MemoryStream();
-        await PitStopReportWriter.WriteCsvAsync(stream, ToAsync(stops), 100, ExportBudget.MaxExportBytes,
-            new ExportScanDiagnostics(), CancellationToken.None);
+        await PitStopReportWriter.WriteCsvAsync(stream, ToAsync(stops), Context(), 100,
+            ExportBudget.MaxExportBytes, new ExportScanDiagnostics(), CancellationToken.None);
         var lines = SplitLines(ReadUtf8(stream));
 
         Assert.AreEqual(PitStopReportWriter.CsvHeader, lines[0]);
@@ -266,7 +266,7 @@ public class ExportFormattingTests
     public async Task WriteCsvAsync_StartsWithAByteOrderMark()
     {
         using var stream = new MemoryStream();
-        await LapExportWriter.WriteCsvAsync(stream, ToAsync(Array.Empty<LapExportRow>()), 10,
+        await LapExportWriter.WriteCsvAsync(stream, ToAsync(Array.Empty<LapExportRow>()), Context(), 10,
             ExportBudget.MaxExportBytes, new ExportScanDiagnostics(), CancellationToken.None);
 
         var bytes = stream.ToArray();
@@ -274,6 +274,44 @@ public class ExportFormattingTests
     }
 
     #endregion
+
+    /// <summary>
+    /// A session that ended but is still flagged live may have been picked up again, so the file it
+    /// produces may be a partial record - and nothing about the rows themselves would show that.
+    /// </summary>
+    [TestMethod]
+    public async Task WriteCsvAsync_Laps_MarksASessionThatWasStillLive()
+    {
+        var rows = new[] { new LapExportRow { CarNumber = "42", LapNumber = 1 } };
+
+        using var stream = new MemoryStream();
+        await LapExportWriter.WriteCsvAsync(stream, ToAsync(rows), Context(sessionStillLive: true),
+            100, ExportBudget.MaxExportBytes, new ExportScanDiagnostics(), CancellationToken.None);
+
+        var lines = SplitLines(ReadUtf8(stream));
+        StringAssert.StartsWith(lines[^1], LapExportWriter.CsvStillLiveMarker);
+    }
+
+    [TestMethod]
+    public async Task WriteCsvAsync_PitStops_MarksASessionThatWasStillLive()
+    {
+        var stops = new[] { new PitStopRecord { CarNumber = "42", StopNumber = 1, Lap = 3 } };
+
+        using var stream = new MemoryStream();
+        await PitStopReportWriter.WriteCsvAsync(stream, ToAsync(stops), Context(sessionStillLive: true),
+            100, ExportBudget.MaxExportBytes, new ExportScanDiagnostics(), CancellationToken.None);
+
+        var lines = SplitLines(ReadUtf8(stream));
+        StringAssert.StartsWith(lines[^1], PitStopReportWriter.CsvStillLiveMarker);
+    }
+
+    [TestMethod]
+    public async Task WriteCsvAsync_Laps_OrdinarySession_HasNoStillLiveMarker()
+    {
+        var text = await WriteLapCsvAsync([new LapExportRow { CarNumber = "42", LapNumber = 1 }], 100);
+
+        Assert.IsFalse(text.Contains(LapExportWriter.CsvStillLiveMarker, StringComparison.Ordinal));
+    }
 
     #region Car number ordering
 
@@ -347,11 +385,21 @@ public class ExportFormattingTests
 
     #region Helpers
 
+    /// <summary>A context describing an ordinary finished session.</summary>
+    private static ExportContext Context(bool sessionStillLive = false) => new()
+    {
+        EventId = 1,
+        SessionId = 10,
+        SessionName = "Race",
+        GeneratedUtc = new DateTime(2026, 5, 1, 18, 0, 0, DateTimeKind.Utc),
+        SessionStillLive = sessionStillLive,
+    };
+
     private static async Task<string> WriteLapCsvAsync(IEnumerable<LapExportRow> rows, int maxRows)
     {
         using var stream = new MemoryStream();
-        await LapExportWriter.WriteCsvAsync(stream, ToAsync(rows), maxRows, ExportBudget.MaxExportBytes,
-            new ExportScanDiagnostics(), CancellationToken.None);
+        await LapExportWriter.WriteCsvAsync(stream, ToAsync(rows), Context(), maxRows,
+            ExportBudget.MaxExportBytes, new ExportScanDiagnostics(), CancellationToken.None);
         return ReadUtf8(stream);
     }
 

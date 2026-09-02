@@ -35,13 +35,32 @@ public static class LapExportWriter
     public const string CsvSkippedMarker = "# SKIPPED";
 
     /// <summary>
-    /// Writes the raw stored lap JSON, unchanged, inside an envelope that says what it covers.
+    /// Marker line appended to a CSV taken from a session that was still flagged live. It may not be
+    /// the complete record, and unlike truncation nothing about the file's contents would reveal that.
+    /// </summary>
+    public const string CsvStillLiveMarker = "# SESSION STILL LIVE";
+
+    /// <summary>
+    /// Writes the stored lap payloads, field for field, inside an envelope that says what it covers.
     /// </summary>
     /// <remarks>
-    /// The stored <c>LapData</c> is already a serialized <c>CarPosition</c>, so it is copied through
-    /// verbatim: this is the only format that gives the caller every field the system recorded, and
-    /// it costs no deserialization. Each value is still validated as it goes in - a row that no
-    /// longer parses would otherwise corrupt the whole document rather than lose one lap.
+    /// <para>
+    /// The stored <c>LapData</c> is already a serialized <c>CarPosition</c>, so every field the
+    /// system recorded reaches the caller; this is the only format that can say that. The bytes are
+    /// not the stored bytes, though - each row is re-encoded on the way out, so escaping and
+    /// whitespace are this writer's, not the event processor's.
+    /// </para>
+    /// <para>
+    /// Each row is parsed and written back out rather than injected as raw text. Injecting it would
+    /// be cheaper, but the stored payload is compact, and a compact object dropped into an indented
+    /// document stays one long line - which would leave the file no more readable than before for the
+    /// only part anybody wants to read. Writing the parsed element re-indents it to match the
+    /// enclosing writer, and re-encodes its strings with this writer's relaxed encoder - which is
+    /// what keeps a driver name readable rather than a run of escape sequences. The parse also keeps
+    /// the validation guarantee: a row that no longer parses
+    /// throws here and goes down the skip path, instead of corrupting the whole document. Cost is one
+    /// document at a time, bounded by the 5000 character column, never a session.
+    /// </para>
     /// </remarks>
     /// <param name="output">Stream to write to.</param>
     /// <param name="rawLapJson">The stored lap JSON documents, in export order.</param>
@@ -59,7 +78,7 @@ public static class LapExportWriter
         CancellationToken cancellationToken)
     {
         var result = new ExportWriteResult();
-        await using var writer = new Utf8JsonWriter(output, new JsonWriterOptions { Indented = false });
+        await using var writer = new Utf8JsonWriter(output, ExportJson.WriterOptions);
 
         writer.WriteStartObject();
         writer.WriteNumber("eventId", context.EventId);
@@ -71,6 +90,7 @@ public static class LapExportWriter
         else
             writer.WriteString("carNumber", context.CarNumber);
         writer.WriteString("generatedUtc", context.GeneratedUtc);
+        writer.WriteBoolean("sessionStillLive", context.SessionStillLive);
         writer.WriteStartArray("laps");
 
         await foreach (var raw in rawLapJson.WithCancellation(cancellationToken))
@@ -89,7 +109,10 @@ public static class LapExportWriter
 
             try
             {
-                writer.WriteRawValue(raw, skipInputValidation: false);
+                // Disposed per row: the document holds a pooled buffer over the parsed payload, and
+                // holding one per lap would put the session back on the heap.
+                using var lap = JsonDocument.Parse(raw);
+                lap.RootElement.WriteTo(writer);
                 result.RowsWritten++;
             }
             catch (JsonException)
@@ -131,6 +154,7 @@ public static class LapExportWriter
     /// </summary>
     /// <param name="output">Stream to write to.</param>
     /// <param name="rows">The projected lap rows, in export order.</param>
+    /// <param name="context">What the export covers; supplies the still-live marker.</param>
     /// <param name="maxRows">Row cap; the export stops and appends a truncation marker at this many rows.</param>
     /// <param name="maxBytes">Byte cap on the file; the export stops and appends a truncation marker when the file reaches it.</param>
     /// <param name="diagnostics">
@@ -140,7 +164,8 @@ public static class LapExportWriter
     /// <param name="cancellationToken">Canceled when the client disconnects.</param>
     /// <returns>What was written.</returns>
     public static async Task<ExportWriteResult> WriteCsvAsync(Stream output, IAsyncEnumerable<LapExportRow> rows,
-        int maxRows, long maxBytes, ExportScanDiagnostics diagnostics, CancellationToken cancellationToken)
+        ExportContext context, int maxRows, long maxBytes, ExportScanDiagnostics diagnostics,
+        CancellationToken cancellationToken)
     {
         var result = new ExportWriteResult();
 
@@ -215,6 +240,13 @@ public static class LapExportWriter
                 $"{CsvSkippedMarker} - {result.SkippedRows} lap row(s) could not be read and are missing from this file");
         }
 
+        if (context.SessionStillLive)
+        {
+            await writer.WriteLineAsync(
+                $"{CsvStillLiveMarker} - the session was still flagged live when this file was produced, " +
+                "so it may not be the complete record");
+        }
+
         await writer.FlushAsync(cancellationToken);
         return result;
     }
@@ -249,6 +281,11 @@ public static class LapExportWriter
             notes.Add("Truncated: this report reached the export limit and does not cover the whole session.");
         if (result.SkippedRows > 0)
             notes.Add($"{result.SkippedRows} lap row(s) could not be read and are missing from this report.");
+        if (context.SessionStillLive)
+        {
+            notes.Add("This session was still flagged live when the report was produced, so it may not be " +
+                      "the complete record.");
+        }
 
         ExportPdf.Build(context, subtitle, notes, table =>
         {

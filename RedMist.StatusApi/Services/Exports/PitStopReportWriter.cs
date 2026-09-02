@@ -30,6 +30,12 @@ public static class PitStopReportWriter
     public const string CsvSkippedMarker = "# SKIPPED";
 
     /// <summary>
+    /// Marker line appended to a CSV taken from a session that was still flagged live, and so may not
+    /// be the complete record.
+    /// </summary>
+    public const string CsvStillLiveMarker = "# SESSION STILL LIVE";
+
+    /// <summary>
     /// Writes the stops as JSON inside an envelope that says what the report covers.
     /// </summary>
     /// <param name="output">Stream to write to.</param>
@@ -45,7 +51,7 @@ public static class PitStopReportWriter
         CancellationToken cancellationToken)
     {
         var result = new ExportWriteResult();
-        await using var writer = new Utf8JsonWriter(output, new JsonWriterOptions { Indented = false });
+        await using var writer = new Utf8JsonWriter(output, ExportJson.WriterOptions);
 
         writer.WriteStartObject();
         writer.WriteNumber("eventId", context.EventId);
@@ -53,6 +59,7 @@ public static class PitStopReportWriter
         writer.WriteNumber("sessionId", context.SessionId);
         writer.WriteString("sessionName", context.SessionName);
         writer.WriteString("generatedUtc", context.GeneratedUtc);
+        writer.WriteBoolean("sessionStillLive", context.SessionStillLive);
         writer.WriteStartArray("pitStops");
 
         await foreach (var stop in stops.WithCancellation(cancellationToken))
@@ -110,13 +117,15 @@ public static class PitStopReportWriter
     /// </summary>
     /// <param name="output">Stream to write to.</param>
     /// <param name="stops">The derived stops, in export order.</param>
+    /// <param name="context">What the export covers; supplies the still-live marker.</param>
     /// <param name="maxRows">Row cap; the export stops and appends a truncation marker at this many rows.</param>
     /// <param name="maxBytes">Byte cap on the file; the export stops and appends a truncation marker when the file reaches it.</param>
     /// <param name="diagnostics">Unreadable rows and whether the lap scan hit its cap.</param>
     /// <param name="cancellationToken">Canceled when the client disconnects.</param>
     /// <returns>What was written.</returns>
     public static async Task<ExportWriteResult> WriteCsvAsync(Stream output, IAsyncEnumerable<PitStopRecord> stops,
-        int maxRows, long maxBytes, ExportScanDiagnostics diagnostics, CancellationToken cancellationToken)
+        ExportContext context, int maxRows, long maxBytes, ExportScanDiagnostics diagnostics,
+        CancellationToken cancellationToken)
     {
         var result = new ExportWriteResult();
 
@@ -178,6 +187,13 @@ public static class PitStopReportWriter
                 $"{CsvSkippedMarker} - {result.SkippedRows} lap row(s) could not be read; stops and driver changes around them may be wrong or missing");
         }
 
+        if (context.SessionStillLive)
+        {
+            await writer.WriteLineAsync(
+                $"{CsvStillLiveMarker} - the session was still flagged live when this file was produced, " +
+                "so later stops may be missing");
+        }
+
         await writer.FlushAsync(cancellationToken);
         return result;
     }
@@ -209,6 +225,11 @@ public static class PitStopReportWriter
         {
             notes.Add($"{result.SkippedRows} lap row(s) could not be read; stops and driver changes around them " +
                       "may be wrong or missing.");
+        }
+        if (context.SessionStillLive)
+        {
+            notes.Add("This session was still flagged live when the report was produced, so later stops may " +
+                      "be missing.");
         }
 
         ExportPdf.Build(context, subtitle, notes, table =>

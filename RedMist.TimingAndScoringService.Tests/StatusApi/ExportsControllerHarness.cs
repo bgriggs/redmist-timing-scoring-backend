@@ -83,9 +83,27 @@ internal sealed class ExportsControllerHarness : IDisposable
         return evt;
     }
 
-    public Session AddSession(int eventId, int sessionId, string name = "Race", bool isLive = false)
+    /// <summary>
+    /// Adds a session. Whether it counts as finished is <paramref name="ended"/> - the end time -
+    /// not <paramref name="isLive"/>; the two are independent in real data, which is the point of
+    /// being able to set them separately here.
+    /// </summary>
+    /// <param name="eventId">Owning event.</param>
+    /// <param name="sessionId">Session id.</param>
+    /// <param name="name">Session name.</param>
+    /// <param name="isLive">The live flag, which the session monitor sets and may leave stale.</param>
+    /// <param name="ended">Whether the session has an end time, which is what decides exportability.</param>
+    public Session AddSession(int eventId, int sessionId, string name = "Race", bool isLive = false,
+        bool ended = true)
     {
-        var session = new Session { Id = sessionId, EventId = eventId, Name = name, IsLive = isLive };
+        var session = new Session
+        {
+            Id = sessionId,
+            EventId = eventId,
+            Name = name,
+            IsLive = isLive,
+            EndTime = ended ? new DateTime(2026, 5, 1, 11, 0, 0, DateTimeKind.Utc) : null,
+        };
         Db.Sessions.Add(session);
         return session;
     }
