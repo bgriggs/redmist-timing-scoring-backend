@@ -56,13 +56,22 @@ autoscaling:
     # Leave empty to disable connection-based scale-out.
     targetConnectionsPerPod: 50
 
+# Export downloads stage a file on disk before streaming it, so this pod writes to its
+# ephemeral storage in a way it never used to. The service caps itself at 512Mi of staged
+# exports and refuses further requests with a 503, which is the control that should
+# actually bind - these limits sit above that cap deliberately, as a backstop for a bug in
+# that accounting rather than a routine ceiling. Keep them above it: if they ever invert,
+# the pod is evicted, taking its SignalR connections with it, instead of cleanly refusing
+# one download. The remaining headroom covers logs and ordinary container writes.
 resources:
   requests:
     cpu: "75m"
     memory: "240Mi"
+    ephemeral-storage: "512Mi"
   limits:
     cpu: "300m"
     memory: "380Mi"
+    ephemeral-storage: "1536Mi"
 
 serviceAccount:
   create: false
