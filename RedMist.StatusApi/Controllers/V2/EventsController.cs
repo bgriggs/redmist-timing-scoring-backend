@@ -330,7 +330,7 @@ public class EventsController : EventsControllerBase
     }
 
     /// <summary>
-    /// The event's track name, for labelling the map. Absent names are not worth failing over.
+    /// The event's track name, for labeling the map. Absent names are not worth failing over.
     /// </summary>
     private async Task<string?> LoadTrackNameAsync(int eventId, CancellationToken cancellationToken)
     {

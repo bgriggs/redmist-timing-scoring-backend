@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace RedMist.StatusApi.Services.Exports;
 
 /// <summary>
@@ -25,6 +27,69 @@ public sealed class ExportContext
     public DateTime GeneratedUtc { get; set; }
 
     /// <summary>
+    /// The track offset from UTC, or null when the session did not carry a usable one.
+    /// </summary>
+    /// <remarks>
+    /// Everything a person reads in an export is a time of day at a race track - when a car crossed
+    /// the line, when it entered the pits - and the only useful frame for that is the clock the
+    /// people at the track were looking at. Stored timestamps are UTC, so the offset is what turns
+    /// them back into that.
+    /// </remarks>
+    public TimeSpan? TrackOffset { get; set; }
+
+    /// <summary>Whether the export could put its times into track local time.</summary>
+    public bool HasTrackOffset => TrackOffset.HasValue;
+
+    /// <summary>
+    /// How the export describes the zone its times are in, for the header, the envelope and the CSV
+    /// comment block.
+    /// </summary>
+    public string TimeZoneLabel => TrackOffset is { } offset
+        ? string.Create(CultureInfo.InvariantCulture,
+              $"UTC{(offset < TimeSpan.Zero ? "-" : "+")}{offset.Duration().Hours:00}:{offset.Duration().Minutes:00}")
+        : "UTC";
+
+    /// <summary>
+    /// Converts a stored UTC timestamp into track local time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The stored value is UTC but often carries <see cref="DateTimeKind.Unspecified"/>, because the
+    /// database layer runs with Npgsql legacy timestamp behavior. The kind is therefore stated here
+    /// rather than trusted, so the conversion cannot silently take the server local zone as the
+    /// starting point.
+    /// </para>
+    /// <para>
+    /// A timestamp that is not believable comes back as null rather than as a converted date. Two
+    /// things arrive here that are not times: a device clock that was never set, which reports year
+    /// 0001, and a row whose timestamp was never populated, which is the same value. Neither should
+    /// be printed, and shifting either by a negative offset walks off the end of
+    /// <see cref="DateTime"/> and throws - which, in an export, would cost the whole file over one
+    /// bad row.
+    /// </para>
+    /// </remarks>
+    /// <param name="utc">The stored timestamp, or null.</param>
+    /// <returns>The same instant at the track offset, or null when there is no usable time.</returns>
+    public DateTimeOffset? ToTrackTime(DateTime? utc)
+    {
+        if (!CsvFormat.IsPlausible(utc))
+            return null;
+
+        // The shift itself has to be range-checked. ToOffset adds the offset to the instant and
+        // throws if the result leaves DateTime, and these values come out of a payload another
+        // service wrote - a year-9999 timestamp with a positive offset is all it takes. Returning
+        // null costs one blank cell; throwing here would cost the whole export.
+        var offset = TrackOffset ?? TimeSpan.Zero;
+        if (offset > TimeSpan.Zero && utc!.Value > DateTime.MaxValue - offset)
+            return null;
+        if (offset < TimeSpan.Zero && utc!.Value < DateTime.MinValue - offset)
+            return null;
+
+        var instant = new DateTimeOffset(DateTime.SpecifyKind(utc!.Value, DateTimeKind.Utc));
+        return instant.ToOffset(offset);
+    }
+
+    /// <summary>
     /// Whether the session was still flagged live when this file was produced, despite having an end
     /// time.
     /// </summary>
@@ -37,6 +102,17 @@ public sealed class ExportContext
     /// somebody opening it a month later can tell.
     /// </remarks>
     public bool SessionStillLive { get; set; }
+
+    /// <summary>
+    /// The last car number the pit scan reached before it hit its cap, or null when it did not.
+    /// </summary>
+    /// <remarks>
+    /// The scan reads in the database order, which sorts car numbers as text, and the report is put
+    /// into human order afterwards. So a truncated report is not missing its tail - the cars it lost
+    /// are scattered through the numbering. Naming where the scan stopped is the only thing that
+    /// lets a reader work out what is absent.
+    /// </remarks>
+    public string? TruncatedAfterCarNumber { get; set; }
 }
 
 /// <summary>

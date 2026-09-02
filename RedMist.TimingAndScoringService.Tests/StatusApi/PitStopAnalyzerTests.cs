@@ -14,15 +14,24 @@ public class PitStopAnalyzerTests
 {
     private static readonly DateTime SessionStart = new(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>
+    /// The sticky entry time every row carries before the car has pitted in this session. Real lap
+    /// rows are never without one - the field describes whatever the car last did - so laps default
+    /// to carrying it, and a stop is a <em>change</em> away from it.
+    /// </summary>
+    private static readonly DateTime Baseline = new(2026, 5, 1, 13, 0, 0, DateTimeKind.Utc);
+
     private static CarPosition Lap(int lapNumber, string driver = "", DateTime? pitEntry = null,
-        int? pitDurationMs = null, bool lapIncludedPit = false) => new()
+        int? pitDurationMs = null, bool lapIncludedPit = false, bool isInPit = false,
+        bool noEntryTime = false) => new()
         {
             Number = "42",
             LastLapCompleted = lapNumber,
             DriverName = driver,
-            PitEntryTime = pitEntry,
+            PitEntryTime = noEntryTime ? null : pitEntry ?? Baseline,
             PitDurationMs = pitDurationMs,
             LapIncludedPit = lapIncludedPit,
+            IsInPit = isInPit,
         };
 
     private static IReadOnlyList<PitStopRecord> Run(params CarPosition[] laps)
@@ -55,9 +64,9 @@ public class PitStopAnalyzerTests
         var stop = stops[0];
         Assert.AreEqual("42", stop.CarNumber);
         Assert.AreEqual(1, stop.StopNumber);
-        Assert.AreEqual(3, stop.Lap);
-        Assert.AreEqual(entry, stop.EntryTimeUtc);
-        Assert.AreEqual(entry.AddMilliseconds(62_000), stop.ExitTimeUtc);
+        Assert.AreEqual(3, stop.StartLap);
+        Assert.AreEqual(entry, stop.EntryTime);
+        Assert.AreEqual(entry.AddMilliseconds(62_000), stop.ExitTime);
         Assert.AreEqual(62_000, stop.DurationMs);
         Assert.AreEqual("Alice", stop.DriverBefore);
         Assert.AreEqual("Bob", stop.DriverAfter);
@@ -79,6 +88,209 @@ public class PitStopAnalyzerTests
             Lap(4, "Bob", pitEntry: entry, pitDurationMs: 60_000));
 
         Assert.AreEqual(1, stops.Count);
+    }
+
+    /// <summary>
+    /// Car 4, event 382 session 88. One physical stop long enough to span the start/finish line, so
+    /// the car crosses while still in the pit and crosses again after rejoining. The lap row written
+    /// at the first crossing carries the elapsed time so far - 27s - and only the next lap carries
+    /// the real total of 47s. Reporting the first value understated the stop by 20 seconds.
+    /// </summary>
+    [TestMethod]
+    public void StopSpanningStartFinish_ReportsTheFinalDurationAndBothLaps()
+    {
+        var entry = SessionStart.AddMinutes(12);
+        var stops = Run(
+            Lap(5, "Alice"),
+            Lap(6, "Alice", pitEntry: entry, pitDurationMs: 27_000, lapIncludedPit: true, isInPit: true),
+            Lap(7, "Bob", pitEntry: entry, pitDurationMs: 47_000, lapIncludedPit: true),
+            Lap(8, "Bob", pitEntry: entry, pitDurationMs: 47_000));
+
+        Assert.AreEqual(1, stops.Count, "one physical stop, not one per lap row");
+        var stop = stops[0];
+        Assert.AreEqual(6, stop.StartLap);
+        Assert.AreEqual(7, stop.EndLap, "the stop ended on the lap the car rejoined");
+        Assert.AreEqual(47_000, stop.DurationMs, "the duration is the largest value seen, not the one at the crossing");
+        Assert.AreEqual(entry.AddMilliseconds(47_000), stop.ExitTime);
+        Assert.AreEqual("Alice", stop.DriverBefore);
+        Assert.AreEqual("Bob", stop.DriverAfter);
+        Assert.IsTrue(stop.DriverChanged);
+    }
+
+    /// <summary>
+    /// Car 53, event 382 session 88, verbatim. The equipment issued a <em>fresh</em> entry time on
+    /// the second crossing of a stop the car never left, which is the common prod shape: keying the
+    /// merge on the entry time staying put split this into a phantom 10 second stop on lap 114 and a
+    /// second stop on 115-116. It is one stop, laps 114-116, 81 seconds.
+    /// </summary>
+    [TestMethod]
+    public void StopWhoseEntryTimeIsReissuedMidStop_IsStillOneStop()
+    {
+        var first = new DateTime(2026, 5, 1, 17, 11, 50, DateTimeKind.Utc);
+        var second = new DateTime(2026, 5, 1, 17, 34, 9, DateTimeKind.Utc);
+        var stops = Run(
+            Lap(113, "Alice"),
+            Lap(114, "Alice", pitEntry: first, pitDurationMs: 10_000, lapIncludedPit: true, isInPit: true),
+            Lap(115, "Alice", pitEntry: second, pitDurationMs: 64_000, lapIncludedPit: true, isInPit: true),
+            Lap(116, "Bob", pitEntry: second, pitDurationMs: 81_000, lapIncludedPit: true),
+            Lap(117, "Bob", pitEntry: second, pitDurationMs: 81_000));
+
+        Assert.AreEqual(1, stops.Count, "the car never left the pit, so this is one stop");
+        var stop = stops[0];
+        Assert.AreEqual(114, stop.StartLap);
+        Assert.AreEqual(116, stop.EndLap);
+        Assert.AreEqual(81_000, stop.DurationMs, "the largest duration across the merged span");
+        Assert.AreEqual(first, stop.EntryTime, "the earliest plausible entry, not the reissued one");
+        Assert.IsTrue(stop.EntryTimeRenumbered, "the reader should know the device renumbered it");
+        Assert.AreEqual("Alice", stop.DriverBefore);
+        Assert.AreEqual("Bob", stop.DriverAfter);
+    }
+
+    /// <summary>
+    /// The merge is keyed on pit presence, so an ordinary stop that the equipment happens to renumber
+    /// between two separate visits is still two stops - the car was out in between.
+    /// </summary>
+    [TestMethod]
+    public void EntryTimeChangeWhileTheCarIsOut_StartsANewStop()
+    {
+        var first = SessionStart.AddMinutes(20);
+        var second = SessionStart.AddMinutes(50);
+        var stops = Run(
+            Lap(1, "Alice"),
+            Lap(2, "Alice", pitEntry: first, pitDurationMs: 40_000, lapIncludedPit: true),
+            Lap(3, "Alice", pitEntry: first, pitDurationMs: 40_000),
+            Lap(4, "Bob", pitEntry: second, pitDurationMs: 55_000, lapIncludedPit: true),
+            Lap(5, "Bob", pitEntry: second, pitDurationMs: 55_000));
+
+        Assert.AreEqual(2, stops.Count);
+        Assert.IsFalse(stops[0].EntryTimeRenumbered);
+        Assert.IsFalse(stops[1].EntryTimeRenumbered);
+    }
+
+    /// <summary>
+    /// A pit flag that never clears must not let one stop swallow the rest of the session.
+    /// </summary>
+    [TestMethod]
+    public void PitFlagThatNeverClears_ClosesTheStopAtTheSpanCap()
+    {
+        var entry = SessionStart.AddMinutes(20);
+        var laps = new List<CarPosition> { Lap(1, "Alice") };
+        for (var lap = 2; lap <= 60; lap++)
+            laps.Add(Lap(lap, "Alice", pitEntry: entry, pitDurationMs: 30_000, isInPit: true));
+
+        var stops = Run([.. laps]);
+
+        Assert.AreEqual(1, stops.Count);
+        Assert.AreEqual(PitStopAnalyzer.MaxStopSpanLaps,
+            stops[0].EndLap - stops[0].StartLap + 1, "the span should stop at the cap");
+    }
+
+    /// <summary>
+    /// A car whose first row carries no entry time at all - a late join, or purged early laps - must
+    /// not get a phantom stop on the first row that does have one. The predicate is whether an entry
+    /// time was seen on an earlier lap, not whether this is the first lap.
+    /// </summary>
+    [TestMethod]
+    public void FirstEntryTimeArrivingAfterANullRow_IsStillOnlyTheBaseline()
+    {
+        var sticky = SessionStart.AddMinutes(20);
+        var stops = Run(
+            Lap(1, "Alice", noEntryTime: true),
+            Lap(2, "Alice", pitEntry: sticky, pitDurationMs: 30_000),
+            Lap(3, "Alice", pitEntry: sticky, pitDurationMs: 30_000));
+
+        Assert.AreEqual(0, stops.Count);
+    }
+
+    /// <summary>
+    /// The same shape, from car 4 lap 19, where the understatement was worse: 8s reported for a 48s
+    /// stop.
+    /// </summary>
+    [TestMethod]
+    public void StopCaughtEarlyAtTheCrossing_TakesTheLaterDuration()
+    {
+        var entry = SessionStart.AddMinutes(40);
+        var stops = Run(
+            Lap(18, "Alice"),
+            Lap(19, "Alice", pitEntry: entry, pitDurationMs: 8_000, lapIncludedPit: true, isInPit: true),
+            Lap(20, "Alice", pitEntry: entry, pitDurationMs: 48_000, lapIncludedPit: true));
+
+        Assert.AreEqual(1, stops.Count);
+        Assert.AreEqual(48_000, stops[0].DurationMs);
+        Assert.AreEqual(19, stops[0].StartLap);
+        Assert.AreEqual(20, stops[0].EndLap);
+    }
+
+    /// <summary>
+    /// An ordinary stop that fits inside one lap still reports a single lap on both ends, so the
+    /// range only widens when it means something.
+    /// </summary>
+    [TestMethod]
+    public void OrdinaryStop_StartsAndEndsOnTheSameLap()
+    {
+        var entry = SessionStart.AddMinutes(20);
+        var stops = Run(
+            Lap(1, "Alice"),
+            Lap(2, "Alice"),
+            Lap(3, "Bob", pitEntry: entry, pitDurationMs: 62_000, lapIncludedPit: true),
+            Lap(4, "Bob", pitEntry: entry, pitDurationMs: 62_000));
+
+        Assert.AreEqual(3, stops[0].StartLap);
+        Assert.AreEqual(3, stops[0].EndLap);
+    }
+
+    /// <summary>
+    /// A repeated duration on a lap the car was long gone must not keep stretching the stop, or one
+    /// stop would swallow the rest of the session.
+    /// </summary>
+    [TestMethod]
+    public void RepeatedDurationAfterTheStop_DoesNotExtendIt()
+    {
+        var entry = SessionStart.AddMinutes(20);
+        var stops = Run(
+            Lap(1, "Alice"),
+            Lap(2, "Alice", pitEntry: entry, pitDurationMs: 30_000, lapIncludedPit: true),
+            Lap(3, "Alice", pitEntry: entry, pitDurationMs: 30_000),
+            Lap(4, "Alice", pitEntry: entry, pitDurationMs: 30_000),
+            Lap(5, "Alice", pitEntry: entry, pitDurationMs: 30_000));
+
+        Assert.AreEqual(2, stops[0].StartLap);
+        Assert.AreEqual(2, stops[0].EndLap);
+    }
+
+    /// <summary>
+    /// Equipment whose clock was never set reports a year-0001 entry time. It is the only signal that
+    /// a stop happened, so it still finds the stop - but it is not a time and is not printed as one.
+    /// The duration, which is the trustworthy field, is reported as normal.
+    /// </summary>
+    [TestMethod]
+    public void ImplausibleEntryTime_FindsTheStopButReportsNoTimes()
+    {
+        var bogus = new DateTime(1, 4, 11, 12, 12, 45, DateTimeKind.Utc);
+        var stops = Run(
+            Lap(1, "Alice"),
+            Lap(2, "Bob", pitEntry: bogus, pitDurationMs: 47_000, lapIncludedPit: true),
+            Lap(3, "Bob", pitEntry: bogus, pitDurationMs: 47_000));
+
+        Assert.AreEqual(1, stops.Count);
+        Assert.IsTrue(stops[0].EntryTimeUnavailable);
+        Assert.IsNull(stops[0].EntryTime);
+        Assert.IsNull(stops[0].ExitTime);
+        Assert.AreEqual(47_000, stops[0].DurationMs, "the duration is unaffected");
+        Assert.AreEqual("Bob", stops[0].DriverAfter);
+    }
+
+    [TestMethod]
+    public void PlausibleEntryTime_IsNotMarkedUnavailable()
+    {
+        var entry = SessionStart.AddMinutes(20);
+        var stops = Run(
+            Lap(1, "Alice"),
+            Lap(2, "Bob", pitEntry: entry, pitDurationMs: 47_000, lapIncludedPit: true),
+            Lap(3, "Bob", pitEntry: entry, pitDurationMs: 47_000));
+
+        Assert.IsFalse(stops[0].EntryTimeUnavailable);
+        Assert.AreEqual(entry, stops[0].EntryTime);
     }
 
     [TestMethod]
@@ -116,9 +328,9 @@ public class PitStopAnalyzerTests
             Lap(3, "Bob", pitEntry: entry));
 
         Assert.AreEqual(1, stops.Count);
-        Assert.AreEqual(entry, stops[0].EntryTimeUtc);
+        Assert.AreEqual(entry, stops[0].EntryTime);
         Assert.IsNull(stops[0].DurationMs);
-        Assert.IsNull(stops[0].ExitTimeUtc);
+        Assert.IsNull(stops[0].ExitTime);
         Assert.IsTrue(stops[0].DriverChanged);
     }
 
@@ -135,7 +347,7 @@ public class PitStopAnalyzerTests
             Lap(3, "Bob", pitEntry: entry, pitDurationMs: 71_500));
 
         Assert.AreEqual(71_500, stops[0].DurationMs);
-        Assert.AreEqual(entry.AddMilliseconds(71_500), stops[0].ExitTimeUtc);
+        Assert.AreEqual(entry.AddMilliseconds(71_500), stops[0].ExitTime);
     }
 
     /// <summary>
@@ -221,14 +433,14 @@ public class PitStopAnalyzerTests
     public void NoEntryTimes_FallsBackToTheLapIncludedPitRisingEdge()
     {
         var stops = Run(
-            Lap(1, "Alice"),
-            Lap(2, "Alice"),
-            Lap(3, "Alice", lapIncludedPit: true),
-            Lap(4, "Alice"));
+            Lap(1, "Alice", noEntryTime: true),
+            Lap(2, "Alice", noEntryTime: true),
+            Lap(3, "Alice", noEntryTime: true, lapIncludedPit: true),
+            Lap(4, "Alice", noEntryTime: true));
 
         Assert.AreEqual(1, stops.Count);
-        Assert.AreEqual(3, stops[0].Lap);
-        Assert.IsNull(stops[0].EntryTimeUtc);
+        Assert.AreEqual(3, stops[0].StartLap);
+        Assert.IsNull(stops[0].EntryTime);
         Assert.IsNull(stops[0].DurationMs);
     }
 
@@ -236,13 +448,13 @@ public class PitStopAnalyzerTests
     public void LapIncludedPitHeldHigh_CountsAsOneStop()
     {
         var stops = Run(
-            Lap(1, "Alice"),
-            Lap(2, "Alice", lapIncludedPit: true),
-            Lap(3, "Alice", lapIncludedPit: true),
-            Lap(4, "Alice", lapIncludedPit: true));
+            Lap(1, "Alice", noEntryTime: true),
+            Lap(2, "Alice", noEntryTime: true, lapIncludedPit: true),
+            Lap(3, "Alice", noEntryTime: true, lapIncludedPit: true),
+            Lap(4, "Alice", noEntryTime: true, lapIncludedPit: true));
 
         Assert.AreEqual(1, stops.Count);
-        Assert.AreEqual(2, stops[0].Lap);
+        Assert.AreEqual(2, stops[0].StartLap);
     }
 
     /// <summary>
@@ -258,7 +470,7 @@ public class PitStopAnalyzerTests
             Lap(1, "Alice"),
             Lap(2, "Bob", pitEntry: entry, pitDurationMs: 60_000, lapIncludedPit: true),
             Lap(3, "Bob", pitEntry: entry, pitDurationMs: 60_000),
-            Lap(4, "Bob", lapIncludedPit: true));
+            Lap(4, "Bob", noEntryTime: true, lapIncludedPit: true));
 
         Assert.AreEqual(1, stops.Count);
     }
@@ -277,27 +489,54 @@ public class PitStopAnalyzerTests
 
         Assert.AreEqual(1, stops.Count);
         Assert.IsNull(stops[0].DurationMs);
-        Assert.IsNull(stops[0].ExitTimeUtc);
+        Assert.IsNull(stops[0].ExitTime);
     }
 
     /// <summary>
-    /// Failure mode, pinned rather than fixed: when a car's earlier laps are missing the first
-    /// surviving row still carries the sticky entry time of a stop that happened before it, and that
-    /// is reported as a stop on that lap with an unknown driver before it. Distinguishing it from a
-    /// real stop would need lap history that, by definition, is not there.
+    /// The first row a car has always carries a sticky entry time describing something that happened
+    /// before it, so on its own it says nothing. Taking it as a stop gave every car in a real session
+    /// a phantom stop on lap 1. It establishes the baseline instead.
     /// </summary>
     [TestMethod]
-    public void TruncatedLapHistory_ReportsAPhantomStopOnTheFirstSurvivingLap()
+    public void FirstLapWithAStickyEntryTime_EstablishesTheBaselineRatherThanAStop()
+    {
+        var entry = SessionStart.AddMinutes(20);
+        var stops = Run(
+            Lap(1, "Alice", pitEntry: entry, pitDurationMs: 60_000),
+            Lap(2, "Alice", pitEntry: entry, pitDurationMs: 60_000));
+
+        Assert.AreEqual(0, stops.Count);
+    }
+
+    /// <summary>
+    /// Same for a car whose earlier laps are missing entirely - the first surviving row is still only
+    /// a baseline. The cost is the other side of that trade: a car that genuinely pitted on its first
+    /// surviving lap, with nothing on the row to prove it, is missed.
+    /// </summary>
+    [TestMethod]
+    public void TruncatedLapHistory_TakesTheFirstSurvivingLapAsTheBaseline()
     {
         var entry = SessionStart.AddMinutes(20);
         var stops = Run(
             Lap(9, "Bob", pitEntry: entry, pitDurationMs: 60_000),
             Lap(10, "Bob", pitEntry: entry, pitDurationMs: 60_000));
 
+        Assert.AreEqual(0, stops.Count);
+    }
+
+    /// <summary>
+    /// A car that really did pit on its first lap says so on the row, and that is a stop.
+    /// </summary>
+    [TestMethod]
+    public void FirstLapShowingPitInvolvement_IsAStop()
+    {
+        var entry = SessionStart.AddMinutes(5);
+        var stops = Run(
+            Lap(1, "Alice", pitEntry: entry, pitDurationMs: 45_000, lapIncludedPit: true),
+            Lap(2, "Bob", pitEntry: entry, pitDurationMs: 45_000));
+
         Assert.AreEqual(1, stops.Count);
-        Assert.AreEqual(9, stops[0].Lap);
-        Assert.AreEqual(string.Empty, stops[0].DriverBefore);
-        Assert.IsFalse(stops[0].DriverChanged, "an unknown driver on one side is not a change");
+        Assert.AreEqual(1, stops[0].StartLap);
     }
 
     [TestMethod]

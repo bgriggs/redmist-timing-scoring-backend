@@ -574,9 +574,9 @@ public class ExportsControllerTests
 
         var result = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "csv");
         var (text, _) = await ReadFileAsync(result);
-        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
-        Assert.AreEqual(4, lines.Length, "header, two readable laps, and the skipped marker");
+        Assert.AreEqual(3, DataLines(text).Length, "header plus the two readable laps");
+        var lines = SplitLines(text);
         StringAssert.StartsWith(lines[^1], LapExportWriter.CsvSkippedMarker);
         StringAssert.Contains(lines[^1], "1 lap row");
     }
@@ -587,9 +587,11 @@ public class ExportsControllerTests
         var entry = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc);
         _h.AddEvent(EventId);
         _h.AddSession(EventId, SessionId);
-        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1, "Alice", "blePuck"));
-        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 2, "Alice", "blePuck"),
-            rawLapData: "{ truncated");
+        var baseline = new DateTime(2026, 5, 1, 13, 0, 0, DateTimeKind.Utc);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1, "Alice", "blePuck",
+            pitEntry: baseline));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 2, "Alice", "blePuck",
+            pitEntry: baseline), rawLapData: "{ truncated");
         _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 3, "Bob", "blePuck",
             pitEntry: entry, pitDurationMs: 60_000));
         _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 4, "Bob", "blePuck",
@@ -598,10 +600,10 @@ public class ExportsControllerTests
 
         var result = await _h.Controller.GetPitStops(EventId, SessionId, "csv");
         var (text, _) = await ReadFileAsync(result);
-        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var lines = SplitLines(text);
 
-        StringAssert.StartsWith(lines[^1], PitStopReportWriter.CsvSkippedMarker);
-        StringAssert.Contains(lines[^1], "may be wrong or missing");
+        Assert.IsTrue(lines.Any(l => l.StartsWith(PitStopReportWriter.CsvSkippedMarker)));
+        StringAssert.Contains(text, "may be wrong or missing");
     }
 
     /// <summary>
@@ -612,9 +614,11 @@ public class ExportsControllerTests
     {
         _h.AddEvent(EventId);
         _h.AddSession(EventId, SessionId);
-        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1, "Alice", "blePuck"));
-        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 2, "Alice", "blePuck"),
-            rawLapData: "{ truncated");
+        var baseline2 = new DateTime(2026, 5, 1, 13, 0, 0, DateTimeKind.Utc);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1, "Alice", "blePuck",
+            pitEntry: baseline2));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 2, "Alice", "blePuck",
+            pitEntry: baseline2), rawLapData: "{ truncated");
         _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 3, "Bob", "blePuck",
             pitEntry: new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc), pitDurationMs: 60_000));
         await _h.SaveAsync();
@@ -637,8 +641,8 @@ public class ExportsControllerTests
         Assert.AreEqual("text/csv", file.ContentType);
         Assert.AreEqual("event-1-session-10-car-42-laps.csv", file.FileDownloadName);
 
-        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        StringAssert.Contains(lines[0], "CarNumber,Lap,TimestampUtc");
+        var lines = DataLines(text);
+        StringAssert.Contains(lines[0], "CarNumber,Lap,Time,");
         Assert.AreEqual(4, lines.Length, "header plus three laps");
         StringAssert.StartsWith(lines[1], "42,1,");
     }
@@ -652,8 +656,7 @@ public class ExportsControllerTests
         var (text, file) = await ReadFileAsync(result);
 
         Assert.AreEqual("event-1-session-10-laps.csv", file.FileDownloadName);
-        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Assert.AreEqual(7, lines.Length, "header plus three laps for each of two cars");
+        Assert.AreEqual(7, DataLines(text).Length, "header plus three laps for each of two cars");
     }
 
     /// <summary>An empty car number is the same request as no car number at all.</summary>
@@ -753,6 +756,295 @@ public class ExportsControllerTests
     }
 
     /// <summary>
+    /// Car numbers are text, so the database orders them as text - "100" before "18", "18x" before
+    /// "2". The report has to read the way a person reads a grid.
+    /// </summary>
+    [TestMethod]
+    public async Task GetPitStops_OrdersCarsNumerically()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId);
+        foreach (var car in new[] { "100", "18x", "2", "18" })
+            SeedPittingCar(car, "Alice", "Bob");
+        await _h.SaveAsync();
+
+        var result = await _h.Controller.GetPitStops(EventId, SessionId, "json");
+        var (text, _) = await ReadFileAsync(result);
+
+        using var document = JsonDocument.Parse(text);
+        var order = document.RootElement.GetProperty("pitStops").EnumerateArray()
+            .Select(x => x.GetProperty("carNumber").GetString())
+            .ToArray();
+
+        CollectionAssert.AreEqual(new[] { "2", "18", "18x", "100" }, order);
+    }
+
+    /// <summary>
+    /// Times in an export are the clock at the track. Event 382 session 88 reported an offset of -4,
+    /// so a lap recorded at 12:47:28 UTC belongs in the file as 8:47:28 AM.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCarLaps_Csv_WritesTrackLocalTimes()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId, timeZoneOffset: -4);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1),
+            timestamp: new DateTime(2026, 8, 30, 12, 47, 28, DateTimeKind.Utc));
+        await _h.SaveAsync();
+
+        var result = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "csv");
+        var (text, _) = await ReadFileAsync(result);
+
+        StringAssert.Contains(text, "8/30/2026 8:47:28 AM");
+        StringAssert.Contains(text, "track local time (UTC-04:00)");
+    }
+
+    /// <summary>
+    /// The JSON export stays machine-readable, so its times are ISO 8601 - but carrying the track
+    /// offset rather than a Z, so the zone is not lost.
+    /// </summary>
+    [TestMethod]
+    public async Task GetPitStops_Json_WritesTrackLocalTimesWithTheOffset()
+    {
+        var entry = new DateTime(2026, 8, 30, 12, 47, 28, DateTimeKind.Utc);
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId, timeZoneOffset: -4);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1, "Alice", "blePuck",
+            pitEntry: new DateTime(2026, 8, 30, 11, 0, 0, DateTimeKind.Utc)));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 2, "Bob", "blePuck",
+            pitEntry: entry, pitDurationMs: 60_000, lapIncludedPit: true));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 3, "Bob", "blePuck",
+            pitEntry: entry, pitDurationMs: 60_000));
+        await _h.SaveAsync();
+
+        var result = await _h.Controller.GetPitStops(EventId, SessionId, "json");
+        var (text, _) = await ReadFileAsync(result);
+
+        using var document = JsonDocument.Parse(text);
+        Assert.AreEqual("UTC-04:00", document.RootElement.GetProperty("trackTimeZone").GetString());
+        Assert.IsTrue(document.RootElement.GetProperty("trackTimeZoneKnown").GetBoolean());
+
+        var stop = document.RootElement.GetProperty("pitStops")[0];
+        StringAssert.StartsWith(stop.GetProperty("pitEntryTime").GetString(), "2026-08-30T08:47:28");
+        StringAssert.Contains(stop.GetProperty("pitEntryTime").GetString(), "-04:00");
+    }
+
+    /// <summary>
+    /// A session with no usable offset falls back to UTC and has to say so, rather than quietly
+    /// labeling UTC as track time.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCarLaps_SessionWithNoTimeZone_SaysTimesAreUtc()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId, timeZoneOffset: 0);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1));
+        await _h.SaveAsync();
+
+        var csv = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "csv");
+        var (csvText, _) = await ReadFileAsync(csv);
+        StringAssert.Contains(csvText, "NOT track local time");
+
+        var json = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "json");
+        var (jsonText, _) = await ReadFileAsync(json);
+        using var document = JsonDocument.Parse(jsonText);
+        Assert.IsFalse(document.RootElement.GetProperty("trackTimeZoneKnown").GetBoolean());
+        Assert.AreEqual("UTC", document.RootElement.GetProperty("trackTimeZone").GetString());
+    }
+
+    /// <summary>
+    /// The offset is a double taken verbatim off the relay with no validation at ingest. An offset
+    /// that is not a whole number of minutes cannot be a DateTimeOffset at all, and handing one
+    /// straight through threw on every timestamp - taking out every export of that session.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCarLaps_FractionalTimeZoneOffset_StillProducesAFile()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId, timeZoneOffset: 5.01);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1),
+            timestamp: new DateTime(2026, 8, 30, 12, 0, 0, DateTimeKind.Utc));
+        await _h.SaveAsync();
+
+        var result = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "csv");
+        var (text, _) = await ReadFileAsync(result);
+
+        StringAssert.Contains(text, "UTC+05:01", "the offset is rounded to the minute it can represent");
+        StringAssert.Contains(text, "8/30/2026 5:01:00 PM");
+    }
+
+    /// <summary>
+    /// Half-hour and quarter-hour zones are real and must survive the rounding untouched.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCarLaps_HalfHourTimeZoneOffset_IsExact()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId, timeZoneOffset: 5.75);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1),
+            timestamp: new DateTime(2026, 8, 30, 12, 0, 0, DateTimeKind.Utc));
+        await _h.SaveAsync();
+
+        var result = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "csv");
+        var (text, _) = await ReadFileAsync(result);
+
+        StringAssert.Contains(text, "UTC+05:45");
+        StringAssert.Contains(text, "8/30/2026 5:45:00 PM");
+    }
+
+    /// <summary>
+    /// Car 53, event 382 session 88, through the endpoint: the equipment reissued the entry time
+    /// midway through a stop the car never left. One stop spanning laps 114-116 at 81 seconds, and
+    /// the file says the entry time was renumbered.
+    /// </summary>
+    [TestMethod]
+    public async Task GetPitStops_EntryTimeReissuedMidStop_IsOneStopAndSaysSo()
+    {
+        var baseline = new DateTime(2026, 8, 30, 15, 0, 0, DateTimeKind.Utc);
+        var first = new DateTime(2026, 8, 30, 17, 11, 50, DateTimeKind.Utc);
+        var second = new DateTime(2026, 8, 30, 17, 34, 9, DateTimeKind.Utc);
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId);
+        // An early lap as well, because the availability probe only looks at a car opening laps -
+        // a fixture that starts at lap 113 is outside it and the report would be refused.
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("53", 1, "Alice", "blePuck",
+            pitEntry: baseline));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("53", 113, "Alice", "blePuck",
+            pitEntry: baseline));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("53", 114, "Alice", "blePuck",
+            pitEntry: first, pitDurationMs: 10_000, lapIncludedPit: true, isInPit: true));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("53", 115, "Alice", "blePuck",
+            pitEntry: second, pitDurationMs: 64_000, lapIncludedPit: true, isInPit: true));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("53", 116, "Bob", "blePuck",
+            pitEntry: second, pitDurationMs: 81_000, lapIncludedPit: true));
+        await _h.SaveAsync();
+
+        var result = await _h.Controller.GetPitStops(EventId, SessionId, "json");
+        var (text, _) = await ReadFileAsync(result);
+
+        using var document = JsonDocument.Parse(text);
+        var stops = document.RootElement.GetProperty("pitStops");
+        Assert.AreEqual(1, stops.GetArrayLength(), "one physical stop, not a phantom plus a real one");
+        Assert.AreEqual(114, stops[0].GetProperty("startLap").GetInt32());
+        Assert.AreEqual(116, stops[0].GetProperty("endLap").GetInt32());
+        Assert.AreEqual(81_000, stops[0].GetProperty("pitDurationMs").GetInt32());
+        Assert.IsTrue(stops[0].GetProperty("pitEntryTimeRenumbered").GetBoolean());
+        Assert.AreEqual(1, document.RootElement.GetProperty("stopsWithRenumberedEntryTime").GetInt32());
+    }
+
+    /// <summary>
+    /// The lap JSON envelope carries converted times, but the lap objects are the stored record and
+    /// are UTC. One zone label covering both would tell a consumer that a payload timestamp is four
+    /// hours from where it actually is.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCarLaps_Json_LabelsTheEnvelopeAndThePayloadZonesSeparately()
+    {
+        await SeedPlainSessionAsync("42");
+
+        var result = await _h.Controller.GetCarLaps(EventId, SessionId, "42", "json");
+        var (text, _) = await ReadFileAsync(result);
+
+        using var document = JsonDocument.Parse(text);
+        var root = document.RootElement;
+        Assert.AreEqual("UTC-04:00", root.GetProperty("trackTimeZone").GetString());
+        Assert.AreEqual("UTC", root.GetProperty("lapDataTimeZone").GetString());
+        StringAssert.Contains(root.GetProperty("lapDataNote").GetString(), "exactly as the timing system recorded");
+    }
+
+    /// <summary>
+    /// Car 4, event 382 session 88: one stop that spanned the start/finish line, reported across two
+    /// lap rows with the duration at the crossing rather than the real total. One stop, laps 6-7, 47
+    /// seconds - not a 27 second stop.
+    /// </summary>
+    [TestMethod]
+    public async Task GetPitStops_StopSpanningStartFinish_IsOneStopWithTheFullDuration()
+    {
+        var entry = new DateTime(2026, 8, 30, 12, 12, 45, DateTimeKind.Utc);
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("4", 5, "Alice", "blePuck",
+            pitEntry: new DateTime(2026, 8, 30, 11, 0, 0, DateTimeKind.Utc)));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("4", 6, "Alice", "blePuck",
+            pitEntry: entry, pitDurationMs: 27_000, lapIncludedPit: true, isInPit: true));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("4", 7, "Bob", "blePuck",
+            pitEntry: entry, pitDurationMs: 47_000, lapIncludedPit: true));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("4", 8, "Bob", "blePuck",
+            pitEntry: entry, pitDurationMs: 47_000));
+        await _h.SaveAsync();
+
+        var result = await _h.Controller.GetPitStops(EventId, SessionId, "json");
+        var (text, _) = await ReadFileAsync(result);
+
+        using var document = JsonDocument.Parse(text);
+        var stops = document.RootElement.GetProperty("pitStops");
+        Assert.AreEqual(1, stops.GetArrayLength());
+        Assert.AreEqual(6, stops[0].GetProperty("startLap").GetInt32());
+        Assert.AreEqual(7, stops[0].GetProperty("endLap").GetInt32());
+        Assert.AreEqual(47_000, stops[0].GetProperty("pitDurationMs").GetInt32());
+    }
+
+    /// <summary>
+    /// In session 88, 3,000 of 3,279 lap rows carry a year-0001 pit entry time from equipment whose
+    /// clock was never set. Discarding the value would erase nearly every stop, since detection keys
+    /// on it changing - so it is used and then withheld, and the file says why the times are blank.
+    /// </summary>
+    [TestMethod]
+    public async Task GetPitStops_ImplausibleEntryTimes_ReportTheStopWithBlankTimes()
+    {
+        var bogus = new DateTime(1, 4, 11, 12, 12, 45, DateTimeKind.Utc);
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1, "Alice", "blePuck",
+            pitEntry: new DateTime(1, 4, 11, 9, 0, 0, DateTimeKind.Utc)));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 2, "Bob", "blePuck",
+            pitEntry: bogus, pitDurationMs: 47_000, lapIncludedPit: true));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 3, "Bob", "blePuck",
+            pitEntry: bogus, pitDurationMs: 47_000));
+        await _h.SaveAsync();
+
+        var json = await _h.Controller.GetPitStops(EventId, SessionId, "json");
+        var (jsonText, _) = await ReadFileAsync(json);
+        using var document = JsonDocument.Parse(jsonText);
+        var stop = document.RootElement.GetProperty("pitStops")[0];
+
+        Assert.AreEqual(JsonValueKind.Null, stop.GetProperty("pitEntryTime").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, stop.GetProperty("pitExitTime").ValueKind);
+        Assert.IsTrue(stop.GetProperty("pitEntryTimeUnavailable").GetBoolean());
+        Assert.AreEqual(47_000, stop.GetProperty("pitDurationMs").GetInt32(), "the duration is still reported");
+        Assert.AreEqual(1, document.RootElement.GetProperty("stopsWithoutEntryTime").GetInt32());
+        Assert.IsFalse(jsonText.Contains("0001-", StringComparison.Ordinal), "no year-0001 date should be printed");
+
+        var csv = await _h.Controller.GetPitStops(EventId, SessionId, "csv");
+        var (csvText, _) = await ReadFileAsync(csv);
+        StringAssert.Contains(csvText, PitStopReportWriter.CsvNoEntryTimeMarker);
+        Assert.IsFalse(csvText.Contains("0001", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The phantom every car in session 88 reported: a stop on lap 1, with no pit involvement on the
+    /// row, purely from the sticky entry time the first row always carries.
+    /// </summary>
+    [TestMethod]
+    public async Task GetPitStops_StickyEntryTimeOnTheFirstLap_IsNotAStop()
+    {
+        var entry = new DateTime(2026, 8, 30, 11, 0, 0, DateTimeKind.Utc);
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId);
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1, "Alice", "blePuck",
+            pitEntry: entry, pitDurationMs: 30_000));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 2, "Alice", "blePuck",
+            pitEntry: entry, pitDurationMs: 30_000));
+        await _h.SaveAsync();
+
+        var result = await _h.Controller.GetPitStops(EventId, SessionId, "json");
+        var (text, _) = await ReadFileAsync(result);
+
+        using var document = JsonDocument.Parse(text);
+        Assert.AreEqual(0, document.RootElement.GetProperty("pitStops").GetArrayLength());
+    }
+
+    /// <summary>
     /// The scan streams laps grouped by car, so each car's stops have to come out attributed to that
     /// car and not run together across the boundary.
     /// </summary>
@@ -768,10 +1060,13 @@ public class ExportsControllerTests
         var result = await _h.Controller.GetPitStops(EventId, SessionId, "csv");
         var (text, _) = await ReadFileAsync(result);
 
-        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var lines = DataLines(text);
         Assert.AreEqual(3, lines.Length, "header plus one stop for each of two cars");
         Assert.AreEqual(1, lines.Count(l => l.StartsWith("42,")));
         Assert.AreEqual(1, lines.Count(l => l.StartsWith("7,")));
+
+        // Car 7 sorts before car 42 numerically, whatever the database string order was.
+        Assert.IsTrue(lines[1].StartsWith("7,"), "stops should be ordered by car number");
         StringAssert.Contains(text, "Alice,Bob");
         StringAssert.Contains(text, "Carol,Dave");
     }
@@ -787,7 +1082,8 @@ public class ExportsControllerTests
         var entry = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc);
         _h.AddEvent(EventId);
         _h.AddSession(EventId, SessionId);
-        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1, "Alice", "blePuck"));
+        _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap("42", 1, "Alice", "blePuck",
+            pitEntry: new DateTime(2026, 5, 1, 13, 0, 0, DateTimeKind.Utc)));
 
         // A payload whose LastLapCompleted disagrees with the row it was stored on.
         var pitLap = ExportsControllerHarness.Lap("42", 2, "Bob", "blePuck", pitEntry: entry, pitDurationMs: 60_000);
@@ -801,7 +1097,7 @@ public class ExportsControllerTests
         using var document = JsonDocument.Parse(text);
         var stops = document.RootElement.GetProperty("pitStops");
         Assert.AreEqual(1, stops.GetArrayLength());
-        Assert.AreEqual(2, stops[0].GetProperty("lap").GetInt32());
+        Assert.AreEqual(2, stops[0].GetProperty("startLap").GetInt32());
     }
 
     [TestMethod]
@@ -979,6 +1275,10 @@ public class ExportsControllerTests
     private static string[] SplitLines(string text) =>
         text.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
 
+    /// <summary>The header and data rows, with the CSV comment block left out.</summary>
+    private static string[] DataLines(string text) =>
+        [.. SplitLines(text).Where(l => !l.StartsWith('#'))];
+
     private static void AssertStatus(IActionResult result, int expected)
     {
         var objectResult = Assert.IsInstanceOfType<ObjectResult>(result);
@@ -1023,9 +1323,14 @@ public class ExportsControllerTests
     /// </summary>
     private static void SeedPittingCar(ExportsControllerHarness harness, string car, string driverBefore, string driverAfter)
     {
+        // The pre-stop laps carry the sticky entry time every real row has, so the stop is a change
+        // away from it rather than the car's first entry time - which is only a baseline.
+        var baseline = new DateTime(2026, 5, 1, 13, 0, 0, DateTimeKind.Utc);
         var entry = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc);
-        harness.AddLap(EventId, SessionId, ExportsControllerHarness.Lap(car, 1, driverBefore, "blePuck"));
-        harness.AddLap(EventId, SessionId, ExportsControllerHarness.Lap(car, 2, driverBefore, "blePuck"));
+        harness.AddLap(EventId, SessionId, ExportsControllerHarness.Lap(car, 1, driverBefore, "blePuck",
+            pitEntry: baseline));
+        harness.AddLap(EventId, SessionId, ExportsControllerHarness.Lap(car, 2, driverBefore, "blePuck",
+            pitEntry: baseline));
         harness.AddLap(EventId, SessionId, ExportsControllerHarness.Lap(car, 3, driverAfter, "blePuck",
             pitEntry: entry, pitDurationMs: 60_000, lapIncludedPit: true));
         harness.AddLap(EventId, SessionId, ExportsControllerHarness.Lap(car, 4, driverAfter, "blePuck",

@@ -107,7 +107,7 @@ public sealed class LapExportRow
 {
     public string CarNumber { get; set; } = string.Empty;
     public int LapNumber { get; set; }
-    public DateTime TimestampUtc { get; set; }
+    public DateTime Timestamp { get; set; }
     public string Flag { get; set; } = string.Empty;
     public string? Class { get; set; }
     public string? LapTime { get; set; }
@@ -141,14 +141,54 @@ public sealed class PitStopRecord
     /// <summary>1-based sequence number of this stop within the session for this car.</summary>
     public int StopNumber { get; set; }
 
-    /// <summary>The lap number on which the stop was detected, i.e. the first lap the car completed after pitting.</summary>
-    public int Lap { get; set; }
+    /// <summary>
+    /// The lap the stop began on - the first lap the car completed at or after entering the pit.
+    /// </summary>
+    public int StartLap { get; set; }
 
-    /// <summary>When the car crossed the pit entry line, if the feed reported it.</summary>
-    public DateTime? EntryTimeUtc { get; set; }
+    /// <summary>
+    /// The lap the stop ended on, which is <see cref="StartLap"/> for an ordinary stop.
+    /// </summary>
+    /// <remarks>
+    /// A stop long enough to span the start/finish line produces two lap rows: the car crosses while
+    /// still in the pit, then crosses again after rejoining. Reporting both laps is what makes that
+    /// one physical stop legible as one, instead of a stop with an inexplicably short duration.
+    /// </remarks>
+    public int EndLap { get; set; }
 
-    /// <summary>When the car left the pits. Derived from entry time plus duration, so it is null whenever either of those is.</summary>
-    public DateTime? ExitTimeUtc { get; set; }
+    /// <summary>
+    /// When the car crossed the pit entry line, in UTC, or null when the feed gave no usable value.
+    /// </summary>
+    public DateTime? EntryTime { get; set; }
+
+    /// <summary>
+    /// When the car left the pits, in UTC. Derived from entry time plus duration, so it is null
+    /// whenever either of those is.
+    /// </summary>
+    public DateTime? ExitTime { get; set; }
+
+    /// <summary>
+    /// Whether the stop was found from an entry timestamp too implausible to print.
+    /// </summary>
+    /// <remarks>
+    /// Some in-car equipment reports a pit entry time from a device clock that was never set, giving
+    /// year-0001 timestamps. Those are still the only signal that a stop happened - detection keys on
+    /// the value changing, not on what it says - so they are used and then withheld. The stop is
+    /// reported with its duration, which is the trustworthy field, and no entry or exit time.
+    /// </remarks>
+    public bool EntryTimeUnavailable { get; set; }
+
+    /// <summary>
+    /// Whether the equipment issued a different pit entry time partway through this stop.
+    /// </summary>
+    /// <remarks>
+    /// The stop is still one stop - the car never left the pit between the two - but the times under
+    /// it moved while it was happening, so the entry and exit reported here are the earliest entry
+    /// seen plus the longest duration rather than one coherent measurement. Left as its own flag
+    /// because it is the difference between a time that is merely approximate and one that came from
+    /// a device that changed its mind.
+    /// </remarks>
+    public bool EntryTimeRenumbered { get; set; }
 
     /// <summary>How long the car was in the pits, in milliseconds, if the feed finalized a duration for the stop.</summary>
     public int? DurationMs { get; set; }

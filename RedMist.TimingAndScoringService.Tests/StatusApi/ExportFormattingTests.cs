@@ -68,6 +68,141 @@ public class ExportFormattingTests
         Assert.AreEqual("a,\"b, c\",d", builder.ToString());
     }
 
+    /// <summary>
+    /// The times in a CSV or PDF are the clock at the track, written the way an American club race
+    /// entrant reads a date. A UTC timestamp four hours ahead is the same instant, but nobody at the
+    /// track was looking at that clock.
+    /// </summary>
+    [TestMethod]
+    public void Timestamp_FormatsTrackLocalTimeAsMonthDayYear()
+    {
+        var context = Context();
+        var utc = new DateTime(2026, 8, 30, 12, 47, 28, DateTimeKind.Utc);
+
+        Assert.AreEqual("8/30/2026 8:47:28 AM", CsvFormat.Timestamp(context.ToTrackTime(utc)));
+    }
+
+    [TestMethod]
+    public void Timestamp_NullIsAnEmptyCell()
+    {
+        Assert.AreEqual(string.Empty, CsvFormat.Timestamp(null));
+    }
+
+    /// <summary>
+    /// A device clock that was never set reports year 0001. That is not a time and must never be
+    /// printed as one.
+    /// </summary>
+    [TestMethod]
+    public void IsPlausible_RejectsUnsetDeviceClocks()
+    {
+        Assert.IsFalse(CsvFormat.IsPlausible(new DateTime(1, 4, 11, 12, 12, 45, DateTimeKind.Utc)));
+        Assert.IsFalse(CsvFormat.IsPlausible(null));
+        Assert.IsTrue(CsvFormat.IsPlausible(new DateTime(2026, 8, 30, 12, 47, 28, DateTimeKind.Utc)));
+    }
+
+    /// <summary>
+    /// Shifting a timestamp can leave the range of DateTime, and these values come out of a payload
+    /// another service wrote. A blank cell costs one value; an exception costs the whole export.
+    /// </summary>
+    [TestMethod]
+    public void ToTrackTime_ValueThatCannotBeShifted_IsBlankRatherThanThrowing()
+    {
+        foreach (var hours in new[] { 0.5, 5.75, 14.0 })
+        {
+            var context = new ExportContext { TrackOffset = TimeSpan.FromHours(hours) };
+            Assert.IsNull(context.ToTrackTime(DateTime.MaxValue), $"offset {hours}");
+        }
+
+        Assert.IsNull(new ExportContext { TrackOffset = TimeSpan.FromHours(-4) }.ToTrackTime(DateTime.MinValue));
+    }
+
+    /// <summary>
+    /// A stop that absorbed a reissued entry time is marked, so the reader knows the times under it
+    /// moved rather than being one coherent measurement.
+    /// </summary>
+    [TestMethod]
+    public async Task WriteCsvAsync_PitStops_MarksARenumberedEntryTime()
+    {
+        var stops = new[]
+        {
+            new PitStopRecord
+            {
+                CarNumber = "53", StopNumber = 1, StartLap = 114, EndLap = 116,
+                DurationMs = 81_000, EntryTimeRenumbered = true,
+            }
+        };
+
+        using var stream = new MemoryStream();
+        await PitStopReportWriter.WriteCsvAsync(stream, stops, Context(), truncated: false,
+            ExportBudget.MaxExportBytes, new ExportScanDiagnostics(), CancellationToken.None);
+
+        var text = ReadUtf8(stream);
+        StringAssert.Contains(text, PitStopReportWriter.CsvRenumberedMarker);
+        StringAssert.Contains(text, "114,116");
+    }
+
+    /// <summary>
+    /// The scan cuts in the timing system text ordering and the report is sorted numerically
+    /// afterwards, so a truncated report is missing cars from the middle. Saying only "truncated"
+    /// would let a reader assume the tail is what is gone.
+    /// </summary>
+    [TestMethod]
+    public async Task WriteCsvAsync_PitStops_TruncationNamesWhereTheScanStopped()
+    {
+        var stops = new[] { new PitStopRecord { CarNumber = "7", StopNumber = 1, StartLap = 2, EndLap = 2 } };
+        var context = Context();
+        context.TruncatedAfterCarNumber = "18x";
+
+        using var stream = new MemoryStream();
+        await PitStopReportWriter.WriteCsvAsync(stream, stops, context, truncated: true,
+            ExportBudget.MaxExportBytes, new ExportScanDiagnostics(), CancellationToken.None);
+
+        var text = ReadUtf8(stream);
+        StringAssert.Contains(text, PitStopReportWriter.CsvTruncationMarker);
+        StringAssert.Contains(text, "after car 18x");
+        StringAssert.Contains(text, "scattered through the numbering");
+    }
+
+    [TestMethod]
+    public void TimeZoneLabel_NamesTheOffsetOrSaysItIsUnknown()
+    {
+        Assert.AreEqual("UTC-04:00", Context().TimeZoneLabel);
+        Assert.AreEqual("UTC+05:30", new ExportContext { TrackOffset = TimeSpan.FromHours(5.5) }.TimeZoneLabel);
+        Assert.AreEqual("UTC", Context(withTrackOffset: false).TimeZoneLabel);
+    }
+
+    /// <summary>
+    /// A session with no usable offset falls back to UTC, and the file has to say so - silently
+    /// handing somebody UTC labeled as track time sends them looking for a lap hours out.
+    /// </summary>
+    [TestMethod]
+    public async Task WriteCsvAsync_Laps_NamesTheTimeZoneInTheCommentBlock()
+    {
+        var rows = new[] { new LapExportRow { CarNumber = "42", LapNumber = 1 } };
+
+        var withZone = await WriteLapCsvWithContextAsync(rows, Context());
+        StringAssert.Contains(withZone, "track local time (UTC-04:00)");
+
+        var withoutZone = await WriteLapCsvWithContextAsync(rows, Context(withTrackOffset: false));
+        StringAssert.Contains(withoutZone, "NOT track local time");
+    }
+
+    /// <summary>
+    /// The comment block is at the end. A comment between the header and the first row is not a CSV
+    /// feature - Excel and pandas both read it as a data row - so the data area stays clean.
+    /// </summary>
+    [TestMethod]
+    public async Task WriteCsvAsync_Laps_PutsCommentsAfterTheDataNotInsideIt()
+    {
+        var rows = new[] { new LapExportRow { CarNumber = "42", LapNumber = 1 } };
+
+        var lines = SplitLines(await WriteLapCsvWithContextAsync(rows, Context()));
+
+        Assert.AreEqual(LapExportWriter.CsvHeader, lines[0]);
+        StringAssert.StartsWith(lines[1], "42,1,", "the row after the header must be data");
+        Assert.IsTrue(lines[^1].StartsWith('#'));
+    }
+
     [TestMethod]
     public void Duration_FormatsMinutesAndHours()
     {
@@ -143,7 +278,7 @@ public class ExportFormattingTests
             {
                 CarNumber = "9,9",
                 LapNumber = 4,
-                TimestampUtc = new DateTime(2026, 5, 1, 14, 30, 0, DateTimeKind.Utc),
+                Timestamp = new DateTime(2026, 5, 1, 14, 30, 0, DateTimeKind.Utc),
                 Flag = "Green",
                 Class = "GT, Am",
                 LapTime = "1:32.104",
@@ -155,7 +290,7 @@ public class ExportFormattingTests
         };
 
         var text = await WriteLapCsvAsync(rows, maxRows: 100);
-        var lines = SplitLines(text);
+        var lines = DataLines(text);
 
         Assert.AreEqual(LapExportWriter.CsvHeader, lines[0]);
         StringAssert.Contains(lines[1], "\"9,9\"");
@@ -172,11 +307,10 @@ public class ExportFormattingTests
             .ToArray();
 
         var text = await WriteLapCsvAsync(rows, maxRows: 3);
-        var lines = SplitLines(text);
 
-        // Header, three rows, marker.
-        Assert.AreEqual(5, lines.Length);
-        StringAssert.StartsWith(lines[^1], LapExportWriter.CsvTruncationMarker);
+        // Header plus three rows, with the truncation marker in the comment block.
+        Assert.AreEqual(4, DataLines(text).Length);
+        StringAssert.StartsWith(SplitLines(text)[^1], LapExportWriter.CsvTruncationMarker);
     }
 
     /// <summary>
@@ -236,9 +370,10 @@ public class ExportFormattingTests
             {
                 CarNumber = "99x",
                 StopNumber = 1,
-                Lap = 12,
-                EntryTimeUtc = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc),
-                ExitTimeUtc = new DateTime(2026, 5, 1, 15, 1, 5, DateTimeKind.Utc),
+                StartLap = 12,
+                EndLap = 12,
+                EntryTime = new DateTime(2026, 5, 1, 15, 0, 0, DateTimeKind.Utc),
+                ExitTime = new DateTime(2026, 5, 1, 15, 1, 5, DateTimeKind.Utc),
                 DurationMs = 65_000,
                 DriverBefore = "Smith, Alice",
                 DriverAfter = "O'Brien \"Bo\"",
@@ -247,9 +382,9 @@ public class ExportFormattingTests
         };
 
         using var stream = new MemoryStream();
-        await PitStopReportWriter.WriteCsvAsync(stream, ToAsync(stops), Context(), 100,
+        await PitStopReportWriter.WriteCsvAsync(stream, stops, Context(), truncated: false,
             ExportBudget.MaxExportBytes, new ExportScanDiagnostics(), CancellationToken.None);
-        var lines = SplitLines(ReadUtf8(stream));
+        var lines = DataLines(ReadUtf8(stream));
 
         Assert.AreEqual(PitStopReportWriter.CsvHeader, lines[0]);
         StringAssert.Contains(lines[1], "\"Smith, Alice\"");
@@ -295,11 +430,11 @@ public class ExportFormattingTests
     [TestMethod]
     public async Task WriteCsvAsync_PitStops_MarksASessionThatWasStillLive()
     {
-        var stops = new[] { new PitStopRecord { CarNumber = "42", StopNumber = 1, Lap = 3 } };
+        var stops = new[] { new PitStopRecord { CarNumber = "42", StopNumber = 1, StartLap = 3, EndLap = 3 } };
 
         using var stream = new MemoryStream();
-        await PitStopReportWriter.WriteCsvAsync(stream, ToAsync(stops), Context(sessionStillLive: true),
-            100, ExportBudget.MaxExportBytes, new ExportScanDiagnostics(), CancellationToken.None);
+        await PitStopReportWriter.WriteCsvAsync(stream, stops, Context(sessionStillLive: true),
+            truncated: false, ExportBudget.MaxExportBytes, new ExportScanDiagnostics(), CancellationToken.None);
 
         var lines = SplitLines(ReadUtf8(stream));
         StringAssert.StartsWith(lines[^1], PitStopReportWriter.CsvStillLiveMarker);
@@ -385,14 +520,18 @@ public class ExportFormattingTests
 
     #region Helpers
 
-    /// <summary>A context describing an ordinary finished session.</summary>
-    private static ExportContext Context(bool sessionStillLive = false) => new()
+    /// <summary>
+    /// A context describing an ordinary finished session at a track four hours behind UTC, which is
+    /// what event 382 session 88 reported.
+    /// </summary>
+    private static ExportContext Context(bool sessionStillLive = false, bool withTrackOffset = true) => new()
     {
         EventId = 1,
         SessionId = 10,
         SessionName = "Race",
         GeneratedUtc = new DateTime(2026, 5, 1, 18, 0, 0, DateTimeKind.Utc),
         SessionStillLive = sessionStillLive,
+        TrackOffset = withTrackOffset ? TimeSpan.FromHours(-4) : null,
     };
 
     private static async Task<string> WriteLapCsvAsync(IEnumerable<LapExportRow> rows, int maxRows)
@@ -403,11 +542,27 @@ public class ExportFormattingTests
         return ReadUtf8(stream);
     }
 
+    private static async Task<string> WriteLapCsvWithContextAsync(IEnumerable<LapExportRow> rows, ExportContext context)
+    {
+        using var stream = new MemoryStream();
+        await LapExportWriter.WriteCsvAsync(stream, ToAsync(rows), context, 100,
+            ExportBudget.MaxExportBytes, new ExportScanDiagnostics(), CancellationToken.None);
+        return ReadUtf8(stream);
+    }
+
     private static string ReadUtf8(MemoryStream stream) =>
         new UTF8Encoding(false).GetString(stream.ToArray()).TrimStart('﻿');
 
     private static string[] SplitLines(string text) =>
         text.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>
+    /// The header and data rows, with the comment block left out. Comments carry things a reader
+    /// needs - the time zone, truncation, skipped rows - but they are not data, and a test asserting
+    /// on row positions should not have to move every time one is added.
+    /// </summary>
+    private static string[] DataLines(string text) =>
+        [.. SplitLines(text).Where(l => !l.StartsWith('#'))];
 
     /// <summary>Counts CSV fields, honoring quoting, so a test can prove escaping did not add a column.</summary>
     private static int CountFields(string line)

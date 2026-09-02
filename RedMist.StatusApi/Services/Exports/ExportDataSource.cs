@@ -206,7 +206,7 @@ public static class ExportDataSource
         // export can match back to the database, whatever the payload says.
         CarNumber = source.CarNumber,
         LapNumber = source.LapNumber,
-        TimestampUtc = source.Timestamp,
+        Timestamp = source.Timestamp,
         Flag = ((Flags)source.Flag).ToString(),
         Class = position.Class,
         LapTime = position.LastLapTime,

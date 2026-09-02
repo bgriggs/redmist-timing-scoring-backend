@@ -93,8 +93,12 @@ internal sealed class ExportsControllerHarness : IDisposable
     /// <param name="name">Session name.</param>
     /// <param name="isLive">The live flag, which the session monitor sets and may leave stale.</param>
     /// <param name="ended">Whether the session has an end time, which is what decides exportability.</param>
+    /// <param name="timeZoneOffset">
+    /// Hours from UTC at the track. Defaults to -4, which is what event 382 session 88 reported, so
+    /// the tests exercise the conversion rather than the identity case.
+    /// </param>
     public Session AddSession(int eventId, int sessionId, string name = "Race", bool isLive = false,
-        bool ended = true)
+        bool ended = true, double timeZoneOffset = -4)
     {
         var session = new Session
         {
@@ -102,6 +106,7 @@ internal sealed class ExportsControllerHarness : IDisposable
             EventId = eventId,
             Name = name,
             IsLive = isLive,
+            LocalTimeZoneOffset = timeZoneOffset,
             EndTime = ended ? new DateTime(2026, 5, 1, 11, 0, 0, DateTimeKind.Utc) : null,
         };
         Db.Sessions.Add(session);
@@ -131,10 +136,11 @@ internal sealed class ExportsControllerHarness : IDisposable
     /// <summary>Builds a lap snapshot with just the fields the exports care about.</summary>
     public static CarPosition Lap(string car, int lap, string? driver = null, string? driverSource = null,
         DateTime? pitEntry = null, int? pitDurationMs = null, bool lapIncludedPit = false,
-        string? lapTime = null, string? carClass = null)
+        string? lapTime = null, string? carClass = null, bool isInPit = false)
     {
         return new CarPosition
         {
+            IsInPit = isInPit,
             Number = car,
             LastLapCompleted = lap,
             DriverName = driver ?? string.Empty,

@@ -83,7 +83,9 @@ public static class ExportPdf
                 {
                     column.Item().Text(eventName).FontSize(13).SemiBold();
                     column.Item().Text($"{sessionName} - {subtitle}").FontSize(9);
-                    column.Item().Text($"Generated {context.GeneratedUtc:yyyy-MM-dd HH:mm:ss} UTC")
+                    column.Item()
+                        .Text($"Generated {CsvFormat.Timestamp(context.ToTrackTime(context.GeneratedUtc))} " +
+                              $"({context.TimeZoneLabel})")
                         .FontSize(7).FontColor(Colors.Grey.Darken1);
                     foreach (var note in notes)
                     {

@@ -125,11 +125,38 @@ public static class CsvFormat
         position <= 0 ? string.Empty : position.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// Formats a UTC timestamp for a CSV cell. Excel parses this shape as a date/time in every
-    /// locale, which the ISO 8601 round-trip format is not reliably able to claim.
+    /// The date and time layout used in the CSV and PDF exports.
     /// </summary>
-    public static string Timestamp(DateTime? value) =>
-        value?.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture) ?? string.Empty;
+    /// <remarks>
+    /// Month/day/year with a 12-hour clock, because these files are read by people at American club
+    /// race events and that is the clock on the wall there. It is not the shape a machine would want;
+    /// the JSON export carries ISO 8601 with the offset for that.
+    /// </remarks>
+    public const string DisplayFormat = "M/d/yyyy h:mm:ss tt";
+
+    /// <summary>
+    /// Formats a track local timestamp for a CSV or PDF cell, blank when there is not one.
+    /// </summary>
+    /// <param name="value">The timestamp, already converted to the track offset.</param>
+    /// <returns>The formatted timestamp, or an empty cell.</returns>
+    public static string Timestamp(DateTimeOffset? value) =>
+        value?.ToString(DisplayFormat, CultureInfo.InvariantCulture) ?? string.Empty;
+
+    /// <summary>
+    /// The earliest year a timestamp can claim and still be believable.
+    /// </summary>
+    /// <remarks>
+    /// In-car equipment reports times from its own clock, and a device whose clock was never set
+    /// reports year 0001. Nothing in this system predates the 1990s, so anything earlier is a broken
+    /// clock rather than an old race, and printing it as a time would put an obviously wrong date in
+    /// front of somebody reading the report.
+    /// </remarks>
+    public const int MinimumPlausibleYear = 1990;
+
+    /// <summary>Whether a timestamp is believable enough to show.</summary>
+    /// <param name="value">The timestamp to test.</param>
+    /// <returns>False for a null, or for a value from an unset device clock.</returns>
+    public static bool IsPlausible(DateTime? value) => value is { } v && v.Year >= MinimumPlausibleYear;
 
     /// <summary>
     /// Formats a millisecond duration as a human readable m:ss.fff, with null as an empty cell.

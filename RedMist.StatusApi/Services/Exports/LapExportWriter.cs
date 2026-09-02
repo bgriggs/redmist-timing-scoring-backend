@@ -17,7 +17,7 @@ public static class LapExportWriter
 {
     /// <summary>Column headers for the CSV export, in order.</summary>
     public const string CsvHeader =
-        "CarNumber,Lap,TimestampUtc,Flag,Class,LapTime,TotalTime,BestTime,OverallPosition,ClassPosition," +
+        "CarNumber,Lap,Time,Flag,Class,LapTime,TotalTime,BestTime,OverallPosition,ClassPosition," +
         "OverallGap,OverallDifference,InClassGap,InClassDifference,LapIncludedPit,PitStopCount,DriverName,DriverSource";
 
     /// <summary>
@@ -39,6 +39,24 @@ public static class LapExportWriter
     /// the complete record, and unlike truncation nothing about the file's contents would reveal that.
     /// </summary>
     public const string CsvStillLiveMarker = "# SESSION STILL LIVE";
+
+    /// <summary>Prefix of the comment line naming the zone the times in the file are in.</summary>
+    public const string CsvTimeZoneMarker = "# TIMES";
+
+    /// <summary>
+    /// The comment line naming the zone the file's times are in.
+    /// </summary>
+    /// <remarks>
+    /// Always written, even when the offset is known, because a bare clock time in a file that
+    /// outlives the weekend is ambiguous otherwise. When the session carried no usable offset the
+    /// times fall back to UTC, and saying so is the whole point - silently handing somebody UTC
+    /// labeled as nothing is how a lap time gets read four hours out.
+    /// </remarks>
+    /// <param name="context">What the export covers.</param>
+    /// <returns>The comment line.</returns>
+    public static string TimeZoneComment(ExportContext context) => context.HasTrackOffset
+        ? $"{CsvTimeZoneMarker} are track local time ({context.TimeZoneLabel})"
+        : $"{CsvTimeZoneMarker} are UTC - this session carried no track time zone, so they are NOT track local time";
 
     /// <summary>
     /// Writes the stored lap payloads, field for field, inside an envelope that says what it covers.
@@ -89,7 +107,17 @@ public static class LapExportWriter
             writer.WriteNull("carNumber");
         else
             writer.WriteString("carNumber", context.CarNumber);
-        writer.WriteString("generatedUtc", context.GeneratedUtc);
+        writer.WriteString("generated", context.ToTrackTime(context.GeneratedUtc) ?? DateTimeOffset.UtcNow);
+        writer.WriteString("trackTimeZone", context.TimeZoneLabel);
+        writer.WriteBoolean("trackTimeZoneKnown", context.HasTrackOffset);
+
+        // Two labels, deliberately. The envelope timestamps above are track local, but the lap
+        // objects below are the stored record passed through untouched, and those are UTC. One label
+        // covering both would tell a consumer that "pet":"...Z" is four hours from where it is.
+        writer.WriteString("lapDataTimeZone", "UTC");
+        writer.WriteString("lapDataNote",
+            "Values inside each lap object are exactly as the timing system recorded them, in UTC. " +
+            "The CSV and PDF exports of the same laps present times in track local time.");
         writer.WriteBoolean("sessionStillLive", context.SessionStillLive);
         writer.WriteStartArray("laps");
 
@@ -190,7 +218,7 @@ public static class LapExportWriter
             // rest are values this code formatted itself and are safe as they are.
             CsvFormat.AppendTextField(line, row.CarNumber);
             CsvFormat.AppendField(line, CsvFormat.Number(row.LapNumber));
-            CsvFormat.AppendField(line, CsvFormat.Timestamp(row.TimestampUtc));
+            CsvFormat.AppendField(line, CsvFormat.Timestamp(context.ToTrackTime(row.Timestamp)));
             CsvFormat.AppendField(line, row.Flag);
             CsvFormat.AppendTextField(line, row.Class);
             CsvFormat.AppendField(line, row.LapTime);
@@ -224,6 +252,11 @@ public static class LapExportWriter
         }
 
         diagnostics.ApplyTo(result);
+
+        // With the other comments at the end rather than between the header and the first row. A
+        // leading comment is not a CSV feature: Excel and pandas both read it as the first data row,
+        // which is a worse outcome than having to scroll to find the zone.
+        await writer.WriteLineAsync(TimeZoneComment(context));
 
         if (result.Truncated)
         {
@@ -277,6 +310,11 @@ public static class LapExportWriter
             : $"Lap data - car {context.CarNumber} ({rows.Count} laps)";
 
         var notes = new List<string>();
+        if (!context.HasTrackOffset)
+        {
+            notes.Add("Times are UTC: this session carried no track time zone, so they are not track " +
+                      "local time.");
+        }
         if (result.Truncated)
             notes.Add("Truncated: this report reached the export limit and does not cover the whole session.");
         if (result.SkippedRows > 0)
@@ -304,7 +342,8 @@ public static class LapExportWriter
                 columns.RelativeColumn();    // Driver
             });
 
-            ExportPdf.HeaderRow(table, "Car", "Lap", "Time (UTC)", "Flag", "Class", "Lap Time", "Pos", "Cls", "Gap", "Pit", "Driver");
+            ExportPdf.HeaderRow(table, "Car", "Lap", $"Time ({context.TimeZoneLabel})", "Flag", "Class",
+                "Lap Time", "Pos", "Cls", "Gap", "Pit", "Driver");
 
             foreach (var row in rows)
             {
@@ -316,7 +355,7 @@ public static class LapExportWriter
                 ExportPdf.BodyRow(table,
                     row.CarNumber,
                     row.LapNumber.ToString(),
-                    CsvFormat.Timestamp(row.TimestampUtc),
+                    CsvFormat.Timestamp(context.ToTrackTime(row.Timestamp)),
                     row.Flag,
                     row.Class ?? string.Empty,
                     row.LapTime ?? string.Empty,
