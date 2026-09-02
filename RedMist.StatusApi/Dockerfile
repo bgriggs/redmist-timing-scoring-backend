@@ -1,6 +1,10 @@
 # See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
+# QuestPDF's export renderer needs no packages added here: libQuestPdfSkia.so and libqpdf.so link
+# only libc, libm, libgcc_s, libstdc++ and libz, all of which the runtime-deps layer of this image
+# already carries, and QuestPDF is configured to use its embedded typeface rather than enumerate
+# system fonts - so there is no fontconfig dependency to satisfy either.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 USER $APP_UID
 WORKDIR /app

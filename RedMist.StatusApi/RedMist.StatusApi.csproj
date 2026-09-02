@@ -35,6 +35,7 @@
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
 		<PackageReference Include="MessagePack" Version="3.1.8" />
 		<PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.8" />
+		<PackageReference Include="QuestPDF" Version="2026.8.0" />
 	</ItemGroup>
 
 	<ItemGroup>

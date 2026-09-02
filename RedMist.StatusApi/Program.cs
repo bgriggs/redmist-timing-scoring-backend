@@ -21,6 +21,7 @@ using RedMist.Backend.Shared.Services;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.StatusApi.Services;
+using RedMist.StatusApi.Services.Exports;
 using StackExchange.Redis;
 using System.IO.Compression;
 using System.Reflection;
@@ -51,6 +52,11 @@ public class Program
                 policy.SetIsOriginAllowed(_ => true) // Allow any origin (for 3rd party integrations)
                     .AllowAnyHeader()
                     .AllowAnyMethod()
+                    // AllowAnyHeader covers request headers only. Export downloads name their file in
+                    // Content-Disposition, and the browser hides every response header from a
+                    // cross-origin caller unless it is named here - the UI is served from a different
+                    // origin than this API, so without this it silently falls back to a generated name.
+                    .WithExposedHeaders("Content-Disposition")
                     .AllowCredentials(); // Enable credentials for sticky session cookies (required for multi-replica SignalR)
             });
         });
@@ -188,7 +194,70 @@ public class Program
                         AutoReplenishment = true
                     });
             });
+
+            // Exports. A single request here reads a whole session and writes a file, so this is by
+            // far the most expensive thing a caller can ask this service for. The bucket allows a
+            // short burst - a user picking a format, changing their mind, and picking another - and
+            // then refills slowly. Nothing queues: an export that has to wait its turn is one the
+            // user has already given up on, and holding the request open costs a connection on a pod
+            // whose real job is the live SignalR feed.
+            options.AddPolicy("exports", httpContext =>
+            {
+                var partitionKey = httpContext.User.Identity?.IsAuthenticated == true
+                    ? $"authenticated:{httpContext.User.FindFirst("sub")?.Value ?? httpContext.User.Identity?.Name ?? GetClientIp(httpContext)}"
+                    : $"anonymous:{GetClientIp(httpContext)}";
+
+                return RateLimitPartition.GetTokenBucketLimiter(
+                    $"exports:{partitionKey}",
+                    _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = 5,
+                        ReplenishmentPeriod = TimeSpan.FromSeconds(10),
+                        TokensPerPeriod = 1,
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
+            });
+
+            // Asking whether an export is available is a handful of index lookups, nothing like
+            // producing one. It gets its own bucket so that browsing sessions - the client calls this
+            // on every session view - cannot spend the allowance the user needs a moment later for
+            // the download they actually clicked.
+            options.AddPolicy("exports-availability", httpContext =>
+            {
+                var partitionKey = httpContext.User.Identity?.IsAuthenticated == true
+                    ? $"authenticated:{httpContext.User.FindFirst("sub")?.Value ?? httpContext.User.Identity?.Name ?? GetClientIp(httpContext)}"
+                    : $"anonymous:{GetClientIp(httpContext)}";
+
+                return RateLimitPartition.GetTokenBucketLimiter(
+                    $"exports-availability:{partitionKey}",
+                    _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = 20,
+                        ReplenishmentPeriod = TimeSpan.FromSeconds(2),
+                        TokensPerPeriod = 1,
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
+            });
         });
+
+        // Caps concurrent export file generation across every request this replica is serving. The
+        // rate limiter above bounds one caller; this bounds all of them at once, which is the number
+        // that decides whether this pod stays inside its memory limit.
+        builder.Services.AddSingleton<ExportConcurrencyLimiter>();
+
+        // Bounds generated-but-not-yet-downloaded export files. The concurrency limiter releases its
+        // slot when a file is written rather than when it is delivered, so without this the number of
+        // large files sitting on the node disk is governed only by the rate limiter - which
+        // partitions on a client IP taken from request headers a caller can vary at will.
+        builder.Services.AddSingleton<StagedExportTracker>();
+
+        // Sweeps export files a killed process left behind and proves the PDF renderer loads, so a
+        // broken native dependency fails at deploy time rather than on the first request of a race.
+        builder.Services.AddHostedService<ExportStartupService>();
 
         // Sponsor telemetry background queue
         builder.Services.AddSingleton<SponsorTelemetryQueue>();
