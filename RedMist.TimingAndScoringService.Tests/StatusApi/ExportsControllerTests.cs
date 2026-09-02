@@ -691,6 +691,37 @@ public class ExportsControllerTests
     }
 
     /// <summary>
+    /// The lap PDF holds its rows for layout, so it is the one lap format that can be ordered by car
+    /// number. The ordering itself is asserted against
+    /// <see cref="ExportOrdering.ForDisplay(System.Collections.Generic.IReadOnlyList{LapExportRow}, bool)"/>,
+    /// which is what the controller calls; this covers the endpoint still producing a document for a
+    /// field whose car numbers sort differently as text than as numbers.
+    /// </summary>
+    [TestMethod]
+    public async Task GetCarLaps_Pdf_AllCarsWithMixedNumbering_RendersADocument()
+    {
+        _h.AddEvent(EventId);
+        _h.AddSession(EventId, SessionId);
+        foreach (var car in new[] { "100", "18x", "2", "18", "Course Car" })
+        {
+            for (var lap = 1; lap <= 2; lap++)
+                _h.AddLap(EventId, SessionId, ExportsControllerHarness.Lap(car, lap, lapTime: "1:32.104"));
+        }
+        await _h.SaveAsync();
+
+        var result = await _h.Controller.GetCarLaps(EventId, SessionId, null, "pdf");
+        var file = Assert.IsInstanceOfType<FileStreamResult>(result);
+
+        var header = new byte[5];
+        await using (var stream = file.FileStream)
+        {
+            Assert.AreEqual(5, await stream.ReadAtLeastAsync(header, 5, throwOnEndOfStream: false));
+        }
+
+        Assert.AreEqual("%PDF-", Encoding.ASCII.GetString(header));
+    }
+
+    /// <summary>
     /// The export is built on disk and handed back as a delete-on-close handle, so the file has to be
     /// gone once the response stream is disposed - which is what MVC does after writing the body, and
     /// also what it does when a client disconnects mid-download.

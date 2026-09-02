@@ -104,15 +104,28 @@ public sealed class ExportContext
     public bool SessionStillLive { get; set; }
 
     /// <summary>
-    /// The last car number the pit scan reached before it hit its cap, or null when it did not.
+    /// The last car number the scan reached before it hit its cap, or null when it did not.
     /// </summary>
     /// <remarks>
-    /// The scan reads in the database order, which sorts car numbers as text, and the report is put
-    /// into human order afterwards. So a truncated report is not missing its tail - the cars it lost
-    /// are scattered through the numbering. Naming where the scan stopped is the only thing that
-    /// lets a reader work out what is absent.
+    /// Set for the reports that sort their rows - the pit report and the lap PDF. The scan reads in
+    /// the database order, which sorts car numbers as text, and the report is put into human order
+    /// afterwards. So a truncated report is not missing its tail: the cars it lost are scattered
+    /// through the numbering, and naming where the scan stopped is the only thing that lets a reader
+    /// work out what is absent.
     /// </remarks>
     public string? TruncatedAfterCarNumber { get; set; }
+
+    /// <summary>
+    /// The sentence a truncated report adds to explain which rows are missing, or empty when the
+    /// scan boundary is not known.
+    /// </summary>
+    /// <remarks>
+    /// Shared by every format so they cannot drift into describing the same truncation differently.
+    /// </remarks>
+    public string TruncationScanCaveat => TruncatedAfterCarNumber is { } lastCar
+        ? $"The scan stopped after car {lastCar} in the timing system's own text ordering, so the " +
+          "missing cars are scattered through the numbering rather than being the last ones listed here."
+        : string.Empty;
 }
 
 /// <summary>

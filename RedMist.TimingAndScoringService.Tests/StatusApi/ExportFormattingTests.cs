@@ -448,6 +448,135 @@ public class ExportFormattingTests
         Assert.IsFalse(text.Contains(LapExportWriter.CsvStillLiveMarker, StringComparison.Ordinal));
     }
 
+    #region Report ordering
+
+    /// <summary>
+    /// The lap PDF is sorted the way a grid sheet lists cars, not the way the database sorts text.
+    /// Text order puts "100" before "18" and "18x" before "2".
+    /// </summary>
+    [TestMethod]
+    public void ForDisplay_Laps_OrdersCarsNumericallyThenByLap()
+    {
+        // Deliberately in the ordinal-text order the scan hands them over in.
+        var scanned = new[]
+        {
+            Row("100", 1), Row("18", 2), Row("18", 1), Row("18x", 1), Row("2", 1), Row("Course Car", 1),
+        };
+
+        var (rows, _) = ExportOrdering.ForDisplay(scanned, truncated: false);
+
+        CollectionAssert.AreEqual(new[] { "2", "18", "18", "18x", "100", "Course Car" },
+            rows.Select(r => r.CarNumber).ToArray());
+    }
+
+    /// <summary>A car's laps stay in lap order inside its own block.</summary>
+    [TestMethod]
+    public void ForDisplay_Laps_KeepsEachCarLapsInOrder()
+    {
+        var scanned = new[] { Row("7", 3), Row("7", 1), Row("7", 2) };
+
+        var (rows, _) = ExportOrdering.ForDisplay(scanned, truncated: false);
+
+        CollectionAssert.AreEqual(new[] { 1, 2, 3 }, rows.Select(r => r.LapNumber).ToArray());
+    }
+
+    /// <summary>
+    /// The cap cuts while the rows are still in scan order, so the boundary has to be read before the
+    /// sort. Afterwards the last row is car 100, which says nothing about where the scan stopped.
+    /// </summary>
+    [TestMethod]
+    public void ForDisplay_Laps_CapturesTheScanBoundaryBeforeSorting()
+    {
+        var scanned = new[] { Row("100", 1), Row("2", 1), Row("18x", 1) };
+
+        var (rows, boundary) = ExportOrdering.ForDisplay(scanned, truncated: true);
+
+        Assert.AreEqual("18x", boundary, "the boundary is the last row the scan read, not the last printed");
+        Assert.AreEqual("100", rows[^1].CarNumber);
+    }
+
+    [TestMethod]
+    public void ForDisplay_NotTruncated_HasNoBoundary()
+    {
+        var (_, boundary) = ExportOrdering.ForDisplay(new[] { Row("2", 1) }, truncated: false);
+
+        Assert.IsNull(boundary);
+    }
+
+    [TestMethod]
+    public void ForDisplay_PitStops_OrdersCarsNumericallyThenByStop()
+    {
+        var scanned = new[]
+        {
+            new PitStopRecord { CarNumber = "100", StopNumber = 1 },
+            new PitStopRecord { CarNumber = "18x", StopNumber = 1 },
+            new PitStopRecord { CarNumber = "2", StopNumber = 2 },
+            new PitStopRecord { CarNumber = "2", StopNumber = 1 },
+        };
+
+        var (stops, _) = ExportOrdering.ForDisplay(scanned, truncated: false);
+
+        CollectionAssert.AreEqual(new[] { "2", "2", "18x", "100" }, stops.Select(x => x.CarNumber).ToArray());
+        Assert.AreEqual(1, stops[0].StopNumber);
+        Assert.AreEqual(2, stops[1].StopNumber);
+    }
+
+    /// <summary>
+    /// A truncated report says where the scan stopped, because the rows it is missing are scattered
+    /// through the numbering rather than being the ones after the last car printed.
+    /// </summary>
+    [TestMethod]
+    public void PdfNotes_Laps_TruncationNamesWhereTheScanStopped()
+    {
+        var context = Context();
+        context.TruncatedAfterCarNumber = "18x";
+
+        var notes = LapExportWriter.BuildPdfNotes(new ExportWriteResult { Truncated = true }, context);
+
+        Assert.AreEqual(1, notes.Count);
+        StringAssert.Contains(notes[0], "Truncated");
+        StringAssert.Contains(notes[0], "after car 18x");
+        StringAssert.Contains(notes[0], "scattered through the numbering");
+    }
+
+    /// <summary>Without a known boundary the note still reads as a sentence, not a dangling one.</summary>
+    [TestMethod]
+    public void PdfNotes_Laps_TruncationWithoutABoundaryStillReads()
+    {
+        var notes = LapExportWriter.BuildPdfNotes(new ExportWriteResult { Truncated = true }, Context());
+
+        Assert.AreEqual(1, notes.Count);
+        StringAssert.EndsWith(notes[0], "does not cover the whole session.");
+    }
+
+    [TestMethod]
+    public void PdfNotes_Laps_CleanReportHasNoNotes()
+    {
+        var notes = LapExportWriter.BuildPdfNotes(new ExportWriteResult(), Context());
+
+        Assert.AreEqual(0, notes.Count);
+    }
+
+    [TestMethod]
+    public void PdfNotes_Laps_ReportsSkippedRowsAndAStillLiveSession()
+    {
+        var notes = LapExportWriter.BuildPdfNotes(
+            new ExportWriteResult { SkippedRows = 3 }, Context(sessionStillLive: true));
+
+        Assert.AreEqual(2, notes.Count);
+        StringAssert.Contains(notes[0], "3 lap row(s) could not be read");
+        StringAssert.Contains(notes[1], "still flagged live");
+    }
+
+    private static LapExportRow Row(string carNumber, int lapNumber) => new()
+    {
+        CarNumber = carNumber,
+        LapNumber = lapNumber,
+        Timestamp = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc),
+    };
+
+    #endregion
+
     #region Car number ordering
 
     [TestMethod]

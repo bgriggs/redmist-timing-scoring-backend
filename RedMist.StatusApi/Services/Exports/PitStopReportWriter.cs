@@ -127,10 +127,7 @@ public static class PitStopReportWriter
         if (result.Truncated && context.TruncatedAfterCarNumber is { } lastCar)
         {
             writer.WriteString("truncatedAfterCarNumber", lastCar);
-            writer.WriteString("truncationNote",
-                "The scan stopped at its limit after car " + lastCar + " in the timing system's own " +
-                "ordering, which sorts car numbers as text. This report is sorted numerically, so the " +
-                "cars it is missing are scattered through the numbering rather than being the last ones here.");
+            writer.WriteString("truncationNote", context.TruncationScanCaveat);
         }
         writer.WriteEndObject();
         await writer.FlushAsync(cancellationToken);
@@ -202,13 +199,9 @@ public static class PitStopReportWriter
 
         if (result.Truncated)
         {
-            var after = context.TruncatedAfterCarNumber is { } lastCar
-                ? $" after car {lastCar} in the timing system's own text ordering, so the missing cars are " +
-                  "scattered through the numbering rather than being the last ones listed here"
-                : string.Empty;
             await writer.WriteLineAsync(
-                $"{CsvTruncationMarker} - export limit reached after {result.RowsWritten} stops{after}; " +
-                "this file does not cover the whole session");
+                ($"{CsvTruncationMarker} - export limit reached after {result.RowsWritten} stops; this file " +
+                 "does not cover the whole session. " + context.TruncationScanCaveat).TrimEnd());
         }
 
         if (result.SkippedRows > 0)
@@ -272,11 +265,8 @@ public static class PitStopReportWriter
         var notes = new List<string>();
         if (result.Truncated)
         {
-            var after = context.TruncatedAfterCarNumber is { } lastCar
-                ? $" The scan stopped after car {lastCar} in the timing system's own text ordering, so the " +
-                  "missing cars are scattered through the numbering rather than being the last ones listed."
-                : string.Empty;
-            notes.Add("Truncated: this report reached the export limit and does not cover the whole session." + after);
+            notes.Add(("Truncated: this report reached the export limit and does not cover the whole " +
+                       "session. " + context.TruncationScanCaveat).TrimEnd());
         }
         if (result.SkippedRows > 0)
         {

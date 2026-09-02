@@ -181,7 +181,11 @@ public static class LapExportWriter
     /// Writes the laps as CSV for Excel.
     /// </summary>
     /// <param name="output">Stream to write to.</param>
-    /// <param name="rows">The projected lap rows, in export order.</param>
+    /// <param name="rows">
+    /// The projected lap rows, streamed in scan order: car number as text, then lap number. This
+    /// format is not sorted into human car order, and must not be - it runs to two hundred thousand
+    /// rows and sorting means holding all of them. The PDF, which holds its rows anyway, is sorted.
+    /// </param>
     /// <param name="context">What the export covers; supplies the still-live marker.</param>
     /// <param name="maxRows">Row cap; the export stops and appends a truncation marker at this many rows.</param>
     /// <param name="maxBytes">Byte cap on the file; the export stops and appends a truncation marker when the file reaches it.</param>
@@ -285,12 +289,53 @@ public static class LapExportWriter
     }
 
     /// <summary>
+    /// The ways a lap PDF is not the whole truth, printed in its header block.
+    /// </summary>
+    /// <remarks>
+    /// Separated from the layout so the wording can be asserted directly. A note that silently stops
+    /// being emitted is not something a test of a binary PDF would ever catch.
+    /// </remarks>
+    /// <param name="result">What the writer produced.</param>
+    /// <param name="context">What the export covers.</param>
+    /// <returns>The notes, in the order they are printed.</returns>
+    internal static List<string> BuildPdfNotes(ExportWriteResult result, ExportContext context)
+    {
+        var notes = new List<string>();
+
+        if (!context.HasTrackOffset)
+        {
+            notes.Add("Times are UTC: this session carried no track time zone, so they are not track " +
+                      "local time.");
+        }
+
+        if (result.Truncated)
+        {
+            // The rows in this report are in car number order but the cap cut them in the scan order,
+            // so what is missing is not the tail of what is printed here.
+            notes.Add(("Truncated: this report reached the export limit and does not cover the whole " +
+                       "session. " + context.TruncationScanCaveat).TrimEnd());
+        }
+
+        if (result.SkippedRows > 0)
+            notes.Add($"{result.SkippedRows} lap row(s) could not be read and are missing from this report.");
+
+        if (context.SessionStillLive)
+        {
+            notes.Add("This session was still flagged live when the report was produced, so it may not be " +
+                      "the complete record.");
+        }
+
+        return notes;
+    }
+
+    /// <summary>
     /// Writes the laps as a paginated PDF report.
     /// </summary>
     /// <param name="output">Stream to write to.</param>
     /// <param name="rows">
-    /// The rows to render. Already capped by the caller: a PDF's layout needs every row up front,
-    /// so this list is the one place an export is allowed to hold rows in memory.
+    /// The rows to render, already capped and ordered by car number then lap. A PDF layout needs
+    /// every row up front, so this list is the one place a lap export holds rows in memory - and
+    /// therefore the one lap format that can be ordered the way a person reads a grid sheet.
     /// </param>
     /// <param name="context">What the export covers.</param>
     /// <param name="truncated">Whether the caller stopped short of the full session.</param>
@@ -309,23 +354,7 @@ public static class LapExportWriter
             ? $"Lap data - all cars ({rows.Count} laps)"
             : $"Lap data - car {context.CarNumber} ({rows.Count} laps)";
 
-        var notes = new List<string>();
-        if (!context.HasTrackOffset)
-        {
-            notes.Add("Times are UTC: this session carried no track time zone, so they are not track " +
-                      "local time.");
-        }
-        if (result.Truncated)
-            notes.Add("Truncated: this report reached the export limit and does not cover the whole session.");
-        if (result.SkippedRows > 0)
-            notes.Add($"{result.SkippedRows} lap row(s) could not be read and are missing from this report.");
-        if (context.SessionStillLive)
-        {
-            notes.Add("This session was still flagged live when the report was produced, so it may not be " +
-                      "the complete record.");
-        }
-
-        ExportPdf.Build(context, subtitle, notes, table =>
+        ExportPdf.Build(context, subtitle, BuildPdfNotes(result, context), table =>
         {
             table.ColumnsDefinition(columns =>
             {

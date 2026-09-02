@@ -423,6 +423,11 @@ public class ExportsController : ControllerBase
 
         switch (format)
         {
+            // JSON and CSV stream, and must keep streaming. They run to MaxLapRows - two hundred
+            // thousand rows of stored payload - and sorting them would mean holding a whole session
+            // in memory on a pod that also carries the live SignalR hub. So their rows come out in
+            // the scan order, which is car number as text then lap number. Only the PDF, which
+            // already has to hold its rows for layout, is sorted the way a person reads it.
             case ExportFormat.Json:
                 return await ExportTempFile.BuildAsync(ExportFormats.Extension(format), asyncWrites: true,
                     async (stream, token) =>
@@ -446,18 +451,23 @@ public class ExportsController : ControllerBase
                     }, cancellationToken);
 
             default:
-                // The PDF is the one format that has to hold its rows: page breaks are only known
+                // The PDF is the one lap format that has to hold its rows: page breaks are only known
                 // once the layout has seen all of them. Collecting under a cap here is what keeps
                 // that bounded, and the cap is deliberately an order of magnitude below the others.
-                var (lapRows, truncated) = await CollectAsync(
+                // Because the rows are in hand anyway, this is also the one that can be put into car
+                // number order - the same treatment, through the same helper, as the pit report.
+                var (scannedLaps, lapsTruncated) = await CollectAsync(
                     ExportDataSource.StreamLapRowsAsync(tsContext, context.EventId, context.SessionId,
                         context.CarNumber, diagnostics, Logger, cancellationToken),
                     MaxPdfLapRows, cancellationToken);
 
+                var (lapRows, lapBoundary) = ExportOrdering.ForDisplay(scannedLaps, lapsTruncated);
+                context.TruncatedAfterCarNumber = lapBoundary;
+
                 return await ExportTempFile.BuildAsync(ExportFormats.Extension(format), asyncWrites: false,
                     async (stream, token) =>
                     {
-                        var result = await LapExportWriter.WritePdfAsync(stream, lapRows, context, truncated,
+                        var result = await LapExportWriter.WritePdfAsync(stream, lapRows, context, lapsTruncated,
                             diagnostics, token);
                         LogResult(context, format, result);
                     }, cancellationToken);
@@ -469,28 +479,19 @@ public class ExportsController : ControllerBase
     {
         var diagnostics = new ExportScanDiagnostics();
 
-        // Unlike the lap exports, the pit report is collected before it is written. The rows arrive in
-        // the database index order, which sorts car numbers as text - so "18x" lands before "2" and
-        // "100" before "18". Ordering them the way a person reads them needs them all in hand.
-        //
-        // That is affordable here and nowhere else: a stop is a handful of fields, and a session that
-        // produces 3,000 lap rows produces a couple of hundred stops. The cap below still bounds it.
-        // The lap exports keep streaming for exactly the opposite reason - a session is up to 200,000
-        // rows of stored payload, and holding those to sort them is the thing this pod cannot do.
+        // Unlike the streamed lap exports, the pit report is collected before it is written, so it
+        // can be put into car number order. That is affordable here: a stop is a handful of fields,
+        // and a session that produces 3,000 lap rows produces a couple of hundred stops. The lap JSON
+        // and CSV keep streaming for the opposite reason - a session is up to 200,000 rows of stored
+        // payload, and holding those to sort them is the thing this pod cannot do.
         var cap = format == ExportFormat.Pdf ? MaxPdfPitStopRows : MaxPitStopRows;
         var (stops, truncated) = await CollectAsync(
             ExportDataSource.StreamPitStopsAsync(tsContext, context.EventId, context.SessionId,
                 MaxPitStopScanLaps, diagnostics, Logger, cancellationToken),
             cap, cancellationToken);
 
-        // Captured before the sort, while the list is still in the order the scan read it. That is
-        // the order the cap cut at, so it is the only place the boundary can be identified.
-        context.TruncatedAfterCarNumber = truncated && stops.Count > 0 ? stops[^1].CarNumber : null;
-
-        var ordered = stops
-            .OrderBy(x => x.CarNumber, CarNumberComparer.Instance)
-            .ThenBy(x => x.StopNumber)
-            .ToList();
+        var (ordered, boundary) = ExportOrdering.ForDisplay(stops, truncated);
+        context.TruncatedAfterCarNumber = boundary;
 
         switch (format)
         {
