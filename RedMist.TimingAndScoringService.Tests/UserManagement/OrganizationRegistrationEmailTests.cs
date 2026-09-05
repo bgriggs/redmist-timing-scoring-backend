@@ -1,10 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
-using RedMist.Backend.Shared.Utilities;
-using RedMist.Database;
-using RedMist.UserManagement.Controllers;
+﻿using RedMist.Database;
 
 namespace RedMist.TimingAndScoringService.Tests.UserManagement;
 
@@ -21,77 +15,15 @@ public class OrganizationRegistrationEmailTests
     private const string ExpectedBcc = "brian@bigmissionmotorsports.com";
 
     private RecordingOrganizationController controller = null!;
-
-    /// <summary>
-    /// Replaces the two outside dependencies of the email path only - the Keycloak secret lookup and
-    /// the mail transport. Subject construction, body rendering, the recipient/BCC choice and the
-    /// swallowing of failures all still run for real, and no test can reach live SMTP or Keycloak.
-    /// </summary>
-    private sealed class RecordingOrganizationController : OrganizationControllerBase
-    {
-        public RecordingOrganizationController(IConfiguration configuration,
-            IDbContextFactory<TsContext> tsContext, AssetsCdn assetsCdn, IHttpClientFactory httpClientFactory)
-            : base(NullLoggerFactory.Instance, tsContext, configuration, assetsCdn, httpClientFactory)
-        {
-        }
-
-        public List<(string Subject, string Body, string To, string From, string? Bcc)> Sent { get; } = [];
-        public string? SecretToReturn { get; set; } = "s3cr3t";
-        public List<string> SecretsRequestedFor { get; } = [];
-        public Exception? SecretLookupFailure { get; set; }
-        public Exception? SendFailure { get; set; }
-
-        protected override Task<string?> LoadKeycloakServiceSecret(string name)
-        {
-            SecretsRequestedFor.Add(name);
-            if (SecretLookupFailure != null)
-            {
-                return Task.FromException<string?>(SecretLookupFailure);
-            }
-            return Task.FromResult(SecretToReturn);
-        }
-
-        protected override Task SendEmailAsync(string subject, string bodyHtml, string to, string from, string? bcc)
-        {
-            Sent.Add((subject, bodyHtml, to, from, bcc));
-            if (SendFailure != null)
-            {
-                return Task.FromException(SendFailure);
-            }
-            return Task.CompletedTask;
-        }
-
-        public Task SendOrganizationEmailAsync(string userEmail, string relayClientId, string organizationName)
-            => SendOrganizationRegistrationEmailAsync(userEmail, relayClientId, organizationName);
-
-        public Task SendApiEmailAsync(string userEmail, string apiClientId)
-            => SendApiRegistrationEmailAsync(userEmail, apiClientId);
-    }
+    private TsContext db = null!;
 
     [TestInitialize]
-    public void Setup()
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Keycloak:AuthServerUrl"] = "https://auth.example.com",
-                ["Keycloak:ClientId"] = "user-management",
-                ["Keycloak:ClientSecret"] = "kc-secret",
-                ["Keycloak:Realm"] = "redmist",
-                ["Assets:StorageZoneName"] = "zone",
-                ["Assets:StorageAccessKey"] = "storage-key",
-                ["Assets:MainReplicationRegion"] = "ny",
-                ["Assets:ApiAccessKey"] = "api-key",
-                ["Assets:CdnId"] = "cdn-1",
-            })
-            .Build();
+    public void Setup() => (controller, db) = RecordingOrganizationController.Create(UserEmail);
 
-        var httpClientFactory = new Mock<IHttpClientFactory>().Object;
-        var assetsCdn = new AssetsCdn(configuration, NullLoggerFactory.Instance, httpClientFactory);
-        var dbFactory = new Mock<IDbContextFactory<TsContext>>().Object;
-
-        controller = new RecordingOrganizationController(configuration, dbFactory, assetsCdn, httpClientFactory);
-    }
+    // The database goes unused by these tests - they call the email methods directly - but the
+    // harness owns it, so it is still disposed here.
+    [TestCleanup]
+    public void Cleanup() => db?.Dispose();
 
     [TestMethod]
     public async Task OrganizationRegistration_SendsToTheRegistrantAndBccsSupport()

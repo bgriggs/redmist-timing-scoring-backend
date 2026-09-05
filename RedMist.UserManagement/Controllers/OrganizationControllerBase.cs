@@ -35,6 +35,13 @@ public abstract class OrganizationControllerBase : ControllerBase
     protected readonly string realm;
     protected ILogger Logger { get; }
 
+    /// <summary>Bounds of a usable short name. SHORT_NAME_MAX_LENGTH matches the ShortName column width.</summary>
+    private const int SHORT_NAME_MIN_LENGTH = 3;
+    private const int SHORT_NAME_MAX_LENGTH = 8;
+    private static readonly string ShortNameRequirement =
+        $"Short name must be {SHORT_NAME_MIN_LENGTH} to {SHORT_NAME_MAX_LENGTH} letters, numbers or " +
+        "dashes once spaces and unsupported characters are removed.";
+
     private const string REGISTRATION_FROM_EMAIL = "Red Mist <support@redmist.racing>";
     private const string REGISTRATION_BCC_EMAIL = "brian@bigmissionmotorsports.com";
     private const string COMMUNITY_LINKS_HTML = """
@@ -167,28 +174,55 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// <param name="name">The relay client name to check.</param>
     /// <returns>True if the client name exists, false otherwise.</returns>
     /// <response code="200">Returns boolean indicating existence.</response>
+    /// <response code="400">The name cannot be used as a short name.</response>
     /// <remarks>
     /// Used to validate organization short names before creating a new organization.
     /// Relay client IDs follow the format: relay-{name}
+    /// The name is resolved exactly as it is at creation, so an answer here is about the name
+    /// creation would actually use. A name creation would reject is rejected here too, rather than
+    /// reported as free.
     /// </remarks>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public virtual async Task<ActionResult<bool>> RelayClientNameExists(string name)
     {
-        name = SanitizeName(name);
-        Logger.LogDebug("{m} {name}", name, nameof(RelayClientNameExists));
-        var clientId = string.Format(Consts.RELAY_CLIENT_ID, name);
+        var shortName = ResolveShortName(name);
+        if (shortName == null)
+        {
+            return ShortNameRejected(nameof(name));
+        }
+
+        Logger.LogDebug("{m} {name}", nameof(RelayClientNameExists), shortName);
+        var clientId = string.Format(Consts.RELAY_CLIENT_ID, shortName);
         var client = await LoadKeycloakClientAsync(clientId);
         return client != null;
     }
 
+    /// <summary>
+    /// Checks if an API client name already exists in Keycloak.
+    /// </summary>
+    /// <param name="name">The API client name to check.</param>
+    /// <returns>True if the client name exists, false otherwise.</returns>
+    /// <response code="200">Returns boolean indicating existence.</response>
+    /// <response code="400">The name cannot be used as a short name.</response>
+    /// <remarks>
+    /// API client IDs follow the format: api-{name}. Resolved the same way as at creation, so an
+    /// answer here is about the name creation would actually use.
+    /// </remarks>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public virtual async Task<ActionResult<bool>> ApiClientNameExistsAsync(string name)
     {
-        name = SanitizeName(name);
-        Logger.LogDebug("{m} {name}", name, nameof(ApiClientNameExistsAsync));
-        var clientId = string.Format(Consts.API_CLIENT_ID, name);
+        var shortName = ResolveShortName(name);
+        if (shortName == null)
+        {
+            return ShortNameRejected(nameof(name));
+        }
+
+        Logger.LogDebug("{m} {name}", nameof(ApiClientNameExistsAsync), shortName);
+        var clientId = string.Format(Consts.API_CLIENT_ID, shortName);
         var client = await LoadKeycloakClientAsync(clientId);
         return client != null;
     }
@@ -208,6 +242,48 @@ public abstract class OrganizationControllerBase : ControllerBase
         name = Regex.Replace(name, @"-{2,}", "-");
         name = name.Trim('-');
         return name;
+    }
+
+    /// <summary>
+    /// Reduces a requested short name to the single form used for the Keycloak client ID, the
+    /// Kubernetes job names built from <see cref="Organization.ShortName"/>, and the stored
+    /// organization record.
+    /// </summary>
+    /// <param name="requested">The short name as the user typed it.</param>
+    /// <returns>The resolved short name, or null when it is not usable as one.</returns>
+    /// <remarks>
+    /// Every endpoint that talks about a short name goes through here, so the name an availability
+    /// check answers about is the name creation would use. The length bound is deliberately applied
+    /// to the sanitized value rather than the raw one, because that is the value that reaches the
+    /// client ID and the ShortName column: a raw-only bound would let "ab!" through and leave two
+    /// characters behind.
+    /// </remarks>
+    protected static string? ResolveShortName(string? requested)
+    {
+        if (string.IsNullOrWhiteSpace(requested))
+        {
+            return null;
+        }
+
+        var shortName = SanitizeName(requested);
+        return shortName.Length is < SHORT_NAME_MIN_LENGTH or > SHORT_NAME_MAX_LENGTH ? null : shortName;
+    }
+
+    /// <summary>
+    /// The one rejection for a short name that cannot be used, as ProblemDetails so the generated
+    /// clients surface the reason instead of an undefined title.
+    /// </summary>
+    private static ActionResult ShortNameRejected(string field)
+    {
+        // Built rather than routed through ValidationProblem so it does not depend on the request's
+        // service provider, but shaped the same: the generated clients read title and errors, and a
+        // bare string body reaches them as an undefined message.
+        return new BadRequestObjectResult(
+            new ValidationProblemDetails(new Dictionary<string, string[]> { [field] = [ShortNameRequirement] })
+            {
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest,
+            });
     }
 
     protected enum UserType { Organization, ApiUser }
@@ -232,6 +308,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     [HttpPost]
     [Produces("application/json")]
     [ProducesResponseType<int>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public virtual async Task<ActionResult<int>> SaveNewOrganization(OrganizationDto newOrganization)
     {
@@ -243,7 +320,13 @@ public abstract class OrganizationControllerBase : ControllerBase
             return Unauthorized("Client ID not found in user claims.");
         }
 
-        var (id, relayClientId) = await SaveNewUserAsync(UserType.Organization, newOrganization);
+        var shortName = ResolveShortName(newOrganization.ShortName);
+        if (shortName == null)
+        {
+            return ShortNameRejected(nameof(newOrganization.ShortName));
+        }
+
+        var (id, relayClientId) = await SaveNewUserAsync(UserType.Organization, newOrganization, shortName);
 
         // Email user - fire and forget so the response is not blocked
         var userEmail = User.FindFirstValue("preferred_username");
@@ -258,6 +341,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     [HttpPost]
     [Produces("application/json")]
     [ProducesResponseType<int>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public virtual async Task<ActionResult<int>> SaveNewApiUserAsync(OrganizationDto newOrganization)
     {
@@ -269,7 +353,13 @@ public abstract class OrganizationControllerBase : ControllerBase
             return Unauthorized("Client ID not found in user claims.");
         }
 
-        var (id, apiClientId) = await SaveNewUserAsync(UserType.ApiUser, newOrganization);
+        var shortName = ResolveShortName(newOrganization.ShortName);
+        if (shortName == null)
+        {
+            return ShortNameRejected(nameof(newOrganization.ShortName));
+        }
+
+        var (id, apiClientId) = await SaveNewUserAsync(UserType.ApiUser, newOrganization, shortName);
 
         // Email user - fire and forget so the response is not blocked
         var userEmail = User.FindFirstValue("preferred_username");
@@ -365,15 +455,16 @@ public abstract class OrganizationControllerBase : ControllerBase
         return emailHelper.SendEmailAsync(subject, bodyHtml, to, from, bcc);
     }
 
-    private async Task<(int organizationId, string createdClientId)> SaveNewUserAsync(UserType type, OrganizationDto newOrganization)
+    private async Task<(int organizationId, string createdClientId)> SaveNewUserAsync(UserType type,
+        OrganizationDto newOrganization, string shortName)
     {
         using var context = await tsContext.CreateDbContextAsync();
 
         var clientId = string.Empty;
         if (type == UserType.Organization)
-            clientId = string.Format(Consts.RELAY_CLIENT_ID, newOrganization.ShortName);
+            clientId = string.Format(Consts.RELAY_CLIENT_ID, shortName);
         else if (type == UserType.ApiUser)
-            clientId = string.Format(Consts.API_CLIENT_ID, newOrganization.ShortName);
+            clientId = string.Format(Consts.API_CLIENT_ID, shortName);
         else
             throw new InvalidOperationException("Invalid user type specified.");
 
@@ -382,7 +473,7 @@ public abstract class OrganizationControllerBase : ControllerBase
         {
             Name = newOrganization.Name,
             ClientId = clientId,
-            ShortName = newOrganization.ShortName,
+            ShortName = shortName,
             Website = newOrganization.Website,
             Logo = newOrganization.Logo,
             ControlLogType = string.Empty,
@@ -463,8 +554,10 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// <item>Relay service role assignment</item>
     /// <item>OpenID Connect protocol</item>
     /// </list>
+    /// <para>Virtual only to give tests a seam; without it there is no way to exercise a registration
+    /// without a live Keycloak.</para>
     /// </remarks>
-    protected async Task<bool> CreateKeycloakClientAsync(string clientId, string userName, UserType type)
+    protected virtual async Task<bool> CreateKeycloakClientAsync(string clientId, string userName, UserType type)
     {
         if (userName.Length > 30)
             userName = userName[..30];
@@ -765,7 +858,8 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// </summary>
     /// <param name="clientName">The client ID to search for.</param>
     /// <returns>The Keycloak client representation, or null if not found.</returns>
-    protected async Task<ClientRepresentation?> LoadKeycloakClientAsync(string clientName)
+    /// <remarks>Virtual only to give tests a seam; production always queries Keycloak.</remarks>
+    protected virtual async Task<ClientRepresentation?> LoadKeycloakClientAsync(string clientName)
     {
         using var httpClient = await GetHttpClient();
         var keycloak = new KeycloakClient(keycloakUrl, httpClient);
