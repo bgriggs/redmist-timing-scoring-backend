@@ -7,6 +7,7 @@ using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.UserManagement.Models;
+using System.Net;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 
@@ -33,6 +34,13 @@ public abstract class OrganizationControllerBase : ControllerBase
     protected readonly string clientSecret;
     protected readonly string realm;
     protected ILogger Logger { get; }
+
+    private const string REGISTRATION_FROM_EMAIL = "Red Mist <support@redmist.racing>";
+    private const string REGISTRATION_BCC_EMAIL = "brian@bigmissionmotorsports.com";
+    private const string COMMUNITY_LINKS_HTML = """
+        <p><strong>Join the Discord:</strong> <a href="https://discord.gg/9m3unnqw5Z">here</a><br>
+        <strong>Follow on Facebook:</strong> <a href="https://www.facebook.com/profile.php?id=61586424808299">here</a></p>
+        """;
 
 
     /// <summary>
@@ -235,7 +243,14 @@ public abstract class OrganizationControllerBase : ControllerBase
             return Unauthorized("Client ID not found in user claims.");
         }
 
-        var id = await SaveNewUserAsync(UserType.Organization, newOrganization);
+        var (id, relayClientId) = await SaveNewUserAsync(UserType.Organization, newOrganization);
+
+        // Email user - fire and forget so the response is not blocked
+        var userEmail = User.FindFirstValue("preferred_username");
+        if (!string.IsNullOrEmpty(userEmail))
+        {
+            _ = Task.Run(() => SendOrganizationRegistrationEmailAsync(userEmail, relayClientId, newOrganization.Name));
+        }
 
         return Ok(id);
     }
@@ -254,24 +269,31 @@ public abstract class OrganizationControllerBase : ControllerBase
             return Unauthorized("Client ID not found in user claims.");
         }
 
-        var id = await SaveNewUserAsync(UserType.ApiUser, newOrganization);
+        var (id, apiClientId) = await SaveNewUserAsync(UserType.ApiUser, newOrganization);
 
         // Email user - fire and forget so the response is not blocked
         var userEmail = User.FindFirstValue("preferred_username");
         if (!string.IsNullOrEmpty(userEmail))
         {
-            var apiClientId = string.Format(Consts.API_CLIENT_ID, newOrganization.ShortName);
             _ = Task.Run(() => SendApiRegistrationEmailAsync(userEmail, apiClientId));
         }
 
         return Ok(id);
     }
 
-    private async Task SendApiRegistrationEmailAsync(string userEmail, string apiClientId)
+    protected async Task SendApiRegistrationEmailAsync(string userEmail, string apiClientId)
     {
         try
         {
             var apiClientSecret = await LoadKeycloakServiceSecret(apiClientId);
+            if (string.IsNullOrEmpty(apiClientSecret))
+            {
+                // Provisioning failed upstream and only logged, so the credentials the mail exists to
+                // deliver are not there. Sending a blank secret would look like a working registration.
+                Logger.LogError("No client secret found for {clientId}; skipping the API registration email to {email}", apiClientId, userEmail);
+                return;
+            }
+
             var emailBody = $"""
                 <html><body>
                 <p>Thank you for registering with Red Mist! Here are credentials for accessing the API:</p>
@@ -279,21 +301,71 @@ public abstract class OrganizationControllerBase : ControllerBase
                 <strong>Client Secret:</strong> {apiClientSecret}</p>
                 <p><strong>Documentation:</strong> <a href="https://docs.redmist.racing/">here</a><br>
                 <strong>Sample Projects:</strong> <a href="https://github.com/bgriggs/redmist-timing-scoring-backend/tree/main/samples">here</a></p>
-                <p><strong>Join the Discord:</strong> <a href="https://discord.gg/9m3unnqw5Z">here</a><br>
-                <strong>Follow on Facebook:</strong> <a href="https://www.facebook.com/profile.php?id=61586424808299">here</a></p>
+                {COMMUNITY_LINKS_HTML}
                 </body></html>
                 """;
-            var emailHelper = new EmailHelper(configuration);
-            await emailHelper.SendEmailAsync("Red Mist API Registration", emailBody, userEmail, "Red Mist <support@redmist.racing>", "brian@bigmissionmotorsports.com");
+            await SendRegistrationEmailAsync("Red Mist API Registration", emailBody, userEmail);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to send registration email to {email}", userEmail);
+            Logger.LogError(ex, "Failed to send the API registration email to {email}", userEmail);
         }
     }
 
+    protected async Task SendOrganizationRegistrationEmailAsync(string userEmail, string relayClientId, string organizationName)
+    {
+        try
+        {
+            var relayClientSecret = await LoadKeycloakServiceSecret(relayClientId);
+            if (string.IsNullOrEmpty(relayClientSecret))
+            {
+                // Provisioning failed upstream and only logged, so the credentials the mail exists to
+                // deliver are not there. Sending a blank secret would look like a working registration.
+                Logger.LogError("No client secret found for {clientId}; skipping the organization registration email to {email}", relayClientId, userEmail);
+                return;
+            }
 
-    private async Task<int> SaveNewUserAsync(UserType type, OrganizationDto newOrganization)
+            // The organization name is whatever the registrant typed, and this mail is also blind-copied
+            // internally, so it is encoded rather than dropped straight into the markup.
+            var encodedName = WebUtility.HtmlEncode(organizationName);
+            var emailBody = $"""
+                <html><body>
+                <p>Thank you for registering {encodedName} with Red Mist! Here are the credentials your relay software needs to send timing data to the cloud:</p>
+                <p><strong>Client ID:</strong> {relayClientId}<br>
+                <strong>Client Secret:</strong> {relayClientSecret}</p>
+                <p>Keep these credentials private. You can look them up again at any time from your organization's settings at <a href="https://redmist.racing/">redmist.racing</a>.</p>
+                {COMMUNITY_LINKS_HTML}
+                </body></html>
+                """;
+            await SendRegistrationEmailAsync("Red Mist Organization Registration", emailBody, userEmail);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to send the organization registration email to {email}", userEmail);
+        }
+    }
+
+    /// <summary>
+    /// Sends a registration email to the person who registered, blind-copying Red Mist support so
+    /// new sign-ups are visible without the registrant seeing the internal address.
+    /// </summary>
+    private Task SendRegistrationEmailAsync(string subject, string emailBody, string userEmail)
+        => SendEmailAsync(subject, emailBody, userEmail, REGISTRATION_FROM_EMAIL, REGISTRATION_BCC_EMAIL);
+
+    /// <summary>
+    /// Sends one email through the configured mail transport.
+    /// </summary>
+    /// <remarks>
+    /// Virtual only to give tests a seam; without it there is no way to exercise a send without a
+    /// real mail server. Production always sends through <see cref="EmailHelper"/>.
+    /// </remarks>
+    protected virtual Task SendEmailAsync(string subject, string bodyHtml, string to, string from, string? bcc)
+    {
+        var emailHelper = new EmailHelper(configuration);
+        return emailHelper.SendEmailAsync(subject, bodyHtml, to, from, bcc);
+    }
+
+    private async Task<(int organizationId, string createdClientId)> SaveNewUserAsync(UserType type, OrganizationDto newOrganization)
     {
         using var context = await tsContext.CreateDbContextAsync();
 
@@ -357,7 +429,7 @@ public abstract class OrganizationControllerBase : ControllerBase
             Logger.LogError("Failed to create Keycloak relay client for organization {organizationId}", organization.Id);
         }
 
-        return organization.Id;
+        return (organization.Id, clientId);
     }
 
     private async Task UpdateLogoInCdnAsync(TsContext context, Organization organization)
@@ -728,7 +800,7 @@ public abstract class OrganizationControllerBase : ControllerBase
     /// </summary>
     /// <param name="name">The client ID of the service account.</param>
     /// <returns>The client secret, or null if not found.</returns>
-    protected async Task<string?> LoadKeycloakServiceSecret(string name)
+    protected virtual async Task<string?> LoadKeycloakServiceSecret(string name)
     {
         var client = await LoadKeycloakClientAsync(name);
         if (client != null)
