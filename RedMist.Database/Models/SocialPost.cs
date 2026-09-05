@@ -121,6 +121,18 @@ public class SocialPost
     /// <summary>Findings from digest and copy validation, surfaced to the reviewer.</summary>
     public string? ValidationWarnings { get; set; }
 
+    /// <summary>
+    /// True when the copy still failed validation after every generation attempt -- most importantly,
+    /// when it states a number the digest cannot support.
+    /// </summary>
+    /// <remarks>
+    /// A column rather than a line in <see cref="ValidationWarnings"/> because it has to be queryable
+    /// and impossible to miss. The draft is offered for review either way, so this is the only thing
+    /// separating "read this carefully" from "read this"; leaving it as free text would make the
+    /// review UI substring-match a log convention to tell the two apart.
+    /// </remarks>
+    public bool HasUnverifiedClaims { get; set; }
+
     /// <summary>Identifier returned by the channel once published; the proof a post exists remotely.</summary>
     [MaxLength(200)]
     public string? ExternalPostId { get; set; }

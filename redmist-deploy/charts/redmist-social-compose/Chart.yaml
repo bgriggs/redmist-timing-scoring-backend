@@ -1,0 +1,5 @@
+apiVersion: v2
+name: redmist-social-compose
+description: Nightly CronJob that drafts social posts about finished events for human review.
+type: application
+version: 0.1.0

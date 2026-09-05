@@ -58,6 +58,9 @@ jobs:
           - name: "Sponsor Reports"
             dockerfile: "./RedMist.SponsorReports/Dockerfile"
             image: "bigmission/redmist-sponsor-reports"
+          - name: "Social Compose"
+            dockerfile: "./RedMist.SocialCompose/Dockerfile"
+            image: "bigmission/redmist-social-compose"
 
     steps:
       - name: Checkout code
@@ -108,3 +111,4 @@ jobs:
           echo "  - bigmission/redmist-external-data-collection:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-sponsor-data-rollup:${{ needs.extract-version.outputs.version }}"
           echo "  - bigmission/redmist-sponsor-reports:${{ needs.extract-version.outputs.version }}"
+          echo "  - bigmission/redmist-social-compose:${{ needs.extract-version.outputs.version }}"

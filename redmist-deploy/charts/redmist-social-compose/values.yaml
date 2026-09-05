@@ -1,0 +1,61 @@
+image:
+  repository: bigmission/redmist-social-compose
+  tag: latest
+  pullPolicy: Always
+
+# 5 AM UTC daily. Late enough that a Sunday evening race has passed the settle period below by the
+# time Monday's run looks at it, and off the hour that the other nightly jobs already use.
+schedule: "0 5 * * *"
+
+# Prevent overlapping runs. Two runs drafting the same event at once is survivable -- the unique
+# IdempotencyKey means one loses -- but it would pay for a generation call to throw the result away.
+concurrencyPolicy: Forbid
+
+# Job history
+successfulJobsHistoryLimit: 3
+failedJobsHistoryLimit: 3
+
+# Job timeout (1 hour)
+activeDeadlineSeconds: 3600
+
+restartPolicy: OnFailure
+
+# Deliberately lower than the other jobs. A retry re-runs the whole pass, and while an already
+# drafted event is skipped without cost, a run that fails repeatedly mid-pass would keep paying for
+# generation calls on the events it had not reached yet.
+backoffLimit: 1
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "128Mi"
+  limits:
+    cpu: "200m"
+    memory: "512Mi"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+env:
+  # Wait a full day after an event ends before drafting. An EndDate is a date, so it lands at
+  # midnight: without this the job would draft from a race that was still running.
+  "Social__SettleHours": "24"
+  # How far back to look. Bounds a first run, or a run after an outage, to recent racing rather
+  # than the whole back catalog.
+  "Social__LookbackDays": "14"
+  # Ceiling on drafts written per run, so an unexpected burst of finished events cannot turn into
+  # an unexpected bill.
+  "Social__MaxEventsPerRun": "10"
+  "Social__Channel": "Facebook"
+  "Social__Model": "claude-sonnet-5"
+  "Social__MaxAttempts": "3"
+  "Social__MaxCharacters": "1200"
+
+# Chart-local rather than added to global.secrets: global secrets are injected into every service's
+# pods, and the API key has no business anywhere but here.
+secrets:
+  - env: "Claude__ApiKey"
+    name: "rmkeys"
+    key: "claudeapikey"

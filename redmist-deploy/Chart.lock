@@ -17,6 +17,9 @@ dependencies:
 - name: redmist-sponsor-data-rollup
   repository: ""
   version: 0.1.0
+- name: redmist-social-compose
+  repository: ""
+  version: 0.1.0
 - name: redmist-sponsor-reports
   repository: ""
   version: 0.1.0
@@ -26,5 +29,5 @@ dependencies:
 - name: redmist-user-management
   repository: ""
   version: 0.1.0
-digest: sha256:eaddd0863d882066183b55d483b82ce70ae05eb4f79277caefe564df221707e9
-generated: "2026-08-09T12:22:06.9731888-06:00"
+digest: sha256:d79eaa01116b9f62f74b4efff8dba87bc9f274caeb1d07be3f39c259192e4207
+generated: "2026-09-05T15:50:32.8188859-06:00"

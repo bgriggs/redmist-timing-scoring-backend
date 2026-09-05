@@ -46,6 +46,22 @@ global:
       name: "rmkeys"
       key: "emailpassword"
 
+# Social post composition.
+#
+# Off by default, and deliberately so. Turning it on starts a nightly job that calls a paid API and
+# writes drafts, and two things have to be true first:
+#   1. The rmkeys secret needs a claudeapikey entry. Without it the pod cannot start, and because a
+#      CronJob creates no pod until its schedule fires, `helm upgrade --wait` will not catch that --
+#      the first failure would appear at 5 AM.
+#   2. There is somewhere to review what it drafts. Nothing here can publish, so until the admin UI
+#      exists the drafts would sit in SocialPosts unread.
+# Enable with --set redmist-social-compose.enabled=true, or by flipping this once both hold.
+#
+# The condition key has to live here rather than in the subchart's own values.yaml: see the note in
+# Chart.yaml about coalesced values.
+redmist-social-compose:
+  enabled: false
+
 # Redis Operator configuration
 redis-operator:
   enabled: true
