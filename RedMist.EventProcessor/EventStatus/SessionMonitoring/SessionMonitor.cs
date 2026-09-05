@@ -5,6 +5,7 @@ using RedMist.Backend.Shared;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
+using RedMist.EventProcessor.EventStatus.SessionMonitoring.Metrics;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Extensions;
 using RedMist.TimingCommon.Models;
@@ -29,6 +30,8 @@ public class SessionMonitor : BackgroundService
     private readonly IDbContextFactory<TsContext> tsContext;
     private readonly SessionContext sessionContext;
     private readonly IConnectionMultiplexer cacheMux;
+    private readonly ISessionMetricsDeriver metricsDeriver;
+    private readonly TimeProvider timeProvider;
     private readonly static Flags[] activeSessionFlags = [Flags.White, Flags.Green, Flags.Yellow, Flags.Purple35];
     private readonly static Flags[] finishedSessionFlags = [Flags.Checkered];
     private TimeSpan? finishingStartedTimestamp;
@@ -58,15 +61,34 @@ public class SessionMonitor : BackgroundService
     /// </summary>
     private bool hasAdoptedSession;
 
+    /// <summary>
+    /// Sessions whose written-out results are still missing their lap-log metrics, and the moment
+    /// each stops being retried. See <see cref="CompletePendingLapMetrics"/>.
+    /// </summary>
+    private readonly Dictionary<int, DateTime> pendingLapMetrics = [];
+    private readonly Lock pendingLapMetricsGate = new();
+
+    /// <summary>
+    /// How long a session keeps being offered to <see cref="CompletePendingLapMetrics"/> before its
+    /// lap-log metrics are given up on. Long enough to cover a logger that has fallen behind, or a
+    /// feed still sending laps for a session it has already finished - both of which happen, and
+    /// both of which resolve within a couple of minutes - and short enough that a session which
+    /// never converges stops costing a query every pass.
+    /// </summary>
+    private static readonly TimeSpan LapMetricsWindow = TimeSpan.FromMinutes(5);
+
 
     public SessionMonitor(IConfiguration configuration, IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory,
-        SessionContext sessionContext, IConnectionMultiplexer cacheMux)
+        SessionContext sessionContext, IConnectionMultiplexer cacheMux, ISessionMetricsDeriver metricsDeriver,
+        TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         eventId = configuration.GetValue("event_id", 0);
         this.tsContext = tsContext;
         this.sessionContext = sessionContext;
         this.cacheMux = cacheMux;
+        this.metricsDeriver = metricsDeriver;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
         cacheMux.ConnectionRestored += CacheMux_ConnectionRestoredAsync;
     }
 
@@ -138,6 +160,10 @@ public class SessionMonitor : BackgroundService
         // the lock released.
         if (finished != null)
             SaveOrKeepForRetry(finished);
+
+        // Runs after this pass's save so a session that has just been written out and could not
+        // reach its lap log gets its first retry on the next pass rather than immediately.
+        CompletePendingLapMetrics();
     }
 
     private async void CacheMux_ConnectionRestoredAsync(object? sender, ConnectionFailedEventArgs e)
@@ -636,6 +662,11 @@ public class SessionMonitor : BackgroundService
                 }
 
                 var controlLogs = ReadControlLog();
+
+                // The state a newer snapshot displaced, if it displaced one. Its derived metrics are
+                // carried across below rather than being lost with it.
+                SessionState? replaced = null;
+
                 if (existingResult != null)
                 {
                     Logger.LogWarning("Session was already finalized for session {sessionId}. Checking for inconsistencies...", sessionId);
@@ -649,6 +680,7 @@ public class SessionMonitor : BackgroundService
                         && sessionState.FlagDurations.Count >= existingResult.SessionState?.FlagDurations.Count)
                     {
                         Logger.LogInformation("Updating session state for session {sessionId} with more data", sessionId);
+                        replaced = existingResult.SessionState;
                         existingResult.SessionState = sessionState;
                     }
                     else
@@ -668,7 +700,7 @@ public class SessionMonitor : BackgroundService
                 }
                 else
                 {
-                    var result = new SessionResult
+                    existingResult = new SessionResult
                     {
                         EventId = eventId,
                         SessionId = sessionId,
@@ -676,11 +708,22 @@ public class SessionMonitor : BackgroundService
                         SessionState = sessionState,
                         ControlLogs = controlLogs
                     };
-                    db.SessionResults.Add(result);
+                    db.SessionResults.Add(existingResult);
                 }
+
+                // Only the metrics that come out of the state itself, and only onto whatever ended up
+                // being stored - including a state that was kept in preference to this one, since
+                // that is the row that will be read. The ones that need the lap log are left to
+                // CompletePendingLapMetrics: reading the log is slow, and this runs on the pipeline
+                // thread with the session write lock held when a run change is what ended the
+                // session, which is the one place the feed cannot afford to be held up.
+                ApplyStateMetrics(db, existingResult, replaced);
             }
 
             db.SaveChanges();
+
+            if (session != null)
+                RememberForLapMetrics(sessionId);
             return true;
         }
         catch (Exception ex)
@@ -689,6 +732,250 @@ public class SessionMonitor : BackgroundService
             return false;
         }
     }
+
+    #region Derived metrics
+
+    /// <summary>
+    /// Works out the race metrics that come out of the session state alone - the flag counters and
+    /// the average race speed - and puts them on the results being saved, along with anything an
+    /// earlier write had already established. See <see cref="ISessionMetricsDeriver"/>.
+    ///
+    /// Never throws. These are a decoration on the results; losing them is a worse digest, whereas
+    /// losing the results is losing the session.
+    ///
+    /// <paramref name="replaced"/> is the state a newer snapshot displaced, or null if none was. The
+    /// metrics are derived onto the newer state first and only then filled in from the older one, so
+    /// a fresh measurement wins and the older one is the fallback for whatever the newer state cannot
+    /// answer - it may name laps the log has not reached, and would otherwise reset an answer that
+    /// was already correct.
+    /// </summary>
+    private void ApplyStateMetrics(TsContext db, SessionResult? result, SessionState? replaced)
+    {
+        var state = result?.SessionState;
+        if (result is null || state is null)
+            return;
+
+        try
+        {
+            var before = DerivedMetricsFingerprint(state);
+            var distance = db.Events.AsNoTracking().Where(e => e.Id == eventId).Select(e => e.Distance).FirstOrDefault();
+            metricsDeriver.ApplyFlagMetrics(state, distance);
+            CarryDerivedMetricsForward(replaced, state);
+
+            if (before != DerivedMetricsFingerprint(state))
+                MarkSessionStateModified(db, result);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deriving session metrics for session {sessionId}", result.SessionId);
+        }
+    }
+
+    /// <summary>
+    /// The state is stored as a single serialized column, so a change made inside it is not
+    /// something change tracking would notice on its own. An entity being added already carries its
+    /// whole value, and one that is no longer tracked has nothing to mark.
+    /// </summary>
+    private static void MarkSessionStateModified(TsContext db, SessionResult result)
+    {
+        var entry = db.Entry(result);
+        if (entry.State is EntityState.Unchanged or EntityState.Modified)
+            entry.Property(r => r.SessionState).IsModified = true;
+    }
+
+    /// <summary>
+    /// Everything the derivation can write, in one value, so a pass that changed nothing does not
+    /// rewrite the column. The per-car part is how many laps-led values there are and what they add
+    /// up to rather than the values themselves, which distinguishes every change that can actually
+    /// happen here: a value is only ever filled in, never cleared, and never changed in a way that
+    /// leaves the total the same.
+    /// </summary>
+    private static (int?, int?, int?, int?, int?, int?, int?, string?, int, long) DerivedMetricsFingerprint(SessionState state)
+    {
+        var lapsLedCount = 0;
+        long lapsLedTotal = 0;
+        foreach (var car in state.CarPositions)
+        {
+            if (car.LapsLedOverall is { } overall)
+            {
+                lapsLedCount++;
+                lapsLedTotal += overall;
+            }
+            if (car.LapsLedInClass is { } inClass)
+            {
+                lapsLedCount++;
+                lapsLedTotal += inClass;
+            }
+        }
+
+        return (state.GreenTimeMs, state.GreenLaps, state.YellowTimeMs, state.YellowLaps,
+            state.NumberOfYellows, state.RedTimeMs, state.LeadChanges, state.AverageRaceSpeed,
+            lapsLedCount, lapsLedTotal);
+    }
+
+    /// <summary>
+    /// Copies derived metrics that a saved result established onto the state that is about to
+    /// replace it, for each one the newer state has not got. Only fills gaps: where both have a
+    /// value the newer one wins, because it was measured against a more complete session.
+    ///
+    /// Laps led are carried as a whole set, with a car the older state never saw taking zero rather
+    /// than null. The older pass read the entire lap log, so a car it did not count as leading led
+    /// nothing up to that point - and leaving one car null would make the field look partly supplied
+    /// by a feed, which is the one thing that stops it being worked out properly later.
+    /// </summary>
+    private static void CarryDerivedMetricsForward(SessionState? saved, SessionState replacement)
+    {
+        if (saved is null)
+            return;
+
+        replacement.GreenTimeMs ??= saved.GreenTimeMs;
+        replacement.GreenLaps ??= saved.GreenLaps;
+        replacement.YellowTimeMs ??= saved.YellowTimeMs;
+        replacement.YellowLaps ??= saved.YellowLaps;
+        replacement.NumberOfYellows ??= saved.NumberOfYellows;
+        replacement.RedTimeMs ??= saved.RedTimeMs;
+        replacement.LeadChanges ??= saved.LeadChanges;
+        if (string.IsNullOrWhiteSpace(replacement.AverageRaceSpeed))
+            replacement.AverageRaceSpeed = saved.AverageRaceSpeed;
+
+        var savedHasLapsLed = saved.CarPositions.Any(c => c.LapsLedOverall is not null || c.LapsLedInClass is not null);
+        if (!savedHasLapsLed)
+            return;
+
+        var savedCars = new Dictionary<string, CarPosition>();
+        foreach (var car in saved.CarPositions)
+        {
+            if (!string.IsNullOrEmpty(car.Number))
+                savedCars.TryAdd(car.Number, car);
+        }
+
+        foreach (var car in replacement.CarPositions)
+        {
+            if (string.IsNullOrEmpty(car.Number))
+                continue;
+
+            savedCars.TryGetValue(car.Number, out var savedCar);
+            car.LapsLedOverall ??= savedCar?.LapsLedOverall ?? 0;
+            car.LapsLedInClass ??= savedCar?.LapsLedInClass ?? 0;
+        }
+    }
+
+    /// <summary>
+    /// Puts a session in line for its lap-log metrics - lead changes, laps led and the leader's
+    /// green and yellow lap counts.
+    ///
+    /// These are worked out on the finish check's own loop rather than where the session is written
+    /// out, for two reasons. Reading the whole lap log is slow, and the write can happen on the
+    /// pipeline thread with the session write lock held, which is where holding the feed up costs
+    /// the most. And the lap log is filled in by a different service consuming a Redis stream, so
+    /// the tail of a race is routinely still in flight when the session ends - in some sessions the
+    /// feed is still sending laps minutes afterwards - and a later attempt is a better attempt.
+    /// </summary>
+    private void RememberForLapMetrics(int sessionId)
+    {
+        lock (pendingLapMetricsGate)
+        {
+            if (pendingLapMetrics.TryAdd(sessionId, timeProvider.GetUtcNow().UtcDateTime + LapMetricsWindow))
+                Logger.LogDebug("Session {sessionId} is queued for lead changes and laps led.", sessionId);
+        }
+    }
+
+    /// <summary>
+    /// Works out the lap-log metrics for sessions whose results have been saved without them.
+    ///
+    /// Reads the saved result rather than the state it was saved from, so a session whose results
+    /// have since been rewritten picks up where the rewrite left off rather than resurrecting an
+    /// older snapshot. Only ever adds what is missing, so a session can be put through this as many
+    /// times as it takes; one that never converges is dropped at its deadline, because this cannot
+    /// go on querying for the life of the event and a wrong number is worse than none.
+    /// </summary>
+    private void CompletePendingLapMetrics()
+    {
+        KeyValuePair<int, DateTime>[] pending;
+        lock (pendingLapMetricsGate)
+        {
+            if (pendingLapMetrics.Count == 0)
+                return;
+            pending = [.. pendingLapMetrics];
+        }
+
+        foreach (var (sessionId, deadline) in pending)
+        {
+            try
+            {
+                if (timeProvider.GetUtcNow().UtcDateTime > deadline)
+                {
+                    Logger.LogWarning("Giving up on lead changes and laps led for session {sessionId}: " +
+                        "its lap log never covered the session.", sessionId);
+                    Forget(sessionId);
+                    continue;
+                }
+
+                if (TryCompleteLapMetrics(sessionId))
+                    Forget(sessionId);
+            }
+            catch (Exception ex)
+            {
+                // Left in the queue: the next pass tries again, up to the deadline.
+                Logger.LogError(ex, "Error completing session metrics for session {sessionId}", sessionId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// One attempt at a session's lap-log metrics.
+    ///
+    /// The reading is done against a copy that nothing is tracking, and only the answers are written
+    /// back onto a freshly loaded row. Working the metrics out means streaming every lap of the
+    /// session, which takes long enough that a result loaded beforehand and saved afterwards could
+    /// put back a snapshot that a finalize on another thread had replaced in the meantime - and
+    /// results are the session's only permanent record.
+    /// </summary>
+    /// <returns>Whether the session is settled and needs no further attempt.</returns>
+    private bool TryCompleteLapMetrics(int sessionId)
+    {
+        SessionState? candidate;
+        using (var read = tsContext.CreateDbContext())
+        {
+            candidate = read.SessionResults.AsNoTracking()
+                .Where(r => r.EventId == eventId && r.SessionId == sessionId)
+                .Select(r => r.SessionState)
+                .FirstOrDefault();
+
+            // Nothing was written for the session after all, so there is nothing to add to.
+            if (candidate is null)
+                return true;
+
+            if (!metricsDeriver.TryApplyLapMetrics(candidate, new DbSessionLapLog(tsContext, eventId, sessionId)))
+            {
+                Logger.LogDebug("Lap log for session {sessionId} does not cover the session yet.", sessionId);
+                return false;
+            }
+        }
+
+        using var db = tsContext.CreateDbContext();
+        var result = db.SessionResults.FirstOrDefault(r => r.EventId == eventId && r.SessionId == sessionId);
+        if (result?.SessionState is null)
+            return true;
+
+        var before = DerivedMetricsFingerprint(result.SessionState);
+        CarryDerivedMetricsForward(candidate, result.SessionState);
+        if (before == DerivedMetricsFingerprint(result.SessionState))
+            return true;
+
+        MarkSessionStateModified(db, result);
+        db.SaveChanges();
+        Logger.LogInformation("Filled in lead changes and laps led for session {sessionId}.", sessionId);
+        return true;
+    }
+
+    private void Forget(int sessionId)
+    {
+        lock (pendingLapMetricsGate)
+            pendingLapMetrics.Remove(sessionId);
+    }
+
+    #endregion
 
     /// <summary>
     /// Announces that the session has ended. Fires when the session closes rather than when its

@@ -19,6 +19,7 @@ using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.EventProcessor.EventStatus.RMonitor;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring;
+using RedMist.EventProcessor.EventStatus.SessionMonitoring.Metrics;
 using RedMist.EventProcessor.EventStatus.Video;
 using RedMist.EventProcessor.EventStatus.X2;
 using RedMist.EventProcessor.Models;
@@ -322,7 +323,7 @@ public class EventAggregatorServiceTests
                 new MultiloopProcessor(loggerFactory, SessionContext),
                 pitProcessor,
                 new FlagProcessor(dbFactory, loggerFactory, SessionContext),
-                new SessionMonitor(configuration, dbFactory, loggerFactory, SessionContext, mux.Object),
+                new SessionMonitor(configuration, dbFactory, loggerFactory, SessionContext, mux.Object, new SessionMetricsDeriver()),
                 new PositionDataEnricher(loggerFactory, SessionContext),
                 new ControlLogEnricher(loggerFactory, mux.Object, configuration, SessionContext),
                 new DriverModeProcessor(hubContext, loggerFactory, new FakeHybridCache(), dbFactory, mux.Object, SessionContext),

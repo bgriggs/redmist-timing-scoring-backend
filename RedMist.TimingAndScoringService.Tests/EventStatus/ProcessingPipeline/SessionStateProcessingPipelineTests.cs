@@ -22,6 +22,7 @@ using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.EventProcessor.EventStatus.RMonitor;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring;
+using RedMist.EventProcessor.EventStatus.SessionMonitoring.Metrics;
 using RedMist.EventProcessor.EventStatus.Video;
 using RedMist.EventProcessor.EventStatus.X2;
 using RedMist.EventProcessor.Models;
@@ -194,7 +195,7 @@ public class SessionStateProcessingPipelineTests
         _pitProcessor = new PitProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _controlLogEnricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);
         _flagProcessor = new FlagProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
-        _sessionMonitor = new SessionMonitor(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext, _mockConnectionMultiplexer.Object);
+        _sessionMonitor = new SessionMonitor(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext, _mockConnectionMultiplexer.Object, new SessionMetricsDeriver());
         _driverModeProcessor = new DriverModeProcessor(
             _mockHubContext.Object,
             _mockLoggerFactory.Object,
