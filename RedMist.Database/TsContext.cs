@@ -38,6 +38,8 @@ public class TsContext : DbContext
     public DbSet<EventSponsorStatistics> EventSponsorStatistics { get; set; } = null!;
     public DbSet<SourceSponsorStatistics> SourceSponsorStatistics { get; set; } = null!;
     public DbSet<TrackMapRecord> TrackMaps { get; set; } = null!;
+    public DbSet<SocialPost> SocialPosts { get; set; } = null!;
+    public DbSet<SocialPrompt> SocialPrompts { get; set; } = null!;
 
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }
@@ -53,6 +55,14 @@ public class TsContext : DbContext
             optionsBuilder.UseNpgsql("Host=localhost;Database=redmist-timing-dev;Username=postgres;Password=");
         }
     }
+
+    /// <summary>
+    /// Builds a CHECK constraint restricting a text column to the names of an enum, so that the value
+    /// stored can always be converted back. Generated from the enum itself rather than written out,
+    /// so adding a member cannot leave the constraint behind.
+    /// </summary>
+    private static string BuildEnumCheck<TEnum>(string columnName) where TEnum : struct, Enum =>
+        $"\"{columnName}\" IN ({string.Join(", ", Enum.GetNames<TEnum>().Select(n => $"'{n}'"))})";
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -154,6 +164,79 @@ public class TsContext : DbContext
         // Sponsor exclusions: one row per (organization, blocked sponsor). Keyed on OrganizationId first so
         // the lookup for "what does this event's organization exclude" is a prefix scan of the PK index.
         modelBuilder.Entity<SponsorExclusion>().HasKey(e => new { e.OrganizationId, e.SponsorId });
+
+        // Social posts. The enums are stored as text rather than the default ordinal: this table is
+        // read by a person during review and triage, and "Publishing" tells them something that "3"
+        // does not. It also means inserting a new enum member cannot silently renumber existing rows.
+        modelBuilder.Entity<SocialPost>().Property(p => p.Kind).HasConversion<string>().HasMaxLength(50);
+        modelBuilder.Entity<SocialPost>().Property(p => p.Channel).HasConversion<string>().HasMaxLength(50);
+        modelBuilder.Entity<SocialPost>().Property(p => p.State).HasConversion<string>().HasMaxLength(50);
+
+        // One post per thing-being-posted-about. This is what stops a retried compose job, or a job
+        // that ran twice, producing two drafts for the same event.
+        modelBuilder.Entity<SocialPost>().HasIndex(p => p.IdempotencyKey).IsUnique();
+
+        // Optimistic concurrency on every write, not just the publish job's conditional claim. The
+        // Publishing state is a trap that must survive until a human clears it, but a tracked-entity
+        // save is "UPDATE ... WHERE Id = @id" with no state predicate, so a reviewer holding a page
+        // loaded before the claim could save an unrelated text edit and put the row back to Approved
+        // -- releasing the trap and letting the same result be posted to Facebook twice. With xmin as
+        // a token that write throws instead of silently winning.
+        // PostgreSQL's own row version. A shadow property rather than a mapped column, so this adds no
+        // DDL: xmin is a system column every table already has.
+        modelBuilder.Entity<SocialPost>().Property<uint>("xmin")
+            .HasColumnName("xmin")
+            .HasColumnType("xid")
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
+
+        // The enum columns are plain text, and a value outside the enum fails during materialization
+        // rather than on the offending row alone -- one hand-typo would make every SocialPosts query
+        // throw. Since reading and occasionally correcting this table by hand is the whole point of
+        // storing enums as text, the database enforces the vocabulary.
+        modelBuilder.Entity<SocialPost>().ToTable(t =>
+        {
+            t.HasCheckConstraint("CK_SocialPosts_State", BuildEnumCheck<SocialPostState>("State"));
+            t.HasCheckConstraint("CK_SocialPosts_Kind", BuildEnumCheck<SocialPostKind>("Kind"));
+            t.HasCheckConstraint("CK_SocialPosts_Channel", BuildEnumCheck<SocialChannel>("Channel"));
+        });
+
+        // The publish job's claim query: pick up approved posts whose scheduled time has arrived.
+        modelBuilder.Entity<SocialPost>().HasIndex(p => new { p.State, p.ScheduledUtc });
+
+        var imageRefsConverter = new ValueConverter<List<string>, string>(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => string.IsNullOrWhiteSpace(v)
+                ? new List<string>()
+                : JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new List<string>());
+        var imageRefsComparer = new ValueComparer<List<string>>(
+            (a, b) => a != null && b != null && a.SequenceEqual(b),
+            c => c != null ? c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())) : 0,
+            c => c != null ? c.ToList() : new List<string>());
+        var imageRefsProperty = modelBuilder.Entity<SocialPost>().Property(p => p.ImageRefs);
+        imageRefsProperty.HasConversion(imageRefsConverter!);
+        imageRefsProperty.Metadata.SetValueComparer(imageRefsComparer);
+        imageRefsProperty.HasColumnType("jsonb");
+
+        // The digest is written and read as JSON text but stored as jsonb so it stays queryable when
+        // investigating why a particular draft said what it said.
+        modelBuilder.Entity<SocialPost>().Property(p => p.DigestJson).HasColumnType("jsonb");
+
+        modelBuilder.Entity<SocialPrompt>().Property(p => p.Kind).HasConversion<string>().HasMaxLength(50);
+        modelBuilder.Entity<SocialPrompt>().Property(p => p.Channel).HasConversion<string>().HasMaxLength(50);
+        modelBuilder.Entity<SocialPrompt>().ToTable(t =>
+        {
+            t.HasCheckConstraint("CK_SocialPrompts_Kind", BuildEnumCheck<SocialPostKind>("Kind"));
+            t.HasCheckConstraint("CK_SocialPrompts_Channel", BuildEnumCheck<SocialChannel>("Channel"));
+        });
+        modelBuilder.Entity<SocialPrompt>().HasIndex(p => new { p.Kind, p.Channel, p.Version }).IsUnique();
+
+        // At most one active prompt per kind and channel. A filtered unique index makes "which prompt
+        // is live" unambiguous by construction rather than by whoever last remembered to deactivate.
+        modelBuilder.Entity<SocialPrompt>()
+            .HasIndex(p => new { p.Kind, p.Channel })
+            .IsUnique()
+            .HasFilter("\"IsActive\"");
 
         // Configure TimingCommon models
         modelBuilder.Entity<Session>().HasKey(s => new { s.Id, s.EventId });
