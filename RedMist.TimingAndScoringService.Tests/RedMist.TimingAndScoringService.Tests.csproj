@@ -42,6 +42,7 @@
 		<ProjectReference Include="..\RedMist.RelayApi\RedMist.RelayApi.csproj" />
 		<ProjectReference Include="..\RedMist.SponsorDataRollup\RedMist.SponsorDataRollup.csproj" />
 		<ProjectReference Include="..\RedMist.SponsorReports\RedMist.SponsorReports.csproj" />
+		<ProjectReference Include="..\RedMist.Social\RedMist.Social.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
