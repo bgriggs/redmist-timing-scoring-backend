@@ -24,6 +24,7 @@ using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.EventProcessor.EventStatus.RMonitor;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring;
+using RedMist.EventProcessor.EventStatus.SessionMonitoring.Metrics;
 using RedMist.EventProcessor.EventStatus.Video;
 using RedMist.EventProcessor.EventStatus.X2;
 using StackExchange.Redis;
@@ -132,6 +133,7 @@ public class Program
         builder.Services.AddSingleton<ControlLogEnricher>();
         builder.Services.AddSingleton<DriverModeProcessor>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<ControlLogEnricher>());
+        builder.Services.AddSingleton<ISessionMetricsDeriver, SessionMetricsDeriver>();
         builder.Services.AddSingleton<SessionMonitor>();
         builder.Services.AddHostedService(provider => provider.GetRequiredService<SessionMonitor>());
         builder.Services.AddSingleton<SessionStateProcessingPipeline>();

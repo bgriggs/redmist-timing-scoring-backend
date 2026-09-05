@@ -7,6 +7,7 @@ using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring;
+using RedMist.EventProcessor.EventStatus.SessionMonitoring.Metrics;
 using RedMist.EventProcessor.Models;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
@@ -607,8 +608,8 @@ public class SessionMonitorPersistenceTests
     private sealed class PersistingSessionMonitor : SessionMonitor
     {
         public PersistingSessionMonitor(IConfiguration configuration, IDbContextFactory<TsContext> tsContext,
-            SessionContext sessionContext, IConnectionMultiplexer cacheMux)
-            : base(configuration, tsContext, new DebugLoggerFactory(), sessionContext, cacheMux) { }
+            SessionContext sessionContext, IConnectionMultiplexer cacheMux, ISessionMetricsDeriver metricsDeriver)
+            : base(configuration, tsContext, new DebugLoggerFactory(), sessionContext, cacheMux, metricsDeriver) { }
 
         public bool CallPersist(FinishedSession finished) => PersistFinishedSession(finished);
 
@@ -657,7 +658,7 @@ public class SessionMonitorPersistenceTests
 
         var harness = new PersistenceHarness
         {
-            Monitor = new PersistingSessionMonitor(configuration, factory, sessionContext, mux.Object),
+            Monitor = new PersistingSessionMonitor(configuration, factory, sessionContext, mux.Object, new SessionMetricsDeriver()),
             Cache = database,
             CreateDb = factory.CreateDbContext,
             ControlLogEntryCount = controlLogEntries,
