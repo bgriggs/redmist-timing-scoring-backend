@@ -25,6 +25,7 @@ using RedMist.StatusApi.Services.Exports;
 using StackExchange.Redis;
 using System.IO.Compression;
 using System.Reflection;
+using System.Globalization;
 using System.Threading.RateLimiting;
 
 namespace RedMist.StatusApi;
@@ -95,6 +96,29 @@ public class Program
         builder.Services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+            // Say when to come back, and say here that we turned someone away. Without the first the
+            // viewer app retries after 500ms into a bucket that refills more slowly than that, so a
+            // rejection reliably becomes three; without the second a limiter rejecting most of the
+            // traffic looks identical from the server to one rejecting none - the live event that
+            // prompted all this was diagnosed entirely from client crash reports, because the
+            // service itself recorded nothing.
+            options.OnRejected = (context, cancellationToken) =>
+            {
+                if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+                {
+                    context.HttpContext.Response.Headers.RetryAfter =
+                        ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+                }
+
+                var logger = context.HttpContext.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("RateLimiting");
+                logger?.LogWarning("Rate limited {Method} {Path} for {Caller}",
+                    context.HttpContext.Request.Method,
+                    context.HttpContext.Request.Path,
+                    GetCallerKey(context.HttpContext));
+
+                return ValueTask.CompletedTask;
+            };
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             {
                 var path = httpContext.Request.Path;
@@ -120,12 +144,19 @@ public class Program
 
                 if (httpContext.User.Identity?.IsAuthenticated == true)
                 {
-                    var authenticatedKey = httpContext.User.FindFirst("sub")?.Value
+                    // Subject *and* caller, not subject alone. The viewer apps all authenticate as
+                    // the same service account, so the subject on its own is one bucket for the
+                    // entire user base. Keeping it in the key still separates one client or service
+                    // from another; adding the caller separates the callers sharing a subject. A
+                    // service running several replicas gets a bucket per replica address rather
+                    // than one between them, which is a loosening, and the right one: they are
+                    // separate callers doing separate work.
+                    var subject = httpContext.User.FindFirst("sub")?.Value
                         ?? httpContext.User.Identity?.Name
                         ?? clientIp;
 
                     return RateLimitPartition.GetTokenBucketLimiter(
-                        $"authenticated:{authenticatedKey}",
+                        $"authenticated:{subject}:{GetCallerKey(httpContext)}",
                         _ => new TokenBucketRateLimiterOptions
                         {
                             TokenLimit = 30,
@@ -158,25 +189,15 @@ public class Program
                 config.QueueLimit = 0;
             });
 
-            options.AddPolicy("current-session-polling", httpContext =>
-            {
-                var partitionKey = httpContext.User.Identity?.IsAuthenticated == true
-                    ? $"authenticated:{httpContext.User.FindFirst("sub")?.Value ?? httpContext.User.Identity?.Name ?? GetClientIp(httpContext)}"
-                    : $"anonymous:{GetClientIp(httpContext)}";
-
-                return RateLimitPartition.GetFixedWindowLimiter(
-                    partitionKey,
-                    _ => new FixedWindowRateLimiterOptions
-                    {
-                        PermitLimit = 1,
-                        Window = httpContext.User.Identity?.IsAuthenticated == true
-                            ? TimeSpan.FromSeconds(0.9)
-                            : TimeSpan.FromSeconds(3),
-                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                        QueueLimit = 0,
-                        AutoReplenishment = true
-                    });
-            });
+            // Live session polling, keyed by caller address. Every caller here is somebody watching
+            // an event, so the address is the whole partition - authentication says nothing useful
+            // about who is asking, and the subject claim actively misleads (see GetCallerKey).
+            //
+            // A viewer polls every five seconds and retries a failure up to three times with
+            // backoff, so the shape that matters is a burst over a slow sustained rate: a fixed
+            // window of one admits the poll and then rejects its own retries, turning a blip into a
+            // rejection.
+            options.AddPolicy("current-session-polling", GetSessionPollingPartition);
 
             options.AddPolicy("sponsor-telemetry", httpContext =>
             {
@@ -511,6 +532,57 @@ public class Program
             options.Transports = HttpTransportType.WebSockets;
         }).RequireCors();
         app.Run();
+    }
+
+    /// <summary>
+    /// Identifies the caller for rate limiting.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not the <c>sub</c> claim. The viewer apps authenticate with client credentials
+    /// (<c>grant_type=client_credentials</c> against a client id and secret baked into the app), so
+    /// every install presents the same service-account subject. Keying on it collapses the entire
+    /// user base into one bucket, which is what turned a live event into a wall of 429s.
+    ///
+    /// Equally deliberately, nothing here comes from a header the caller controls. A per-install id
+    /// would separate viewers behind one NAT, which the address cannot, but this endpoint is
+    /// anonymous, uncached and excluded from the global limiter, so its own limiter is the only
+    /// thing in front of it - and a key a caller can rotate at will is a limiter that can be turned
+    /// off by anyone who thinks to. The address arrives from Cloudflare as CF-Connecting-IP, which
+    /// the edge overwrites, so it cannot be forged from the internet; see the load test's README,
+    /// where that is what defeats its own attempt to spoof its way out of this limit.
+    ///
+    /// The cost is that viewers behind one NAT share a bucket, so the bucket is sized for a group
+    /// rather than a device.
+    /// </remarks>
+    internal static string GetCallerKey(HttpContext httpContext) => $"ip:{GetClientIp(httpContext)}";
+
+    /// <summary>
+    /// The rate limit partition for live session polling, as the policy registers it.
+    /// </summary>
+    /// <remarks>
+    /// Separate from its registration so it can be tested: what broke in production was the key
+    /// this produces, and a test that reaches it through the policy is the one that would have
+    /// caught it.
+    /// </remarks>
+    internal static RateLimitPartition<string> GetSessionPollingPartition(HttpContext httpContext)
+    {
+        return RateLimitPartition.GetTokenBucketLimiter(
+            $"session-polling:{GetCallerKey(httpContext)}",
+            _ => new TokenBucketRateLimiterOptions
+            {
+                // Sized for a group sharing an address, not for one device. A viewer polls every
+                // five seconds - a fifth of a request a second - so this carries roughly fifteen of
+                // them, and the burst absorbs a handful starting or resuming at once, or one
+                // working through its three retries.
+                TokenLimit = 15,
+                TokensPerPeriod = 3,
+                ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                // Nothing waits: a queued session state is stale by the time it is served, and
+                // holding the request costs a connection on a pod whose real job is the live
+                // SignalR feed.
+                QueueLimit = 0,
+            });
     }
 
     private static string GetClientIp(HttpContext httpContext)
