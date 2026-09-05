@@ -32,6 +32,30 @@ namespace RedMist.StatusApi;
 
 public class Program
 {
+    /// <summary>Live session polling, limited per viewer instead of by the global limiter.</summary>
+    internal const string SessionPollingPolicy = "current-session-polling";
+
+    /// <summary>Sponsor telemetry and the sponsor list, limited on their own terms.</summary>
+    internal const string SponsorTelemetryPolicy = "sponsor-telemetry";
+
+    /// <summary>Export generation, limited on top of the global limiter rather than instead of it.</summary>
+    internal const string ExportsPolicy = "exports";
+
+    /// <summary>The cheaper "is there anything to export" probe, kept off the export allowance.</summary>
+    internal const string ExportsAvailabilityPolicy = "exports-availability";
+
+    /// <summary>
+    /// Policies that stand in for the global limiter rather than stacking on top of it.
+    /// </summary>
+    /// <remarks>
+    /// Polling is excluded so real-time updates are never queued behind the global limiter's queue,
+    /// where they arrive out of step with the delta subscription. Sponsor telemetry is excluded
+    /// because its own allowance is the looser of the two, so the global limiter would be the one
+    /// doing the limiting. The export policies are deliberately absent: those tighten the global
+    /// limiter rather than replacing it, and are meant to be limited twice.
+    /// </remarks>
+    private static readonly string[] policiesReplacingTheGlobalLimiter = [SessionPollingPolicy, SponsorTelemetryPolicy];
+
     private static readonly string[] setupAction =
     [
         "RedMist.Backend.Shared.xml",
@@ -121,21 +145,7 @@ public class Program
             };
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             {
-                var path = httpContext.Request.Path;
-                if (path.StartsWithSegments("/event-status") ||
-                    path.StartsWithSegments("/SponsorTelemetry") ||
-                    path.StartsWithSegments("/v1/SponsorTelemetry") ||
-                    // Exclude current session polling endpoints from global rate limiter to prevent queueing of real-time updates that can get
-                    // out of sync from the delta subscription updates. These endpoints have their own dedicated rate limiter.
-                    path.StartsWithSegments("/Events/GetCurrentSessionState") ||
-                    path.StartsWithSegments("/Events/GetCurrentSessionStateJson") ||
-                    path.StartsWithSegments("/Events/GetCurrentLegacySessionPayload") ||
-                    path.StartsWithSegments("/v1/Events/GetCurrentSessionState") ||
-                    path.StartsWithSegments("/v1/Events/GetCurrentSessionStateJson") ||
-                    path.StartsWithSegments("/v1/Events/GetCurrentLegacySessionPayload") ||
-                    path.StartsWithSegments("/v2/Events/GetCurrentSessionState") ||
-                    path.StartsWithSegments("/v2/Events/GetCurrentSessionStateJson") ||
-                    path.StartsWithSegments("/v2/Events/GetCurrentLegacySessionPayload"))
+                if (IsExcludedFromGlobalLimiter(httpContext))
                 {
                     return RateLimitPartition.GetNoLimiter("excluded-from-global-rate-limiter");
                 }
@@ -197,9 +207,9 @@ public class Program
             // backoff, so the shape that matters is a burst over a slow sustained rate: a fixed
             // window of one admits the poll and then rejects its own retries, turning a blip into a
             // rejection.
-            options.AddPolicy("current-session-polling", GetSessionPollingPartition);
+            options.AddPolicy(SessionPollingPolicy, GetSessionPollingPartition);
 
-            options.AddPolicy("sponsor-telemetry", httpContext =>
+            options.AddPolicy(SponsorTelemetryPolicy, httpContext =>
             {
                 var clientIp = GetClientIp(httpContext);
 
@@ -222,7 +232,7 @@ public class Program
             // then refills slowly. Nothing queues: an export that has to wait its turn is one the
             // user has already given up on, and holding the request open costs a connection on a pod
             // whose real job is the live SignalR feed.
-            options.AddPolicy("exports", httpContext =>
+            options.AddPolicy(ExportsPolicy, httpContext =>
             {
                 var partitionKey = httpContext.User.Identity?.IsAuthenticated == true
                     ? $"authenticated:{httpContext.User.FindFirst("sub")?.Value ?? httpContext.User.Identity?.Name ?? GetClientIp(httpContext)}"
@@ -245,7 +255,7 @@ public class Program
             // producing one. It gets its own bucket so that browsing sessions - the client calls this
             // on every session view - cannot spend the allowance the user needs a moment later for
             // the download they actually clicked.
-            options.AddPolicy("exports-availability", httpContext =>
+            options.AddPolicy(ExportsAvailabilityPolicy, httpContext =>
             {
                 var partitionKey = httpContext.User.Identity?.IsAuthenticated == true
                     ? $"authenticated:{httpContext.User.FindFirst("sub")?.Value ?? httpContext.User.Identity?.Name ?? GetClientIp(httpContext)}"
@@ -555,6 +565,47 @@ public class Program
     /// rather than a device.
     /// </remarks>
     internal static string GetCallerKey(HttpContext httpContext) => $"ip:{GetClientIp(httpContext)}";
+
+    /// <summary>
+    /// Whether this request is handled by a policy that replaces the global limiter.
+    /// </summary>
+    /// <remarks>
+    /// Asks the endpoint what policy it declares rather than matching its path. The paths are
+    /// versioned through a route constraint - <c>v{version:apiVersion}</c> - and the actions are
+    /// reachable by more spellings than the obvious one: the legacy unversioned route, the
+    /// versioned route, and whichever forms of the version segment the constraint accepts. A list
+    /// of literal paths has to be kept in step with all of that, and silently stops excluding
+    /// anything it falls behind on - at which point real-time polling lands in the global limiter's
+    /// queue, which is the one thing the exclusion exists to prevent.
+    ///
+    /// The endpoint has been resolved by the time this runs, and that is load-bearing: routing is
+    /// inserted at the head of the pipeline precisely because nothing calls <c>UseRouting</c>
+    /// explicitly, and the limiter is added well after it. Adding an explicit <c>UseRouting</c>
+    /// after <c>UseRateLimiter</c> would suppress that insertion, leave no endpoint to read here,
+    /// and drop every polling request into the queue this exists to keep it out of - without
+    /// failing anything.
+    ///
+    /// Reads the policy by name, so an endpoint given a policy object rather than a name - the
+    /// <c>RequireRateLimiting(IRateLimiterPolicy)</c> overload, which leaves the name null - would
+    /// not be recognized here. Nothing uses that overload; if something does, name it instead.
+    /// </remarks>
+    internal static bool IsExcludedFromGlobalLimiter(HttpContext httpContext)
+    {
+        var endpoint = httpContext.GetEndpoint();
+
+        // The status hub is mapped at a literal path and carries no policy of its own, so it is
+        // named here; nothing versions it, which is why a path is the right test for this one. It
+        // still has to have routed somewhere: without that check, anything under /event-status that
+        // is on its way to a 404 escapes the limiter for the asking.
+        if (endpoint is not null && httpContext.Request.Path.StartsWithSegments("/event-status"))
+        {
+            return true;
+        }
+
+        // The nearest attribute wins, so an action naming its own policy overrides its controller's.
+        var policy = endpoint?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
+        return policy is not null && policiesReplacingTheGlobalLimiter.Contains(policy);
+    }
 
     /// <summary>
     /// The rate limit partition for live session polling, as the policy registers it.
