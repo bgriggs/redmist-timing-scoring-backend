@@ -43,7 +43,25 @@ public class Consts
     public const string EVENT_COMPETITORS = "competitors-{0}-999999";
     public const string RELAY_GROUP_PREFIX = "relay-event-{0}";
     public const string CLIENT_ID = "ts-client-{0}";
-    public static readonly string[] PRACTICE_QUAL_TERMS = ["Practice", "Qualifying", "Qual"];
+    /// <summary>
+    /// Session-name fragments identifying a non-competitive session: practice, qualifying, driver
+    /// education, schools, open track time and test/setup days. Matched as case-insensitive
+    /// substrings, so prefixes count ("Test" catches "Testing").
+    /// </summary>
+    public static readonly string[] PRACTICE_QUAL_TERMS =
+    [
+        "Practice", "Qualifying", "Qual", "HPDE", "School", "Test", "Setup", "Set-up",
+        "Track Time", "MaxTrackTime", "Track Day"
+    ];
+
+    /// <summary>
+    /// Non-competitive session terms too short to match as substrings. These match only as an exact,
+    /// case-sensitive, whitespace-delimited word: "DE" matched loosely would swallow any name
+    /// containing "de", which would misclassify real races such as "Sebring Under the Stars 14 hr".
+    /// Single tokens only -- matching splits the name on whitespace, so an entry containing a space
+    /// can never match. Multi-word terms belong in PRACTICE_QUAL_TERMS.
+    /// </summary>
+    public static readonly string[] PRACTICE_QUAL_WORD_TERMS = ["DE"];
     public const string COMPETITOR_METADATA = "cm-{0}-evt-{1}";
     public const string EVENT_PAYLOAD = "evt-{0}-payload";
     public const string TRACK_MAP_KEY = "track-map-{0}";
