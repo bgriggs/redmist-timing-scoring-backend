@@ -492,7 +492,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// </remarks>
     [AllowAnonymous]
     [RequireEventAccessCode]
-    [EnableRateLimiting("current-session-polling")]
+    [EnableRateLimiting(Program.SessionPollingPolicy)]
     [HttpGet]
     [Produces("application/x-msgpack")]
     [ProducesResponseType(typeof(SessionState), StatusCodes.Status200OK)]
@@ -579,7 +579,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// and returns it as JSON for easy consumption by web clients.
     /// </remarks>
     [RequireEventAccessCode]
-    [EnableRateLimiting("current-session-polling")]
+    [EnableRateLimiting(Program.SessionPollingPolicy)]
     [HttpGet]
     [Produces("application/json")]
     [ProducesResponseType(typeof(SessionState), StatusCodes.Status200OK)]
@@ -630,7 +630,7 @@ public abstract class EventsControllerBase : ControllerBase
     /// and converts it to the legacy Payload format for backward compatibility.
     /// </remarks>
     [RequireEventAccessCode]
-    [EnableRateLimiting("current-session-polling")]
+    [EnableRateLimiting(Program.SessionPollingPolicy)]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType(typeof(Payload), StatusCodes.Status200OK)]

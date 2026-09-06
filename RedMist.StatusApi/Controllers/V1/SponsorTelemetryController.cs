@@ -12,7 +12,7 @@ namespace RedMist.StatusApi.Controllers.V1;
 
 [ApiController]
 [AllowAnonymous]
-[EnableRateLimiting("sponsor-telemetry")]
+[EnableRateLimiting(Program.SponsorTelemetryPolicy)]
 [Route("v{version:apiVersion}/[controller]/[action]")]
 [Route("[controller]/[action]")]
 [ApiVersion("1.0")]

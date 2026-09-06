@@ -6,6 +6,7 @@ using RedMist.Database;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.LapData;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring;
+using RedMist.EventProcessor.EventStatus.SessionMonitoring.Metrics;
 using RedMist.EventProcessor.Tests.Utilities;
 using StackExchange.Redis;
 
@@ -13,8 +14,10 @@ namespace RedMist.EventProcessor.Tests.EventStatus;
 
 internal class DebugSessionMonitor : SessionMonitor
 {
-    public DebugSessionMonitor(int eventId, IDbContextFactory<TsContext> tsContext, SessionContext? sessionContext = null, IConnectionMultiplexer? cacheMux = null)
-        : base(CreateConfiguration(eventId), tsContext, new DebugLoggerFactory(), sessionContext ?? CreateSessionContext(eventId), cacheMux ?? CreateMockCacheMux())
+    public DebugSessionMonitor(int eventId, IDbContextFactory<TsContext> tsContext, SessionContext? sessionContext = null, IConnectionMultiplexer? cacheMux = null,
+        ISessionMetricsDeriver? metricsDeriver = null)
+        : base(CreateConfiguration(eventId), tsContext, new DebugLoggerFactory(), sessionContext ?? CreateSessionContext(eventId), cacheMux ?? CreateMockCacheMux(),
+            metricsDeriver ?? new SessionMetricsDeriver())
     {
     }
 

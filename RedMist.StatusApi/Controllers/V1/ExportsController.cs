@@ -40,7 +40,7 @@ namespace RedMist.StatusApi.Controllers.V1;
 [ApiVersion("1.0")]
 [ApiController]
 [Authorize]
-[EnableRateLimiting("exports")]
+[EnableRateLimiting(Program.ExportsPolicy)]
 public class ExportsController : ControllerBase
 {
     /// <summary>
@@ -175,7 +175,7 @@ public class ExportsController : ControllerBase
     /// </remarks>
     [AllowAnonymous]
     [RequireEventAccessCode]
-    [EnableRateLimiting("exports-availability")]
+    [EnableRateLimiting(Program.ExportsAvailabilityPolicy)]
     [HttpGet]
     [Produces("application/json")]
     [ProducesResponseType<ExportAvailability>(StatusCodes.Status200OK)]
