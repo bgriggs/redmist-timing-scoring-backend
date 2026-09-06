@@ -23,6 +23,10 @@ namespace RedMist.SocialCompose;
 /// to text-only posts rather than stopping.
 /// </param>
 /// <param name="imageStore">Where captured images are put so a social platform can fetch them.</param>
+/// <param name="imageCleanup">
+/// Removes pictures a post no longer has a claim to -- superseded by a redraft, or belonging to a
+/// post somebody rejected.
+/// </param>
 public class SocialComposeJob(
     ILoggerFactory loggerFactory,
     IDbContextFactory<TsContext> contextFactory,
@@ -31,6 +35,7 @@ public class SocialComposeJob(
     IHostApplicationLifetime lifetime,
     ISessionImageCapture? imageCapture = null,
     ISocialImageStore? imageStore = null,
+    SocialImageCleanup? imageCleanup = null,
     TimeProvider? timeProvider = null) : BackgroundService
 {
     /// <summary>Postgres unique-violation SQLSTATE.</summary>
@@ -211,6 +216,7 @@ public class SocialComposeJob(
         if (existing is not null && WhyNotRecompose(existing, digest) is { } reason)
         {
             logger.LogInformation("Event {EventId}: not redrafting because {Reason}", evt.Id, reason);
+            await ReleaseRejectedImagesAsync(context, existing, stoppingToken);
             return false;
         }
 
@@ -231,10 +237,11 @@ public class SocialComposeJob(
 
         // After generation, not before: a picture is no use without copy to attach it to, and
         // capturing first would spend a browser on events whose text never materializes.
-        var (imageUrls, imageWarnings) = await CaptureImagesAsync(digest, stoppingToken);
+        var images = await CaptureImagesAsync(digest, stoppingToken);
 
         var post = existing ?? CreatePost(key, evt.Id);
-        Apply(post, digest, composed, prompt, imageUrls, imageWarnings);
+        var previousImages = post.ImageRefs.ToList();
+        Apply(post, digest, composed, prompt, images);
 
         if (existing is null)
             context.SocialPosts.Add(post);
@@ -242,12 +249,92 @@ public class SocialComposeJob(
         if (!await SaveAsync(context, post, evt.Id, stoppingToken))
             return false;
 
+        // Only after the row is safely saved. Deleting first would leave a post referencing pictures
+        // that no longer exist if the save then failed, and an image nobody references is a far
+        // smaller problem than a post whose images 404.
+        await ReleaseSupersededImagesAsync(previousImages, post.ImageRefs, images, evt.Id, stoppingToken);
+
         logger.LogInformation(
             "Event {EventId} ({Name}): drafted {Length} characters in {Attempts} attempt(s){Flag}",
             evt.Id, evt.Name, composed.Text.Length, composed.Attempts,
             composed.HasUnverifiedClaims ? " -- FLAGGED, copy still fails validation" : string.Empty);
 
         return true;
+    }
+
+    /// <summary>
+    /// Deletes the pictures a redraft has left with nothing referencing them.
+    /// </summary>
+    private async Task ReleaseSupersededImagesAsync(
+        List<string> previous,
+        List<string> current,
+        CapturedImageSet images,
+        int eventId,
+        CancellationToken stoppingToken)
+    {
+        if (imageCleanup is null || !images.WasAttempted)
+            return;
+
+        // Nothing is deleted unless every session was photographed. A session whose capture failed is
+        // simply missing from the new set, so it would otherwise look superseded and be deleted --
+        // destroying a perfectly good picture because the re-capture flaked. That is unrecoverable in
+        // practice: the next run finds the results unchanged, declines to redraft, and the image is
+        // gone for good. An orphaned object is the cheaper mistake.
+        if (!images.IsComplete)
+        {
+            logger.LogInformation(
+                "Event {EventId}: not releasing any previous images, because at least one session could not be captured",
+                eventId);
+            return;
+        }
+
+        var superseded = SocialImageCleanup.Superseded(previous, current);
+        if (superseded.Count == 0)
+            return;
+
+        var released = await imageCleanup.ReleaseAsync(superseded, stoppingToken);
+        logger.LogInformation(
+            "Event {EventId}: released {Released} of {Total} superseded results image(s)",
+            eventId, released, superseded.Count);
+    }
+
+    /// <summary>
+    /// Deletes the pictures belonging to a post somebody turned down.
+    /// </summary>
+    /// <remarks>
+    /// A rejected post is a decision not to publish, so its pictures have no reason to stay publicly
+    /// fetchable. Done here because this job is currently the only thing that revisits posts; once the
+    /// review API exists, rejecting or deleting a post should release them at that moment rather than
+    /// waiting for a nightly pass. This only reaches posts whose event is still inside the lookback
+    /// window, so it is a safety net and not the mechanism.
+    /// </remarks>
+    private async Task ReleaseRejectedImagesAsync(
+        TsContext context, SocialPost post, CancellationToken stoppingToken)
+    {
+        if (imageCleanup is null || post.State != SocialPostState.Rejected || post.ImageRefs.Count == 0)
+            return;
+
+        var urls = post.ImageRefs.ToList();
+
+        // Saved before anything is deleted, the same order the redraft path uses. Reversing it opens a
+        // window that a reviewer can walk into: un-reject a post while this is mid-delete, and the
+        // concurrency token rightly refuses the save -- leaving a PendingReview post whose pictures
+        // have already been destroyed, and which someone can then approve.
+        post.ImageRefs = [];
+        if (!await SaveAsync(context, post, post.EventId ?? 0, stoppingToken))
+        {
+            // The row moved under us, so its pictures are no longer ours to delete. Next run sees the
+            // post as it now stands and decides again.
+            logger.LogInformation(
+                "Post {Key} changed while its images were being released; they were left in place",
+                post.IdempotencyKey);
+            return;
+        }
+
+        var released = await imageCleanup.ReleaseAsync(urls, stoppingToken);
+        logger.LogInformation(
+            "Rejected post {Key}: released {Released} of {Total} results image(s)",
+            post.IdempotencyKey, released, urls.Count);
     }
 
     /// <summary>
@@ -308,8 +395,7 @@ public class SocialComposeJob(
         EventDigest digest,
         ComposedPost composed,
         SocialPrompt prompt,
-        List<string> imageUrls,
-        IReadOnlyList<string> imageWarnings)
+        CapturedImageSet images)
     {
         post.State = SocialPostState.PendingReview;
         post.DigestJson = DigestPromptFormatter.Serialize(digest);
@@ -321,9 +407,14 @@ public class SocialComposeJob(
         post.Model = Truncate(composed.Model, 100);
         post.PromptVersion = prompt.Version;
         post.GenerationAttempts = composed.Attempts;
-        post.ImageRefs = imageUrls;
 
-        var warnings = composed.Warnings.Concat(imageWarnings).ToList();
+        // Left alone when no capture was attempted. Turning images off is the documented response to
+        // the timing page changing shape, and clearing the column then would erase the only record of
+        // where the existing pictures live -- nothing lists the zone, so they would be unrecoverable.
+        if (images.WasAttempted)
+            post.ImageRefs = images.Urls;
+
+        var warnings = composed.Warnings.Concat(images.Warnings).ToList();
         post.ValidationWarnings = warnings.Count == 0 ? null : string.Join(Environment.NewLine, warnings);
         post.HasUnverifiedClaims = composed.HasUnverifiedClaims;
         post.Error = null;
@@ -343,14 +434,15 @@ public class SocialComposeJob(
     /// one snapshot. In practice they are seconds apart and a person reads both before anything is
     /// published; DigestSourceHash is what reveals a source that moved underneath a draft.
     /// </remarks>
-    private async Task<(List<string> Urls, IReadOnlyList<string> Warnings)> CaptureImagesAsync(
+    private async Task<CapturedImageSet> CaptureImagesAsync(
         EventDigest digest, CancellationToken stoppingToken)
     {
         if (!settings.ImagesEnabled || imageCapture is null || imageStore is null)
-            return ([], []);
+            return CapturedImageSet.NotAttempted;
 
         var urls = new List<string>();
         var warnings = new List<string>();
+        var complete = true;
 
         foreach (var session in digest.Sessions.Take(settings.MaxImagesPerPost))
         {
@@ -361,13 +453,14 @@ public class SocialComposeJob(
                 var image = await imageCapture.CaptureAsync(
                     new SessionImageRequest(digest.EventId, session.SessionId, session.SessionName), stoppingToken);
 
-                urls.Add(await imageStore.StoreAsync(digest.EventId, session.SessionId, image, stoppingToken));
+                urls.Add(await imageStore.StoreAsync(settings.Channel, digest.EventId, session.SessionId, image, stoppingToken));
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogError(ex, "Event {EventId} session {SessionId}: results image capture failed",
                     digest.EventId, session.SessionId);
 
+                complete = false;
                 warnings.Add(
                     $"NO IMAGE: the results picture for '{session.SessionName}' could not be captured " +
                     $"({ex.Message}). The post has no image for that session.");
@@ -381,7 +474,7 @@ public class SocialComposeJob(
                 "pictured, which is the configured limit.");
         }
 
-        return (urls, warnings);
+        return new CapturedImageSet(true, complete, urls, warnings);
     }
 
     /// <summary>

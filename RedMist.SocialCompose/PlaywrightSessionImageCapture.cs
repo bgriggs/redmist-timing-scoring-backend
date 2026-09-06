@@ -1,4 +1,5 @@
 using Microsoft.Playwright;
+using System.Buffers.Binary;
 using RedMist.Social.Imaging;
 
 namespace RedMist.SocialCompose;
@@ -118,7 +119,11 @@ public sealed class PlaywrightSessionImageCapture(
                 "Event {EventId} session {SessionId} ('{SessionName}'): captured {Bytes} bytes from {Url}",
                 request.EventId, request.SessionId, request.SessionName, png.Length, url);
 
-            return new CapturedImage(png, options.ViewportWidth, options.ViewportHeight);
+            // Measured from the PNG, not from the viewport. With a clip selector the two differ --
+            // the picture is the element's size, which is the whole point of clipping -- and a
+            // publisher that declares dimensions to a platform would be declaring the wrong ones.
+            var (width, height) = ReadPngSize(png);
+            return new CapturedImage(png, width, height);
         }
         finally
         {
@@ -133,6 +138,25 @@ public sealed class PlaywrightSessionImageCapture(
                 // The context disposal below handles it.
             }
         }
+    }
+
+    /// <summary>
+    /// Reads the pixel dimensions out of a PNG header.
+    /// </summary>
+    /// <remarks>
+    /// Every PNG starts with an 8-byte signature and then an IHDR chunk whose first two fields are
+    /// the width and height as big-endian 32-bit integers, so the size is always the same 8 bytes in.
+    /// Returns zeroes rather than throwing for anything shorter: the dimensions are for logging and a
+    /// reviewer's context, and losing a picture over them would be a poor trade.
+    /// </remarks>
+    public static (int Width, int Height) ReadPngSize(byte[] png)
+    {
+        const int widthOffset = 16;
+        if (png is null || png.Length < widthOffset + 8)
+            return (0, 0);
+
+        return (BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(widthOffset, 4)),
+                BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(widthOffset + 4, 4)));
     }
 
     /// <summary>

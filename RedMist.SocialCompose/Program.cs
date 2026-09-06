@@ -44,6 +44,7 @@ if (socialSettings.ImagesEnabled)
 
     builder.Services.AddSingleton(socialSettings.ImageCapture);
     builder.Services.AddSingleton<ISocialImageStore, BunnySocialImageStore>();
+    builder.Services.AddSingleton<SocialImageCleanup>();
 
     // Singleton so one browser serves the whole run. Registered as the concrete type as well, so the
     // host disposes it and Chromium is not left behind when the job stops.

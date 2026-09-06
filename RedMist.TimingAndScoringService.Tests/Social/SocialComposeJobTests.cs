@@ -83,6 +83,7 @@ public class SocialComposeJobTests
             Mock.Of<IHostApplicationLifetime>(),
             capture,
             store,
+            store is null ? null : new SocialImageCleanup(store, loggerFactory),
             new FakeTimeProvider(Now));
     }
 
@@ -113,8 +114,18 @@ public class SocialComposeJobTests
 
     private sealed class StubStore : ISocialImageStore
     {
-        public Task<string> StoreAsync(int eventId, int sessionId, CapturedImage image, CancellationToken cancellationToken) =>
-            Task.FromResult($"https://cdn.example/social/event-{eventId}/session-{sessionId}.png");
+        /// <summary>Every URL this store was asked to delete, so a test can assert on cleanup.</summary>
+        public List<string> Deleted { get; } = [];
+
+        public Task<string> StoreAsync(
+            SocialChannel channel, int eventId, int sessionId, CapturedImage image, CancellationToken cancellationToken) =>
+            Task.FromResult($"https://cdn.example/social/{channel}/event-{eventId}/session-{sessionId}.png");
+
+        public Task<bool> DeleteAsync(string url, CancellationToken cancellationToken)
+        {
+            Deleted.Add(url);
+            return Task.FromResult(true);
+        }
     }
 
     private static Event AnEvent(int id, DateTime endDate) => new()
@@ -712,7 +723,7 @@ public class SocialComposeJobTests
         var post = await check.SocialPosts.SingleAsync();
 
         CollectionAssert.AreEqual(
-            new[] { "https://cdn.example/social/event-341/session-1.png" }, post.ImageRefs);
+            new[] { "https://cdn.example/social/Facebook/event-341/session-1.png" }, post.ImageRefs);
         Assert.AreEqual(1, capture.Requests.Count);
         Assert.AreEqual(341, capture.Requests[0].EventId);
         Assert.AreEqual(1, capture.Requests[0].SessionId);
@@ -816,7 +827,7 @@ public class SocialComposeJobTests
         var post = await check.SocialPosts.SingleAsync();
 
         CollectionAssert.AreEqual(
-            new[] { "https://cdn.example/social/event-341/session-1.png" }, post.ImageRefs);
+            new[] { "https://cdn.example/social/Facebook/event-341/session-1.png" }, post.ImageRefs);
         StringAssert.Contains(post.ValidationWarnings, "Sunday Race");
         Assert.AreEqual(SocialPostState.PendingReview, post.State);
     }
@@ -878,6 +889,187 @@ public class SocialComposeJobTests
 
         Assert.AreEqual(2, post.ImageRefs.Count);
         StringAssert.Contains(post.ValidationWarnings, "first 2 of 3 race sessions");
+    }
+
+    /// <summary>
+    /// A rejected post is a decision not to publish, so its pictures must stop being publicly
+    /// fetchable rather than sitting in the CDN with nothing referencing them.
+    /// </summary>
+    [TestMethod]
+    public async Task ImagesOfARejectedPost_AreDeleted()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            seed.Events.Add(AnEventWithResults(seed, 341, Now.AddDays(-3)));
+
+            var rejected = APost(SocialPostState.Rejected, "a-hash");
+            rejected.ImageRefs = ["https://cdn.example/social/Facebook/event-341/session-1.png"];
+            seed.SocialPosts.Add(rejected);
+            await seed.SaveChangesAsync();
+        }
+
+        var store = new StubStore();
+        await Job(db, Settings(images: true), capture: new StubCapture(), store: store).RunAsync(CancellationToken.None);
+
+        CollectionAssert.AreEqual(
+            new[] { "https://cdn.example/social/Facebook/event-341/session-1.png" }, store.Deleted);
+
+        await using var check = db.CreateDbContext();
+        var post = await check.SocialPosts.SingleAsync();
+
+        Assert.AreEqual(SocialPostState.Rejected, post.State, "Rejecting is still the decision; only the pictures go");
+        Assert.AreEqual(0, post.ImageRefs.Count, "A rejected post must not go on claiming pictures");
+    }
+
+    /// <summary>
+    /// A redraft after the results changed produces different pictures, and the ones it replaced have
+    /// nothing referencing them any more.
+    /// </summary>
+    [TestMethod]
+    public async Task ImagesSupersededByARedraft_AreDeleted()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            seed.Events.Add(AnEventWithResults(seed, 341, Now.AddDays(-3)));
+
+            // An earlier draft from a snapshot that has since been rewritten, so this redrafts.
+            var stale = APost(SocialPostState.PendingReview, "a-hash-from-an-earlier-snapshot");
+            stale.ImageRefs = ["https://cdn.example/social/Facebook/event-341/session-1-OLD.png"];
+            seed.SocialPosts.Add(stale);
+            await seed.SaveChangesAsync();
+        }
+
+        var store = new StubStore();
+        await Job(db, Settings(images: true), capture: new StubCapture(), store: store).RunAsync(CancellationToken.None);
+
+        CollectionAssert.AreEqual(
+            new[] { "https://cdn.example/social/Facebook/event-341/session-1-OLD.png" }, store.Deleted);
+
+        await using var check = db.CreateDbContext();
+        var post = await check.SocialPosts.SingleAsync();
+        CollectionAssert.AreEqual(
+            new[] { "https://cdn.example/social/Facebook/event-341/session-1.png" }, post.ImageRefs);
+    }
+
+    /// <summary>
+    /// Through the job, not the set operation. Asserting on Superseded alone leaves the call site
+    /// free to pass the whole previous list -- and because a redraft usually replaces every picture,
+    /// no other test would notice. This one seeds an image the new capture reproduces, so deleting
+    /// the previous set wholesale destroys a picture the post still references.
+    /// </summary>
+    [TestMethod]
+    public async Task AnImageTheRedraftReproduces_IsNotDeleted()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            seed.Events.Add(AnEventWithResults(seed, 341, Now.AddDays(-3)));
+
+            // Stale hash, so it redrafts -- but carrying the exact URL this capture will produce again.
+            var stale = APost(SocialPostState.PendingReview, "a-hash-from-an-earlier-snapshot");
+            stale.ImageRefs = ["https://cdn.example/social/Facebook/event-341/session-1.png"];
+            seed.SocialPosts.Add(stale);
+            await seed.SaveChangesAsync();
+        }
+
+        var store = new StubStore();
+        await Job(db, Settings(images: true), capture: new StubCapture(), store: store).RunAsync(CancellationToken.None);
+
+        CollectionAssert.AreEqual(Array.Empty<string>(), store.Deleted,
+            "The redraft produced the same picture, so nothing was superseded");
+
+        await using var check = db.CreateDbContext();
+        CollectionAssert.AreEqual(
+            new[] { "https://cdn.example/social/Facebook/event-341/session-1.png" },
+            (await check.SocialPosts.SingleAsync()).ImageRefs);
+    }
+
+    /// <summary>
+    /// A capture that fails is a gap, not a decision. Treating the missing URL as superseded would
+    /// delete a good picture because the re-capture flaked -- and unrecoverably, since the next run
+    /// finds the results unchanged and declines to redraft.
+    /// </summary>
+    [TestMethod]
+    public async Task AnIncompleteCapture_DeletesNothing()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            var evt = AnEventWithResults(seed, 341, Now.AddDays(-3));
+            AddRaceSession(seed, 341, sessionId: 2, "Sunday Race");
+            seed.Events.Add(evt);
+
+            var stale = APost(SocialPostState.PendingReview, "a-hash-from-an-earlier-snapshot");
+            stale.ImageRefs =
+            [
+                "https://cdn.example/social/Facebook/event-341/session-1-OLD.png",
+                "https://cdn.example/social/Facebook/event-341/session-2-OLD.png",
+            ];
+            seed.SocialPosts.Add(stale);
+            await seed.SaveChangesAsync();
+        }
+
+        var store = new StubStore();
+        await Job(db, Settings(images: true), capture: new StubCapture(failOnSessionId: 2), store: store)
+            .RunAsync(CancellationToken.None);
+
+        CollectionAssert.AreEqual(Array.Empty<string>(), store.Deleted,
+            "One session failed, so the previous pictures must be left alone");
+    }
+
+    /// <summary>
+    /// Only a rejected post gives up its pictures. Without the state guard this path would strip the
+    /// images off any post the run declines to redraft -- including a Published one, whose picture is
+    /// on a live Facebook post.
+    /// </summary>
+    [TestMethod]
+    [DataRow(SocialPostState.Published)]
+    [DataRow(SocialPostState.Approved)]
+    [DataRow(SocialPostState.Publishing)]
+    public async Task ImagesOfAPostThatIsNotRejected_AreLeftAlone(SocialPostState state)
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            seed.Events.Add(AnEventWithResults(seed, 341, Now.AddDays(-3)));
+
+            var post = APost(state, "a-hash");
+            post.ImageRefs = ["https://cdn.example/social/Facebook/event-341/session-1.png"];
+            seed.SocialPosts.Add(post);
+            await seed.SaveChangesAsync();
+        }
+
+        var store = new StubStore();
+        await Job(db, Settings(images: true), capture: new StubCapture(), store: store).RunAsync(CancellationToken.None);
+
+        CollectionAssert.AreEqual(Array.Empty<string>(), store.Deleted, $"{state} posts keep their pictures");
+
+        await using var check = db.CreateDbContext();
+        Assert.AreEqual(1, (await check.SocialPosts.SingleAsync()).ImageRefs.Count);
+    }
+
+    /// <summary>
+    /// A redraft of unchanged results produces byte-identical pictures, which keep the same
+    /// content-addressed URLs. Deleting everything the post used to hold would remove the very image
+    /// it is about to reference again.
+    /// </summary>
+    [TestMethod]
+    public void ImagesTheRedraftStillReferences_AreNotDeleted()
+    {
+        var kept = "https://cdn.example/social/Facebook/event-341/session-1.png";
+
+        var superseded = SocialImageCleanup.Superseded(
+            [kept, "https://cdn.example/social/Facebook/event-341/session-2-OLD.png"],
+            [kept, "https://cdn.example/social/Facebook/event-341/session-2-NEW.png"]);
+
+        CollectionAssert.AreEqual(new[] { "https://cdn.example/social/Facebook/event-341/session-2-OLD.png" }, superseded.ToList());
     }
 
     private static void AddRaceSession(TsContext context, int eventId, int sessionId, string name)

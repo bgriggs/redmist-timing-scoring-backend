@@ -78,20 +78,25 @@ env:
   "Social__Images__BaseUrl": "https://redmist.racing"
   # The landing UI embed flag: drops the site toolbar and footer at the Angular level, rather than
   # leaving them to be hidden after they have already rendered.
-  "Social__Images__QueryString": "embed=1"
+  # groupClass renders by class, expand opens the groups (they arrive shut, which is no use to a
+  # screenshot nobody can click), topPerClass keeps each group to its podium. Together these make the
+  # picture agree with the copy, which names a three-deep podium per class.
+  "Social__Images__QueryString": "embed=1&groupClass=1&expand=1&topPerClass=3"
   # An event is usually two races. More than that stops being a post and starts being an album.
   "Social__Images__MaxPerPost": "2"
   # 900 CSS px at 2x. A feed shows a picture around 500px across, so a desktop-width timing table
   # would arrive unreadable; rendering narrow and dense keeps the rows legible once it is scaled down.
   "Social__Images__ViewportWidth": "900"
-  "Social__Images__ViewportHeight": "1100"
+  # Only has to be tall enough not to constrain the clip below; six classes come to about 1185.
+  "Social__Images__ViewportHeight": "1500"
   "Social__Images__DeviceScaleFactor": "2"
   # Selectors belong to the landing UI, which ships on its own schedule. Kept as values so a renamed
   # class there is a Helm change rather than a backend release.
   "Social__Images__ReadySelector": ".car-row-container"
-  # Empty keeps the viewport. Clipping to the results container would capture every row: a
-  # 55-car field measures about 885x2763, and a picture that tall is cropped to nothing in a feed.
-  "Social__Images__ClipSelector": ""
+  # Safe only because topPerClass bounds the panel height: six classes at three cars each measures
+  # about 900x1185, and the crop fits the content exactly. Without it a 55-car field is 885x2763 and
+  # gets cropped to nothing. Set empty to fall back to a viewport capture.
+  "Social__Images__ClipSelector": ".timing-viewer"
   # Sponsor panels rotate, so whichever sponsor was on screen at the shutter would end up in a post
   # as an implied endorsement nobody agreed to.
   "Social__Images__HideSelectors": ".mat-mdc-tab-header,app-sponsor-rotator,app-sponsor-marquee,.header-left,.header-right"

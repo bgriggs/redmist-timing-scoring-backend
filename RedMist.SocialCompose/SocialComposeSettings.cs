@@ -106,20 +106,31 @@ public sealed class SocialComposeSettings
 
         // The landing UI's embed flag, which drops the site toolbar and footer at the Angular level
         // rather than leaving them to be hidden after they have already rendered.
-        QueryString: ReadAllowingEmpty(configuration, "Social:Images:QueryString") ?? "embed=1",
+        // groupClass renders the field by class, expand opens those groups (they arrive shut, which
+        // is no use to a screenshot nobody can click), and topPerClass keeps each group to its podium.
+        // Together they are what makes the picture agree with the copy: the digest carries a three-deep
+        // podium per class, and this shows exactly that rather than an overall order in which most
+        // class winners are below the fold.
+        QueryString: ReadAllowingEmpty(configuration, "Social:Images:QueryString")
+            ?? "embed=1&groupClass=1&expand=1&topPerClass=3",
 
         // 900 CSS px at 2x. Wide enough for the timing columns, narrow enough that the rows are still
         // legible once a feed scales the picture down to phone width.
         ViewportWidth: ReadInt(configuration, "Social:Images:ViewportWidth", 900, minimum: 320),
-        ViewportHeight: ReadInt(configuration, "Social:Images:ViewportHeight", 1100, minimum: 320),
+
+        // Taller than the picture needs to be. The clip below takes the results panel at whatever
+        // height it lands at, so this only has to be large enough not to constrain it: six classes at
+        // three cars each measures about 1185.
+        ViewportHeight: ReadInt(configuration, "Social:Images:ViewportHeight", 1500, minimum: 320),
         DeviceScaleFactor: ReadInt(configuration, "Social:Images:DeviceScaleFactor", 2, minimum: 1),
         ReadySelector: Read(configuration, "Social:Images:ReadySelector") ?? ".car-row-container",
 
-        // Empty means "keep the viewport", which is the right default and not an omission. Clipping to
-        // the results container would capture every row: a 55-car field measures roughly 885 by 2763,
-        // and a picture that tall is cropped to nothing in a feed. The viewport instead frames the
-        // session header and the leaders, which is what a results post is about.
-        ClipSelector: Read(configuration, "Social:Images:ClipSelector") ?? string.Empty,
+        // Clipping to the results panel is only safe because topPerClass bounds its height. Without
+        // that a 55-car field measures about 885 by 2763 and the picture is cropped to nothing in a
+        // feed; with it, six classes come to roughly 900 by 1185 and the crop fits the content exactly.
+        // A class-heavy event still produces a taller image -- set this empty to fall back to the
+        // viewport if that becomes a problem.
+        ClipSelector: ReadAllowingEmpty(configuration, "Social:Images:ClipSelector") ?? ".timing-viewer",
 
         // The tab strip, the rotating sponsor panel and the viewer's own controls. All verified
         // present on the live page; a selector that matches nothing is harmless. Site navigation is
