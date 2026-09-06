@@ -26,14 +26,7 @@ public class Program
         builder.Logging.ClearProviders();
         builder.Logging.AddNLog("NLog");
 
-        builder.Services.AddCors(options =>
-        {
-            options.AddDefaultPolicy(policy =>
-            {
-                policy.AllowAnyOrigin();
-                policy.AllowAnyHeader();
-            });
-        });
+        builder.Services.AddRedMistCors();
 
         builder.Services.AddRedMistKeycloakAuth(builder.Configuration);
 
