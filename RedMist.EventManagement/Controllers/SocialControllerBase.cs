@@ -147,8 +147,8 @@ public abstract class SocialControllerBase : Controller
                 EventName = r.EventName,
                 Channel = r.Channel,
                 State = r.State,
-                CreatedUtc = r.CreatedUtc,
-                ScheduledUtc = r.ScheduledUtc,
+                CreatedUtc = AsUtc(r.CreatedUtc),
+                ScheduledUtc = AsUtc(r.ScheduledUtc),
                 HasUnverifiedClaims = r.HasUnverifiedClaims,
                 ImageCount = r.ImageRefs.Count,
                 Preview = Preview(Effective(r.EditedText, r.GeneratedText)),
@@ -196,11 +196,11 @@ public abstract class SocialControllerBase : Controller
             Channel = p.Channel,
             State = p.State,
             IdempotencyKey = p.IdempotencyKey,
-            CreatedUtc = p.CreatedUtc,
-            ScheduledUtc = p.ScheduledUtc,
-            PublishedUtc = p.PublishedUtc,
+            CreatedUtc = AsUtc(p.CreatedUtc),
+            ScheduledUtc = AsUtc(p.ScheduledUtc),
+            PublishedUtc = AsUtc(p.PublishedUtc),
             ApprovedBy = p.ApprovedBy,
-            ApprovedUtc = p.ApprovedUtc,
+            ApprovedUtc = AsUtc(p.ApprovedUtc),
             GeneratedText = p.GeneratedText,
             EditedText = p.EditedText,
             EffectiveText = p.EffectiveText,
@@ -668,6 +668,21 @@ public abstract class SocialControllerBase : Controller
         text is { Length: > MaxEditedTextLength }
             ? BadRequest($"The text is longer than {MaxEditedTextLength} characters, which no channel will accept.")
             : null;
+
+    /// <summary>
+    /// Marks a time read from the database as the UTC it is, so it serializes as one.
+    /// </summary>
+    /// <remarks>
+    /// Every column here is "timestamp without time zone" and every service reads it back under
+    /// EnableLegacyTimestampBehavior, which yields DateTimeKind.Unspecified. System.Text.Json writes
+    /// that with no trailing Z, and a browser reads an offsetless timestamp as its own local time --
+    /// so a post drafted at 05:00 UTC displays as the previous evening, or the next morning, on the
+    /// reviewer's screen. Which day a post was written is exactly what says whether it is about the
+    /// race they think it is.
+    /// </remarks>
+    private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
+
+    private static DateTime? AsUtc(DateTime? value) => value is { } v ? AsUtc(v) : null;
 
     private static bool Blank(string? value) => string.IsNullOrWhiteSpace(value);
 

@@ -366,6 +366,35 @@ public class SocialControllerBaseTests
     }
 
     /// <summary>
+    /// Times leave here marked as the UTC they are.
+    /// </summary>
+    /// <remarks>
+    /// The columns are "timestamp without time zone" and legacy timestamp behavior reads them back as
+    /// Unspecified, which serializes with no trailing Z -- and a browser reads an offsetless timestamp
+    /// as its own local time. A post drafted at 05:00 UTC would show as the previous evening, and
+    /// which day a post was written is what tells a reviewer it is about the right race.
+    /// </remarks>
+    [TestMethod]
+    public async Task TheTimesAPostCarries_SaySoFar_TheyAreUtc()
+    {
+        var post = NewPost(PostId, SocialPostState.Published);
+        post.PublishedUtc = Now.AddHours(-1);
+        post.ApprovedUtc = Now.AddHours(-2);
+        await SeedAsync(post);
+
+        var detail = Value(await controller.LoadPost(PostId));
+
+        Assert.AreEqual(DateTimeKind.Utc, detail.CreatedUtc.Kind);
+        Assert.AreEqual(DateTimeKind.Utc, detail.ScheduledUtc.Kind);
+        Assert.AreEqual(DateTimeKind.Utc, detail.PublishedUtc!.Value.Kind);
+        Assert.AreEqual(DateTimeKind.Utc, detail.ApprovedUtc!.Value.Kind);
+
+        var summary = Value(await controller.LoadPosts()).Posts.Single();
+        Assert.AreEqual(DateTimeKind.Utc, summary.CreatedUtc.Kind);
+        Assert.AreEqual(DateTimeKind.Utc, summary.ScheduledUtc.Kind);
+    }
+
+    /// <summary>
     /// The images are part of the post under review: they are publicly fetchable from the moment they
     /// are stored and they go out attached to the copy, so a reviewer who cannot see them is not
     /// reviewing the post.
