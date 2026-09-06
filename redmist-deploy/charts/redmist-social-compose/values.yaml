@@ -25,18 +25,38 @@ restartPolicy: OnFailure
 # generation calls on the events it had not reached yet.
 backoffLimit: 1
 
+# Sized for headless Chromium, which is by far the largest thing this job does -- the compose work
+# itself would fit in the 128Mi the other nightly jobs ask for. The request is what the scheduler
+# uses, and the node pool is close to fully committed on memory, so it is kept as low as a browser
+# can credibly run in; the limit carries the peak of rendering a page.
 resources:
   requests:
-    cpu: "50m"
-    memory: "128Mi"
-  limits:
-    cpu: "200m"
+    cpu: "100m"
     memory: "512Mi"
+  limits:
+    cpu: "1000m"
+    memory: "1536Mi"
 
 serviceAccount:
   create: true
   annotations: {}
   name: ""
+
+# Compensating controls for running Chromium without its own sandbox, which the pod cannot grant it.
+# This container decodes third-party images -- organization logos and sponsor artwork -- which is the
+# classic renderer-exploit surface, and its environment carries the database, Anthropic and CDN
+# credentials. None of this costs anything: the app already runs as a non-root user and needs no
+# Linux capabilities.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
 
 env:
   # Wait a full day after an event ends before drafting. An EndDate is a date, so it lands at
@@ -52,6 +72,35 @@ env:
   "Social__Model": "claude-sonnet-5"
   "Social__MaxAttempts": "3"
   "Social__MaxCharacters": "1200"
+
+  # Results pictures, taken from the timing page at https://redmist.racing/timing/{event}/{session}.
+  "Social__Images__Enabled": "true"
+  "Social__Images__BaseUrl": "https://redmist.racing"
+  # The landing UI embed flag: drops the site toolbar and footer at the Angular level, rather than
+  # leaving them to be hidden after they have already rendered.
+  "Social__Images__QueryString": "embed=1"
+  # An event is usually two races. More than that stops being a post and starts being an album.
+  "Social__Images__MaxPerPost": "2"
+  # 900 CSS px at 2x. A feed shows a picture around 500px across, so a desktop-width timing table
+  # would arrive unreadable; rendering narrow and dense keeps the rows legible once it is scaled down.
+  "Social__Images__ViewportWidth": "900"
+  "Social__Images__ViewportHeight": "1100"
+  "Social__Images__DeviceScaleFactor": "2"
+  # Selectors belong to the landing UI, which ships on its own schedule. Kept as values so a renamed
+  # class there is a Helm change rather than a backend release.
+  "Social__Images__ReadySelector": ".car-row-container"
+  # Empty keeps the viewport. Clipping to the results container would capture every row: a
+  # 55-car field measures about 885x2763, and a picture that tall is cropped to nothing in a feed.
+  "Social__Images__ClipSelector": ""
+  # Sponsor panels rotate, so whichever sponsor was on screen at the shutter would end up in a post
+  # as an implied endorsement nobody agreed to.
+  "Social__Images__HideSelectors": ".mat-mdc-tab-header,app-sponsor-rotator,app-sponsor-marquee,.header-left,.header-right"
+  # Sponsor impressions are recorded as the page renders, and those writes are real -- they are what
+  # the sponsor rollup and the monthly sponsor reports are computed from. Without this a nightly
+  # screenshot run would invent impressions, for events that finished days ago, seen by nobody.
+  "Social__Images__BlockedUrlSubstrings": "/SponsorTelemetry/"
+  "Social__Images__ReadyTimeoutSeconds": "45"
+  "Social__Images__SettleSeconds": "4"
 
 # Chart-local rather than added to global.secrets: global secrets are injected into every service's
 # pods, and the API key has no business anywhere but here.

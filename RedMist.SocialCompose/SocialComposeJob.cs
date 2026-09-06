@@ -4,6 +4,7 @@ using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.Social.Digest;
 using RedMist.Social.Generation;
+using RedMist.Social.Imaging;
 using Event = RedMist.TimingCommon.Models.Configuration.Event;
 
 namespace RedMist.SocialCompose;
@@ -17,12 +18,19 @@ namespace RedMist.SocialCompose;
 /// nothing in this job can move a post past that, which is what makes it safe to run unattended
 /// against a generative model.
 /// </remarks>
+/// <param name="imageCapture">
+/// Photographs session results. Optional so the job runs without a browser -- the pipeline degrades
+/// to text-only posts rather than stopping.
+/// </param>
+/// <param name="imageStore">Where captured images are put so a social platform can fetch them.</param>
 public class SocialComposeJob(
     ILoggerFactory loggerFactory,
     IDbContextFactory<TsContext> contextFactory,
     PostComposer composer,
     SocialComposeSettings settings,
     IHostApplicationLifetime lifetime,
+    ISessionImageCapture? imageCapture = null,
+    ISocialImageStore? imageStore = null,
     TimeProvider? timeProvider = null) : BackgroundService
 {
     /// <summary>Postgres unique-violation SQLSTATE.</summary>
@@ -221,8 +229,12 @@ public class SocialComposeJob(
             return false;
         }
 
+        // After generation, not before: a picture is no use without copy to attach it to, and
+        // capturing first would spend a browser on events whose text never materializes.
+        var (imageUrls, imageWarnings) = await CaptureImagesAsync(digest, stoppingToken);
+
         var post = existing ?? CreatePost(key, evt.Id);
-        Apply(post, digest, composed, prompt);
+        Apply(post, digest, composed, prompt, imageUrls, imageWarnings);
 
         if (existing is null)
             context.SocialPosts.Add(post);
@@ -291,7 +303,13 @@ public class SocialComposeJob(
         };
     }
 
-    private static void Apply(SocialPost post, EventDigest digest, ComposedPost composed, SocialPrompt prompt)
+    private static void Apply(
+        SocialPost post,
+        EventDigest digest,
+        ComposedPost composed,
+        SocialPrompt prompt,
+        List<string> imageUrls,
+        IReadOnlyList<string> imageWarnings)
     {
         post.State = SocialPostState.PendingReview;
         post.DigestJson = DigestPromptFormatter.Serialize(digest);
@@ -303,9 +321,67 @@ public class SocialComposeJob(
         post.Model = Truncate(composed.Model, 100);
         post.PromptVersion = prompt.Version;
         post.GenerationAttempts = composed.Attempts;
-        post.ValidationWarnings = composed.Warnings.Count == 0 ? null : string.Join(Environment.NewLine, composed.Warnings);
+        post.ImageRefs = imageUrls;
+
+        var warnings = composed.Warnings.Concat(imageWarnings).ToList();
+        post.ValidationWarnings = warnings.Count == 0 ? null : string.Join(Environment.NewLine, warnings);
         post.HasUnverifiedClaims = composed.HasUnverifiedClaims;
         post.Error = null;
+    }
+
+    /// <summary>
+    /// Photographs each race session's results page, as far as it can.
+    /// </summary>
+    /// <remarks>
+    /// Never throws. A picture is worth having and this is the only way to get one, but a browser
+    /// that times out, a page that changed shape or a CDN that refuses an upload must not cost the
+    /// event its post -- the copy stands on its own, and a reviewer can see from the warning that the
+    /// image is missing. This is also why capture failures are recorded per session rather than
+    /// abandoning the whole set at the first one.
+    ///
+    /// The pictures are taken live while the copy comes from the digest, so the two are not read from
+    /// one snapshot. In practice they are seconds apart and a person reads both before anything is
+    /// published; DigestSourceHash is what reveals a source that moved underneath a draft.
+    /// </remarks>
+    private async Task<(List<string> Urls, IReadOnlyList<string> Warnings)> CaptureImagesAsync(
+        EventDigest digest, CancellationToken stoppingToken)
+    {
+        if (!settings.ImagesEnabled || imageCapture is null || imageStore is null)
+            return ([], []);
+
+        var urls = new List<string>();
+        var warnings = new List<string>();
+
+        foreach (var session in digest.Sessions.Take(settings.MaxImagesPerPost))
+        {
+            stoppingToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                var image = await imageCapture.CaptureAsync(
+                    new SessionImageRequest(digest.EventId, session.SessionId, session.SessionName), stoppingToken);
+
+                urls.Add(await imageStore.StoreAsync(digest.EventId, session.SessionId, image, stoppingToken));
+            }
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+            {
+                logger.LogError(ex, "Event {EventId} session {SessionId}: results image capture failed",
+                    digest.EventId, session.SessionId);
+
+                warnings.Add(
+                    $"NO IMAGE: the results picture for '{session.SessionName}' could not be captured " +
+                    $"({ex.Message}). The post has no image for that session.");
+            }
+        }
+
+        if (digest.Sessions.Count > settings.MaxImagesPerPost)
+        {
+            warnings.Add(
+                $"Only the first {settings.MaxImagesPerPost} of {digest.Sessions.Count} race sessions were " +
+                "pictured, which is the configured limit.");
+        }
+
+        return (urls, warnings);
     }
 
     /// <summary>

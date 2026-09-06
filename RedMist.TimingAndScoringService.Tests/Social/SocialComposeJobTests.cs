@@ -8,6 +8,7 @@ using RedMist.Database.Models;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.Social.Digest;
 using RedMist.Social.Generation;
+using RedMist.Social.Imaging;
 using RedMist.SocialCompose;
 using RedMist.TimingCommon.Models;
 using Event = RedMist.TimingCommon.Models.Configuration.Event;
@@ -35,7 +36,11 @@ public class SocialComposeJobTests
     }
 
     private static SocialComposeSettings Settings(
-        int settleHours = 24, int lookbackDays = 14, int maxEvents = 10) => new()
+        int settleHours = 24,
+        int lookbackDays = 14,
+        int maxEvents = 10,
+        bool images = false,
+        int maxImages = 2) => new()
         {
             Model = "claude-sonnet-5",
             MaxTokens = 1024,
@@ -45,6 +50,12 @@ public class SocialComposeJobTests
             SettlePeriod = TimeSpan.FromHours(settleHours),
             LookbackWindow = TimeSpan.FromDays(lookbackDays),
             MaxEventsPerRun = maxEvents,
+            ImagesEnabled = images,
+            MaxImagesPerPost = maxImages,
+            ImageCapture = new SessionImageCaptureOptions(
+                "https://redmist.racing", "embed=1", 900, 1100, 2, ".car-row-container",
+                ClipSelector: "", HideSelectors: [], BlockedUrlSubstrings: [],
+                TimeSpan.FromSeconds(45), TimeSpan.Zero),
         };
 
     private static TestDbContextFactory Db()
@@ -56,7 +67,11 @@ public class SocialComposeJobTests
     }
 
     private static SocialComposeJob Job(
-        TestDbContextFactory db, SocialComposeSettings? settings = null, ICopyGenerator? generator = null)
+        TestDbContextFactory db,
+        SocialComposeSettings? settings = null,
+        ICopyGenerator? generator = null,
+        ISessionImageCapture? capture = null,
+        ISocialImageStore? store = null)
     {
         var loggerFactory = new DebugLoggerFactory();
         var composer = new PostComposer(generator ?? new StubGenerator(), loggerFactory);
@@ -66,7 +81,40 @@ public class SocialComposeJobTests
             composer,
             settings ?? Settings(),
             Mock.Of<IHostApplicationLifetime>(),
+            capture,
+            store,
             new FakeTimeProvider(Now));
+    }
+
+    /// <summary>Returns a fixed image, or fails, without launching anything.</summary>
+    /// <param name="failure">Thrown instead of returning an image.</param>
+    /// <param name="failOnSessionId">
+    /// Restricts <paramref name="failure"/> to one session, so a partial set can be exercised. Zero
+    /// means every session fails.
+    /// </param>
+    private sealed class StubCapture(Exception? failure = null, int failOnSessionId = 0) : ISessionImageCapture
+    {
+        public List<SessionImageRequest> Requests { get; } = [];
+
+        public StubCapture(int failOnSessionId)
+            : this(new SessionImageCaptureException("the page never rendered"), failOnSessionId) { }
+
+        public Task<CapturedImage> CaptureAsync(SessionImageRequest request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+
+            if (failure is not null && (failOnSessionId == 0 || request.SessionId == failOnSessionId))
+                throw failure;
+
+            // Distinct bytes per session, so the store path differs and a test can tell them apart.
+            return Task.FromResult(new CapturedImage([1, 2, (byte)request.SessionId], 1800, 2200));
+        }
+    }
+
+    private sealed class StubStore : ISocialImageStore
+    {
+        public Task<string> StoreAsync(int eventId, int sessionId, CapturedImage image, CancellationToken cancellationToken) =>
+            Task.FromResult($"https://cdn.example/social/event-{eventId}/session-{sessionId}.png");
     }
 
     private static Event AnEvent(int id, DateTime endDate) => new()
@@ -642,6 +690,212 @@ public class SocialComposeJobTests
         Assert.IsTrue(post.HasUnverifiedClaims);
         Assert.AreEqual(3, post.GenerationAttempts);
         StringAssert.Contains(post.ValidationWarnings, "47");
+    }
+
+    // ---- Results pictures ----------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CapturedImages_AreAttachedToTheDraft()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            seed.Events.Add(AnEventWithResults(seed, 341, Now.AddDays(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture();
+        await Job(db, Settings(images: true), capture: capture, store: new StubStore()).RunAsync(CancellationToken.None);
+
+        await using var check = db.CreateDbContext();
+        var post = await check.SocialPosts.SingleAsync();
+
+        CollectionAssert.AreEqual(
+            new[] { "https://cdn.example/social/event-341/session-1.png" }, post.ImageRefs);
+        Assert.AreEqual(1, capture.Requests.Count);
+        Assert.AreEqual(341, capture.Requests[0].EventId);
+        Assert.AreEqual(1, capture.Requests[0].SessionId);
+    }
+
+    /// <summary>
+    /// The important one. A browser that times out, a page that changed shape or a CDN that refuses
+    /// an upload must not cost the event its post -- the copy stands on its own, and the reviewer
+    /// needs to be told the picture is missing rather than left to notice.
+    /// </summary>
+    [TestMethod]
+    public async Task AFailedCapture_LeavesTheDraftIntactAndSaysSo()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            seed.Events.Add(AnEventWithResults(seed, 341, Now.AddDays(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture(new SessionImageCaptureException("Timed out waiting for '.car-row-container'"));
+        await Job(db, Settings(images: true), capture: capture, store: new StubStore()).RunAsync(CancellationToken.None);
+
+        await using var check = db.CreateDbContext();
+        var post = await check.SocialPosts.SingleAsync();
+
+        Assert.AreEqual(SocialPostState.PendingReview, post.State, "The post must survive a failed capture");
+        Assert.AreEqual("Bad Decision Racing took GP1 with 214 laps.", post.GeneratedText);
+        Assert.AreEqual(0, post.ImageRefs.Count);
+        StringAssert.Contains(post.ValidationWarnings, "NO IMAGE");
+    }
+
+    /// <summary>Images off means no capture attempted at all, not a capture that is thrown away.</summary>
+    [TestMethod]
+    public async Task WithImagesDisabled_NoCaptureIsAttempted()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            seed.Events.Add(AnEventWithResults(seed, 341, Now.AddDays(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture();
+        await Job(db, Settings(images: false), capture: capture, store: new StubStore()).RunAsync(CancellationToken.None);
+
+        Assert.AreEqual(0, capture.Requests.Count);
+
+        await using var check = db.CreateDbContext();
+        Assert.AreEqual(0, (await check.SocialPosts.SingleAsync()).ImageRefs.Count);
+    }
+
+    /// <summary>
+    /// The production shape when images are off: nothing is registered, so the job is handed nulls
+    /// rather than an unused stub. Pinned because it is a resolution failure rather than a wrong
+    /// picture -- the run would not start at all.
+    /// </summary>
+    [TestMethod]
+    public async Task WithNoCaptureRegisteredAtAll_TheRunStillDrafts()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            seed.Events.Add(AnEventWithResults(seed, 341, Now.AddDays(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        await Job(db, Settings(images: true), capture: null, store: null).RunAsync(CancellationToken.None);
+
+        await using var check = db.CreateDbContext();
+        var post = await check.SocialPosts.SingleAsync();
+
+        Assert.AreEqual(SocialPostState.PendingReview, post.State);
+        Assert.AreEqual(0, post.ImageRefs.Count);
+    }
+
+    /// <summary>
+    /// One session failing must not discard the picture of the one that worked. A post carrying the
+    /// Saturday race and a note about Sunday is worth far more than a post carrying neither.
+    /// </summary>
+    [TestMethod]
+    public async Task WhenOneSessionFails_TheOtherPictureIsStillKept()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            var evt = AnEventWithResults(seed, 341, Now.AddDays(-3));
+            AddRaceSession(seed, 341, sessionId: 2, "Sunday Race");
+            seed.Events.Add(evt);
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture(failOnSessionId: 2);
+        await Job(db, Settings(images: true), capture: capture, store: new StubStore()).RunAsync(CancellationToken.None);
+
+        await using var check = db.CreateDbContext();
+        var post = await check.SocialPosts.SingleAsync();
+
+        CollectionAssert.AreEqual(
+            new[] { "https://cdn.example/social/event-341/session-1.png" }, post.ImageRefs);
+        StringAssert.Contains(post.ValidationWarnings, "Sunday Race");
+        Assert.AreEqual(SocialPostState.PendingReview, post.State);
+    }
+
+    /// <summary>
+    /// A capture deadline surfaces as an OperationCanceledException even though nothing was
+    /// cancelled. This codebase has been bitten by that exact confusion before, and reading it as
+    /// shutdown here would abort the run and leave the events behind it undrafted.
+    /// </summary>
+    [TestMethod]
+    public async Task ACaptureTimeout_IsNotMistakenForShutdown()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            seed.Events.Add(AnEventWithResults(seed, 1, Now.AddDays(-4)));
+            seed.Events.Add(AnEventWithResults(seed, 2, Now.AddDays(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture(new OperationCanceledException("the capture deadline elapsed"));
+        await Job(db, Settings(images: true), capture: capture, store: new StubStore()).RunAsync(CancellationToken.None);
+
+        await using var check = db.CreateDbContext();
+        var posts = await check.SocialPosts.OrderBy(p => p.EventId).ToListAsync();
+
+        Assert.AreEqual(2, posts.Count, "The event behind the timeout must still be drafted");
+        Assert.IsTrue(posts.All(p => p.State == SocialPostState.PendingReview));
+        Assert.IsTrue(posts.All(p => p.ValidationWarnings!.Contains("NO IMAGE", StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// A weekend with more races than the limit must produce a post carrying the first few pictures
+    /// and a note, not an album and not a silent truncation.
+    /// </summary>
+    [TestMethod]
+    public async Task MoreSessionsThanTheImageLimit_ArePicturedUpToItAndNoted()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            var evt = AnEventWithResults(seed, 341, Now.AddDays(-3));
+            AddRaceSession(seed, 341, sessionId: 2, "Sunday Race");
+            AddRaceSession(seed, 341, sessionId: 3, "Sunday Sprint");
+            seed.Events.Add(evt);
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture();
+        await Job(db, Settings(images: true, maxImages: 2), capture: capture, store: new StubStore())
+            .RunAsync(CancellationToken.None);
+
+        Assert.AreEqual(2, capture.Requests.Count);
+
+        await using var check = db.CreateDbContext();
+        var post = await check.SocialPosts.SingleAsync();
+
+        Assert.AreEqual(2, post.ImageRefs.Count);
+        StringAssert.Contains(post.ValidationWarnings, "first 2 of 3 race sessions");
+    }
+
+    private static void AddRaceSession(TsContext context, int eventId, int sessionId, string name)
+    {
+        context.SessionResults.Add(new SessionResult
+        {
+            EventId = eventId,
+            SessionId = sessionId,
+            Start = Now.AddDays(-3).AddHours(sessionId),
+            SessionState = new SessionState
+            {
+                EventId = eventId,
+                SessionId = sessionId,
+                SessionName = name,
+                CarPositions = [new() { Number = "66", Class = "GP1", ClassPosition = 1, LastLapCompleted = 100 }],
+                EventEntries = [new() { Number = "66", Name = "Bad Decision Racing", Class = "GP1" }],
+            },
+        });
     }
 
     /// <summary>A generator that fails on a given call, to exercise the per-event failure paths.</summary>

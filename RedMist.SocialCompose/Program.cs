@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NLog.Extensions.Logging;
 using RedMist.Database;
 using RedMist.Social.Generation;
+using RedMist.Social.Imaging;
 using RedMist.SocialCompose;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,7 +25,31 @@ string claudeApiKey = builder.Configuration["Claude:ApiKey"] ?? string.Empty;
 if (string.IsNullOrWhiteSpace(claudeApiKey))
     throw new InvalidOperationException("Claude:ApiKey is not configured; post copy cannot be generated without it.");
 
-builder.Services.AddSingleton(SocialComposeSettings.FromConfiguration(builder.Configuration));
+var socialSettings = SocialComposeSettings.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(socialSettings);
+
+if (socialSettings.ImagesEnabled)
+{
+    // Reuses the Assets zone every service is already configured for, so attaching pictures needs no
+    // new credential -- only somewhere to read them back from, which a social platform must be able
+    // to fetch itself.
+    builder.Services.AddSingleton(new BunnyCdnSettings(
+        StorageZoneName: Required(builder.Configuration, "Assets:StorageZoneName"),
+        StorageAccessKey: Required(builder.Configuration, "Assets:StorageAccessKey"),
+        MainReplicationRegion: Required(builder.Configuration, "Assets:MainReplicationRegion"),
+        ApiAccessKey: Required(builder.Configuration, "Assets:ApiAccessKey"),
+        PublicBaseUrl: builder.Configuration["Assets:PublicBaseUrl"] is { Length: > 0 } configured
+            ? configured
+            : $"https://{Required(builder.Configuration, "Assets:StorageZoneName")}.b-cdn.net"));
+
+    builder.Services.AddSingleton(socialSettings.ImageCapture);
+    builder.Services.AddSingleton<ISocialImageStore, BunnySocialImageStore>();
+
+    // Singleton so one browser serves the whole run. Registered as the concrete type as well, so the
+    // host disposes it and Chromium is not left behind when the job stops.
+    builder.Services.AddSingleton<PlaywrightSessionImageCapture>();
+    builder.Services.AddSingleton<ISessionImageCapture>(sp => sp.GetRequiredService<PlaywrightSessionImageCapture>());
+}
 
 // Generous relative to a single generation, tight enough that a hung connection cannot hold the job
 // open until Kubernetes kills it and leaves the run half done.
@@ -70,3 +95,12 @@ app.MapHealthChecks("/healthz/ready", new HealthCheckOptions
 });
 
 app.Run();
+
+/// <summary>
+/// Reads a setting that the job cannot run without, failing at startup rather than at the first use.
+/// Blank counts as missing: an unset Helm value arrives as an empty string, not as null.
+/// </summary>
+static string Required(IConfiguration configuration, string key) =>
+    configuration[key] is { } value && !string.IsNullOrWhiteSpace(value)
+        ? value
+        : throw new InvalidOperationException($"{key} is not configured, and results images cannot be stored without it.");

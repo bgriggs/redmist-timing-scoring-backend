@@ -27,10 +27,18 @@ spec:
           {{- end }}
           serviceAccountName: {{ include "redmist-social-compose.serviceAccountName" . }}
           restartPolicy: {{ .Values.restartPolicy }}
+          {{- with .Values.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           containers:
             - name: {{ .Chart.Name }}
               image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
               imagePullPolicy: {{ .Values.image.pullPolicy }}
+              {{- with .Values.securityContext }}
+              securityContext:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
               resources:
                 {{- toYaml .Values.resources | nindent 16 }}
               env:

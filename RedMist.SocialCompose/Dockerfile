@@ -30,4 +30,21 @@ RUN dotnet publish "./RedMist.SocialCompose.csproj" -c $BUILD_CONFIGURATION -o /
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+
+# Chromium, for photographing the timing page. Installed as root because --with-deps apt-installs the
+# shared libraries Chromium needs, then dropped back to the app user to run.
+#
+# PLAYWRIGHT_BROWSERS_PATH is set rather than left to default: without it the browser lands in the
+# installing user's home cache, which is root's, and the app user cannot read it at runtime. It has to
+# stay set for the running process too, which is why it is an ENV and not a build argument.
+#
+# Installed through the driver's own bundled node rather than playwright.ps1, which would mean adding
+# PowerShell to the image for one command.
+USER root
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN ./.playwright/node/linux-x64/node ./.playwright/package/cli.js install --with-deps chromium \
+    && chmod -R a+rX /ms-playwright \
+    && rm -rf /var/lib/apt/lists/*
+USER $APP_UID
+
 ENTRYPOINT ["dotnet", "RedMist.SocialCompose.dll"]

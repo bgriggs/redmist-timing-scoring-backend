@@ -47,6 +47,25 @@ public sealed class SocialComposeSettings
     /// </summary>
     public required int MaxEventsPerRun { get; init; }
 
+    /// <summary>
+    /// Whether to photograph each session's results page and attach the pictures to the draft.
+    /// </summary>
+    /// <remarks>
+    /// Separately switchable because it is the one part of a run that needs a browser. Turning it
+    /// off leaves text-only drafts rather than stopping the job, which is what you want if the
+    /// timing page changes shape and every capture starts failing.
+    /// </remarks>
+    public required bool ImagesEnabled { get; init; }
+
+    /// <summary>
+    /// Most images attached to one post. An event is usually two races, and a post carrying a
+    /// picture of every session stops being a post and starts being an album.
+    /// </summary>
+    public required int MaxImagesPerPost { get; init; }
+
+    /// <summary>How the session page is rendered and cropped.</summary>
+    public required SessionImageCaptureOptions ImageCapture { get; init; }
+
     public ComposeOptions ToComposeOptions() => new(Model, MaxTokens, MaxAttempts, MaxCharacters);
 
     /// <summary>
@@ -68,7 +87,88 @@ public sealed class SocialComposeSettings
             SettlePeriod = TimeSpan.FromHours(ReadInt(configuration, "Social:SettleHours", 24, minimum: 0)),
             LookbackWindow = TimeSpan.FromDays(ReadInt(configuration, "Social:LookbackDays", 14, minimum: 1)),
             MaxEventsPerRun = ReadInt(configuration, "Social:MaxEventsPerRun", 10, minimum: 1),
+            ImagesEnabled = ReadBool(configuration, "Social:Images:Enabled", true),
+            MaxImagesPerPost = ReadInt(configuration, "Social:Images:MaxPerPost", 2, minimum: 1),
+            ImageCapture = ReadCaptureOptions(configuration),
         };
+    }
+
+    /// <summary>
+    /// Reads the capture options.
+    /// </summary>
+    /// <remarks>
+    /// The selectors are configuration rather than constants because they belong to a page in another
+    /// repository that ships on its own schedule. When a class name changes there, this should be a
+    /// Helm value away from working again rather than a backend release.
+    /// </remarks>
+    private static SessionImageCaptureOptions ReadCaptureOptions(IConfiguration configuration) => new(
+        BaseUrl: Read(configuration, "Social:Images:BaseUrl") ?? "https://redmist.racing",
+
+        // The landing UI's embed flag, which drops the site toolbar and footer at the Angular level
+        // rather than leaving them to be hidden after they have already rendered.
+        QueryString: ReadAllowingEmpty(configuration, "Social:Images:QueryString") ?? "embed=1",
+
+        // 900 CSS px at 2x. Wide enough for the timing columns, narrow enough that the rows are still
+        // legible once a feed scales the picture down to phone width.
+        ViewportWidth: ReadInt(configuration, "Social:Images:ViewportWidth", 900, minimum: 320),
+        ViewportHeight: ReadInt(configuration, "Social:Images:ViewportHeight", 1100, minimum: 320),
+        DeviceScaleFactor: ReadInt(configuration, "Social:Images:DeviceScaleFactor", 2, minimum: 1),
+        ReadySelector: Read(configuration, "Social:Images:ReadySelector") ?? ".car-row-container",
+
+        // Empty means "keep the viewport", which is the right default and not an omission. Clipping to
+        // the results container would capture every row: a 55-car field measures roughly 885 by 2763,
+        // and a picture that tall is cropped to nothing in a feed. The viewport instead frames the
+        // session header and the leaders, which is what a results post is about.
+        ClipSelector: Read(configuration, "Social:Images:ClipSelector") ?? string.Empty,
+
+        // The tab strip, the rotating sponsor panel and the viewer's own controls. All verified
+        // present on the live page; a selector that matches nothing is harmless. Site navigation is
+        // absent because the embed flag above already removes it.
+        HideSelectors: ReadList(configuration, "Social:Images:HideSelectors",
+            [".mat-mdc-tab-header", "app-sponsor-rotator", "app-sponsor-marquee",
+             ".header-left", ".header-right"]),
+
+        // Sponsor impressions are reported as the page renders, and those writes are real -- they are
+        // what the sponsor rollup and the monthly reports are computed from. A nightly screenshot run
+        // would otherwise invent impressions, for events that finished days ago, seen by nobody.
+        BlockedUrlSubstrings: ReadList(configuration, "Social:Images:BlockedUrlSubstrings",
+            ["/SponsorTelemetry/"]),
+        ReadyTimeout: TimeSpan.FromSeconds(ReadInt(configuration, "Social:Images:ReadyTimeoutSeconds", 45, minimum: 1)),
+        SettleDelay: TimeSpan.FromSeconds(ReadInt(configuration, "Social:Images:SettleSeconds", 4, minimum: 0)));
+
+    /// <summary>
+    /// Reads a value where blank is a meaningful choice rather than "not configured", so a selector
+    /// or query string can be switched off from a Helm value instead of falling back to the default.
+    /// </summary>
+    private static string? ReadAllowingEmpty(IConfiguration configuration, string key) => configuration[key];
+
+    private static bool ReadBool(IConfiguration configuration, string key, bool fallback)
+    {
+        var raw = Read(configuration, key);
+        if (raw is null)
+            return fallback;
+
+        if (!bool.TryParse(raw, out var value))
+            throw new InvalidOperationException($"Configuration value '{key}' is not true or false: '{raw}'.");
+
+        return value;
+    }
+
+    /// <summary>
+    /// Reads a comma-separated list, so a Helm value can carry one without nested YAML.
+    /// </summary>
+    /// <remarks>
+    /// An explicitly empty value means an empty list, not the default. Otherwise there would be no way
+    /// to turn one of these lists off from configuration: setting it to "" would silently restore the
+    /// built-in entries, which is the opposite of what anyone typing that intends.
+    /// </remarks>
+    private static IReadOnlyList<string> ReadList(IConfiguration configuration, string key, string[] fallback)
+    {
+        var raw = ReadAllowingEmpty(configuration, key);
+        if (raw is null)
+            return fallback;
+
+        return [.. raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
     }
 
     private static string? Read(IConfiguration configuration, string key)
