@@ -133,4 +133,20 @@ public class Consts
     public const string FLAGTRONICS_TYPE = "ftcar";
 
     #endregion
+
+    #region Authorization
+
+    /// <summary>
+    /// Keycloak realm role for site-wide administration: the operations that act on the site rather
+    /// than on one organization's own events.
+    /// </summary>
+    /// <remarks>
+    /// The organization endpoints scope a caller to their own data through the client_id claim, which
+    /// says nothing about site-wide rights. This is a realm role, matched exactly and case-sensitively
+    /// against the name in Keycloak, so a rename or a typo does not fail loudly - it refuses every
+    /// caller, including a genuine administrator. See <c>SiteAdminRoleTests</c>.
+    /// </remarks>
+    public const string SITE_ADMIN_ROLE = "site-admin";
+
+    #endregion
 }

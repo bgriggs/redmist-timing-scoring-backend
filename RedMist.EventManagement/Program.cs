@@ -1,8 +1,5 @@
 using Asp.Versioning;
 using HealthChecks.UI.Client;
-using Keycloak.AuthServices.Authentication;
-using Keycloak.AuthServices.Authorization;
-using Keycloak.AuthServices.Common;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
@@ -37,13 +34,7 @@ public class Program
             });
         });
 
-        builder.Services.AddKeycloakWebApiAuthentication(builder.Configuration);
-        builder.Services.AddAuthorization().AddKeycloakAuthorization(options =>
-        {
-            options.EnableRolesMapping = RolesClaimTransformationSource.Realm;
-            // Note, this should correspond to role configured with KeycloakAuthenticationOptions
-            options.RoleClaimType = KeycloakConstants.RoleClaimType;
-        });
+        builder.Services.AddRedMistKeycloakAuth(builder.Configuration);
 
         //// Configure Rate Limiting - stricter limits for internal-facing admin API
         //builder.Services.AddRedMistRateLimiting(options =>

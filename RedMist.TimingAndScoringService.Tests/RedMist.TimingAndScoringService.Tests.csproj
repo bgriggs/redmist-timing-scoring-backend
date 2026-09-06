@@ -51,6 +51,16 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!--
+		  SiteAdminRoleTests reads the service's real Keycloak configuration rather than a transcription
+		  of it, so that changing the realm, authority or audience changes what is tested.
+		-->
+		<None Include="..\RedMist.EventManagement\appsettings.json" Link="EventManagement.appsettings.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
 		<None Update="event-finish-with-stopped.log">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
