@@ -15,6 +15,7 @@ COPY ["RedMist.EventManagement/RedMist.EventManagement.csproj", "RedMist.EventMa
 COPY ["RedMist.Backend.Shared/RedMist.Backend.Shared.csproj", "RedMist.Backend.Shared/"]
 COPY ["RedMist.ControlLogs/RedMist.ControlLogs.csproj", "RedMist.ControlLogs/"]
 COPY ["RedMist.Database/RedMist.Database.csproj", "RedMist.Database/"]
+COPY ["RedMist.Social/RedMist.Social.csproj", "RedMist.Social/"]
 RUN dotnet restore "./RedMist.EventManagement/RedMist.EventManagement.csproj"
 COPY . .
 WORKDIR "/src/RedMist.EventManagement"

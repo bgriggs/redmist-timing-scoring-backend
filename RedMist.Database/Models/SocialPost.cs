@@ -144,6 +144,18 @@ public class SocialPost
     public string? Error { get; set; }
 
     /// <summary>
+    /// Why a reviewer declined the post, in their own words.
+    /// </summary>
+    /// <remarks>
+    /// Its own column rather than a line in <see cref="Error"/>: a rejection is a judgment, not a
+    /// failure, and putting it there would make a post somebody simply disliked indistinguishable
+    /// from one the generator could not write. These are also the most direct evidence of what the
+    /// prompt gets wrong, which is only usable if they can be read together.
+    /// </remarks>
+    [MaxLength(1000)]
+    public string? RejectionReason { get; set; }
+
+    /// <summary>
     /// Publish attempts made. Incremented as part of claiming the post, so a row left in
     /// <see cref="SocialPostState.Publishing"/> shows how many times it has been tried.
     /// </summary>

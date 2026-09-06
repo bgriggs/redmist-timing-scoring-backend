@@ -39,6 +39,7 @@
 		<ProjectReference Include="..\RedMist.Backend.Shared\RedMist.Backend.Shared.csproj" />
 		<ProjectReference Include="..\RedMist.ControlLogs\RedMist.ControlLogs.csproj" />
 		<ProjectReference Include="..\RedMist.Database\RedMist.Database.csproj" />
+		<ProjectReference Include="..\RedMist.Social\RedMist.Social.csproj" />
 	</ItemGroup>
 
 </Project>

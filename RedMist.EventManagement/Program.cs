@@ -11,6 +11,7 @@ using RedMist.Backend.Shared.Extensions;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.ControlLogs;
 using RedMist.Database;
+using RedMist.Social.Imaging;
 using StackExchange.Redis;
 using System.IO.Compression;
 using System.Reflection;
@@ -109,6 +110,29 @@ public class Program
 
         builder.Services.AddTransient<IControlLogFactory, ControlLogFactory>();
         builder.Services.AddTransient<AssetsCdn>();
+        builder.Services.AddSingleton(TimeProvider.System);
+
+        // Deleting a post's results images. Registered unconditionally, unlike in the compose job:
+        // whether new pictures are being captured has no bearing on whether the ones already stored
+        // can be removed, and a reviewer rejecting a post is the main reason one ever is.
+        //
+        // The public base URL has to be derived exactly as the compose job derives it. A post's image
+        // is recognized for deletion by matching its URL against this store's own address, so a
+        // disagreement here would not fail -- it would quietly refuse every delete and orphan the lot.
+        //
+        // Built on first resolution rather than at startup. These keys are for a social-post feature,
+        // and this service is the event and organization API: a missing one should cost image deletion,
+        // not put the whole thing into CrashLoopBackOff.
+        builder.Services.AddSingleton(sp => new BunnyCdnSettings(
+            StorageZoneName: RequiredSetting(builder.Configuration, "Assets:StorageZoneName"),
+            StorageAccessKey: RequiredSetting(builder.Configuration, "Assets:StorageAccessKey"),
+            MainReplicationRegion: RequiredSetting(builder.Configuration, "Assets:MainReplicationRegion"),
+            ApiAccessKey: RequiredSetting(builder.Configuration, "Assets:ApiAccessKey"),
+            PublicBaseUrl: builder.Configuration["Assets:PublicBaseUrl"] is { Length: > 0 } configured
+                ? configured
+                : $"https://{RequiredSetting(builder.Configuration, "Assets:StorageZoneName")}.b-cdn.net"));
+        builder.Services.AddSingleton<ISocialImageStore, BunnySocialImageStore>();
+        builder.Services.AddSingleton<SocialImageCleanup>();
 
         // Configure API Versioning
         builder.Services.AddApiVersioning(options =>
@@ -200,4 +224,13 @@ public class Program
 
         await app.RunAsync();
     }
+
+    /// <summary>
+    /// Reads a setting the service cannot work without, failing at startup rather than at first use.
+    /// Blank counts as missing: an unset Helm value arrives as an empty string, not as null.
+    /// </summary>
+    private static string RequiredSetting(IConfiguration configuration, string key) =>
+        configuration[key] is { } value && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : throw new InvalidOperationException($"{key} is not configured.");
 }

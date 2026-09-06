@@ -41,6 +41,15 @@ public class TsContext : DbContext
     public DbSet<SocialPost> SocialPosts { get; set; } = null!;
     public DbSet<SocialPrompt> SocialPrompts { get; set; } = null!;
 
+    /// <summary>
+    /// Name of the shadow concurrency property on <see cref="SocialPost"/>.
+    /// </summary>
+    /// <remarks>
+    /// Named here because a caller conditioning a write on it has to spell it the same way this
+    /// context declared it, and a shadow property is only ever reached by string.
+    /// </remarks>
+    public const string RowVersionProperty = "xmin";
+
 
     public TsContext(DbContextOptions<TsContext> options) : base(options) { }
 
@@ -184,8 +193,8 @@ public class TsContext : DbContext
         // a token that write throws instead of silently winning.
         // PostgreSQL's own row version. A shadow property rather than a mapped column, so this adds no
         // DDL: xmin is a system column every table already has.
-        modelBuilder.Entity<SocialPost>().Property<uint>("xmin")
-            .HasColumnName("xmin")
+        modelBuilder.Entity<SocialPost>().Property<uint>(RowVersionProperty)
+            .HasColumnName(RowVersionProperty)
             .HasColumnType("xid")
             .ValueGeneratedOnAddOrUpdate()
             .IsConcurrencyToken();
