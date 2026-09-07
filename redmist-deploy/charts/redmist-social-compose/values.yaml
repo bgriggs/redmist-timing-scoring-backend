@@ -75,6 +75,11 @@ env:
 
   # Results pictures, taken from the timing page at https://redmist.racing/timing/{event}/{session}.
   "Social__Images__Enabled": "true"
+  # Whose timing pages get photographed. Per-environment, because the event ids come from this
+  # environment's database: pointed at production from test, an id either does not exist there --
+  # every capture then waits out ReadyTimeoutSeconds and the drafts arrive pictureless -- or it
+  # does, and a screenshot of an unrelated production race is attached to a test draft. Neither
+  # reports an error.
   "Social__Images__BaseUrl": "https://redmist.racing"
   # The landing UI embed flag: drops the site toolbar and footer at the Angular level, rather than
   # leaving them to be hidden after they have already rendered.
@@ -107,9 +112,22 @@ env:
   "Social__Images__ReadyTimeoutSeconds": "45"
   "Social__Images__SettleSeconds": "4"
 
+# Which Kubernetes secret the chart-local entries below read from. Deliberately blank: the name is
+# the one part that changes per environment (prod rmkeys, test rmkeys-test, dev rmkeys-dev), and the
+# template requires it, so an environment that does not name its own fails while rendering rather
+# than at run time.
+#
+# It is blank rather than defaulted to prod's name because the original bug was exactly that -- the
+# entry carried "rmkeys" everywhere -- and a default would reproduce it in the next environment
+# added. There is nothing to catch it later: a CronJob creates no pod until its schedule fires, so
+# `helm upgrade --wait` reports success, and with restartPolicy OnFailure the kubelet retries
+# CreateContainerConfigError until activeDeadlineSeconds expires. The Job then dies as
+# DeadlineExceeded into a 3-deep history buffer with no ServiceMonitor and no alert. Nothing
+# surfaces it; it simply does not post.
+secretName: ""
+
 # Chart-local rather than added to global.secrets: global secrets are injected into every service's
 # pods, and the API key has no business anywhere but here.
 secrets:
   - env: "Claude__ApiKey"
-    name: "rmkeys"
     key: "claudeapikey"

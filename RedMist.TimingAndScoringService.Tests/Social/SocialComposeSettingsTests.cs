@@ -11,10 +11,48 @@ namespace RedMist.TimingAndScoringService.Tests.Social;
 [TestClass]
 public class SocialComposeSettingsTests
 {
-    private static IConfiguration Config(params (string Key, string Value)[] values) =>
-        new ConfigurationBuilder()
-            .AddInMemoryCollection(values.ToDictionary(v => v.Key, v => (string?)v.Value))
-            .Build();
+    /// <summary>Any site, so that tests about the other settings do not have to name one.</summary>
+    private const string SomeSite = "https://example.test";
+
+    /// <summary>
+    /// Supplies <c>Social:Images:BaseUrl</c> unless the caller names it. That setting has no default
+    /// -- see <see cref="AMissingImagesBaseUrl_IsRefused"/> -- so without this every test here would
+    /// fail on it instead of on what it is about.
+    /// </summary>
+    private static IConfiguration Config(params (string Key, string Value)[] values)
+    {
+        var dictionary = values.ToDictionary(v => v.Key, v => (string?)v.Value);
+        if (!dictionary.ContainsKey("Social:Images:BaseUrl"))
+            dictionary["Social:Images:BaseUrl"] = SomeSite;
+
+        return new ConfigurationBuilder().AddInMemoryCollection(dictionary).Build();
+    }
+
+    /// <summary>
+    /// The site the pictures are taken from has to be named, because the event ids handed to it come
+    /// from whichever database the job reads. A default would be production's site, which is wrong in
+    /// every other environment -- and wrong silently: an id that does not resolve there produces a
+    /// timeout and a pictureless draft, and one that does produces a picture of the wrong race.
+    /// </summary>
+    [TestMethod]
+    public void AMissingImagesBaseUrl_IsRefused()
+    {
+        var withoutBaseUrl = new ConfigurationBuilder().Build();
+
+        var ex = Assert.ThrowsExactly<InvalidOperationException>(
+            () => SocialComposeSettings.FromConfiguration(withoutBaseUrl));
+
+        StringAssert.Contains(ex.Message, "Social:Images:BaseUrl",
+            "The message has to name the setting; that is the whole point of failing at startup.");
+    }
+
+    /// <summary>Blank is how an unset Helm value arrives, so it must be refused like a missing one.</summary>
+    [TestMethod]
+    public void ABlankImagesBaseUrl_IsRefused()
+    {
+        Assert.ThrowsExactly<InvalidOperationException>(
+            () => SocialComposeSettings.FromConfiguration(Config(("Social:Images:BaseUrl", ""))));
+    }
 
     /// <summary>
     /// Defaults are chosen so that being wrong means a post is missed, never that an unwanted one is

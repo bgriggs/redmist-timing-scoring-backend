@@ -101,8 +101,25 @@ public sealed class SocialComposeSettings
     /// repository that ships on its own schedule. When a class name changes there, this should be a
     /// Helm value away from working again rather than a backend release.
     /// </remarks>
+    /// <summary>
+    /// Reads a setting that has no safe default, failing at startup rather than at first use. Blank
+    /// counts as missing: an unset Helm value arrives as an empty string, not as null.
+    /// </summary>
+    private static string Required(IConfiguration configuration, string key) =>
+        Read(configuration, key)
+        ?? throw new InvalidOperationException(
+            $"{key} is not configured. It names the site the results pictures are taken from, and " +
+            "differs per environment, so there is no default that is right anywhere else.");
+
     private static SessionImageCaptureOptions ReadCaptureOptions(IConfiguration configuration) => new(
-        BaseUrl: Read(configuration, "Social:Images:BaseUrl") ?? "https://redmist.racing",
+        // No default. Every other setting here falls back to something harmless, but this one names
+        // the site whose pages get photographed, and the event ids handed to it come from whichever
+        // database this instance is pointed at. Defaulting it to production meant an unconfigured
+        // test deployment either photographed nothing -- an id absent there never resolves, so each
+        // capture waits out the ready timeout and the drafts arrive pictureless -- or photographed a
+        // real production race and attached it to a test draft. Neither raises an error, so the
+        // setting has to be demanded rather than assumed.
+        BaseUrl: Required(configuration, "Social:Images:BaseUrl"),
 
         // The landing UI's embed flag, which drops the site toolbar and footer at the Angular level
         // rather than leaving them to be hidden after they have already rendered.

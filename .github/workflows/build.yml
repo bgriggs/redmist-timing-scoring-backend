@@ -66,3 +66,22 @@ jobs:
           helm template "redmist-$env" . -f values.yaml -f "values-$env.yaml" > /dev/null
           echo "::endgroup::"
         done
+    # The nightly compose job is disabled in every environment, so the renders above never reach its
+    # templates -- a break in them would ship unnoticed and only appear whenever somebody first turns
+    # it on. Rendered here with it enabled so that path is covered too. Prod and test must render;
+    # dev must NOT, because it declares no secretName and cannot run this job.
+    - name: Render social-compose
+      working-directory: redmist-deploy
+      run: |
+        for env in prod test; do
+          echo "::group::helm template ($env, social-compose enabled)"
+          helm template "redmist-$env" . -f values.yaml -f "values-$env.yaml"             --set redmist-social-compose.enabled=true > /dev/null
+          echo "::endgroup::"
+        done
+        echo "::group::helm template (dev, social-compose enabled) -- expected to fail"
+        if helm template redmist-dev . -f values.yaml -f values-dev.yaml              --set redmist-social-compose.enabled=true > /dev/null 2>&1; then
+          echo "dev rendered the compose job, but it declares no secretName; the guard is gone."
+          exit 1
+        fi
+        echo "refused, as intended"
+        echo "::endgroup::"

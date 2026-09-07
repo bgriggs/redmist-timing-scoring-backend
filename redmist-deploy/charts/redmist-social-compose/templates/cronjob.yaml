@@ -62,7 +62,7 @@ spec:
                 - name: {{ .env | quote }}
                   valueFrom:
                     secretKeyRef:
-                      name: {{ .name }}
+                      name: {{ required "redmist-social-compose.secretName must name the Kubernetes secret holding claudeapikey for this environment" (.name | default $.Values.secretName) }}
                       key: {{ .key }}
               {{- end }}
           {{- with .Values.nodeSelector }}

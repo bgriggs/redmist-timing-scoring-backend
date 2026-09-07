@@ -56,6 +56,11 @@ redmist-external-data-collection:
       prometheusServerAddress: http://prometheus-kube-prometheus-prometheus.monitoring:9090
       cooldownPeriod: 300
 
+# Required whenever this job is enabled. Stated here rather than defaulted in the subchart so that
+# every environment declares its own; see the note in charts/redmist-social-compose/values.yaml.
+redmist-social-compose:
+  secretName: "rmkeys"
+
 # Redis configuration for production (using Redis Operator)
 redis:
   name: "redis"
