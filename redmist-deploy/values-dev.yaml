@@ -34,6 +34,13 @@ redmist-event-management:
 redmist-relay-api:
   environment: dev
 
+# redmist-social-compose is deliberately absent here. Dev cannot run it: global.secrets is a list,
+# so the three entries above REPLACE the nine in values.yaml, and the job needs Assets:ApiAccessKey
+# and Assets:StorageAccessKey to store the pictures it takes. Adding those two to dev is not enough
+# either -- global.env is a map and deep-merges, so dev inherits production's Assets__StorageZoneName
+# and would upload into the production zone. Enabling it here now fails while rendering, on the
+# required secretName, which is the loudest of the available failures.
+
 # Redis configuration for development
 redis:
   fullnameOverride: "redis-dev"

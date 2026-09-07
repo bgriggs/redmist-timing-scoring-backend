@@ -103,6 +103,51 @@ public class BunnyCdnTests
 
     #endregion
 
+    #region Deletes
+
+    [TestMethod]
+    public async Task DeleteAsync_RemovesTheObjectAtTheRequestedPath()
+    {
+        var handler = StubHttpMessageHandler.Returning(HttpStatusCode.OK);
+        using var cdn = CreateCdn(storageTransport: handler);
+
+        Assert.IsTrue(await cdn.DeleteAsync($"/{StorageZone}/social/facebook/event-42/session-1-0123456789abcdef.png"));
+
+        var request = handler.Requests.Single();
+        Assert.AreEqual(HttpMethod.Delete, request.Method);
+        Assert.EndsWith($"{StorageZone}/social/facebook/event-42/session-1-0123456789abcdef.png", request.RequestUri!.AbsolutePath);
+    }
+
+    /// <summary>
+    /// The caller clears its record of the URL on the strength of this answer, so a delete storage
+    /// refused must not come back as a success: the picture would stay publicly fetchable with
+    /// nothing referencing it and nothing able to find it again. The storage client reports these by
+    /// returning false rather than throwing, which is exactly how the failure hides.
+    /// </summary>
+    [TestMethod]
+    [DataRow(HttpStatusCode.Unauthorized)]
+    [DataRow(HttpStatusCode.NotFound)]
+    [DataRow(HttpStatusCode.InternalServerError)]
+    [DataRow(HttpStatusCode.ServiceUnavailable)]
+    public async Task DeleteAsync_WhenStorageRefusesTheDelete_ReportsFailure(HttpStatusCode status)
+    {
+        var handler = StubHttpMessageHandler.Returning(status);
+        using var cdn = CreateCdn(storageTransport: handler);
+
+        Assert.IsFalse(await cdn.DeleteAsync($"/{StorageZone}/social/facebook/event-42/session-1-0123456789abcdef.png"));
+    }
+
+    [TestMethod]
+    public async Task DeleteAsync_WhenTheTransportFails_ReportsFailure()
+    {
+        var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("connection reset"));
+        using var cdn = CreateCdn(storageTransport: handler);
+
+        Assert.IsFalse(await cdn.DeleteAsync($"/{StorageZone}/social/facebook/event-42/session-1-0123456789abcdef.png"));
+    }
+
+    #endregion
+
     #region Destination cleanup
 
     private const string ListingJson = """

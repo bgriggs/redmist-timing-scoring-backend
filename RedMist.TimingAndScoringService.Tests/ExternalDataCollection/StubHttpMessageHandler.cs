@@ -7,7 +7,15 @@ namespace RedMist.TimingAndScoringService.Tests.ExternalDataCollection;
 /// Snapshot of a request seen by <see cref="StubHttpMessageHandler"/>. The body is copied eagerly
 /// because the underlying content is disposed once the client finishes with the request.
 /// </summary>
-internal sealed record CapturedRequest(HttpMethod Method, Uri? Uri, string? ContentType, byte[] Body);
+internal sealed record CapturedRequest(HttpMethod Method, Uri? Uri, string? ContentType, byte[] Body)
+{
+    /// <summary>
+    /// Request headers, flattened to one comma-joined value each. Init-only rather than positional so
+    /// existing callers that only care about the body are unaffected.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Headers { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+}
 
 /// <summary>
 /// Deterministic stand-in for the network. Records every request and returns a canned response
@@ -47,9 +55,15 @@ internal sealed class StubHttpMessageHandler : HttpMessageHandler
             ? []
             : await request.Content.ReadAsByteArrayAsync(cancellationToken);
 
+        var headers = request.Headers.ToDictionary(
+            h => h.Key, h => string.Join(",", h.Value), StringComparer.OrdinalIgnoreCase);
+
         lock (sync)
         {
-            requests.Add(new CapturedRequest(request.Method, request.RequestUri, request.Content?.Headers.ContentType?.MediaType, body));
+            requests.Add(new CapturedRequest(request.Method, request.RequestUri, request.Content?.Headers.ContentType?.MediaType, body)
+            {
+                Headers = headers,
+            });
         }
 
         cancellationToken.ThrowIfCancellationRequested();

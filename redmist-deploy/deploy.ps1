@@ -104,6 +104,7 @@ helm upgrade --install $config.releaseName . `
   --set redmist-external-data-collection.image.tag=$Version `
   --set redmist-sponsor-data-rollup.image.tag=$Version `
   --set redmist-sponsor-reports.image.tag=$Version `
+  --set redmist-social-compose.image.tag=$Version `
   --namespace $config.namespace `
   --wait
 

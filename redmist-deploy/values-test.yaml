@@ -112,6 +112,15 @@ redmist-user-management:
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
 
+# Required whenever this job is enabled here, and set even though it is off by default: both values
+# are environment-specific, and neither being wrong produces an error anybody sees.
+redmist-social-compose:
+  secretName: "rmkeys-test"
+  env:
+    # The test landing site, which reads api-test. redmist.racing reads production, where this
+    # environment's event ids mean something else or nothing at all.
+    "Social__Images__BaseUrl": "https://redmist-test.b-cdn.net"
+
 # Redis configuration for test
 redis:
   fullnameOverride: "redis-test"

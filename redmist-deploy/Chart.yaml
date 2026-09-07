@@ -33,6 +33,9 @@ dependencies:
   - name: redmist-sponsor-data-rollup
     version: "0.1.0"
     condition: redmist-sponsor-data-rollup.enabled
+  - name: redmist-social-compose
+    version: "0.1.0"
+    condition: redmist-social-compose.enabled
   - name: redmist-sponsor-reports
     version: "0.1.0"
     condition: redmist-sponsor-reports.enabled

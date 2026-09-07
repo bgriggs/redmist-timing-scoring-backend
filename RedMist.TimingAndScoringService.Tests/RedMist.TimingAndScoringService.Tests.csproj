@@ -43,10 +43,22 @@
 		<ProjectReference Include="..\RedMist.SponsorDataRollup\RedMist.SponsorDataRollup.csproj" />
 		<ProjectReference Include="..\RedMist.SponsorReports\RedMist.SponsorReports.csproj" />
 		<ProjectReference Include="..\RedMist.UserManagement\RedMist.UserManagement.csproj" />
+		<ProjectReference Include="..\RedMist.Social\RedMist.Social.csproj" />
+		<ProjectReference Include="..\RedMist.SocialCompose\RedMist.SocialCompose.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!--
+		  SiteAdminRoleTests reads the service's real Keycloak configuration rather than a transcription
+		  of it, so that changing the realm, authority or audience changes what is tested.
+		-->
+		<None Include="..\RedMist.EventManagement\appsettings.json" Link="EventManagement.appsettings.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 	</ItemGroup>
 
 	<ItemGroup>

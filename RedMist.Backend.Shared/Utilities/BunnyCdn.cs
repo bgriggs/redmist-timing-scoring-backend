@@ -8,6 +8,14 @@ public class BunnyCdn : IDisposable
 {
     private readonly BunnyCDNStorage bunnyClient;
     private readonly string apiAccessKey;
+
+    /// <summary>
+    /// Held only so it can be redacted out of logged messages. BunnyCDN.Net.Storage puts the access
+    /// key into its own exception text ("Authentication failed for storage zone 'x' with access key
+    /// 'y'"), so logging one of its failures verbatim writes a live credential to pod stdout.
+    /// </summary>
+    private readonly string storageAccessKey;
+
     private readonly IHttpClientFactory httpClientFactory;
 
     private ILogger Logger { get; }
@@ -33,7 +41,60 @@ public class BunnyCdn : IDisposable
         }
 
         this.apiAccessKey = apiAccessKey;
+        this.storageAccessKey = storageAccessKey;
         this.httpClientFactory = httpClientFactory;
+    }
+
+    /// <summary>
+    /// Strips the storage credentials out of a message before it is logged.
+    /// </summary>
+    /// <remarks>
+    /// The storage library reports authentication failures by quoting the access key back, so the one
+    /// message most worth logging is also the one that must not be logged as written.
+    /// </remarks>
+    private string Redact(string? message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return string.Empty;
+
+        if (!string.IsNullOrEmpty(storageAccessKey))
+            message = message.Replace(storageAccessKey, "***", StringComparison.Ordinal);
+
+        if (!string.IsNullOrEmpty(apiAccessKey))
+            message = message.Replace(apiAccessKey, "***", StringComparison.Ordinal);
+
+        return message;
+    }
+
+    /// <summary>
+    /// Deletes a single stored object.
+    /// </summary>
+    /// <param name="destinationPath">Full storage path, e.g. /redmist-assets/social/event-1/x.png</param>
+    /// <returns>True when storage confirmed the delete; false otherwise.</returns>
+    /// <remarks>
+    /// The storage client's own result is returned rather than assumed. It answers false for any
+    /// non-success -- a rotated key, a 503, a missing object -- and does not throw, so discarding it
+    /// would report every failure as a success. That matters more here than anywhere else in this
+    /// class: the caller clears its record of the URL on the strength of this answer, so a delete
+    /// that quietly failed leaves a publicly fetchable image that nothing references and nothing
+    /// will ever find again.
+    /// </remarks>
+    public async Task<bool> DeleteAsync(string destinationPath)
+    {
+        try
+        {
+            Logger.LogInformation("Deleting '{destinationPath}'", destinationPath);
+            var deleted = await bunnyClient.DeleteObjectAsync(destinationPath);
+            if (!deleted)
+                Logger.LogWarning("Storage refused the delete of '{destinationPath}'", destinationPath);
+
+            return deleted;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("Error deleting '{destinationPath}': {error}", destinationPath, Redact(ex.ToString()));
+            return false;
+        }
     }
 
 
@@ -82,7 +143,7 @@ public class BunnyCdn : IDisposable
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error cleaning destination: {destinationPath}", destinationPath);
+            Logger.LogError("Error cleaning destination '{destinationPath}': {error}", destinationPath, Redact(ex.ToString()));
             return 2;
         }
         finally
@@ -122,7 +183,7 @@ public class BunnyCdn : IDisposable
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error copying files");
+            Logger.LogError("Error copying files: {error}", Redact(ex.ToString()));
             return 3;
         }
         finally
@@ -175,7 +236,13 @@ public class BunnyCdn : IDisposable
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error uploading stream to '{destinationPath}'", destinationPath);
+            // Redacted, and passed as a message rather than as the exception argument. The storage
+            // library quotes the access key in its own authentication-failure text, and NLog renders
+            // an attached exception in full -- so logging it as an exception would put a live
+            // credential in pod stdout. ToString rather than Message so the stack and any inner
+            // exception survive: for a DNS or TLS failure the message alone is just the sentence
+            // telling you to read the inner exception that is no longer there.
+            Logger.LogError("Error uploading stream to '{destinationPath}': {error}", destinationPath, Redact(ex.ToString()));
             return false;
         }
     }

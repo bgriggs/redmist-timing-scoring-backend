@@ -46,6 +46,27 @@ global:
       name: "rmkeys"
       key: "emailpassword"
 
+# Social post composition.
+#
+# Off by default, and deliberately so. Turning it on starts a nightly job that calls a paid API and
+# writes drafts, and three things have to be true first:
+#   1. This environment's secret -- rmkeys in prod, rmkeys-test in test -- needs a claudeapikey
+#      entry, and redmist-social-compose.secretName has to name it. Without either the pod cannot
+#      start, and because a CronJob creates no pod until its schedule fires, `helm upgrade --wait`
+#      will not catch it: the job would simply never post, and nothing would say so.
+#   2. The landing UI must already be serving the expand and topPerClass embed flags. The capture
+#      asks for them by default, and a site without them renders the class groups shut: no car rows,
+#      so every capture waits out its 45s timeout and every post arrives with no picture. Deploy the
+#      UI first, or set Social__Images__Enabled=false until it is out.
+#   3. There is somewhere to review what it drafts. Nothing here can publish, so until the admin UI
+#      exists the drafts would sit in SocialPosts unread.
+# Enable with --set redmist-social-compose.enabled=true, or by flipping this once all three hold.
+#
+# The condition key has to live here rather than in the subchart's own values.yaml: see the note in
+# Chart.yaml about coalesced values.
+redmist-social-compose:
+  enabled: false
+
 # Redis Operator configuration
 redis-operator:
   enabled: true

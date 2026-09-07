@@ -337,6 +337,190 @@ namespace RedMist.Database.Migrations
                     b.ToTable("SessionResults");
                 });
 
+            modelBuilder.Entity("RedMist.Database.Models.SocialPost", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApprovedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("ApprovedUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("DigestJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("DigestSourceHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("DigestVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("EditedText")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("EventId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ExternalPostId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ExternalUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("GeneratedText")
+                        .HasColumnType("text");
+
+                    b.Property<int>("GenerationAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("HasUnverifiedClaims")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ImageRefs")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("PromptVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PublishAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("PublishedUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("ScheduledUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ValidationWarnings")
+                        .HasColumnType("text");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("State", "ScheduledUtc");
+
+                    b.ToTable("SocialPosts", t =>
+                        {
+                            t.HasCheckConstraint("CK_SocialPosts_Channel", "\"Channel\" IN ('Facebook', 'Instagram')");
+
+                            t.HasCheckConstraint("CK_SocialPosts_Kind", "\"Kind\" IN ('EventResults', 'FeatureAnnouncement', 'Manual')");
+
+                            t.HasCheckConstraint("CK_SocialPosts_State", "\"State\" IN ('Draft', 'PendingReview', 'Approved', 'Publishing', 'Published', 'Rejected', 'Failed')");
+                        });
+                });
+
+            modelBuilder.Entity("RedMist.Database.Models.SocialPrompt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("FewShotJson")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("SystemPrompt")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("VoiceGuide")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Kind", "Channel")
+                        .IsUnique()
+                        .HasFilter("\"IsActive\"");
+
+                    b.HasIndex("Kind", "Channel", "Version")
+                        .IsUnique();
+
+                    b.ToTable("SocialPrompts", t =>
+                        {
+                            t.HasCheckConstraint("CK_SocialPrompts_Channel", "\"Channel\" IN ('Facebook', 'Instagram')");
+
+                            t.HasCheckConstraint("CK_SocialPrompts_Kind", "\"Kind\" IN ('EventResults', 'FeatureAnnouncement', 'Manual')");
+                        });
+                });
+
             modelBuilder.Entity("RedMist.Database.Models.SourceSponsorStatistics", b =>
                 {
                     b.Property<long>("Id")

@@ -43,7 +43,25 @@ public class Consts
     public const string EVENT_COMPETITORS = "competitors-{0}-999999";
     public const string RELAY_GROUP_PREFIX = "relay-event-{0}";
     public const string CLIENT_ID = "ts-client-{0}";
-    public static readonly string[] PRACTICE_QUAL_TERMS = ["Practice", "Qualifying", "Qual"];
+    /// <summary>
+    /// Session-name fragments identifying a non-competitive session: practice, qualifying, driver
+    /// education, schools, open track time and test/setup days. Matched as case-insensitive
+    /// substrings, so prefixes count ("Test" catches "Testing").
+    /// </summary>
+    public static readonly string[] PRACTICE_QUAL_TERMS =
+    [
+        "Practice", "Qualifying", "Qual", "HPDE", "School", "Test", "Setup", "Set-up",
+        "Track Time", "MaxTrackTime", "Track Day"
+    ];
+
+    /// <summary>
+    /// Non-competitive session terms too short to match as substrings. These match only as an exact,
+    /// case-sensitive, whitespace-delimited word: "DE" matched loosely would swallow any name
+    /// containing "de", which would misclassify real races such as "Sebring Under the Stars 14 hr".
+    /// Single tokens only -- matching splits the name on whitespace, so an entry containing a space
+    /// can never match. Multi-word terms belong in PRACTICE_QUAL_TERMS.
+    /// </summary>
+    public static readonly string[] PRACTICE_QUAL_WORD_TERMS = ["DE"];
     public const string COMPETITOR_METADATA = "cm-{0}-evt-{1}";
     public const string EVENT_PAYLOAD = "evt-{0}-payload";
     public const string TRACK_MAP_KEY = "track-map-{0}";
@@ -113,6 +131,22 @@ public class Consts
     /// (see EVENT_FLAGTRONICS_STREAM_FIELD). Payload is a JSON array of per-car objects.
     /// </summary>
     public const string FLAGTRONICS_TYPE = "ftcar";
+
+    #endregion
+
+    #region Authorization
+
+    /// <summary>
+    /// Keycloak realm role for site-wide administration: the operations that act on the site rather
+    /// than on one organization's own events.
+    /// </summary>
+    /// <remarks>
+    /// The organization endpoints scope a caller to their own data through the client_id claim, which
+    /// says nothing about site-wide rights. This is a realm role, matched exactly and case-sensitively
+    /// against the name in Keycloak, so a rename or a typo does not fail loudly - it refuses every
+    /// caller, including a genuine administrator. See <c>SiteAdminRoleTests</c>.
+    /// </remarks>
+    public const string SITE_ADMIN_ROLE = "site-admin";
 
     #endregion
 }
