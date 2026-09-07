@@ -192,6 +192,9 @@ public sealed record ClassResult(
 /// The name copy should call this entry by. Resolved once here rather than left to the generator,
 /// which would otherwise have to pick between three fields of wildly different reliability -- across
 /// recent events the entry name is present ~97% of the time, a team name only ~25%.
+///
+/// The entry name wins because it is what the timing page renders, and a post shows a picture of
+/// that page: any other choice puts two names for one car in front of the same reader.
 /// </param>
 /// <param name="NameSource">Which field <paramref name="DisplayName"/> came from, so review can see when it fell back to a bare car number.</param>
 /// <param name="LapsCompleted">Laps the car completed in the session.</param>
@@ -222,10 +225,16 @@ public sealed record Finisher(
 /// <summary>Where a finisher's <see cref="Finisher.DisplayName"/> came from.</summary>
 public enum FinisherNameSource
 {
-    /// <summary>Team name from the entry list. Best, but present for only a minority of events.</summary>
+    /// <summary>
+    /// Team name from the entry list. Used only where there is no entry name, which is also the case
+    /// where the timing page has no name of its own to contradict it.
+    /// </summary>
     Team,
 
-    /// <summary>Entry name from the entry list. The usual source.</summary>
+    /// <summary>
+    /// Entry name from the entry list. The usual source, and the name the timing page shows, so the
+    /// copy and the picture attached to it call a car the same thing.
+    /// </summary>
     EntryName,
 
     /// <summary>Neither name was supplied; the car number is all the copy can name.</summary>

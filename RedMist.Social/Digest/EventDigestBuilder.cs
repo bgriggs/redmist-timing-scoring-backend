@@ -22,7 +22,16 @@ namespace RedMist.Social.Digest;
 public static class EventDigestBuilder
 {
     /// <summary>Bumped when the projection changes in a way that alters the facts it produces.</summary>
-    public const string CurrentDigestVersion = "1";
+    /// <remarks>
+    /// 2: DisplayName resolves to the entry name before the team name, so every car carrying both is
+    /// now called something different than it was under version 1.
+    ///
+    /// Stamped onto each draft and never compared: redrafting is gated on DigestSourceHash, which
+    /// covers the results rather than the projection over them. A change here therefore does not
+    /// reach drafts already awaiting review -- those keep the copy they were written with, against
+    /// pictures taken under the new rules, until they are approved, rejected, or their results move.
+    /// </remarks>
+    public const string CurrentDigestVersion = "2";
 
     /// <summary>Class name used when an organizer runs an event with no class designations at all.</summary>
     private const string UnclassifiedName = "Overall";
@@ -213,10 +222,21 @@ public static class EventDigestBuilder
 
         // Resolved here so copy never has to choose between three fields of very different
         // reliability, nor invent a name when the organizer supplied none.
-        var (displayName, nameSource) = team is not null
-            ? (team, FinisherNameSource.Team)
-            : entryName is not null
-                ? (entryName, FinisherNameSource.EntryName)
+        //
+        // The entry name comes first because it is the name the timing page shows, and a post
+        // carries a picture of that page. Preferring the team name meant a car entered as "Ginger
+        // Racing" whose team is "Bimmerworld" was called Bimmerworld by the copy and Ginger Racing
+        // by the screenshot beside it -- the same car, the same position, the same margin, under two
+        // names, which reads as one of them being wrong. Agreement matters more here than which name
+        // is nicer, because the reader can see both at once.
+        //
+        // It is also the field that is actually there: across recent events an entry name is present
+        // ~97% of the time and a team name ~25%. The team name stays as the fallback -- when there is
+        // no entry name the page has nothing to disagree with, and a team name beats a bare number.
+        var (displayName, nameSource) = entryName is not null
+            ? (entryName, FinisherNameSource.EntryName)
+            : team is not null
+                ? (team, FinisherNameSource.Team)
                 : ($"car #{carNumber}", FinisherNameSource.CarNumber);
 
         return new Finisher(

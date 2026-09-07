@@ -236,12 +236,12 @@ public class EventDigestBuilderTests
     }
 
     /// <summary>
-    /// Across recent production events the entry name is present ~97% of the time and a team name
-    /// only ~25%, so the fallback order is the difference between naming most winners and naming a
-    /// quarter of them.
+    /// The entry name is what the timing page renders, and every post carries a picture of that page,
+    /// so naming a car anything else puts two names for it in front of one reader. It is also the
+    /// field that is present: ~97% of the time against ~25% for a team name.
     /// </summary>
     [TestMethod]
-    public void DisplayName_PrefersTeamThenEntryNameThenCarNumber()
+    public void DisplayName_PrefersEntryNameThenTeamThenCarNumber()
     {
         EventEntry Entry(string? team, string? name) =>
             new() { Number = "66", Team = team ?? string.Empty, Name = name ?? string.Empty, Class = "GP1" };
@@ -250,13 +250,16 @@ public class EventDigestBuilderTests
             .Build(AnEvent(), "ChampCar", [ASession(1, "Race", [ACar("66", "GP1", 1)], [entry])], Clock())
             .Sessions[0].Classes.Single().Podium[0];
 
-        var withTeam = Winner(Entry("Big Mission Motorsports", "BMM #66"));
-        Assert.AreEqual("Big Mission Motorsports", withTeam.DisplayName);
-        Assert.AreEqual(FinisherNameSource.Team, withTeam.NameSource);
+        // The case that made this the order it is: both present and disagreeing, which is what the
+        // picture and the copy did. The picture shows the entry name, so the copy must too.
+        var both = Winner(Entry("Bimmerworld", "Ginger Racing"));
+        Assert.AreEqual("Ginger Racing", both.DisplayName,
+            "The timing page shows the entry name, and the post shows the timing page.");
+        Assert.AreEqual(FinisherNameSource.EntryName, both.NameSource);
 
-        var entryOnly = Winner(Entry(null, "BMM #66"));
-        Assert.AreEqual("BMM #66", entryOnly.DisplayName);
-        Assert.AreEqual(FinisherNameSource.EntryName, entryOnly.NameSource);
+        var teamOnly = Winner(Entry("Big Mission Motorsports", null));
+        Assert.AreEqual("Big Mission Motorsports", teamOnly.DisplayName);
+        Assert.AreEqual(FinisherNameSource.Team, teamOnly.NameSource);
 
         var neither = Winner(Entry(null, null));
         Assert.AreEqual("car #66", neither.DisplayName);
