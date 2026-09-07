@@ -88,6 +88,9 @@ public class Program
                     new OpenApiSecuritySchemeReference("Bearer"), []
                 }
             });
+
+            // The review DTOs convert their enums per property, which Swashbuckle does not see.
+            c.SchemaFilter<StringEnumSchemaFilter>();
         });
 
         AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);

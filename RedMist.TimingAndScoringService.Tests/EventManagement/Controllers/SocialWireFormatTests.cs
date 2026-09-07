@@ -1,4 +1,5 @@
 using RedMist.Database.Models;
+using RedMist.EventManagement;
 using RedMist.EventManagement.Models;
 using System.Reflection;
 using System.Text.Json;
@@ -78,13 +79,17 @@ public class SocialWireFormatTests
     }
 
     /// <summary>
-    /// The converter is applied per property, so a DTO gaining an enum without it would reintroduce
-    /// exactly this bug for that field alone -- and, as before, only where a page renders it.
+    /// The converter is applied per property, so a model gaining an enum without it would
+    /// reintroduce exactly this bug for that field alone -- and, as before, only where a page
+    /// renders it. Checked across every review model rather than the two that exist today, because
+    /// the third one is the one nobody will think about.
     /// </summary>
     [TestMethod]
     public void EveryEnumPropertyOnTheReviewDtosDeclaresTheNameConverter()
     {
-        Type[] dtos = [typeof(SocialPostSummary), typeof(SocialPostDetail)];
+        var dtos = StringEnumSchemaFilter.ReviewModels.ToArray();
+
+        Assert.IsTrue(dtos.Length >= 2, "The review models were not found; this test would pass vacuously.");
 
         var unconverted = dtos
             .SelectMany(t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
