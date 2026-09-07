@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +12,7 @@ using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.InCarDriverMode;
 using StackExchange.Redis;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq.Expressions;
 using System.Runtime.ConstrainedExecution;
 using System.Security.Claims;
@@ -137,7 +138,7 @@ public abstract class EventsControllerBase : ControllerBase
         {
             EventId = result.Id,
             EventName = result.HideName ? string.Empty : result.Name,
-            EventDate = result.StartDate.ToString(),
+            EventDate = result.StartDate.ToString(EventDateFormatCulture),
             EventUrl = result.EventUrl,
             Sessions = result.Sessions,
             OrganizationName = result.OrganizationName,
@@ -325,7 +326,7 @@ public abstract class EventsControllerBase : ControllerBase
         {
             EventId = result.Id,
             EventName = result.HideName ? string.Empty : result.Name,
-            EventDate = result.StartDate.ToString(),
+            EventDate = result.StartDate.ToString(EventDateFormatCulture),
             EventUrl = result.EventUrl,
             Sessions = result.Sessions,
             OrganizationName = result.OrganizationName,
@@ -429,6 +430,21 @@ public abstract class EventsControllerBase : ControllerBase
         }
         return carPositions;
     }
+
+    /// <summary>
+    /// The culture the event date is written in. Left to the ambient culture, this string is
+    /// whatever the container's locale happens to be: today no LANG is set, so it falls out as
+    /// invariant - "09/06/2026 00:00:00" - and the apps read it as a US month/day date. A base
+    /// image that ever did set one would silently start sending "06/09/2026" instead, and every
+    /// event in the first twelve days of a month would be read as the wrong date rather than
+    /// failing. Pinned to invariant rather than to en-US because it is the format already being
+    /// served: en-US would render the same date as "9/6/2026 12:00:00 AM", changing the wire
+    /// format for every client for no gain.
+    ///
+    /// The session and event lists do not go through this - they send "yyyy-MM-dd" - so this is
+    /// only about <see cref="Event.EventDate"/>.
+    /// </summary>
+    private static readonly CultureInfo EventDateFormatCulture = CultureInfo.InvariantCulture;
 
     #region Sessions
 

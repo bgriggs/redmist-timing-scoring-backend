@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
+using System.Globalization;
 
 namespace RedMist.TimingAndScoringService.Tests.StatusApi;
 
@@ -333,6 +334,41 @@ public class EventsControllerBaseEventQueryTests
         var result = await _h.Controller.LoadEvent(evt.Id);
 
         Assert.IsInstanceOfType<NotFoundObjectResult>(result.Result);
+    }
+
+    /// <summary>
+    /// The event date goes out as a formatted string, and the apps read it as a US month/day date.
+    /// Left to the ambient culture that holds only because no locale is set on the container: under
+    /// a day/month culture the same event would go out as "06/09/2026" and be read as the 6th of
+    /// September rather than the 9th of June - a wrong date rather than a failure, on every event in
+    /// the first twelve days of a month.
+    /// </summary>
+    [TestMethod]
+    [DataRow("en-GB", DisplayName = "a day/month culture")]
+    [DataRow("de-DE", DisplayName = "a dotted day/month culture")]
+    [DataRow("ja-JP", DisplayName = "a year/month/day culture")]
+    [DataRow("en-US", DisplayName = "a month/day culture")]
+    [DataRow("", DisplayName = "the invariant culture")]
+    public async Task LoadEvent_EventDate_IsWrittenInTheSameCultureWhateverTheServerIsSetTo(string culture)
+    {
+        _h.AddOrganization(1);
+        var evt = _h.AddEvent("Dated", startDate: new DateTime(2026, 6, 9, 0, 0, 0, DateTimeKind.Utc));
+        await _h.Db.SaveChangesAsync();
+
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
+            var result = await _h.Controller.LoadEvent(evt.Id);
+
+            var eventDate = ((Event)((OkObjectResult?)result.Result)?.Value! ?? result.Value!).EventDate;
+            Assert.AreEqual("06/09/2026 00:00:00", eventDate,
+                $"Under {(culture == "" ? "the invariant culture" : culture)} the date must still read as month/day.");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
     }
 
     /// <summary>An event whose organization row is missing is not returned: the query inner-joins organizations.</summary>
