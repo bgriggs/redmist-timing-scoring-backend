@@ -31,8 +31,10 @@ public static class DefaultPrompts
         go rather than producing a list -- a post is not a results table, and the full results are a
         click away.
 
-        Aim for 80 to 150 words. Plain sentences. At most two hashtags, at the end, and only for the
-        event or the organization.
+        Aim for 80 to 150 words. Plain sentences.
+
+        No hashtags. Not for the event, not for the organization, not tacked on at the end. Car
+        numbers keep their "#": write "the #12 car".
         """;
 
     private const string EventResultsVoiceGuide = """
@@ -58,7 +60,8 @@ public static class DefaultPrompts
     /// <remarks>
     /// Every channel starts from the same text today. Once posts are going out to more than one, the
     /// wording will diverge -- length and hashtag conventions differ -- and it will diverge in the
-    /// database rather than here.
+    /// database rather than here. The hashtag rule is the first thing to revisit there: refusing them
+    /// outright is a decision about Facebook, and it is the wrong default on Instagram.
     /// </remarks>
     public static SocialPrompt CreateSeed(SocialPostKind kind, SocialChannel channel, DateTime createdUtc)
     {
