@@ -15,8 +15,8 @@ namespace RedMist.SocialCompose;
 /// </list>
 /// </remarks>
 /// <param name="WasAttempted">False when image capture is switched off or unconfigured.</param>
-/// <param name="IsComplete">True when every session in scope produced a picture.</param>
-/// <param name="Urls">Public addresses of the pictures taken, in session order.</param>
+/// <param name="IsComplete">True when every race in scope produced a picture.</param>
+/// <param name="Urls">Public addresses of the pictures taken, one per race, in race order.</param>
 /// <param name="Warnings">What a reviewer should know about the pictures, or their absence.</param>
 public sealed record CapturedImageSet(
     bool WasAttempted,

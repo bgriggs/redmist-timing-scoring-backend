@@ -888,7 +888,278 @@ public class SocialComposeJobTests
         var post = await check.SocialPosts.SingleAsync();
 
         Assert.AreEqual(2, post.ImageRefs.Count);
-        StringAssert.Contains(post.ValidationWarnings, "first 2 of 3 race sessions");
+        StringAssert.Contains(post.ValidationWarnings, "first 2 of 3 races");
+    }
+
+    /// <summary>
+    /// The feed can produce two sessions for one race under the same name -- the duplicate usually
+    /// carrying session id 0 -- and taking the first N sessions in order then photographs that race
+    /// twice and the next one not at all. Seen on a real event: two pictures of Saturday, none of
+    /// Sunday, in a post whose own copy described both, because the digest reads results and had
+    /// every session regardless.
+    /// </summary>
+    [TestMethod]
+    public async Task ASessionRepeatedUnderTheSameName_IsNotPicturedTwice()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            // Session 1 is "Saturday Race"; session 0 repeats it, and Sunday is the race that would
+            // otherwise lose its slot.
+            var evt = AnEventWithResults(seed, 341, Now.AddDays(-3));
+            AddRaceSession(seed, 341, sessionId: 0, "Saturday Race", start: Now.AddDays(-3).AddHours(-4).AddMinutes(11));
+            AddRaceSession(seed, 341, sessionId: 2, "Sunday Race");
+            seed.Events.Add(evt);
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture();
+        await Job(db, Settings(images: true, maxImages: 2), capture: capture, store: new StubStore())
+            .RunAsync(CancellationToken.None);
+
+        CollectionAssert.AreEquivalent(
+            new[] { "Saturday Race", "Sunday Race" },
+            capture.Requests.Select(r => r.SessionName).ToList(),
+            "Both races should be pictured once, rather than Saturday twice.");
+
+        // The id decides which page is photographed, so asserting names alone would pass however
+        // badly the row was chosen.
+        CollectionAssert.AreEquivalent(
+            new[] { 1, 2 },
+            capture.Requests.Select(r => r.SessionId).ToList(),
+            "Saturday should be photographed from its real session, not the spare row.");
+
+        await using var check = db.CreateDbContext();
+        var post = await check.SocialPosts.SingleAsync();
+
+        Assert.AreEqual(2, post.ImageRefs.Count);
+        StringAssert.Contains(post.ValidationWarnings, "repeats the name 'Saturday Race'",
+            "A repeated session is worth naming: it is the visible end of a data problem.");
+    }
+
+    /// <summary>
+    /// The spare row carries session id 0 and can share the real row's start. Sessions reach the
+    /// digest ordered by start then id, so on a tie the id-0 row comes first -- and picking whichever
+    /// came first would photograph /timing/{event}/0 and drop the real session as the duplicate. That
+    /// turns a redundant picture into a wrong one, which is worse than the bug.
+    ///
+    /// The spare is given the LARGER field here on purpose. On the event this was written for both
+    /// rows held all 52 cars, so size cannot be what identifies the spare; if size outranked the id
+    /// then one extra car in the spare would hand it the race.
+    /// </summary>
+    [TestMethod]
+    public async Task WhereTwoRowsShareARace_TheRealSessionIdIsPicturedEvenIfTheSpareIsFuller()
+    {
+        var db = Db();
+        var sameStart = Now.AddDays(-3).AddHours(-4);
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            var evt = AnEvent(341, Now.AddDays(-3));
+            AddRaceSession(seed, 341, sessionId: 0, "Saturday Race", start: sameStart, cars: 9);
+            AddRaceSession(seed, 341, sessionId: 67, "Saturday Race", start: sameStart, cars: 8);
+            seed.Events.Add(evt);
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture();
+        await Job(db, Settings(images: true, maxImages: 2), capture: capture, store: new StubStore())
+            .RunAsync(CancellationToken.None);
+
+        Assert.AreEqual(1, capture.Requests.Count, "One race, one picture.");
+        Assert.AreEqual(67, capture.Requests[0].SessionId,
+            "The picture is fetched by session id, so the spare row's page would be photographed.");
+    }
+
+    /// <summary>Where both rows carry a real id, size is what is left to tell them apart.</summary>
+    [TestMethod]
+    public async Task WhereBothRowsCarryARealId_TheFullerOneIsPictured()
+    {
+        var db = Db();
+        var sameStart = Now.AddDays(-3).AddHours(-4);
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            AddRaceSession(seed, 341, sessionId: 66, "Saturday Race", start: sameStart, cars: 3);
+            AddRaceSession(seed, 341, sessionId: 67, "Saturday Race", start: sameStart, cars: 9);
+            seed.Events.Add(AnEvent(341, Now.AddDays(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture();
+        await Job(db, Settings(images: true, maxImages: 2), capture: capture, store: new StubStore())
+            .RunAsync(CancellationToken.None);
+
+        Assert.AreEqual(67, capture.Requests.Single().SessionId);
+    }
+
+    /// <summary>
+    /// Rows for one race differ in casing and spacing without meaning anything by it.
+    /// </summary>
+    [TestMethod]
+    public async Task NamesDifferingOnlyInCaseOrSpacing_AreTheSameRace()
+    {
+        var db = Db();
+        var start = Now.AddDays(-3).AddHours(-4);
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            AddRaceSession(seed, 341, sessionId: 0, "saturday  8   hour", start: start, cars: 9);
+            AddRaceSession(seed, 341, sessionId: 67, "Saturday 8 Hour", start: start.AddMinutes(11), cars: 9);
+            seed.Events.Add(AnEvent(341, Now.AddDays(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture();
+        await Job(db, Settings(images: true, maxImages: 2), capture: capture, store: new StubStore())
+            .RunAsync(CancellationToken.None);
+
+        Assert.AreEqual(67, capture.Requests.Single().SessionId);
+    }
+
+    /// <summary>Where the rows are the same size, a real session id still beats the spare's zero.</summary>
+    [TestMethod]
+    public async Task WhereTwoRowsAreIndistinguishableBySize_TheRealSessionIdWins()
+    {
+        var db = Db();
+        var sameStart = Now.AddDays(-3).AddHours(-4);
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            AddRaceSession(seed, 341, sessionId: 0, "Saturday Race", start: sameStart, cars: 4);
+            AddRaceSession(seed, 341, sessionId: 67, "Saturday Race", start: sameStart, cars: 4);
+            seed.Events.Add(AnEvent(341, Now.AddDays(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture();
+        await Job(db, Settings(images: true, maxImages: 2), capture: capture, store: new StubStore())
+            .RunAsync(CancellationToken.None);
+
+        Assert.AreEqual(67, capture.Requests.Single().SessionId);
+    }
+
+    /// <summary>
+    /// A meeting can legitimately run two races under one name, including twice in one day -- which
+    /// is why they are separated by how far apart they started rather than by which day they fall on.
+    /// Collapsing them would lose a real picture and report a data problem that is not there.
+    /// </summary>
+    [TestMethod]
+    public async Task TwoRealRacesSharingANameHoursApart_AreBothPictured()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            // Same name, same day, four hours apart: a double-header, not a repeated row.
+            AddRaceSession(seed, 341, sessionId: 1, "Race 1", start: Now.AddDays(-3).AddHours(-9), cars: 6);
+            AddRaceSession(seed, 341, sessionId: 2, "Race 1", start: Now.AddDays(-3).AddHours(-5), cars: 6);
+            seed.Events.Add(AnEvent(341, Now.AddDays(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture();
+        await Job(db, Settings(images: true, maxImages: 2), capture: capture, store: new StubStore())
+            .RunAsync(CancellationToken.None);
+
+        CollectionAssert.AreEquivalent(
+            new[] { 1, 2 }, capture.Requests.Select(r => r.SessionId).ToList(),
+            "Two races hours apart are two races, whatever they are called.");
+
+        await using var check = db.CreateDbContext();
+        var post = await check.SocialPosts.SingleAsync();
+        Assert.IsFalse(post.ValidationWarnings?.Contains("repeats", StringComparison.Ordinal) ?? false,
+            "Nothing repeated, so nothing should be reported as repeating.");
+    }
+
+    /// <summary>
+    /// The digest deliberately admits sessions with no name. Grouping on a blank would make every
+    /// one of them the same race and quietly drop all but the first.
+    /// </summary>
+    [TestMethod]
+    public async Task UnnamedSessions_AreNotTreatedAsOneRace()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            AddRaceSession(seed, 341, sessionId: 1, string.Empty, cars: 5);
+            AddRaceSession(seed, 341, sessionId: 2, string.Empty, cars: 5);
+            seed.Events.Add(AnEvent(341, Now.AddDays(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture();
+        await Job(db, Settings(images: true, maxImages: 2), capture: capture, store: new StubStore())
+            .RunAsync(CancellationToken.None);
+
+        Assert.AreEqual(2, capture.Requests.Count,
+            "A missing name is not evidence that two rows are the same race.");
+    }
+
+    /// <summary>
+    /// "Not pictured a second time" is false about a race the limit meant was never pictured at all,
+    /// and it would sit directly beside the warning saying so.
+    /// </summary>
+    [TestMethod]
+    public async Task ARaceExcludedByTheLimit_IsNotAlsoReportedAsARepeat()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            AddRaceSession(seed, 341, sessionId: 1, "Race A", start: Now.AddDays(-5), cars: 5);
+            AddRaceSession(seed, 341, sessionId: 2, "Race B", start: Now.AddDays(-4), cars: 5);
+            // Beyond the limit, and itself duplicated.
+            AddRaceSession(seed, 341, sessionId: 3, "Race C", start: Now.AddDays(-3), cars: 5);
+            AddRaceSession(seed, 341, sessionId: 0, "Race C", start: Now.AddDays(-3), cars: 2);
+            seed.Events.Add(AnEvent(341, Now.AddDays(-3)));
+            await seed.SaveChangesAsync();
+        }
+
+        await Job(db, Settings(images: true, maxImages: 2), capture: new StubCapture(), store: new StubStore())
+            .RunAsync(CancellationToken.None);
+
+        await using var check = db.CreateDbContext();
+        var warnings = (await check.SocialPosts.SingleAsync()).ValidationWarnings ?? string.Empty;
+
+        StringAssert.Contains(warnings, "first 2 of 3 races");
+        Assert.IsFalse(warnings.Contains("Race C", StringComparison.Ordinal),
+            "Race C was pictured zero times; saying it was not pictured twice contradicts the limit warning.");
+    }
+
+    /// <summary>
+    /// The limit counts races, not session rows, so a duplicate must not make a two-race weekend
+    /// report itself as having lost one to the limit.
+    /// </summary>
+    [TestMethod]
+    public async Task ADuplicateSession_DoesNotCountTowardTheImageLimit()
+    {
+        var db = Db();
+        await using (var seed = db.CreateDbContext())
+        {
+            seed.Organizations.Add(new Organization { Id = 1, Name = "ChampCar", ShortName = "CC" });
+            var evt = AnEventWithResults(seed, 341, Now.AddDays(-3));
+            AddRaceSession(seed, 341, sessionId: 0, "Saturday Race", start: Now.AddDays(-3).AddHours(-4).AddMinutes(11));
+            AddRaceSession(seed, 341, sessionId: 2, "Sunday Race");
+            seed.Events.Add(evt);
+            await seed.SaveChangesAsync();
+        }
+
+        var capture = new StubCapture();
+        await Job(db, Settings(images: true, maxImages: 2), capture: capture, store: new StubStore())
+            .RunAsync(CancellationToken.None);
+
+        // Asserted on the captures, not only on the warning text: an assertion that some phrase is
+        // absent passes just as well when the phrase merely changed.
+        Assert.AreEqual(2, capture.Requests.Count, "Two races, two pictures.");
+
+        await using var check = db.CreateDbContext();
+        var post = await check.SocialPosts.SingleAsync();
+
+        Assert.IsFalse((post.ValidationWarnings ?? string.Empty).Contains("configured limit", StringComparison.Ordinal),
+            "Three session rows are two races; the limit was not reached.");
     }
 
     /// <summary>
@@ -1072,23 +1343,50 @@ public class SocialComposeJobTests
         CollectionAssert.AreEqual(new[] { "https://cdn.example/social/Facebook/event-341/session-2-OLD.png" }, superseded.ToList());
     }
 
-    private static void AddRaceSession(TsContext context, int eventId, int sessionId, string name)
+    /// <param name="start">
+    /// When the session began. Defaults to spacing sessions out by id, which is convenient but is
+    /// exactly what a test about duplicate rows must not rely on: the feed's spare row can carry the
+    /// same start as the real one.
+    /// </param>
+    /// <param name="cars">
+    /// How many cars the row holds. A spare row is a partial snapshot, so size is what tells it from
+    /// the real session.
+    /// </param>
+    private static void AddRaceSession(
+        TsContext context, int eventId, int sessionId, string name, DateTime? start = null, int cars = 1)
     {
         context.SessionResults.Add(new SessionResult
         {
             EventId = eventId,
             SessionId = sessionId,
-            Start = Now.AddDays(-3).AddHours(sessionId),
+            Start = start ?? Now.AddDays(-3).AddHours(sessionId),
             SessionState = new SessionState
             {
                 EventId = eventId,
                 SessionId = sessionId,
                 SessionName = name,
-                CarPositions = [new() { Number = "66", Class = "GP1", ClassPosition = 1, LastLapCompleted = 100 }],
-                EventEntries = [new() { Number = "66", Name = "Bad Decision Racing", Class = "GP1" }],
+                // Car "66" keeps its original name so that a default-sized session is exactly the
+                // fixture every existing test was written against.
+                CarPositions = [.. Numbers(cars).Select((n, i) => new CarPosition
+                {
+                    Number = n,
+                    Class = "GP1",
+                    ClassPosition = i + 1,
+                    LastLapCompleted = 100,
+                })],
+                EventEntries = [.. Numbers(cars).Select(n => new EventEntry
+                {
+                    Number = n,
+                    Name = n == "66" ? "Bad Decision Racing" : $"Bad Decision Racing {n}",
+                    Class = "GP1",
+                })],
             },
         });
     }
+
+    /// <summary>Car numbers for a session of a given size, starting from the fixture's own car 66.</summary>
+    private static IEnumerable<string> Numbers(int cars) =>
+        Enumerable.Range(66, cars).Select(n => n.ToString());
 
     /// <summary>A generator that fails on a given call, to exercise the per-event failure paths.</summary>
     private sealed class ThrowingGenerator(Exception failure, int failOnCall = 0) : ICopyGenerator

@@ -444,7 +444,10 @@ public class SocialComposeJob(
         var warnings = new List<string>();
         var complete = true;
 
-        foreach (var session in digest.Sessions.Take(settings.MaxImagesPerPost))
+        var races = GroupIntoRaces(digest);
+        var (pictured, notPictured) = ChooseSessionsToPicture(races);
+
+        foreach (var session in pictured)
         {
             stoppingToken.ThrowIfCancellationRequested();
 
@@ -467,14 +470,135 @@ public class SocialComposeJob(
             }
         }
 
-        if (digest.Sessions.Count > settings.MaxImagesPerPost)
+        if (races.Count > settings.MaxImagesPerPost)
         {
             warnings.Add(
-                $"Only the first {settings.MaxImagesPerPost} of {digest.Sessions.Count} race sessions were " +
-                "pictured, which is the configured limit.");
+                $"Only the first {settings.MaxImagesPerPost} of {races.Count} races were pictured, " +
+                "which is the configured limit.");
+        }
+
+        // Named rather than counted, because a repeated session is a symptom worth recognizing: the
+        // feed produces one under a duplicate name, usually carrying session id 0. Only rows for a
+        // race that WAS pictured are reported here -- saying a race was "not pictured a second time"
+        // when the limit meant it was never pictured at all contradicts the warning just above.
+        foreach (var skipped in notPictured)
+        {
+            var cars = skipped.CarCount == 1 ? "1 car" : $"{skipped.CarCount} cars";
+            warnings.Add(
+                $"Session {skipped.SessionId} repeats the name '{skipped.SessionName}' with {cars}, " +
+                "so it was not pictured a second time.");
         }
 
         return new CapturedImageSet(true, complete, urls, warnings);
+    }
+
+    /// <summary>
+    /// Groups the digest's sessions into races, in the order they first appear.
+    /// </summary>
+    /// <remarks>
+    /// The feed can emit two rows for one race -- the spare typically carrying session id 0 -- and
+    /// treating each row as its own race photographed one race twice and the next one not at all,
+    /// while the copy described both.
+    ///
+    /// Same name, started close together. Not the same calendar day: these timestamps come back from
+    /// Postgres with no time zone on them, so which day they fall on depends on the clock of whatever
+    /// machine reads them, and a decision should not rest on that. A gap is the same measurement
+    /// however either end is labeled.
+    ///
+    /// The window is deliberately short. On the event this was written for the spare row began 11
+    /// minutes after the real one, while the weekend's two races were under two hours apart -- so a
+    /// generous window would start merging races that genuinely differ. Splitting a pair that should
+    /// have merged only restores the duplicate picture this code removes, which is where it started;
+    /// merging two real races loses a picture outright and reports a data problem that is not there.
+    /// The short window fails toward the first.
+    ///
+    /// An unnamed session never groups: the digest admits those deliberately, and a missing name is
+    /// the absence of evidence that two rows are one race, not evidence that they are.
+    /// </remarks>
+    private static List<List<SessionDigest>> GroupIntoRaces(EventDigest digest)
+    {
+        var races = new List<List<SessionDigest>>();
+
+        foreach (var session in digest.Sessions)
+        {
+            var name = NormalizeSessionName(session.SessionName);
+            if (name.Length == 0)
+            {
+                races.Add([session]);
+                continue;
+            }
+
+            // Compared against the row that opened the race rather than the nearest one, so a run of
+            // rows cannot walk a race arbitrarily far from where it started.
+            var race = races.Find(r =>
+                NormalizeSessionName(r[0].SessionName) == name
+                && (session.StartUtc - r[0].StartUtc).Duration() <= SameRaceWindow);
+
+            if (race is null)
+                races.Add([session]);
+            else
+                race.Add(session);
+        }
+
+        return races;
+    }
+
+    /// <summary>
+    /// How far apart two rows carrying one race's name can start and still be that one race.
+    /// </summary>
+    private static readonly TimeSpan SameRaceWindow = TimeSpan.FromMinutes(90);
+
+    /// <summary>
+    /// Folds a session name for comparison. Case and internal spacing both vary between rows for the
+    /// same race, and neither difference means anything; invariant casing rather than the current
+    /// culture's, so a Turkish locale does not decide what matches.
+    /// </summary>
+    private static string NormalizeSessionName(string? name) =>
+        string.Join(' ', (name ?? string.Empty)
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            .ToUpperInvariant();
+
+    /// <summary>
+    /// Picks one session to photograph per race, up to the configured limit.
+    /// </summary>
+    /// <remarks>
+    /// Which row of a race gets photographed matters, because the picture is addressed by session id
+    /// -- the capture fetches /timing/{event}/{session}. Taking whichever row came first would decide
+    /// it by the digest's ordering, which is start time then id, so a spare row sharing a start time
+    /// would win on its id being 0 and the post would be a photograph of that page.
+    ///
+    /// So a real session id is preferred over zero first, and size only settles ties. That order is
+    /// the way round it is because of what the rows actually look like: on the event this was written
+    /// for, the spare row and the real one both held all 52 cars. Size did not tell them apart at all,
+    /// and ranking it first would let a single car decide -- handing the race to the id-0 row whenever
+    /// the spare happened to catch one more.
+    ///
+    /// Preferring a non-zero id does not mean id 0 is invalid; the feed does emit it as a real
+    /// session, and a race whose only row carries it is still pictured. It means that where one race
+    /// has two rows and one of them is zero, zero is the spare.
+    /// </remarks>
+    private (List<SessionDigest> Pictured, List<SessionDigest> NotPictured) ChooseSessionsToPicture(
+        List<List<SessionDigest>> races)
+    {
+        var pictured = new List<SessionDigest>();
+        var notPictured = new List<SessionDigest>();
+
+        foreach (var race in races)
+        {
+            if (pictured.Count >= settings.MaxImagesPerPost)
+                break;
+
+            var best = race
+                .OrderByDescending(s => s.SessionId != 0)
+                .ThenByDescending(s => s.CarCount)
+                .ThenByDescending(s => s.SessionId)
+                .First();
+
+            pictured.Add(best);
+            notPictured.AddRange(race.Where(s => !ReferenceEquals(s, best)));
+        }
+
+        return (pictured, notPictured);
     }
 
     /// <summary>
