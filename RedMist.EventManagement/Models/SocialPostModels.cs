@@ -1,4 +1,5 @@
 using RedMist.Database.Models;
+using System.Text.Json.Serialization;
 
 namespace RedMist.EventManagement.Models;
 
@@ -13,13 +14,16 @@ namespace RedMist.EventManagement.Models;
 public class SocialPostSummary
 {
     public int Id { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public SocialPostKind Kind { get; set; }
     public int? EventId { get; set; }
 
     /// <summary>Name of the event this reports on, so a reviewer is not reading bare ids.</summary>
     public string? EventName { get; set; }
 
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public SocialChannel Channel { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public SocialPostState State { get; set; }
     public DateTime CreatedUtc { get; set; }
     public DateTime ScheduledUtc { get; set; }
@@ -51,10 +55,13 @@ public class SocialPostSummary
 public class SocialPostDetail
 {
     public int Id { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public SocialPostKind Kind { get; set; }
     public int? EventId { get; set; }
     public string? EventName { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public SocialChannel Channel { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public SocialPostState State { get; set; }
     public string IdempotencyKey { get; set; } = string.Empty;
 
