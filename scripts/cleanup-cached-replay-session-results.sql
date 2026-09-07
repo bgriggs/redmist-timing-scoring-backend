@@ -22,9 +22,16 @@
 --
 -- What it deliberately leaves alone:
 --
---   * Rows carrying control-log entries. The log is cached per event rather than per session, so a
---     scratch run picks up a copy of it, and for some events that copy is the only one there is.
---     Those events keep their entry; the alternative is destroying their log.
+--   * Rows whose control log is the event's longest copy and that have no sibling results row to
+--     hand it to. The log is cached per event rather than per session, so a scratch run picks up a
+--     copy of it - usually a duplicate of one a real session already holds, which goes with the row.
+--     Where the scratch run's copy is the only one, the log is moved to the session that ran before
+--     the row is deleted, the same handover SessionMonitor.CarryControlLogForward makes in code.
+--     Only a row with nowhere to hand its log is kept.
+--
+--     An earlier draft held back every row carrying any control log at all. On production that
+--     skipped 20 of the 36 rows - including all four Mid-Ohio events this was written for - whose
+--     logs were byte-identical duplicates of the real session's.
 --   * Rows whose results live in the legacy Payload column. LoadSessionResults prefers Payload over
 --     SessionState (V1 EventsController), so a row with a replayed SessionState can still be
 --     serving real results from Payload.
@@ -46,8 +53,13 @@
 -- is 'ltm'. CarLapLogs."LapData" is a text column holding the same CarPosition shape, so it needs a
 -- ::jsonb cast.
 --
--- The file ends in ROLLBACK. Run it, read the three result sets, and only then change the last
--- statement to COMMIT and run it again. Neither delete is reversible.
+-- The file ends in ROLLBACK. Run it, read the four result sets, and only then change the last
+-- statement to COMMIT and run it again. The handover writes to a row that is being kept, so read
+-- dry run 0 with care.
+--
+-- Every row this touches is copied into a zz_backup_replay_* table in the same transaction before
+-- it is changed, so a commit can be undone by inserting back from those. Drop them once the results
+-- lists have been checked.
 
 BEGIN;
 
@@ -70,6 +82,13 @@ WITH scored AS (
                 THEN jsonb_array_length(r."Payload" -> 'ee') ELSE 0 END AS payload_entries,
            CASE WHEN jsonb_typeof(r."ControlLogs") = 'array'
                 THEN jsonb_array_length(r."ControlLogs") ELSE 0 END AS control_log_entries,
+           -- The longest control log any other session of the same event has saved. The log is
+           -- cached per event, so the scratch run picks up a copy of it - if a sibling holds at
+           -- least as many entries this copy is redundant and can go with the row.
+           (SELECT COALESCE(max(CASE WHEN jsonb_typeof(o."ControlLogs") = 'array'
+                                     THEN jsonb_array_length(o."ControlLogs") ELSE 0 END), 0)
+              FROM "SessionResults" o
+             WHERE o."EventId" = r."EventId" AND o."SessionId" <> r."SessionId") AS sibling_control_log_entries,
            COALESCE(r."SessionState" ->> 'RunningRaceTime', '') AS running_race_time,
            -- Cars carrying a last lap time. A replayed car has none.
            (SELECT count(*)
@@ -79,7 +98,8 @@ WITH scored AS (
              WHERE COALESCE(car ->> 'ltm', '') <> '') AS cars_with_lap_time
       FROM "SessionResults" r
 )
-SELECT c."EventId", c."SessionId", c.state_cars
+SELECT c."EventId", c."SessionId", c.state_cars,
+       c.control_log_entries, c.sibling_control_log_entries
   FROM scored c
   JOIN "Sessions" s ON s."EventId" = c."EventId" AND s."Id" = c."SessionId"
  WHERE c.state_cars > 0
@@ -90,8 +110,49 @@ SELECT c."EventId", c."SessionId", c.state_cars
    AND c.running_race_time ~ '^[0:]*(\.0*)?$'
    AND c.payload_cars = 0
    AND c.payload_entries = 0
-   AND c.control_log_entries = 0
    AND NOT s."IsLive";
+
+-- A scratch run that holds the event's ONLY copy of the control log, or the longest one, cannot
+-- just be deleted - the log would go with it. Hand it to the session that ran first, which is what
+-- SessionMonitor.CarryControlLogForward does in code: the results row with the latest start, the
+-- same one the code picks. Only then is the row free to go. A run whose log is the longest and that
+-- has no sibling results row to hand it to gets no target here, and is held back below.
+CREATE TEMP TABLE carried_control_logs ON COMMIT DROP AS
+SELECT cr."EventId",
+       cr."SessionId",
+       (SELECT o."SessionId"
+          FROM "SessionResults" o
+         WHERE o."EventId" = cr."EventId" AND o."SessionId" <> cr."SessionId"
+         ORDER BY o."Start" DESC
+         LIMIT 1) AS target_session
+  FROM cached_replay_sessions cr
+ WHERE cr.control_log_entries > cr.sibling_control_log_entries;
+
+-- Dry run 0: control logs about to be moved, and where to. Read this one first - it is the only
+-- statement here that writes to a row that is being kept.
+SELECT c."EventId", c."SessionId" AS from_session, c.target_session AS to_session,
+       cr.control_log_entries AS entries_moved,
+       cr.sibling_control_log_entries AS entries_the_target_has_now,
+       CASE WHEN c.target_session IS NULL THEN 'HELD BACK - nowhere to put the log' ELSE 'moved' END AS outcome
+  FROM carried_control_logs c
+  JOIN cached_replay_sessions cr ON cr."EventId" = c."EventId" AND cr."SessionId" = c."SessionId"
+ ORDER BY c."EventId";
+
+-- The handover target is a row that is being KEPT, so back it up before overwriting its control
+-- log. It is not in deletable_sessions and would not be covered by the backups further down.
+CREATE TABLE IF NOT EXISTS "zz_backup_replay_control_log_targets" AS
+SELECT t.*, now() AS backed_up_at FROM "SessionResults" t
+  JOIN carried_control_logs c ON c."EventId" = t."EventId" AND c.target_session = t."SessionId" WITH NO DATA;
+INSERT INTO "zz_backup_replay_control_log_targets"
+SELECT t.*, now() FROM "SessionResults" t
+  JOIN carried_control_logs c ON c."EventId" = t."EventId" AND c.target_session = t."SessionId";
+
+UPDATE "SessionResults" t
+   SET "ControlLogs" = src."ControlLogs"
+  FROM carried_control_logs c
+  JOIN "SessionResults" src ON src."EventId" = c."EventId" AND src."SessionId" = c."SessionId"
+ WHERE t."EventId" = c."EventId"
+   AND t."SessionId" = c.target_session;
 
 -- Held back: a session with even one lap that has a time on it saw a car cross the line here, so it
 -- keeps both its laps and its results row however the state reads. Decided once, up front, so both
@@ -99,7 +160,11 @@ SELECT c."EventId", c."SessionId", c.state_cars
 CREATE TEMP TABLE deletable_sessions ON COMMIT DROP AS
 SELECT cr."EventId", cr."SessionId", cr.state_cars
   FROM cached_replay_sessions cr
- WHERE NOT EXISTS (
+ WHERE (cr.control_log_entries <= cr.sibling_control_log_entries
+        OR EXISTS (SELECT 1 FROM carried_control_logs c
+                    WHERE c."EventId" = cr."EventId" AND c."SessionId" = cr."SessionId"
+                      AND c.target_session IS NOT NULL))
+   AND NOT EXISTS (
         SELECT 1 FROM "CarLapLogs" x
          WHERE x."EventId" = cr."EventId" AND x."SessionId" = cr."SessionId"
            AND COALESCE(NULLIF(x."LapData", '')::jsonb ->> 'ltm', '') <> '');
@@ -144,6 +209,31 @@ SELECT cr."EventId", cr."SessionId",
         SELECT 1 FROM deletable_sessions d
          WHERE d."EventId" = cr."EventId" AND d."SessionId" = cr."SessionId")
  ORDER BY cr."EventId", cr."SessionId";
+
+-- Copy everything that is about to change into backup tables first. These are ordinary tables, not
+-- temp ones: they survive the commit, so the whole cleanup can be put back by inserting from them.
+-- Drop them once the results lists have been eyeballed. The control-log handover is included, since
+-- it writes to a row that is otherwise being kept.
+CREATE TABLE IF NOT EXISTS "zz_backup_replay_session_results" AS
+SELECT r.*, now() AS backed_up_at FROM "SessionResults" r
+  JOIN deletable_sessions d ON d."EventId" = r."EventId" AND d."SessionId" = r."SessionId" WITH NO DATA;
+INSERT INTO "zz_backup_replay_session_results"
+SELECT r.*, now() FROM "SessionResults" r
+  JOIN deletable_sessions d ON d."EventId" = r."EventId" AND d."SessionId" = r."SessionId";
+
+CREATE TABLE IF NOT EXISTS "zz_backup_replay_car_lap_logs" AS
+SELECT l.*, now() AS backed_up_at FROM "CarLapLogs" l
+  JOIN deletable_sessions d ON d."EventId" = l."EventId" AND d."SessionId" = l."SessionId" WITH NO DATA;
+INSERT INTO "zz_backup_replay_car_lap_logs"
+SELECT l.*, now() FROM "CarLapLogs" l
+  JOIN deletable_sessions d ON d."EventId" = l."EventId" AND d."SessionId" = l."SessionId";
+
+CREATE TABLE IF NOT EXISTS "zz_backup_replay_car_last_laps" AS
+SELECT c.*, now() AS backed_up_at FROM "CarLastLaps" c
+  JOIN deletable_sessions d ON d."EventId" = c."EventId" AND d."SessionId" = c."SessionId" WITH NO DATA;
+INSERT INTO "zz_backup_replay_car_last_laps"
+SELECT c.*, now() FROM "CarLastLaps" c
+  JOIN deletable_sessions d ON d."EventId" = c."EventId" AND d."SessionId" = c."SessionId";
 
 DELETE FROM "CarLapLogs" l
  USING deletable_sessions d
