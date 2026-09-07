@@ -82,6 +82,154 @@ public class SessionMonitorPersistenceTests
     }
 
     /// <summary>
+    /// The scratch run does not stay empty. Its fresh state has no cars, so the car updates that
+    /// keep arriving all name cars it has never heard of, which earns a forced relay reset; the
+    /// relay then replays its cached data set onto it. The run ends up holding a full copy of the
+    /// race that just finished, and writing that out is worse than the empty entry it replaced -
+    /// it reads as a second, complete set of results for the same race.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_ForASessionRebuiltFromTheRelayCache_RetiresTheRowWithoutWritingResults()
+    {
+        var harness = await CreateHarnessAsync(controlLogEntries: 2);
+
+        var saved = harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, CachedReplayState(cars: 53, entries: 53)));
+
+        Assert.IsTrue(saved, "There was nothing to write, which is not a failure to write it.");
+        await using var db = harness.CreateDb();
+        var session = db.Sessions.Single(s => s.Id == SessionId && s.EventId == EventId);
+        Assert.IsFalse(session.IsLive, "The scratch run still ended, whether or not it produced anything.");
+        Assert.IsNotNull(session.EndTime);
+        Assert.IsEmpty(db.SessionResults.Where(r => r.EventId == EventId && r.SessionId == SessionId),
+            "Cars replayed from the cache are not results; they belong to the session that ran.");
+    }
+
+    /// <summary>
+    /// Flags are recorded in their own table and arrive whether or not a run is the one being timed,
+    /// so a scratch run that happened to be current during a flag change must not be saved on the
+    /// strength of that alone.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_ForASessionRebuiltFromTheRelayCache_IsNotSavedByItsFlagDurations()
+    {
+        var harness = await CreateHarnessAsync();
+
+        harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, CachedReplayState(cars: 43, entries: 43, flags: 12)));
+
+        await using var db = harness.CreateDb();
+        Assert.IsEmpty(db.SessionResults.Where(r => r.EventId == EventId && r.SessionId == SessionId));
+    }
+
+    /// <summary>
+    /// The cache is replayed onto live sessions too - a mid-race relay reset is ordinary - and there
+    /// the lap history puts the lap times back. One car holding a lap time is enough to tell a
+    /// session that ran from a run that only ever held a replay.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_WhenOneCarHasALapTime_WritesTheResults()
+    {
+        var harness = await CreateHarnessAsync();
+        var state = CachedReplayState(cars: 30, entries: 30);
+        state.CarPositions[17].LastLapTime = "00:01:52.006";
+
+        var saved = harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, state));
+
+        Assert.IsTrue(saved);
+        await using var db = harness.CreateDb();
+        Assert.HasCount(30, db.SessionResults.Single(r => r.EventId == EventId && r.SessionId == SessionId).SessionState!.CarPositions);
+    }
+
+    /// <summary>
+    /// A race clock that moved is the other proof the session ran, and it stands on its own: a
+    /// session stopped before anyone completed a lap has no lap times to offer.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_WhenTheRaceClockRanButNoCarCompletedALap_WritesTheResults()
+    {
+        var harness = await CreateHarnessAsync();
+
+        var saved = harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId,
+            StateWith(cars: 20, entries: 20, lastLapTime: null, runningRaceTime: "00:04:31")));
+
+        Assert.IsTrue(saved);
+        await using var db = harness.CreateDb();
+        Assert.HasCount(20, db.SessionResults.Single(r => r.EventId == EventId && r.SessionId == SessionId).SessionState!.CarPositions);
+    }
+
+    /// <summary>
+    /// A session can end before anyone completes a lap - a practice run red-flagged off the grid -
+    /// and it looks like a replay in every respect but one: its cars have no completed laps to be
+    /// missing the times for. It is written out as it was before.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_ForAGriddedSessionThatNeverStarted_WritesTheResults()
+    {
+        var harness = await CreateHarnessAsync();
+        var state = StateWith(cars: 24, entries: 24, lastLapTime: null, runningRaceTime: "00:00:00");
+        foreach (var car in state.CarPositions)
+            car.LastLapCompleted = 0;
+
+        var saved = harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, state));
+
+        Assert.IsTrue(saved);
+        await using var db = harness.CreateDb();
+        Assert.HasCount(24, db.SessionResults.Single(r => r.EventId == EventId && r.SessionId == SessionId).SessionState!.CarPositions);
+    }
+
+    /// <summary>
+    /// The race clock passes 24 hours in an endurance event, and the framework's own parsers reject
+    /// it outright at that point - reading a race that has been running for a day and a half as a
+    /// clock that never started would throw its results away for good, since a session judged to
+    /// have nothing to show is never retried.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    [DataRow("00:00:00", false, DisplayName = "clock never started")]
+    [DataRow("00:00:00.000", false, DisplayName = "clock never started, with milliseconds")]
+    [DataRow("", false, DisplayName = "no clock at all")]
+    [DataRow("00:00:01", true, DisplayName = "one second in")]
+    [DataRow("7:04:06", true, DisplayName = "no leading zero")]
+    [DataRow("08:03:51", true, DisplayName = "an eight hour race")]
+    [DataRow("24:30:12", true, DisplayName = "past twenty-four hours")]
+    [DataRow("36:15:03.500", true, DisplayName = "a day and a half, with milliseconds")]
+    public async Task PersistFinishedSession_JudgesTheRaceClock_AcrossTheFormatsTheFeedSends(string runningRaceTime, bool expectSaved)
+    {
+        var harness = await CreateHarnessAsync();
+
+        harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId,
+            StateWith(cars: 40, entries: 40, lastLapTime: null, runningRaceTime: runningRaceTime)));
+
+        await using var db = harness.CreateDb();
+        var written = db.SessionResults.Any(r => r.EventId == EventId && r.SessionId == SessionId);
+        Assert.AreEqual(expectSaved, written,
+            $"A race clock of '{runningRaceTime}' should {(expectSaved ? "" : "not ")}count as a session that ran.");
+    }
+
+    /// <summary>
+    /// A replay must not be able to overwrite the real session's results either. The scratch run is
+    /// written out after the session it copied, and its car count can match or exceed the real one.
+    /// </summary>
+    [TestMethod]
+    [Timeout(30_000)]
+    public async Task PersistFinishedSession_ForASessionRebuiltFromTheRelayCache_DoesNotReplaceResultsAlreadySaved()
+    {
+        var harness = await CreateHarnessAsync();
+        harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, StateWith(cars: 55, entries: 55, flags: 19)));
+
+        harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, CachedReplayState(cars: 55, entries: 55)));
+
+        await using var db = harness.CreateDb();
+        var result = db.SessionResults.Single(r => r.EventId == EventId && r.SessionId == SessionId);
+        Assert.HasCount(19, result.SessionState!.FlagDurations, "The saved results should be the ones from the session that ran.");
+        Assert.IsTrue(result.SessionState!.CarPositions.All(c => !string.IsNullOrEmpty(c.LastLapTime)));
+    }
+
+    /// <summary>
     /// The control log keeps growing after the session that earned it has been written out - a
     /// penalty posted minutes after the checkered flag is ordinary. Those late entries used to be
     /// kept only because the scratch run that follows was written out later and took a fresher copy
@@ -165,7 +313,9 @@ public class SessionMonitorPersistenceTests
     {
         var harness = await CreateHarnessAsync();
 
-        var saved = harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId, StateWith(cars: 0, entries: 4)));
+        // A clock still on zero, so this stands on the entries alone rather than on the race clock.
+        var saved = harness.Monitor.CallPersist(new SessionMonitor.FinishedSession(SessionId,
+            StateWith(cars: 0, entries: 4, lastLapTime: null, runningRaceTime: "00:00:00")));
 
         Assert.IsTrue(saved);
         await using var db = harness.CreateDb();
@@ -591,14 +741,33 @@ public class SessionMonitorPersistenceTests
         await db.SaveChangesAsync(TestContext.CancellationToken);
     }
 
-    private static SessionState StateWith(int cars = 0, int entries = 0, int flags = 0) => new()
+    /// <summary>
+    /// A session that ran: its cars carry lap times and its race clock moved. Both matter, because
+    /// a state with neither is taken for a replay of the relay's cache and is not written out.
+    /// </summary>
+    private static SessionState StateWith(int cars = 0, int entries = 0, int flags = 0,
+        string? lastLapTime = "00:01:45.433", string runningRaceTime = "01:12:00") => new()
     {
         EventId = EventId,
         SessionId = SessionId,
-        CarPositions = [.. Enumerable.Range(0, cars).Select(i => new CarPosition { Number = i.ToString() })],
+        RunningRaceTime = runningRaceTime,
+        CarPositions = [.. Enumerable.Range(0, cars).Select(i => new CarPosition
+        {
+            Number = i.ToString(),
+            LastLapCompleted = 12,
+            LastLapTime = lastLapTime,
+        })],
         EventEntries = [.. Enumerable.Range(0, entries).Select(i => new EventEntry { Number = i.ToString() })],
         FlagDurations = [.. Enumerable.Range(0, flags).Select(_ => new FlagDuration { Flag = Flags.Green })],
     };
+
+    /// <summary>
+    /// What the relay's cached data set leaves on a scratch run: a full field of cars, each with the
+    /// lap count it finished the real session on, and nothing else - the cache carries no lap times,
+    /// and the run's own clock never started.
+    /// </summary>
+    private static SessionState CachedReplayState(int cars, int entries = 0, int flags = 0) =>
+        StateWith(cars, entries, flags, lastLapTime: null, runningRaceTime: "00:00:00");
 
     /// <summary>
     /// A monitor whose result writing is the real one, over an in-memory database seeded with the

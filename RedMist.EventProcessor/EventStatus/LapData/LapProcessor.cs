@@ -28,6 +28,11 @@ public class LapProcessor : IDisposable
     private readonly Dictionary<string, CarPosition> lastCarPositionLookup = [];
     private readonly Dictionary<(int evt, int sess), Dictionary<string, int>> eventCarLastLapLookup = [];
 
+    // Cars whose lap count in the lookup above came from a replay of the relay's cached data set
+    // rather than from a crossing seen here. Kept per session for as long as that stays true; a car
+    // leaves the set the moment it turns up with a lap time. See the guard in ProcessAsync.
+    private readonly Dictionary<(int evt, int sess), HashSet<string>> eventReplayOnlyCars = [];
+
     // Add a buffer to collect lap completions and wait for potential pit messages
     private readonly Dictionary<string, Queue<(CarPosition position, DateTimeOffset timestamp)>> pendingLapCompletions = [];
     private readonly TimeSpan pitMessageWaitTime = TimeSpan.FromMilliseconds(1000);
@@ -69,14 +74,68 @@ public class LapProcessor : IDisposable
             await InitializeEventLastLapsAsync(eventId, sessionId, carLastLapLookup, sessionContext.CancellationToken);
         }
 
+        if (!eventReplayOnlyCars.TryGetValue((eventId, sessionId), out var replayOnlyCars))
+        {
+            replayOnlyCars = [];
+            eventReplayOnlyCars[(eventId, sessionId)] = replayOnlyCars;
+        }
+
         foreach (var position in carPositions)
         {
             if (string.IsNullOrEmpty(position.Number))
                 continue;
 
-            if (!carLastLapLookup.TryGetValue(position.Number, out int lastLap))
+            var carIsKnownToSession = carLastLapLookup.TryGetValue(position.Number, out int lastLap);
+            if (!carIsKnownToSession)
             {
                 lastLap = 0;
+            }
+
+            // A car showing completed laps with no lap time against them was rebuilt from the
+            // relay's cached data set rather than seen crossing the line: the cache holds lap counts
+            // but never lap times, and a crossing always brings its time with it - the feed's
+            // passing record reaches the state ahead of the lap count, and even a car's first
+            // crossing of an event carries a time of its own. Baseline the car at the replayed lap
+            // so its next real crossing still logs, and log nothing for laps that were not run here.
+            //
+            // Without this, a replay lands one row per car in CarLapLogs under whatever session is
+            // current. On Orbits' scratch run - which a session change leaves empty, and which the
+            // forced relay reset then refills - that is enough to make a run that never turned a
+            // wheel look like a session that ran, and it is listed beside the real one.
+            //
+            // It has to keep holding after the first replay, not just on the car's first sighting.
+            // The relay resends its cache as often as a reset is asked for, and the sets do not
+            // agree: a later one can name a higher lap for the same car, which would clear the
+            // "newer lap" test below and log a lap on the strength of one replay disagreeing with
+            // another. So a car baselined from a replay stays suppressed until it shows a lap time.
+            var carCameFromReplay = !carIsKnownToSession || replayOnlyCars.Contains(position.Number);
+            if (carCameFromReplay && position.LastLapCompleted > 0 && string.IsNullOrWhiteSpace(position.LastLapTime))
+            {
+                lock (pendingLapCompletions)
+                {
+                    // Re-checked inside the lock, like the enqueue below: another thread may have
+                    // logged a real lap for this car since, and baselining it back to the replay's
+                    // lap number would let that lap be logged a second time.
+                    if (!carLastLapLookup.TryGetValue(position.Number, out int knownLap) || replayOnlyCars.Contains(position.Number))
+                    {
+                        if (position.LastLapCompleted > knownLap)
+                        {
+                            carLastLapLookup[position.Number] = position.LastLapCompleted;
+                        }
+                        replayOnlyCars.Add(position.Number);
+                    }
+                }
+                continue;
+            }
+
+            // The car has a lap time, so it has been timed here and is no longer taken on the
+            // cache's word.
+            if (replayOnlyCars.Count > 0 && !string.IsNullOrWhiteSpace(position.LastLapTime))
+            {
+                lock (pendingLapCompletions)
+                {
+                    replayOnlyCars.Remove(position.Number);
+                }
             }
 
             // Check if the car has completed a new lap or include lap 0 so the starting grid can be restored

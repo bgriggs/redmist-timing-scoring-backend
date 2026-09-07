@@ -2,6 +2,7 @@
 using MessagePack;
 using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
@@ -529,9 +530,55 @@ public class SessionMonitor : BackgroundService
     /// of the log belonging to the session that really ran - it is carried over to that session
     /// instead, by <see cref="CarryControlLogForward"/>. Flags are recorded in their own table, so
     /// a scratch run that saw a flag change but never a car has nothing of its own to lose.
+    ///
+    /// Cars alone are not enough either, because the scratch run does not stay empty for long. Its
+    /// fresh state has no cars, so every car update the timing system sends names one the session
+    /// has never heard of, and <c>RMonitorDataProcessor</c> answers a run of those with a forced
+    /// relay reset. The relay replays its cached data set, and the run that never turned a wheel
+    /// ends up holding a full copy of the race that just finished - which is worse than the empty
+    /// entry, because it looks like real results. See <see cref="IsCachedReplayOnly"/>.
     /// </summary>
     private static bool HasSomethingToShow(SessionState sessionState)
-        => sessionState.CarPositions.Count > 0 || sessionState.EventEntries.Count > 0;
+        => (sessionState.CarPositions.Count > 0 || sessionState.EventEntries.Count > 0)
+            && !IsCachedReplayOnly(sessionState);
+
+    /// <summary>
+    /// Whether the cars on this state only ever came from a replay of the relay's cached data set,
+    /// rather than from timing that ran under the session.
+    ///
+    /// A replay is recognised by carrying laps that nothing here ever timed: cars that have
+    /// completed laps, not one of those laps with a time against it, and a race clock that never
+    /// moved. The cache carries lap counts but no lap times - see
+    /// <see cref="SessionContext.SetLastLapTimeBeforeResetAsync"/>, which exists to put them back
+    /// from the lap history after a reset - and a session change clears that history, so a scratch
+    /// run rebuilt from the cache has nothing to restore from. A session that really ran has a lap
+    /// time on at least one car, or a race clock that moved, or both.
+    ///
+    /// All three are needed. A session that ended before anyone completed a lap - a practice run
+    /// red-flagged off the grid - also has no lap times and a clock still on zero, but its cars
+    /// have no completed laps either, so it is not mistaken for a replay and is written out as
+    /// before. Other fields the cache does carry, <see cref="CarPosition.BestTime"/> among them,
+    /// are deliberately not consulted: only a lap time tells you a car was timed under this run.
+    ///
+    /// Only asked of a state that has cars. A session with entries but no positions never saw a
+    /// car at all, and is kept for the reasons in <see cref="HasSomethingToShow"/>.
+    /// </summary>
+    private static bool IsCachedReplayOnly(SessionState sessionState)
+        => sessionState.CarPositions.Any(c => c.LastLapCompleted > 0)
+            && sessionState.CarPositions.All(c => string.IsNullOrWhiteSpace(c.LastLapTime))
+            && !HasRaceClockRun(sessionState);
+
+    /// <summary>
+    /// Whether the session's race clock ever moved. A replayed state carries the run's own clock,
+    /// which never started, so this reads zero for it and non-zero for anything that ran.
+    ///
+    /// Read with <see cref="RaceTimeParser"/> rather than the framework's parsers, which reject an
+    /// endurance event's clock outright once it passes 24 hours - and reading a real 24-hour race
+    /// as a clock that never ran is exactly the way to throw its results away.
+    /// </summary>
+    private static bool HasRaceClockRun(SessionState sessionState)
+        => RaceTimeParser.TryParse(sessionState.RunningRaceTime, out var raceTime)
+            && raceTime > TimeSpan.Zero;
 
     /// <summary>
     /// The event's control log as it currently stands. Throws rather than returning what it has:
@@ -628,8 +675,18 @@ public class SessionMonitor : BackgroundService
                 if (existingResult == null && !HasSomethingToShow(sessionState))
                 {
                     // The session row is still retired above - it existed, and it ended - but there
-                    // is nothing to write results for. See HasSomethingToShow.
-                    Logger.LogInformation("Session {sessionId} finished with no cars. Not saving results.", sessionId);
+                    // is nothing to write results for. See HasSomethingToShow. This is the only line
+                    // that ever explains a session missing from the results list, so it says which
+                    // of the two rules turned it away.
+                    if (IsCachedReplayOnly(sessionState))
+                    {
+                        Logger.LogInformation("Session {sessionId} only ever held a replay of the relay's cache - {cars} cars, none with a lap time, race clock '{clock}'. Not saving results.",
+                            sessionId, sessionState.CarPositions.Count, sessionState.RunningRaceTime);
+                    }
+                    else
+                    {
+                        Logger.LogInformation("Session {sessionId} finished with no cars. Not saving results.", sessionId);
+                    }
                     CarryControlLogForward(db, sessionId);
                     db.SaveChanges();
                     return true;
@@ -644,12 +701,20 @@ public class SessionMonitor : BackgroundService
                     // the latest dataset. This should typically allow for replacing partial session states with more complete ones,
                     // However it is possible that the finishing car positions are not as accurate if there are additional laps in the
                     // newer data. This is a trade-off best effort to ensure we do not lose data.
-                    if (sessionState.EventEntries.Count >= existingResult.SessionState?.EventEntries.Count
+                    // A cached replay is excluded by count as well as by content: it carries the
+                    // whole field, so it can match or beat the saved result on every count above
+                    // while holding none of the lap times that made those results worth keeping.
+                    if (!IsCachedReplayOnly(sessionState)
+                        && sessionState.EventEntries.Count >= existingResult.SessionState?.EventEntries.Count
                         && sessionState.CarPositions.Count >= existingResult.SessionState?.CarPositions.Count
                         && sessionState.FlagDurations.Count >= existingResult.SessionState?.FlagDurations.Count)
                     {
                         Logger.LogInformation("Updating session state for session {sessionId} with more data", sessionId);
                         existingResult.SessionState = sessionState;
+                    }
+                    else if (IsCachedReplayOnly(sessionState))
+                    {
+                        Logger.LogWarning("Current session state for session {sessionId} is a replay of the relay's cache. Not updating session state.", sessionId);
                     }
                     else
                     {

@@ -1129,7 +1129,202 @@ public class LapProcessorTests
 
     #endregion
 
+    #region Relay cache replay
+
+    /// <summary>
+    /// The relay replays its cached data set whenever the timing data is resent, and the cache
+    /// carries lap counts but never lap times. A car that turns up in a session for the first time
+    /// already showing completed laps, with nothing to show for them, was rebuilt rather than seen
+    /// crossing the line - logging it writes a lap that was never run under this session.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_ForACarRebuiltFromTheRelayCache_LogsNoLap()
+    {
+        var replayed = CreateCachedReplayCarPosition("942", 222);
+
+        await _lapProcessor.ProcessAsync([replayed]);
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        Assert.IsEmpty(_capturedStreamAdds.Where(x => x.field.ToString() == "laps"),
+            "A car rebuilt from the cache has completed no lap here.");
+    }
+
+    /// <summary>
+    /// The whole field arrives on a replay, which is what leaves a row per car under Orbits' scratch
+    /// run and makes a run that never turned a wheel look like a session that ran.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_ForAFieldRebuiltFromTheRelayCache_LogsNothingAtAll()
+    {
+        var replayed = Enumerable.Range(1, 53).Select(i => CreateCachedReplayCarPosition(i.ToString(), 100 + i)).ToList();
+
+        await _lapProcessor.ProcessAsync(replayed);
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        Assert.IsEmpty(_capturedStreamAdds.Where(x => x.field.ToString() == "laps"));
+    }
+
+    /// <summary>
+    /// The car is still baselined at the lap the cache gave it, so the next lap it really completes
+    /// logs once - and does not drag the replayed laps in behind it.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_AfterACarWasRebuiltFromTheRelayCache_LogsItsNextRealLap()
+    {
+        await _lapProcessor.ProcessAsync([CreateCachedReplayCarPosition("942", 222)]);
+
+        await _lapProcessor.ProcessAsync([CreateTestCarPosition("942", 223)]);
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(1, lapMessages);
+        var laps = JsonSerializer.Deserialize<List<CarLapData>>(lapMessages[0].value.ToString());
+        Assert.IsNotNull(laps);
+        Assert.HasCount(1, laps, "Only the lap that was actually run should be logged.");
+        Assert.AreEqual(223, laps[0].Log.LapNumber);
+    }
+
+    /// <summary>
+    /// A replay is resent as often as the reset is asked for, so it must stay silent every time.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_WhenTheReplayRepeats_StillLogsNothing()
+    {
+        var replayed = CreateCachedReplayCarPosition("942", 222);
+
+        await _lapProcessor.ProcessAsync([replayed]);
+        await _lapProcessor.ProcessAsync([replayed]);
+        await _lapProcessor.ProcessAsync([replayed]);
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        Assert.IsEmpty(_capturedStreamAdds.Where(x => x.field.ToString() == "laps"));
+    }
+
+    /// <summary>
+    /// Only a car's first sighting in the session is in question. Once it is known here, a lap that
+    /// arrives before its time does is an ordinary crossing - the lap count and the lap time reach
+    /// the state from different records, so they need not land together.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_ForACarAlreadyKnownToTheSession_LogsALapThatHasNoLapTimeYet()
+    {
+        await _lapProcessor.ProcessAsync([CreateTestCarPosition("942", 0)]);
+
+        await _lapProcessor.ProcessAsync([CreateCachedReplayCarPosition("942", 1)]);
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        var laps = lapMessages.SelectMany(m => JsonSerializer.Deserialize<List<CarLapData>>(m.value.ToString())!).ToList();
+        Assert.IsTrue(laps.Any(l => l.Log.LapNumber == 1), "A known car's lap should still be logged.");
+    }
+
+    /// <summary>
+    /// The relay resends its cache as often as a reset is asked for, and two cached sets do not
+    /// agree - the same car is seen at lap 110 in one and lap 162 in another. The second replay
+    /// clears the "newer lap" test on the strength of the first, so without the suppression holding
+    /// past a car's first sighting it logs a lap, and the scratch run is listed for laps it never
+    /// ran even though its results were declined.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_WhenASecondReplayNamesAHigherLap_StillLogsNothing()
+    {
+        await _lapProcessor.ProcessAsync([CreateCachedReplayCarPosition("185", 110)]);
+
+        await _lapProcessor.ProcessAsync([CreateCachedReplayCarPosition("185", 162)]);
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        Assert.IsEmpty(_capturedStreamAdds.Where(x => x.field.ToString() == "laps"),
+            "One cached set disagreeing with another is not a lap.");
+    }
+
+    /// <summary>
+    /// And the car is left baselined at the highest lap any replay claimed, so the crossing that
+    /// follows logs once, at the lap it really happened on.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_AfterTwoReplays_LogsTheNextRealLapFromTheHigherOne()
+    {
+        await _lapProcessor.ProcessAsync([CreateCachedReplayCarPosition("185", 162)]);
+        await _lapProcessor.ProcessAsync([CreateCachedReplayCarPosition("185", 110)]);
+
+        await _lapProcessor.ProcessAsync([CreateTestCarPosition("185", 163)]);
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        var laps = _capturedStreamAdds.Where(x => x.field.ToString() == "laps")
+            .SelectMany(m => JsonSerializer.Deserialize<List<CarLapData>>(m.value.ToString())!).ToList();
+        Assert.HasCount(1, laps);
+        Assert.AreEqual(163, laps[0].Log.LapNumber);
+    }
+
+    /// <summary>
+    /// The guard must not catch a car that joins a session already under way, which is ordinary -
+    /// it arrives on a lap count this session has not seen, but with the lap time that says it was
+    /// timed crossing the line here. This is the case the whole guard is balanced against, so it is
+    /// pinned on its own rather than left to the defaults of the shared car builder.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_ForACarJoiningMidSessionWithALapTime_LogsItsLap()
+    {
+        var joining = CreateTestCarPosition("77", 34);
+        joining.LastLapTime = "00:02:01.117";
+
+        await _lapProcessor.ProcessAsync([joining]);
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        var laps = _capturedStreamAdds.Where(x => x.field.ToString() == "laps")
+            .SelectMany(m => JsonSerializer.Deserialize<List<CarLapData>>(m.value.ToString())!).ToList();
+        Assert.HasCount(1, laps, "A car seen crossing the line has completed a lap, new to the session or not.");
+        Assert.AreEqual(34, laps[0].Log.LapNumber);
+    }
+
+    /// <summary>
+    /// The lap history and the lap-completed message feed the pace and projection enrichers, so a
+    /// replay must stay out of those as well as out of CarLapLogs - a lap that was never run would
+    /// otherwise skew every car's projected pace.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_ForACarRebuiltFromTheRelayCache_AddsNoLapHistoryAndAnnouncesNothing()
+    {
+        var completed = new List<CarPosition>();
+        _lapProcessor.OnLapCompleted += completed.Add;
+
+        await _lapProcessor.ProcessAsync([CreateCachedReplayCarPosition("942", 222)]);
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        Assert.IsEmpty(completed, "Nothing completed a lap here.");
+        Assert.IsEmpty(await _carLapHistoryService.GetLapsAsync("942"), "A replayed lap has no place in the lap history.");
+        Assert.IsEmpty(_capturedStreamAdds.Where(x => x.field.ToString() != "laps"),
+            "The lap-completed message drives the pace enrichers and must not fire either.");
+    }
+
+    /// <summary>
+    /// The grid is captured at lap 0, before anyone has a lap time to show, so a car first seen on
+    /// zero laps is not a replay however blank it looks.
+    /// </summary>
+    [TestMethod]
+    public async Task ProcessAsync_ForACarFirstSeenOnTheGrid_LogsLapZeroWithoutALapTime()
+    {
+        await _lapProcessor.ProcessAsync([CreateCachedReplayCarPosition("942", 0)]);
+        await _lapProcessor.FlushPendingLapsAsync();
+
+        var lapMessages = _capturedStreamAdds.Where(x => x.field.ToString() == "laps").ToList();
+        Assert.HasCount(1, lapMessages, "Lap 0 restores the starting grid and is logged as before.");
+    }
+
+    #endregion
+
     #region Helper Methods
+
+    /// <summary>
+    /// A car as the relay's cached data set leaves it: the lap count it had reached, and no lap time,
+    /// because the cache does not carry one.
+    /// </summary>
+    private static CarPosition CreateCachedReplayCarPosition(string number, int lastLapCompleted)
+    {
+        var position = CreateTestCarPosition(number, lastLapCompleted);
+        position.LastLapTime = null;
+        return position;
+    }
 
     private static CarPosition CreateTestCarPosition(string number, int lastLapCompleted)
     {
