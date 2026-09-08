@@ -84,6 +84,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.Social", "RedMist.S
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.SocialCompose", "RedMist.SocialCompose\RedMist.SocialCompose.csproj", "{5805A53D-A413-4B39-B02C-A840DEB8A391}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RedMist.StatusLoadTest", "tools\RedMist.StatusLoadTest\RedMist.StatusLoadTest.csproj", "{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -382,6 +384,18 @@ Global
 		{5805A53D-A413-4B39-B02C-A840DEB8A391}.Release|x64.Build.0 = Release|Any CPU
 		{5805A53D-A413-4B39-B02C-A840DEB8A391}.Release|x86.ActiveCfg = Release|Any CPU
 		{5805A53D-A413-4B39-B02C-A840DEB8A391}.Release|x86.Build.0 = Release|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Debug|x64.Build.0 = Debug|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Debug|x86.Build.0 = Debug|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Release|x64.ActiveCfg = Release|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Release|x64.Build.0 = Release|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Release|x86.ActiveCfg = Release|Any CPU
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -397,6 +411,7 @@ Global
 		{99C365A5-7852-49F3-9B71-D84874579764} = {01C3C7DC-500A-4786-92EC-2062AB00D11A}
 		{3DA133C0-4715-4495-8EA1-A282EEF80DCE} = {01C3C7DC-500A-4786-92EC-2062AB00D11A}
 		{E3A45B9D-A3AC-44EA-A44C-5FC97C343F06} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{7D562F46-1318-44B5-A6CE-47C5DBB2A85B} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {BCE8ECC7-D522-49B0-B6FD-E0C57E6E5E3C}

@@ -45,6 +45,7 @@
 		<ProjectReference Include="..\RedMist.UserManagement\RedMist.UserManagement.csproj" />
 		<ProjectReference Include="..\RedMist.Social\RedMist.Social.csproj" />
 		<ProjectReference Include="..\RedMist.SocialCompose\RedMist.SocialCompose.csproj" />
+		<ProjectReference Include="..\tools\RedMist.StatusLoadTest\RedMist.StatusLoadTest.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
