@@ -6,8 +6,10 @@ metadata:
     {{- include "redmist-status-api.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
-  # Session affinity ensures negotiate and WebSocket upgrade from the same client
-  # hit the same pod, preventing 404 errors in multi-replica SignalR deployments.
+  # Session affinity by client IP, for traffic that goes through this Service. Public traffic
+  # does not: ingress-nginx sends requests straight to the pod endpoints, so what keeps a hub
+  # client's negotiate and WebSocket upgrade on one pod is the ingress's upstream-hash-by in
+  # values.yaml, not this.
   sessionAffinity: ClientIP
   sessionAffinityConfig:
     clientIP:

@@ -19,10 +19,23 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
-    # Consistent hash routing: ensures negotiate and WebSocket upgrade from the
-    # same client hit the same pod, preventing SignalR 404 connection errors.
-    # Uses client IP (via X-Forwarded-For from Cloudflare, or direct remote_addr).
-    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr$http_x_forwarded_for"
+    # Consistent hash routing, so a client's negotiate and its WebSocket upgrade reach the same
+    # pod. SignalR keeps the connection a negotiate creates on the pod that answered it, and an
+    # upgrade that lands on another pod is answered 404 ("No Connection with that ID"). The app's
+    # client retries after a delay and gets there eventually, so it shows as a slow hub connect and
+    # an error logged for each failed attempt - as a 502 in the app's logs, not the 404 nginx sent.
+    #
+    # Keyed on CF-Connecting-IP: the client address Cloudflare's edge sets and overwrites, and the
+    # one StatusApi's rate limiter reads first. Not $remote_addr. Public traffic reaches nginx
+    # through the cloudflared tunnel, so that address is whichever tunnel replica carried the
+    # request, and one client's negotiate and upgrade can take different replicas. With it in the
+    # key, about one hub upgrade in six came back 404 over an hour of a live weekend.
+    #
+    # The cost of keying on the client address is that viewers sharing one - a track's Wi-Fi - all
+    # land on the same pod, where they share that pod's in-memory rate limits rather than, by
+    # chance, two pods'. And a phone that negotiates over IPv4 and upgrades over IPv6 presents two
+    # addresses, so it can still miss and still relies on retrying.
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$http_cf_connecting_ip"
   # Environment-specific configuration
   environment: prod  # Override this in environment-specific values files
   domain: redmist.racing
