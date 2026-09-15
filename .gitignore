@@ -375,3 +375,4 @@ obj/docfx/
 **/Properties/k8s-debug.env
 /scripts/debug-eventprocessor-k8s.ps1
 /.claude
+/.playwright-mcp
