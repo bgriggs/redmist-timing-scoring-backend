@@ -204,6 +204,210 @@ namespace RedMist.Database.Migrations
                     b.ToTable("EventStatusLogs");
                 });
 
+            modelBuilder.Entity("RedMist.Database.Models.EventViewerSession", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CarNumber")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("ClientType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("ConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("EndReason")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("EndUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("InstallId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<bool>("IsInCar")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("StartInferred")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("StartUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId")
+                        .HasDatabaseName("IX_EventViewerSessions_Open")
+                        .HasFilter("\"EndUtc\" IS NULL");
+
+                    b.HasIndex("EventId", "StartUtc");
+
+                    b.HasIndex("EventId", "ConnectionId", "StartUtc")
+                        .IsUnique();
+
+                    b.ToTable("EventViewerSessions", t =>
+                        {
+                            t.HasCheckConstraint("CK_EventViewerSessions_EndReason", "\"EndReason\" IN ('Unsubscribed', 'Disconnected', 'Switched', 'ReconciledAbsent', 'CappedDuration', 'EventTeardown') OR \"EndReason\" IS NULL");
+                        });
+                });
+
+            modelBuilder.Entity("RedMist.Database.Models.EventViewershipBucket", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<double>("AvgConcurrent")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime>("BucketStartUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("ClientType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<long>("EventViewershipSummaryId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("MaxConcurrent")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MinConcurrent")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SessionId")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("ViewerSeconds")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventViewershipSummaryId", "SessionId", "BucketStartUtc", "ClientType")
+                        .IsUnique();
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("EventViewershipSummaryId", "SessionId", "BucketStartUtc", "ClientType"), false);
+
+                    b.ToTable("EventViewershipBuckets");
+                });
+
+            modelBuilder.Entity("RedMist.Database.Models.EventViewershipSessionSummary", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("EndUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<long>("EventViewershipSummaryId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsPracticeQualifying")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("MaxConcurrent")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("PeakUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("SessionId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SessionName")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTime>("StartUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("TopClientType")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<double>("TotalViewerMinutes")
+                        .HasColumnType("double precision");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventViewershipSummaryId");
+
+                    b.ToTable("EventViewershipSessionSummaries");
+                });
+
+            modelBuilder.Entity("RedMist.Database.Models.EventViewershipSummary", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AnomalousSessions")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaxConcurrent")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("OpenSessions")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("PeakUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<long>("PostEventReportId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("SessionCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TopClientType")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<double>("TotalViewerMinutes")
+                        .HasColumnType("double precision");
+
+                    b.Property<int?>("TrackOffsetMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("WindowEndUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("WindowStartUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PostEventReportId")
+                        .IsUnique();
+
+                    b.ToTable("EventViewershipSummaries");
+                });
+
             modelBuilder.Entity("RedMist.Database.Models.ExternalMessageLog", b =>
                 {
                     b.Property<long>("Id")
@@ -275,6 +479,69 @@ namespace RedMist.Database.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("GoogleSheetsConfigs");
+                });
+
+            modelBuilder.Entity("RedMist.Database.Models.OrganizationReportSettings", b =>
+                {
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("SendPostEventReport")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("OrganizationId");
+
+                    b.ToTable("OrganizationReportSettings");
+                });
+
+            modelBuilder.Entity("RedMist.Database.Models.PostEventReport", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text");
+
+                    b.Property<int>("EventId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("GeneratedUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RecipientCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SectionsJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("SendFailureCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SuggestionsJson")
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationId", "GeneratedUtc");
+
+                    b.ToTable("PostEventReports", t =>
+                        {
+                            t.HasCheckConstraint("CK_PostEventReports_State", "\"State\" IN ('Pending', 'Sent', 'PartiallySent', 'NoContent', 'Suppressed', 'NoRecipients', 'Failed')");
+                        });
                 });
 
             modelBuilder.Entity("RedMist.Database.Models.RelayLog", b =>
@@ -1263,6 +1530,33 @@ namespace RedMist.Database.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("RedMist.Database.Models.EventViewershipBucket", b =>
+                {
+                    b.HasOne("RedMist.Database.Models.EventViewershipSummary", null)
+                        .WithMany("Buckets")
+                        .HasForeignKey("EventViewershipSummaryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RedMist.Database.Models.EventViewershipSessionSummary", b =>
+                {
+                    b.HasOne("RedMist.Database.Models.EventViewershipSummary", null)
+                        .WithMany("Sessions")
+                        .HasForeignKey("EventViewershipSummaryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RedMist.Database.Models.EventViewershipSummary", b =>
+                {
+                    b.HasOne("RedMist.Database.Models.PostEventReport", null)
+                        .WithOne("Viewership")
+                        .HasForeignKey("RedMist.Database.Models.EventViewershipSummary", "PostEventReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("RedMist.Database.Models.SourceSponsorStatistics", b =>
                 {
                     b.HasOne("RedMist.Database.Models.SponsorStatistics", null)
@@ -1270,6 +1564,18 @@ namespace RedMist.Database.Migrations
                         .HasForeignKey("SponsorStatisticsId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("RedMist.Database.Models.EventViewershipSummary", b =>
+                {
+                    b.Navigation("Buckets");
+
+                    b.Navigation("Sessions");
+                });
+
+            modelBuilder.Entity("RedMist.Database.Models.PostEventReport", b =>
+                {
+                    b.Navigation("Viewership");
                 });
 
             modelBuilder.Entity("RedMist.Database.Models.SponsorStatistics", b =>

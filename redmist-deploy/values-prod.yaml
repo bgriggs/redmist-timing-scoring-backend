@@ -56,6 +56,14 @@ redmist-external-data-collection:
       prometheusServerAddress: http://prometheus-kube-prometheus-prometheus.monitoring:9090
       cooldownPeriod: 300
 
+# Post-event reports. Left suspended until the output has been read in a real mail client - see the
+# note in charts/redmist-post-event-reports/values.yaml for the dry-run procedure. Declared here
+# rather than only defaulted in the subchart because a `kubectl patch cronjob ... suspend=false`
+# would be silently reverted by the next helm upgrade, and a suspended CronJob creates no pod, so
+# nothing about the deploy would look wrong.
+redmist-post-event-reports:
+  suspend: true
+
 # Required whenever this job is enabled. Stated here rather than defaulted in the subchart so that
 # every environment declares its own; see the note in charts/redmist-social-compose/values.yaml.
 redmist-social-compose:

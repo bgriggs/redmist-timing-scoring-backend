@@ -20,6 +20,9 @@ dependencies:
 - name: redmist-social-compose
   repository: ""
   version: 0.1.0
+- name: redmist-post-event-reports
+  repository: ""
+  version: 0.1.0
 - name: redmist-sponsor-reports
   repository: ""
   version: 0.1.0
@@ -29,5 +32,5 @@ dependencies:
 - name: redmist-user-management
   repository: ""
   version: 0.1.0
-digest: sha256:d79eaa01116b9f62f74b4efff8dba87bc9f274caeb1d07be3f39c259192e4207
-generated: "2026-09-05T15:50:32.8188859-06:00"
+digest: sha256:c9c4c10b167ca77486acb147ce9466759ea8ed8b8b99fb3abbe810380fee34ea
+generated: "2026-09-19T15:48:32.4841092-06:00"

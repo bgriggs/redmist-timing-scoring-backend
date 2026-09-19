@@ -1,3 +1,9 @@
 ﻿Default Project: RedMist.Database (Package Manager Console)
 Startup Project: RedMist.EventManagement
 Add-Migration SponsorStatistics -Context TsContext
+Default Project: RedMist.Database (Package Manager Console)
+Startup Project: RedMist.EventManagement
+Add-Migration AddEventViewerSessions -Context TsContext
+Default Project: RedMist.Database (Package Manager Console)
+Startup Project: RedMist.EventManagement
+Add-Migration AddPostEventReports -Context TsContext

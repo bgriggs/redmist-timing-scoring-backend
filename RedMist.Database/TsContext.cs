@@ -40,6 +40,12 @@ public class TsContext : DbContext
     public DbSet<TrackMapRecord> TrackMaps { get; set; } = null!;
     public DbSet<SocialPost> SocialPosts { get; set; } = null!;
     public DbSet<SocialPrompt> SocialPrompts { get; set; } = null!;
+    public DbSet<EventViewerSession> EventViewerSessions { get; set; } = null!;
+    public DbSet<PostEventReport> PostEventReports { get; set; } = null!;
+    public DbSet<EventViewershipSummary> EventViewershipSummaries { get; set; } = null!;
+    public DbSet<EventViewershipSessionSummary> EventViewershipSessionSummaries { get; set; } = null!;
+    public DbSet<EventViewershipBucket> EventViewershipBuckets { get; set; } = null!;
+    public DbSet<OrganizationReportSettings> OrganizationReportSettings { get; set; } = null!;
 
     /// <summary>
     /// Name of the shadow concurrency property on <see cref="SocialPost"/>.
@@ -230,6 +236,78 @@ public class TsContext : DbContext
         // The digest is written and read as JSON text but stored as jsonb so it stays queryable when
         // investigating why a particular draft said what it said.
         modelBuilder.Entity<SocialPost>().Property(p => p.DigestJson).HasColumnType("jsonb");
+
+        // Viewer sessions. Stored as text for the same reason as SocialPost's enums: this table is
+        // read by hand when an event's viewership numbers look wrong, and the close reason is the
+        // first thing that gets looked at.
+        modelBuilder.Entity<EventViewerSession>().Property(s => s.EndReason)
+            .HasConversion<string>().HasMaxLength(20);
+        modelBuilder.Entity<EventViewerSession>().ToTable(t =>
+            t.HasCheckConstraint("CK_EventViewerSessions_EndReason",
+                BuildEnumCheck<ViewerSessionEndReason>("EndReason") + " OR \"EndReason\" IS NULL"));
+
+        // Redelivery guard. A stream entry replayed after a crash carries the same three values, so
+        // the database refuses the duplicate even if the consumer's own open-row check is bypassed.
+        modelBuilder.Entity<EventViewerSession>()
+            .HasIndex(s => new { s.EventId, s.ConnectionId, s.StartUtc })
+            .IsUnique();
+
+        // The reconciler runs "which of this event's sessions are still open" once a minute for the
+        // life of the event, and open rows are a small fraction of the table by the end of a weekend.
+        modelBuilder.Entity<EventViewerSession>()
+            .HasIndex(s => s.EventId)
+            .HasFilter("\"EndUtc\" IS NULL")
+            .HasDatabaseName("IX_EventViewerSessions_Open");
+
+        // The report's only query.
+        modelBuilder.Entity<EventViewerSession>().HasIndex(s => new { s.EventId, s.StartUtc });
+
+        // Post-event reports. One per event, and the unique index is what guarantees that: the job
+        // anti-joins on this table to pick candidates, and the index is the backstop for two runs
+        // overlapping, where the loser gets a duplicate key instead of sending a second copy.
+        modelBuilder.Entity<PostEventReport>().HasIndex(r => r.EventId).IsUnique();
+
+        // "What has this organization's viewership done over the season" - the query the organizer
+        // portal will be built on.
+        modelBuilder.Entity<PostEventReport>().HasIndex(r => new { r.OrganizationId, r.GeneratedUtc });
+
+        modelBuilder.Entity<PostEventReport>().Property(r => r.SectionsJson).HasColumnType("jsonb");
+        modelBuilder.Entity<PostEventReport>().Property(r => r.SuggestionsJson).HasColumnType("jsonb");
+        modelBuilder.Entity<PostEventReport>().ToTable(t =>
+            t.HasCheckConstraint("CK_PostEventReports_State",
+                $"\"State\" IN ({string.Join(", ", PostEventReportState.All.Select(v => $"'{v}'"))})"));
+
+        // The sections own their own tables and cascade off the report they belong to, so a report
+        // and everything that went into it is one unit.
+        modelBuilder.Entity<EventViewershipSummary>()
+            .HasOne<PostEventReport>()
+            .WithOne(r => r.Viewership)
+            .HasForeignKey<EventViewershipSummary>(s => s.PostEventReportId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<EventViewershipSummary>().HasIndex(s => s.PostEventReportId).IsUnique();
+
+        modelBuilder.Entity<EventViewershipSessionSummary>()
+            .HasOne<EventViewershipSummary>()
+            .WithMany(s => s.Sessions)
+            .HasForeignKey(s => s.EventViewershipSummaryId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<EventViewershipBucket>()
+            .HasOne<EventViewershipSummary>()
+            .WithMany(s => s.Buckets)
+            .HasForeignKey(b => b.EventViewershipSummaryId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // One row per series per window. PostgreSQL treats NULLs as distinct in a unique index by
+        // default, which would leave the event-wide series - every row where SessionId is null, and
+        // the source of every headline figure - unprotected by the very index meant to protect it.
+        modelBuilder.Entity<EventViewershipBucket>()
+            .HasIndex(b => new { b.EventViewershipSummaryId, b.SessionId, b.BucketStartUtc, b.ClientType })
+            .IsUnique()
+            .AreNullsDistinct(false);
+
+        modelBuilder.Entity<OrganizationReportSettings>().HasKey(s => s.OrganizationId);
+        modelBuilder.Entity<OrganizationReportSettings>().Property(s => s.OrganizationId).ValueGeneratedNever();
 
         modelBuilder.Entity<SocialPrompt>().Property(p => p.Kind).HasConversion<string>().HasMaxLength(50);
         modelBuilder.Entity<SocialPrompt>().Property(p => p.Channel).HasConversion<string>().HasMaxLength(50);

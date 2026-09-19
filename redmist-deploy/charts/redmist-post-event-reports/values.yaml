@@ -1,0 +1,56 @@
+# Ship suspended, apply the migration, fire one manual job with PostEventReport__DryRunRecipient
+# set, read the result in a mail client, then unsuspend. Organizer-facing mail is not something to
+# discover the formatting of in production.
+suspend: true
+
+image:
+  repository: bigmission/redmist-post-event-reports
+  tag: latest
+  pullPolicy: Always
+
+# Runs at 06:30 UTC daily, clear of sponsor-reports (03:00) and social-compose (05:00).
+schedule: "30 6 * * *"
+
+# Prevent overlapping runs
+concurrencyPolicy: Forbid
+
+# Job history
+successfulJobsHistoryLimit: 3
+failedJobsHistoryLimit: 3
+
+# Job timeout (1 hour)
+activeDeadlineSeconds: 3600
+
+restartPolicy: OnFailure
+
+# One retry, not three. A run that already sent some of an event's emails records the report row
+# before sending, so a retry would not re-send - but it would re-attempt every other event in the
+# same pass, and the failures worth retrying here are transient database ones.
+backoffLimit: 1
+
+resources:
+  requests:
+    cpu: "50m"
+    memory: "128Mi"
+  limits:
+    cpu: "200m"
+    memory: "512Mi"
+
+# Matches the other cron jobs. The image already runs as $APP_UID, but nothing enforced it here.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+env:

@@ -36,6 +36,9 @@ dependencies:
   - name: redmist-social-compose
     version: "0.1.0"
     condition: redmist-social-compose.enabled
+  - name: redmist-post-event-reports
+    version: "0.1.0"
+    condition: redmist-post-event-reports.enabled
   - name: redmist-sponsor-reports
     version: "0.1.0"
     condition: redmist-sponsor-reports.enabled

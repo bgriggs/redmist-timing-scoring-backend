@@ -24,6 +24,29 @@ public class Consts
     public const string EVENT_EXTERNAL_LOG_STREAM_FIELD = "extmsg-{0}-{1}";
     /// <summary>Field/type tag for external raw messages (see EVENT_EXTERNAL_LOG_STREAM_FIELD).</summary>
     public const string EXTERNAL_MESSAGE_TYPE = "extmsg";
+
+    /// <summary>
+    /// Logging-only stream carrying viewer session lifecycle events produced by the StatusHub replicas
+    /// and consumed by the EventLogger (ViewerSessionLogConsumer) into EventViewerSessions.
+    /// </summary>
+    /// <remarks>
+    /// A stream of its own rather than a field on the event processor logging stream. That stream is
+    /// capped at <see cref="EVENT_PROCESSOR_LOGGING_STREAM_MAX_LENGTH"/> and already carries lap logs
+    /// and relay heartbeats, so a few hundred viewers subscribing at green flag would trim a critical
+    /// feed out of the window to make room for telemetry.
+    /// </remarks>
+    public const string EVENT_VIEWERSHIP_STREAM_KEY = "evt-view-{0}";
+    /// <summary>Approximate MAXLEN for the viewership stream (see EVENT_STATUS_STREAM_MAX_LENGTH).</summary>
+    public const int EVENT_VIEWERSHIP_STREAM_MAX_LENGTH = 5000;
+    /// <summary>Field/type tag for viewer session lifecycle entries.</summary>
+    public const string VIEWER_SESSION_TYPE = "viewsess";
+    /// <summary>
+    /// Sliding expiry refreshed on every viewership stream write, so a stream for an event whose
+    /// logger pod has already been torn down cannot outlive the event. Nothing else deletes it in
+    /// the case where viewers linger on an event the relay has dropped.
+    /// </summary>
+    public static readonly TimeSpan VIEWERSHIP_STREAM_TTL = TimeSpan.FromHours(12);
+
     public const string RELAY_EVENT_CONNECTIONS = "relay-evt-conns";
     public const string STATUS_EVENT_CONNECTIONS = "st-evt-{0}-conns";
     public const string STATUS_CONNECTIONS = "st-conns";

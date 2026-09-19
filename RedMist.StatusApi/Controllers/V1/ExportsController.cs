@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.StatusApi.Filters;
 using RedMist.StatusApi.Services.Exports;
@@ -668,47 +669,12 @@ public class ExportsController : ControllerBase
             SessionName = session.Name,
             CarNumber = carNumber,
             GeneratedUtc = DateTime.UtcNow,
-            TrackOffset = TrackOffset(session.LocalTimeZoneOffset),
+            TrackOffset = TrackTime.Offset(session.LocalTimeZoneOffset),
             // Marked on the file rather than kept out of it: a session that has ended but is still
             // flagged live may have been picked up again, and nothing about the rows themselves would
             // reveal that to whoever opens the export later.
             SessionStillLive = session.EndTime != null && session.IsLive,
         };
-    }
-
-    /// <summary>
-    /// Turns the session stored offset into a usable one, or null.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Zero is read as absent rather than as Greenwich. The field defaults to zero, every track this
-    /// system serves is hours away from UTC, and the cost of the two readings is asymmetric: treating
-    /// a genuine UTC track as unknown puts a truthful note on a file whose times are already right,
-    /// while treating an unset field as UTC+0 silently labels UTC times as track local and sends
-    /// somebody looking for a lap at the wrong hour.
-    /// </para>
-    /// <para>
-    /// Anything beyond the range of real offsets is a corrupt value and is discarded the same way.
-    /// </para>
-    /// <para>
-    /// The result is rounded to whole minutes because <see cref="DateTimeOffset"/> accepts nothing
-    /// else: an offset of 5.01 hours is 5:00:36, and handing that to a conversion throws on every
-    /// timestamp in the file. The value is a double taken verbatim off the relay with no validation
-    /// at ingest, so a fractional-second offset is one bad relay away, and it would take out every
-    /// export of that session rather than one cell.
-    /// </para>
-    /// </remarks>
-    /// <param name="localTimeZoneOffset">The session offset from UTC, in hours.</param>
-    /// <returns>The offset, rounded to the minute, or null when there is not a usable one.</returns>
-    private static TimeSpan? TrackOffset(double localTimeZoneOffset)
-    {
-        if (localTimeZoneOffset == 0 || double.IsNaN(localTimeZoneOffset) ||
-            Math.Abs(localTimeZoneOffset) > 14)
-        {
-            return null;
-        }
-
-        return TimeSpan.FromMinutes(Math.Round(localTimeZoneOffset * 60));
     }
 
     private void LogResult(ExportContext context, ExportFormat format, ExportWriteResult result)

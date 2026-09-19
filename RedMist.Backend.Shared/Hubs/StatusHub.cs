@@ -1,10 +1,11 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using Prometheus;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Services;
 using RedMist.Backend.Shared.Utilities;
+using RedMist.Database.Models;
 using StackExchange.Redis;
 using System.Text.Json;
 
@@ -33,6 +34,7 @@ public class StatusHub : Hub
 
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IEventAccessValidator accessValidator;
+    private readonly TimeProvider timeProvider;
 
     private ILogger Logger { get; }
 
@@ -42,11 +44,18 @@ public class StatusHub : Hub
     /// <param name="loggerFactory">Factory to create loggers for this hub.</param>
     /// <param name="cacheMux">Redis connection multiplexer for caching and pub/sub.</param>
     /// <param name="accessValidator">Validator for per-event access codes (private events).</param>
-    public StatusHub(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IEventAccessValidator accessValidator)
+    /// <param name="timeProvider">Clock for the timestamps written to the viewership stream.</param>
+    /// <remarks>
+    /// <paramref name="timeProvider"/> is optional because hubs are constructed through
+    /// <c>ActivatorUtilities</c>, which honours a default rather than requiring a registration.
+    /// </remarks>
+    public StatusHub(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IEventAccessValidator accessValidator,
+        TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.accessValidator = accessValidator;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     private async Task EnsureAccessAsync(int eventId, string? accessCode)
@@ -75,7 +84,7 @@ public class StatusHub : Hub
         {
             // Save off the connectionId in the cache
             var cache = cacheMux.GetDatabase();
-            var conn = new StatusConnection { ConnectedTimestamp = DateTime.UtcNow, ClientId = clientId, SubscribedEventId = 0 };
+            var conn = new StatusConnection { ConnectedTimestamp = UtcNow(), ClientId = clientId, SubscribedEventId = 0 };
             var json = JsonSerializer.Serialize(conn);
             await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, Context.ConnectionId, json);
         }
@@ -100,6 +109,7 @@ public class StatusHub : Hub
         await base.OnDisconnectedAsync(exception);
         var clientId = GetClientId();
         var clientType = ClientTypeHelper.ResolveClientType(clientId);
+        StatusConnection? conn = null;
 
         try
         {
@@ -113,7 +123,7 @@ public class StatusHub : Hub
             // If the connection had an event subscription, remove it from the event connections cache
             if (!json.IsNullOrEmpty)
             {
-                var conn = JsonSerializer.Deserialize<StatusConnection>(json.ToString());
+                conn = JsonSerializer.Deserialize<StatusConnection>(json.ToString());
                 if (conn != null && conn.SubscribedEventId > 0)
                 {
                     var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, conn.SubscribedEventId);
@@ -124,6 +134,13 @@ public class StatusHub : Hub
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error removing connectionId {connectionId} from status connections cache", Context.ConnectionId);
+        }
+
+        // Close the viewer session on whichever event this connection was last subscribed to. Read
+        // from the record above rather than from the hub context, which no longer knows the event.
+        if (conn is { SubscribedEventId: > 0 })
+        {
+            await PublishViewerSessionEndAsync(conn.SubscribedEventId, ViewerSessionEndReason.Disconnected);
         }
 
         ClientConnectionsCount.Inc(-1);
@@ -243,7 +260,7 @@ public class StatusHub : Hub
         if (eventId > 0)
         {
             // Update connection tracking for this event
-            await AddOrUpdateConnectionTracking(connectionId, eventId, inCarDriverConnection: null);
+            await AddOrUpdateConnectionTracking(connectionId, eventId, inCarDriverConnection: null, updateInCarDriver: false);
         }
 
         Logger.LogInformation("Client {connectionId} subscribed v2 to event {eventId}", connectionId, eventId);
@@ -278,6 +295,17 @@ public class StatusHub : Hub
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error removing connectionId {connectionId} from event {eventId}", connectionId, eventId);
+        }
+
+        if (eventId > 0)
+        {
+            await PublishViewerSessionEndAsync(eventId, ViewerSessionEndReason.Unsubscribed);
+
+            // Clear the recorded subscription too, or the connection still looks subscribed to this
+            // event. That matters on the ordinary path of going back to the event list and into the
+            // same event again: the tracking update would see the event id unchanged, publish no
+            // start, and leave the viewer uncounted until the reconciler inferred them back.
+            await ClearSubscribedEventAsync(connectionId, eventId);
         }
 
         Logger.LogInformation("Client {connectionId} unsubscribed from event {eventId}", connectionId, eventId);
@@ -411,7 +439,8 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB, eventId, car);
         await Groups.AddToGroupAsync(connectionId, grpKey);
-        await AddOrUpdateConnectionTracking(connectionId, 0, inCarDriverConnection: new InCarDriverConnection(eventId, car));
+        await AddOrUpdateConnectionTracking(connectionId, eventId,
+            inCarDriverConnection: new InCarDriverConnection(eventId, car), updateInCarDriver: true);
         Logger.LogInformation("Client {connectionId} subscribed to in-car driver event for car {car} event {eventId}", connectionId, car, eventId);
     }
 
@@ -435,7 +464,7 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB, eventId, car);
         await Groups.RemoveFromGroupAsync(connectionId, grpKey);
-        await AddOrUpdateConnectionTracking(connectionId, 0, inCarDriverConnection: null);
+        await AddOrUpdateConnectionTracking(connectionId, eventId: null, inCarDriverConnection: null, updateInCarDriver: true);
         Logger.LogInformation("Client {connectionId} unsubscribed from in-car driver event for car {car} event {eventId}", connectionId, car, eventId);
     }
 
@@ -462,7 +491,8 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB_V2, eventId, car);
         await Groups.AddToGroupAsync(connectionId, grpKey);
-        await AddOrUpdateConnectionTracking(connectionId, 0, inCarDriverConnection: new InCarDriverConnection(eventId, car));
+        await AddOrUpdateConnectionTracking(connectionId, eventId,
+            inCarDriverConnection: new InCarDriverConnection(eventId, car), updateInCarDriver: true);
         Logger.LogInformation("Client {connectionId} subscribed to in-car V2 driver event for car {car} event {eventId}", connectionId, car, eventId);
     }
 
@@ -486,7 +516,7 @@ public class StatusHub : Hub
         var connectionId = Context.ConnectionId;
         var grpKey = string.Format(Consts.IN_CAR_EVENT_SUB_V2, eventId, car);
         await Groups.RemoveFromGroupAsync(connectionId, grpKey);
-        await AddOrUpdateConnectionTracking(connectionId, 0, inCarDriverConnection: null);
+        await AddOrUpdateConnectionTracking(connectionId, eventId: null, inCarDriverConnection: null, updateInCarDriver: true);
         Logger.LogInformation("Client {connectionId} unsubscribed from in-car V2 driver event for car {car} event {eventId}", connectionId, car, eventId);
     }
 
@@ -494,8 +524,48 @@ public class StatusHub : Hub
 
     #region Connection Status Management
 
-    private async Task AddOrUpdateConnectionTracking(string connectionId, int eventId, InCarDriverConnection? inCarDriverConnection)
+    /// <summary>
+    /// Records which event a connection is watching and whether it is in in-car driver mode, and
+    /// emits the viewer session transitions that follow from the change.
+    /// </summary>
+    /// <param name="connectionId">The connection being tracked.</param>
+    /// <param name="eventId">
+    /// The event the connection is now watching, or <c>null</c> to leave the existing event
+    /// subscription untouched.
+    /// </param>
+    /// <param name="inCarDriverConnection">The in-car driver subscription, or <c>null</c> for none.</param>
+    /// <param name="updateInCarDriver">
+    /// Whether <paramref name="inCarDriverConnection"/> should be written. <c>false</c> leaves the
+    /// existing value alone.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// The two pieces of state are settable independently because the callers genuinely need
+    /// different combinations of them, and conflating the two was a bug. Subscribing to in-car driver
+    /// mode used to pass event id 0, which took the "moved to a different event" branch below and
+    /// deleted the connection from its event's hash: an in-car viewer stopped being counted as
+    /// watching the event at all, and on disconnect the cleanup no longer knew which event to tidy.
+    /// In-car mode is a phone feature, so what that lost was mobile viewers specifically.
+    /// </para>
+    /// <para>
+    /// Leaving in-car mode passes a null event id rather than the event, because a driver switching
+    /// back to the timing screen is still watching. If they do then leave, the unsubscribe, the
+    /// disconnect handler, or failing both the logger's reconciler closes the session.
+    /// </para>
+    /// <para>
+    /// SignalR's <c>MaximumParallelInvocationsPerClient</c> defaults to 1, so the read-modify-write of
+    /// this connection's record is serialized per connection despite how racy it looks.
+    /// </para>
+    /// </remarks>
+    private async Task AddOrUpdateConnectionTracking(string connectionId, int? eventId,
+        InCarDriverConnection? inCarDriverConnection, bool updateInCarDriver)
     {
+        int? switchedAwayFrom = null;
+        int? startedWatching = null;
+        string clientType = ClientTypeHelper.ResolveClientType(null);
+        bool isInCar = inCarDriverConnection != null;
+        string? carNumber = inCarDriverConnection?.CarNumber;
+
         try
         {
             // Save off the connectionId in the cache for ability to send messages to this client individually
@@ -503,22 +573,40 @@ public class StatusHub : Hub
 
             // Get the cache entry for this connectionId that would have been created in OnConnectedAsync
             var connJson = await cache.HashGetAsync(Consts.STATUS_CONNECTIONS, connectionId);
-            string? clientType = null;
             if (!connJson.IsNullOrEmpty)
             {
                 var conn = JsonSerializer.Deserialize<StatusConnection>(connJson.ToString());
                 if (conn != null)
                 {
-                    // If the connection was previously subscribed to a different event, remove it from that event's connection cache
-                    if (conn.SubscribedEventId > 0 && conn.SubscribedEventId != eventId)
+                    if (eventId is { } newEventId)
                     {
-                        var oldConnKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, conn.SubscribedEventId);
-                        await cache.HashDeleteAsync(oldConnKey, connectionId, CommandFlags.FireAndForget);
+                        // If the connection was previously subscribed to a different event, remove it from that event's connection cache
+                        if (conn.SubscribedEventId > 0 && conn.SubscribedEventId != newEventId)
+                        {
+                            var oldConnKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, conn.SubscribedEventId);
+                            await cache.HashDeleteAsync(oldConnKey, connectionId, CommandFlags.FireAndForget);
+                            switchedAwayFrom = conn.SubscribedEventId;
+                        }
+
+                        if (conn.SubscribedEventId != newEventId && newEventId > 0)
+                        {
+                            startedWatching = newEventId;
+                        }
+
+                        // Always update SubscribedEventId so OnDisconnectedAsync can clean up the event hash entry
+                        conn.SubscribedEventId = newEventId;
                     }
 
-                    // Always update SubscribedEventId so OnDisconnectedAsync can clean up the event hash entry
-                    conn.SubscribedEventId = eventId;
-                    conn.InCarDriverConnection = inCarDriverConnection;
+                    if (updateInCarDriver)
+                    {
+                        conn.InCarDriverConnection = inCarDriverConnection;
+                    }
+                    else
+                    {
+                        isInCar = conn.InCarDriverConnection != null;
+                        carNumber = conn.InCarDriverConnection?.CarNumber;
+                    }
+
                     if (conn.ClientId != null)
                     {
                         clientType = ClientTypeHelper.ResolveClientType(conn.ClientId);
@@ -529,15 +617,117 @@ public class StatusHub : Hub
             }
 
             // Save off the connectionId in the event connections cache with the client type
-            if (eventId > 0)
+            if (eventId is > 0)
             {
-                var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId);
-                await cache.HashSetAsync(connKey, connectionId, clientType ?? "Web", When.Always, CommandFlags.FireAndForget);
+                var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId.Value);
+                await cache.HashSetAsync(connKey, connectionId, clientType, When.Always, CommandFlags.FireAndForget);
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error adding connection tracking for connectionId {connectionId} to event {eventId}", connectionId, eventId);
+        }
+
+        // Emitted after the tracking write, and outside its try/catch, so a viewership failure can
+        // never cost a client its subscription. A switch is two transitions on two different streams,
+        // each read by that event's own logger pod.
+        if (switchedAwayFrom is { } oldEventId)
+        {
+            await PublishViewerSessionEndAsync(oldEventId, ViewerSessionEndReason.Switched);
+        }
+        if (startedWatching is { } watchedEventId)
+        {
+            await PublishViewerSessionStartAsync(watchedEventId, clientType, isInCar, carNumber);
+        }
+    }
+
+    /// <summary>
+    /// Forgets which event a connection was watching, leaving everything else about it alone.
+    /// </summary>
+    /// <remarks>
+    /// Only clears when the recorded event still matches, so an unsubscribe that arrives after the
+    /// client has already moved on cannot wipe the newer subscription.
+    /// </remarks>
+    private async Task ClearSubscribedEventAsync(string connectionId, int eventId)
+    {
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            var connJson = await cache.HashGetAsync(Consts.STATUS_CONNECTIONS, connectionId);
+            if (connJson.IsNullOrEmpty)
+            {
+                return;
+            }
+
+            var conn = JsonSerializer.Deserialize<StatusConnection>(connJson.ToString());
+            if (conn == null || conn.SubscribedEventId != eventId)
+            {
+                return;
+            }
+
+            conn.SubscribedEventId = 0;
+            await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, connectionId, JsonSerializer.Serialize(conn));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error clearing the subscribed event for connectionId {connectionId}", connectionId);
+        }
+    }
+
+    #endregion
+
+    #region Viewership
+
+    private DateTime UtcNow() => timeProvider.GetUtcNow().UtcDateTime;
+
+    private Task PublishViewerSessionStartAsync(int eventId, string clientType, bool isInCar, string? carNumber) =>
+        PublishViewerSessionEventAsync(new ViewerSessionEvent
+        {
+            Kind = ViewerSessionEventKind.Start,
+            EventId = eventId,
+            ConnectionId = Context.ConnectionId,
+            ClientType = clientType,
+            TimestampUtc = UtcNow(),
+            IsInCar = isInCar,
+            CarNumber = carNumber,
+        });
+
+    private Task PublishViewerSessionEndAsync(int eventId, ViewerSessionEndReason reason) =>
+        PublishViewerSessionEventAsync(new ViewerSessionEvent
+        {
+            Kind = ViewerSessionEventKind.End,
+            EventId = eventId,
+            ConnectionId = Context.ConnectionId,
+            TimestampUtc = UtcNow(),
+            Reason = reason,
+        });
+
+    /// <summary>
+    /// Writes one viewer session transition to the event's viewership stream.
+    /// </summary>
+    /// <remarks>
+    /// Failures are logged and swallowed. This is telemetry riding alongside the live feed, and no
+    /// viewership write is worth failing a subscribe, an unsubscribe or a disconnect over - the
+    /// logger's reconciler recovers whatever a Redis outage loses here.
+    /// </remarks>
+    private async Task PublishViewerSessionEventAsync(ViewerSessionEvent viewerEvent)
+    {
+        try
+        {
+            var cache = cacheMux.GetDatabase();
+            var streamKey = string.Format(Consts.EVENT_VIEWERSHIP_STREAM_KEY, viewerEvent.EventId);
+            await cache.StreamAddAsync(streamKey, Consts.VIEWER_SESSION_TYPE, JsonSerializer.Serialize(viewerEvent),
+                maxLength: Consts.EVENT_VIEWERSHIP_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
+
+            // Sliding expiry rather than a one-shot TTL: viewers can sit on an event whose relay has
+            // dropped and whose logger pod has already been deleted, and nothing else would ever
+            // delete the stream that keeps collecting their transitions.
+            await cache.KeyExpireAsync(streamKey, Consts.VIEWERSHIP_STREAM_TTL, CommandFlags.FireAndForget);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error publishing viewer session {kind} for connection {connectionId} on event {eventId}",
+                viewerEvent.Kind, viewerEvent.ConnectionId, viewerEvent.EventId);
         }
     }
 

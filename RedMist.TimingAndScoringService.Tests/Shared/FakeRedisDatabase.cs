@@ -32,6 +32,7 @@ public sealed class FakeRedisDatabase
     public List<(string Key, string Field, long By)> HashIncrements { get; } = [];
     public List<(string Key, TimeSpan? Expiry)> KeyExpires { get; } = [];
     public List<(string Key, string Value)> SetAdds { get; } = [];
+    public List<(string Key, string Group, string Id)> StreamAcknowledgements { get; } = [];
 
     public FakeRedisDatabase()
     {
@@ -114,6 +115,14 @@ public sealed class FakeRedisDatabase
                 return Task.FromResult(true);
             });
 
+        Db.Setup(x => x.StreamAcknowledgeAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(),
+                It.IsAny<CommandFlags>()))
+            .Returns((RedisKey key, RedisValue group, RedisValue id, CommandFlags flags) =>
+            {
+                StreamAcknowledgements.Add((key.ToString(), group.ToString(), id.ToString()));
+                return Task.FromResult(1L);
+            });
+
         // int? maxLength overload
         Db.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(),
                 It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
@@ -147,6 +156,15 @@ public sealed class FakeRedisDatabase
 
     public void SeedString(string key, string value) => strings[key] = value;
 
+    /// <summary>Removes a seeded hash field without recording it as a delete the code under test made.</summary>
+    public void SeedHashRemove(string key, string field)
+    {
+        if (hashes.TryGetValue(key, out var h))
+        {
+            h.Remove(field);
+        }
+    }
+
     public string? GetHashValue(string key, string field)
         => hashes.TryGetValue(key, out var h) && h.TryGetValue(field, out var v) ? v : null;
 
@@ -163,6 +181,24 @@ public sealed class FakeRedisDatabase
     {
         Db.Setup(x => x.HashGetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<CommandFlags>()))
             .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "cache down"));
+    }
+
+    /// <summary>Makes whole-hash reads fail, as an unreachable Redis would.</summary>
+    public void FailHashGetAll()
+    {
+        Db.Setup(x => x.HashGetAllAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisTimeoutException("hash read failed", CommandStatus.Unknown));
+    }
+
+    public void FailStreamWrites()
+    {
+        Db.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(),
+                It.IsAny<RedisValue?>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisTimeoutException("stream write failed", CommandStatus.Unknown));
+        Db.Setup(x => x.StreamAddAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(),
+                It.IsAny<RedisValue?>(), It.IsAny<long?>(), It.IsAny<bool>(), It.IsAny<long?>(),
+                It.IsAny<StreamTrimMode>(), It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisTimeoutException("stream write failed", CommandStatus.Unknown));
     }
 
     /// <summary>Makes every hash delete fail, to exercise the hubs' cache-failure handling.</summary>

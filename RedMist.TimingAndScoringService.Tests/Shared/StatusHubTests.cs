@@ -363,21 +363,49 @@ public class StatusHubTests
     }
 
     /// <summary>
-    /// In-car tracking is registered against event 0, which also clears whatever event the connection
-    /// was counted under. A driver switching from the timing view to in-car mode therefore stops
-    /// being counted as a viewer of that event.
+    /// A driver in in-car mode is still watching the event, and has to keep being counted as one.
     /// </summary>
+    /// <remarks>
+    /// In-car tracking used to be registered against event 0, which took the "moved to another event"
+    /// branch of the tracking update and deleted the connection from its event's hash. The driver
+    /// vanished from the event's live client counts, and on disconnect the cleanup no longer knew
+    /// which event to tidy up. In-car mode is a phone feature, so what that lost was mobile viewers
+    /// specifically. This asserts the opposite of what it used to.
+    /// </remarks>
     [TestMethod]
-    public async Task SubscribeToInCarDriverEvent_ClearsTheEventSubscriptionTracking()
+    [DataRow(false, DisplayName = "V1")]
+    [DataRow(true, DisplayName = "V2")]
+    public async Task SubscribeToInCarDriverEvent_KeepsTheClientCountedAsAViewerOfTheEvent(bool v2)
     {
         var hub = CreateHub();
         await hub.OnConnectedAsync();
         await hub.SubscribeToEventV2(EventId);
 
-        await hub.SubscribeToInCarDriverEvent(EventId, "42");
+        await (v2 ? hub.SubscribeToInCarDriverEventV2(EventId, "42") : hub.SubscribeToInCarDriverEvent(EventId, "42"));
 
-        Assert.Contains((string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId), redis.HashDeletes);
-        Assert.AreEqual(0, StoredConnection()!.SubscribedEventId);
+        Assert.DoesNotContain((string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId), redis.HashDeletes);
+        Assert.AreEqual(EventId, StoredConnection()!.SubscribedEventId);
+        Assert.AreEqual("Web", redis.GetHashValue(string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId));
+    }
+
+    /// <summary>
+    /// Leaving in-car mode must not stop the connection being counted as a viewer: the driver is
+    /// switching back to the timing view, not leaving the event.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false, DisplayName = "V1")]
+    [DataRow(true, DisplayName = "V2")]
+    public async Task UnsubscribeFromInCarDriverEvent_LeavesTheEventSubscriptionIntact(bool v2)
+    {
+        var hub = CreateHub();
+        await hub.OnConnectedAsync();
+        await hub.SubscribeToEventV2(EventId);
+        await (v2 ? hub.SubscribeToInCarDriverEventV2(EventId, "42") : hub.SubscribeToInCarDriverEvent(EventId, "42"));
+
+        await (v2 ? hub.UnsubscribeFromInCarDriverEventV2(EventId, "42") : hub.UnsubscribeFromInCarDriverEvent(EventId, "42"));
+
+        Assert.AreEqual(EventId, StoredConnection()!.SubscribedEventId);
+        Assert.DoesNotContain((string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId), redis.HashDeletes);
     }
 
     /// <summary>

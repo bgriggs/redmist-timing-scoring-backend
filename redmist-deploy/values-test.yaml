@@ -112,6 +112,14 @@ redmist-user-management:
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
 
+# Post-event reports. Left suspended until the output has been read in a real mail client - see the
+# note in charts/redmist-post-event-reports/values.yaml for the dry-run procedure. Declared here
+# rather than only defaulted in the subchart because a `kubectl patch cronjob ... suspend=false`
+# would be silently reverted by the next helm upgrade, and a suspended CronJob creates no pod, so
+# nothing about the deploy would look wrong.
+redmist-post-event-reports:
+  suspend: true
+
 # Required whenever this job is enabled here, and set even though it is off by default: both values
 # are environment-specific, and neither being wrong produces an error anybody sees.
 redmist-social-compose:

@@ -44,6 +44,8 @@ public class PurgeUtilitiesTests
         nameof(TsContext.CarLastLaps),
         nameof(TsContext.CompetitorMetadata),
         nameof(TsContext.EventStatusLogs),
+        nameof(TsContext.EventViewerSessions),
+        nameof(TsContext.PostEventReports),
         nameof(TsContext.FlagLog),
         nameof(TsContext.SessionResults),
         nameof(TsContext.Sessions),
@@ -125,6 +127,8 @@ public class PurgeUtilitiesTests
         Assert.IsEmpty(await db.CarLastLaps.Where(e => e.EventId == 1).ToListAsync());
         Assert.IsEmpty(await db.CompetitorMetadata.Where(e => e.EventId == 1).ToListAsync());
         Assert.IsEmpty(await db.EventStatusLogs.Where(e => e.EventId == 1).ToListAsync());
+        Assert.IsEmpty(await db.EventViewerSessions.Where(e => e.EventId == 1).ToListAsync());
+        Assert.IsEmpty(await db.PostEventReports.Where(e => e.EventId == 1).ToListAsync());
         Assert.IsEmpty(await db.FlagLog.Where(e => e.EventId == 1).ToListAsync());
         Assert.IsEmpty(await db.SessionResults.Where(e => e.EventId == 1).ToListAsync());
         Assert.IsEmpty(await db.Sessions.Where(e => e.EventId == 1).ToListAsync());
@@ -146,6 +150,8 @@ public class PurgeUtilitiesTests
         Assert.HasCount(1, await db.CarLastLaps.Where(e => e.EventId == 2).ToListAsync());
         Assert.HasCount(1, await db.CompetitorMetadata.Where(e => e.EventId == 2).ToListAsync());
         Assert.HasCount(1, await db.EventStatusLogs.Where(e => e.EventId == 2).ToListAsync());
+        Assert.HasCount(1, await db.EventViewerSessions.Where(e => e.EventId == 2).ToListAsync());
+        Assert.HasCount(1, await db.PostEventReports.Where(e => e.EventId == 2).ToListAsync());
         Assert.HasCount(1, await db.FlagLog.Where(e => e.EventId == 2).ToListAsync());
         Assert.HasCount(1, await db.SessionResults.Where(e => e.EventId == 2).ToListAsync());
         Assert.HasCount(1, await db.Sessions.Where(e => e.EventId == 2).ToListAsync());
@@ -338,6 +344,8 @@ public class PurgeUtilitiesTests
         db.CarLastLaps.Add(new CarLastLap { EventId = eventId, SessionId = 1, CarNumber = "5", LastLapNumber = 1, LastLapTimestamp = DateTime.UtcNow });
         db.CompetitorMetadata.Add(new CompetitorMetadata { EventId = eventId, CarNumber = "5", LastUpdated = DateTime.UtcNow });
         db.EventStatusLogs.Add(new EventStatusLog { EventId = eventId, SessionId = 1, Type = "t", Data = "d", Timestamp = DateTime.UtcNow });
+        db.EventViewerSessions.Add(new EventViewerSession { EventId = eventId, ConnectionId = $"c{eventId}", ClientType = "Web", StartUtc = DateTime.UtcNow });
+        db.PostEventReports.Add(new PostEventReport { EventId = eventId, OrganizationId = 7, GeneratedUtc = DateTime.UtcNow });
         db.FlagLog.Add(new FlagLog { EventId = eventId, SessionId = 1, Flag = Flags.Green, StartTime = DateTime.UtcNow });
         db.SessionResults.Add(new SessionResult { EventId = eventId, SessionId = 1, Start = DateTime.UtcNow });
         db.Sessions.Add(new Session { Id = 1, EventId = eventId, Name = "Race" });

@@ -1,4 +1,4 @@
-﻿using k8s;
+using k8s;
 using k8s.Models;
 using Microsoft.EntityFrameworkCore;
 using Prometheus;
@@ -6,6 +6,7 @@ using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.Database.Models;
 using RedMist.EventOrchestration.Models;
 using RedMist.TimingCommon.Models;
 using StackExchange.Redis;
@@ -201,6 +202,10 @@ public class OrchestrationService : BackgroundService
                         await cache.KeyDeleteAsync(eventStatusStreamKey);
                         var eventLogsStreamKey = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, expired.EventId);
                         await cache.KeyDeleteAsync(eventLogsStreamKey);
+                        var externalLogsStreamKey = string.Format(Consts.EVENT_EXTERNAL_LOG_STREAM_KEY, expired.EventId);
+                        await cache.KeyDeleteAsync(externalLogsStreamKey);
+                        var viewershipStreamKey = string.Format(Consts.EVENT_VIEWERSHIP_STREAM_KEY, expired.EventId);
+                        await cache.KeyDeleteAsync(viewershipStreamKey);
                     }
                 }
                 // Check for orphaned jobs
@@ -382,12 +387,57 @@ public class OrchestrationService : BackgroundService
             }
         }
 
+        // Close any viewer sessions the logger did not get to, before the connection hash they are
+        // reconciled against goes away. The other order leaves a window in which a still-running
+        // logger reads an empty hash and closes them as absent, which is the same end time under a
+        // reason that says something different about why the event's numbers stop where they do.
+        await CloseOpenViewerSessionsAsync(eventEntry, stoppingToken);
+
         // Remove the event entry from the cache that tracks connections
         await DisposeEventConnectionsAsync(eventEntry, stoppingToken);
 
         // Remove the service statuses from cache
         var serviceStatusKey = string.Format(Consts.EVENT_SERVICE_STATUSES, eventEntry.EventId);
         await cache.KeyDeleteAsync(serviceStatusKey, CommandFlags.FireAndForget);
+    }
+
+    /// <summary>
+    /// Ends any viewer session still open for an event being torn down.
+    /// </summary>
+    /// <remarks>
+    /// The logger pod closes its own sessions when it sees the shutdown signal, and normally gets
+    /// there first. This is the backstop for when it does not - it was never scheduled, it had
+    /// already crashed, or it was killed before the signal reached it - because a session left open
+    /// is never closed by anything afterwards and grows the event's viewer-minutes without bound.
+    /// Idempotent against the logger's own close: only rows that still have no end time are touched.
+    /// </remarks>
+    private async Task CloseOpenViewerSessionsAsync(RelayConnectionEventEntry eventEntry, CancellationToken stoppingToken)
+    {
+        try
+        {
+            using var db = await tsContext.CreateDbContextAsync(stoppingToken);
+            var open = await db.EventViewerSessions
+                .Where(s => s.EventId == eventEntry.EventId && s.EndUtc == null)
+                .ToListAsync(stoppingToken);
+            if (open.Count == 0)
+            {
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            foreach (var session in open)
+            {
+                session.EndUtc = now < session.StartUtc ? session.StartUtc : now;
+                session.EndReason = ViewerSessionEndReason.EventTeardown;
+            }
+
+            await db.SaveChangesAsync(stoppingToken);
+            Logger.LogInformation("Closed {n} open viewer sessions for expired event {eventId}", open.Count, eventEntry.EventId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to close open viewer sessions for event {eventId}", eventEntry.EventId);
+        }
     }
 
     private async Task DisposeEventConnectionsAsync(RelayConnectionEventEntry eventEntry, CancellationToken stoppingToken)

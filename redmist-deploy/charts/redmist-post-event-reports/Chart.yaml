@@ -1,0 +1,5 @@
+apiVersion: v2
+name: redmist-post-event-reports
+description: Nightly CronJob that emails organizers a report on each finished event.
+type: application
+version: 0.1.0

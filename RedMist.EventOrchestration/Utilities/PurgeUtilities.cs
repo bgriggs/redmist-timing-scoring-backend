@@ -89,6 +89,15 @@ public class PurgeUtilities
                         .Where(e => e.EventId == eventId)
                         .ExecuteDeleteAsync(cancellationToken);
 
+                    await dbContext.EventViewerSessions
+                        .Where(e => e.EventId == eventId)
+                        .ExecuteDeleteAsync(cancellationToken);
+
+                    // The report's own section tables cascade off this row.
+                    await dbContext.PostEventReports
+                        .Where(e => e.EventId == eventId)
+                        .ExecuteDeleteAsync(cancellationToken);
+
                     await dbContext.FlagLog
                         .Where(e => e.EventId == eventId)
                         .ExecuteDeleteAsync(cancellationToken);
@@ -141,6 +150,16 @@ public class PurgeUtilities
                         .Where(e => e.EventId == eventId)
                         .ToListAsync(cancellationToken);
                     dbContext.EventStatusLogs.RemoveRange(eventStatusLogs);
+
+                    var eventViewerSessions = await dbContext.EventViewerSessions
+                        .Where(e => e.EventId == eventId)
+                        .ToListAsync(cancellationToken);
+                    dbContext.EventViewerSessions.RemoveRange(eventViewerSessions);
+
+                    var postEventReports = await dbContext.PostEventReports
+                        .Where(e => e.EventId == eventId)
+                        .ToListAsync(cancellationToken);
+                    dbContext.PostEventReports.RemoveRange(postEventReports);
 
                     var flagLogs = await dbContext.FlagLog
                         .Where(e => e.EventId == eventId)

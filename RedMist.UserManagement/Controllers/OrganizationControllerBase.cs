@@ -99,7 +99,12 @@ public abstract class OrganizationControllerBase : ControllerBase
 
         using var context = await tsContext.CreateDbContextAsync();
 
-        var userOrganization = await context.UserOrganizationMappings.FirstOrDefaultAsync(u => u.Username == clientId);
+        // Matched without regard to case: PostgreSQL compares text case-sensitively, so an account
+        // whose Keycloak username differs in case from its mapping row would silently have no
+        // organization. See OrganizationMembership.
+        var normalizedClientId = clientId.ToLowerInvariant();
+        var userOrganization = await context.UserOrganizationMappings
+            .FirstOrDefaultAsync(u => u.Username.ToLower() == normalizedClientId);
         if (userOrganization == null)
         {
             return NotFound("User organization mapping not found.");
@@ -156,7 +161,7 @@ public abstract class OrganizationControllerBase : ControllerBase
         using var context = await tsContext.CreateDbContextAsync();
 
         var userOrganizations = await context.UserOrganizationMappings
-            .Where(u => u.Username.ToUpper() == clientId.ToUpper())
+            .Where(u => u.Username.ToLower() == clientId.ToLower())
             .Join(context.Organizations, uom => uom.OrganizationId, org => org.Id,
                 (uom, org) => new UserOrganizationDto
                 {
@@ -746,15 +751,18 @@ public abstract class OrganizationControllerBase : ControllerBase
 
         using var context = await tsContext.CreateDbContextAsync();
 
+        // Case-insensitive throughout, or a user whose login differs in case from their mapping row
+        // deletes their account and leaves the mapping - and the organization - orphaned.
+        var normalizedUsername = username.ToLowerInvariant();
         var userMappings = await context.UserOrganizationMappings
-            .Where(u => u.Username == username)
+            .Where(u => u.Username.ToLower() == normalizedUsername)
             .ToListAsync();
 
         var orgsToDelete = new List<int>();
         foreach (var mapping in userMappings)
         {
             var otherUserCount = await context.UserOrganizationMappings
-                .CountAsync(u => u.OrganizationId == mapping.OrganizationId && u.Username != username);
+                .CountAsync(u => u.OrganizationId == mapping.OrganizationId && u.Username.ToLower() != normalizedUsername);
             if (otherUserCount == 0)
             {
                 orgsToDelete.Add(mapping.OrganizationId);
@@ -834,11 +842,7 @@ public abstract class OrganizationControllerBase : ControllerBase
         }
 
         using var context = await tsContext.CreateDbContextAsync();
-        var userOrganization = await context.UserOrganizationMappings
-            .Where(u => u.Username == clientId && u.OrganizationId == organizationId)
-            .Select(u => u.Role)
-            .FirstOrDefaultAsync();
-        return userOrganization != null;
+        return await OrganizationMembership.IsMemberAsync(context, clientId, organizationId);
     }
 
     /// <summary>

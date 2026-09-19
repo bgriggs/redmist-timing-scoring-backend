@@ -39,6 +39,13 @@ public class Program
         builder.Services.AddHostedService<EventProcessLogger>();
         builder.Services.AddHostedService<ExternalMessageLogConsumer>();
 
+        // Viewership capture. The consumer turns the status API's connect/disconnect stream into
+        // sessions; the reconciler closes the ones no end ever arrives for. Both belong here rather
+        // than in the status API because exactly one of these pods runs per live event, so neither
+        // needs a lock.
+        builder.Services.AddHostedService<ViewerSessionLogConsumer>();
+        builder.Services.AddHostedService<ViewerSessionReconciler>();
+
         var app = builder.Build();
         app.LogAssemblyInfo<Program>();
 
