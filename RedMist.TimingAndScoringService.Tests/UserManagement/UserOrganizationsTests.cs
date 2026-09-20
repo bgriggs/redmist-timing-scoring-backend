@@ -253,6 +253,50 @@ public class UserOrganizationsTests
         Assert.IsInstanceOfType<UnauthorizedObjectResult>((await controller.LoadOrganization(7)).Result);
     }
 
+    /// <summary>
+    /// The server's own answer to the question a client would otherwise re-derive from the role
+    /// string. Two implementations of one authorization rule drift; this is the one the API
+    /// actually enforces, so a client branching on it cannot show a page that then refuses.
+    /// </summary>
+    [TestMethod]
+    public async Task EachMembership_SaysWhetherItConfersAdministration()
+    {
+        var (controller, db) = RecordingOrganizationController.Create(UserEmail);
+        SeedOrganization(db, 2, "Big Mission", "relay-test");
+        SeedOrganization(db, 7, "Brian Griggs", "api-bgriggs");
+        SeedMembership(db, UserEmail, 2, "Admin");
+        SeedMembership(db, UserEmail, 7, "viewer");
+        await db.SaveChangesAsync();
+
+        var organizations = await LoadAsync(controller);
+
+        Assert.IsTrue(organizations.Single(o => o.OrganizationId == 2).CanAdminister);
+        Assert.IsFalse(organizations.Single(o => o.OrganizationId == 7).CanAdminister,
+            "A viewer was told they could administer the organization.");
+    }
+
+    /// <summary>
+    /// The flag has to answer the same question the API asks, which is whether ANY administrator
+    /// mapping exists - not what the alphabetical role pick happened to return. A user holding both
+    /// "accountant" and "admin" is permitted by the event endpoints, so reporting the picked
+    /// "accountant" as non-administering would have the flag contradict the API it describes.
+    /// </summary>
+    [TestMethod]
+    public async Task AnAdminRowOutranksALowerRoleSortedBeforeIt()
+    {
+        var (controller, db) = RecordingOrganizationController.Create(UserEmail);
+        SeedOrganization(db, 2, "Big Mission", "relay-test");
+        SeedMembership(db, "driver@example.com", 2, "accountant");
+        SeedMembership(db, "Driver@Example.com", 2, "admin");
+        await db.SaveChangesAsync();
+
+        var membership = (await LoadAsync(controller)).Single();
+
+        Assert.AreEqual("accountant", membership.Role, "The stable role pick changed.");
+        Assert.IsTrue(membership.CanAdminister,
+            "The flag contradicted the access the event endpoints actually grant.");
+    }
+
     private static async Task<List<UserOrganizationDto>> LoadAsync(RecordingOrganizationController controller)
         => (await controller.LoadUserOrganizations()).Value!;
 

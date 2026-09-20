@@ -61,14 +61,27 @@ public abstract class EventControllerBase : ControllerBase
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<EventSummary>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public virtual async Task<List<EventSummary>> LoadEventSummaries(int organizationId)
+    public virtual async Task<ActionResult<List<EventSummary>>> LoadEventSummaries(int organizationId)
     {
         Logger.LogTrace("LoadEventSummaries {org}", organizationId);
+
+        // An id below 1 is not an organization anybody could hold, so it is a malformed request
+        // rather than an empty one. Answering with an empty list instead let a caller that had not
+        // resolved its organization yet - or had simply forgotten the parameter - show an empty
+        // page at every startup with nothing logged anywhere. Refusing it names the mistake.
+        if (organizationId < 1)
+        {
+            return BadRequest("organizationId is required.");
+        }
+
         using var context = await tsContext.CreateDbContextAsync();
         if (!await CallerOrganizations.IsPermittedAsync(context, User, organizationId))
         {
-            return [];
+            // An organization the caller does not hold is not an error: nothing to show is a valid
+            // answer, and saying more would confirm the organization exists.
+            return new List<EventSummary>();
         }
 
         return await context.Events

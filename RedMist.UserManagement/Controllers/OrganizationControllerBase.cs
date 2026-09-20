@@ -150,9 +150,19 @@ public abstract class OrganizationControllerBase : ControllerBase
         // privilege order at that point.
         return memberships
             .GroupBy(m => m.OrganizationId)
-            .Select(g => g.OrderBy(m => m.Role, StringComparer.OrdinalIgnoreCase)
-                          .ThenBy(m => m.Role, StringComparer.Ordinal)
-                          .First())
+            .Select(g =>
+            {
+                var chosen = g.OrderBy(m => m.Role, StringComparer.OrdinalIgnoreCase)
+                              .ThenBy(m => m.Role, StringComparer.Ordinal)
+                              .First();
+
+                // Any admin row, not the role that happened to be picked above. Enforcement asks
+                // whether the user holds an administrator mapping for the organization, so a user
+                // holding both "accountant" and "admin" is permitted - while the alphabetical pick
+                // would have reported "accountant" and this flag would have contradicted the API.
+                chosen.CanAdminister = g.Any(m => OrganizationRoles.IsAdmin(m.Role));
+                return chosen;
+            })
             // Case-insensitive so the list reads alphabetically to a person choosing from it -
             // ordinal would file every capitalized name above every lowercase one. Two
             // organizations can share a display name - ChampCar runs under two - so the id breaks

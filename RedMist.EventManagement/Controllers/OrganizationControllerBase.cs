@@ -28,18 +28,8 @@ public abstract class OrganizationControllerBase : Controller
     protected readonly IControlLogFactory controlLogFactory;
     private readonly AssetsCdn assetsCdn;
 
-    /// <summary>
-    /// The organization role this controller manages, and the value it writes.
-    /// </summary>
-    /// <remarks>
-    /// Matched case-insensitively: RedMist.UserManagement records the organization creator as
-    /// "Admin" (its <c>Consts.DEFAULT_ORGANIZATION_ROLE</c>) while this controller writes "admin".
-    /// Postgres compares case-sensitively, so an exact match hid the owner from the administrator
-    /// list and the following save then deleted their mapping.
-    /// </remarks>
-    private const string AdminRole = "admin";
-
-    private static bool IsAdmin(string role) => string.Equals(role, AdminRole, StringComparison.OrdinalIgnoreCase);
+    /// <summary>The value this controller writes. The rule for reading one is in OrganizationRoles.</summary>
+    private const string AdminRole = OrganizationRoles.Admin;
 
     protected ILogger Logger { get; }
 
@@ -364,7 +354,8 @@ public abstract class OrganizationControllerBase : Controller
         if (!await CallerOrganizations.IsPermittedAsync(db, User, organizationId))
             return NotFound();
         var adminEmails = await db.UserOrganizationMappings
-            .Where(uom => uom.OrganizationId == organizationId && uom.Role.ToLower() == AdminRole)
+            .Where(uom => uom.OrganizationId == organizationId)
+            .Where(OrganizationRoles.AdministratorMappings)
             .Select(uom => uom.Username)
             .ToListAsync();
         return Ok(adminEmails);
@@ -404,7 +395,7 @@ public abstract class OrganizationControllerBase : Controller
         // case sensitively, so matching any other way would target a row the database considers distinct.
         var posted = usernames.Distinct(StringComparer.Ordinal).ToList();
 
-        foreach (var staleAdmin in existing.Where(uom => IsAdmin(uom.Role) && !posted.Contains(uom.Username, StringComparer.Ordinal)))
+        foreach (var staleAdmin in existing.Where(uom => OrganizationRoles.IsAdmin(uom.Role) && !posted.Contains(uom.Username, StringComparer.Ordinal)))
         {
             db.UserOrganizationMappings.Remove(staleAdmin);
         }

@@ -36,9 +36,6 @@ namespace RedMist.Backend.Shared.Utilities;
 /// </remarks>
 public static class CallerOrganizations
 {
-    /// <summary>The role that confers administration. Matched case-insensitively.</summary>
-    private const string AdminRole = "admin";
-
     /// <summary>
     /// Every organization this caller may administer, ascending. Empty when the caller has none.
     /// </summary>
@@ -68,7 +65,8 @@ public static class CallerOrganizations
         var normalized = username.ToLowerInvariant();
         return await context.UserOrganizationMappings
             .AsNoTracking()
-            .Where(u => u.Username.ToLower() == normalized && u.Role.ToLower() == AdminRole)
+            .Where(u => u.Username.ToLower() == normalized)
+            .Where(OrganizationRoles.AdministratorMappings)
             .Select(u => u.OrganizationId)
             .Distinct()
             .OrderBy(id => id)

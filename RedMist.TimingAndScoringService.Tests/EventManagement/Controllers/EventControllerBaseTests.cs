@@ -110,7 +110,7 @@ public class EventControllerBaseTests
             NewEvent(13, OtherOrgId, "Other org", new DateTime(2026, 11, 1)));
         await _dbContext.SaveChangesAsync();
 
-        var result = await _controller.LoadEventSummaries(OrgId);
+        var result = (await _controller.LoadEventSummaries(OrgId)).Value!;
 
         CollectionAssert.AreEqual(new[] { 11, 10 }, result.Select(r => r.Id).ToArray());
         var summary = result[0];
@@ -130,7 +130,7 @@ public class EventControllerBaseTests
         await _dbContext.SaveChangesAsync();
         SetUser(null);
 
-        var result = await _controller.LoadEventSummaries(OrgId);
+        var result = (await _controller.LoadEventSummaries(OrgId)).Value!;
 
         Assert.AreEqual(0, result.Count);
     }

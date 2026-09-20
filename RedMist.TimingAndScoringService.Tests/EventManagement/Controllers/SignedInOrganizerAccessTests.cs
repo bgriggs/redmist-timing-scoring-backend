@@ -6,6 +6,7 @@ using Moq;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.EventManagement.Controllers;
+using RedMist.TimingCommon.Models.Configuration;
 using RedMist.EventProcessor.Tests.Utilities;
 using StackExchange.Redis;
 using System.Security.Claims;
@@ -84,6 +85,10 @@ public class SignedInOrganizerAccessTests
         };
     }
 
+    /// <summary>The summaries themselves, unwrapping the action result.</summary>
+    private async Task<List<EventSummary>> SummariesAsync(int organizationId)
+        => (await events.LoadEventSummaries(organizationId)).Value!;
+
     private async Task SeedAsync()
     {
         db.Organizations.AddRange(
@@ -115,7 +120,7 @@ public class SignedInOrganizerAccessTests
         await SeedAsync();
         SignIn(Organizer);
 
-        var summaries = await events.LoadEventSummaries(MineId);
+        var summaries = await SummariesAsync(MineId);
 
         CollectionAssert.AreEqual(new[] { 10 }, summaries.Select(e => e.Id).ToArray());
     }
@@ -129,8 +134,28 @@ public class SignedInOrganizerAccessTests
         await SeedAsync();
         SignIn(Organizer);
 
-        Assert.AreEqual(10, (await events.LoadEventSummaries(MineId)).Single().Id);
-        Assert.AreEqual(30, (await events.LoadEventSummaries(BothId)).Single().Id);
+        Assert.AreEqual(10, (await SummariesAsync(MineId)).Single().Id);
+        Assert.AreEqual(30, (await SummariesAsync(BothId)).Single().Id);
+    }
+
+    /// <summary>
+    /// An id below 1 is not an organization anybody could hold. It used to answer an empty list,
+    /// which is indistinguishable from "you administer nothing here" - so a caller that had not
+    /// resolved its organization yet showed an empty page at every startup with nothing logged. The
+    /// relay hit exactly that: its event list raced the organization fetch it depended on and lost.
+    /// </summary>
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public async Task AnOrganizationIdThatCannotExist_IsRefusedRatherThanAnsweredEmpty(int organizationId)
+    {
+        await SeedAsync();
+        SignIn(Organizer);
+
+        var result = await events.LoadEventSummaries(organizationId);
+
+        Assert.IsInstanceOfType<BadRequestObjectResult>(result.Result);
+        Assert.IsNull(result.Value, "A refusal came back carrying a list.");
     }
 
     [TestMethod]
@@ -139,7 +164,7 @@ public class SignedInOrganizerAccessTests
         await SeedAsync();
         SignIn(Organizer);
 
-        Assert.IsEmpty(await events.LoadEventSummaries(TheirsId));
+        Assert.IsEmpty(await SummariesAsync(TheirsId));
     }
 
     /// <summary>
@@ -152,7 +177,7 @@ public class SignedInOrganizerAccessTests
         await SeedAsync();
         SignIn("Organizer@Example.COM");
 
-        Assert.HasCount(1, await events.LoadEventSummaries(MineId));
+        Assert.HasCount(1, await SummariesAsync(MineId));
     }
 
     [TestMethod]
@@ -296,7 +321,7 @@ public class SignedInOrganizerAccessTests
         await db.SaveChangesAsync();
         SignIn("viewer@example.com");
 
-        Assert.IsEmpty(await events.LoadEventSummaries(MineId), "A viewer was shown the organization's events.");
+        Assert.IsEmpty(await SummariesAsync(MineId), "A viewer was shown the organization's events.");
         Assert.IsInstanceOfType<NotFoundObjectResult>(
             (await events.SaveNewEvent(new ConfigEvent { Name = "Viewer event" }, MineId)).Result);
         Assert.IsFalse(db.Events.AsNoTracking().Any(e => e.Name == "Viewer event"));
@@ -312,7 +337,7 @@ public class SignedInOrganizerAccessTests
         await db.SaveChangesAsync();
         SignIn(Organizer);
 
-        Assert.HasCount(1, await events.LoadEventSummaries(MineId));
+        Assert.HasCount(1, await SummariesAsync(MineId));
     }
 
     /// <summary>
