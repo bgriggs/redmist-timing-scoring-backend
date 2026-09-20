@@ -110,7 +110,7 @@ public class EventControllerBaseTests
             NewEvent(13, OtherOrgId, "Other org", new DateTime(2026, 11, 1)));
         await _dbContext.SaveChangesAsync();
 
-        var result = await _controller.LoadEventSummaries();
+        var result = await _controller.LoadEventSummaries(OrgId);
 
         CollectionAssert.AreEqual(new[] { 11, 10 }, result.Select(r => r.Id).ToArray());
         var summary = result[0];
@@ -130,7 +130,7 @@ public class EventControllerBaseTests
         await _dbContext.SaveChangesAsync();
         SetUser(null);
 
-        var result = await _controller.LoadEventSummaries();
+        var result = await _controller.LoadEventSummaries(OrgId);
 
         Assert.AreEqual(0, result.Count);
     }
@@ -188,7 +188,7 @@ public class EventControllerBaseTests
     {
         await SeedOrganizationsAsync();
 
-        var result = await _controller.SaveNewEvent(new ConfigEvent { Name = "E", IsPrivate = true, AccessCode = accessCode });
+        var result = await _controller.SaveNewEvent(new ConfigEvent { Name = "E", IsPrivate = true, AccessCode = accessCode }, OrgId);
 
         Assert.IsInstanceOfType<BadRequestObjectResult>(result.Result);
         Assert.AreEqual(0, _dbContext.Events.Count());
@@ -201,7 +201,7 @@ public class EventControllerBaseTests
     {
         await SeedOrganizationsAsync();
 
-        var result = await _controller.SaveNewEvent(new ConfigEvent { Name = "E", IsPrivate = true, AccessCode = accessCode });
+        var result = await _controller.SaveNewEvent(new ConfigEvent { Name = "E", IsPrivate = true, AccessCode = accessCode }, OrgId);
 
         Assert.IsNull(result.Result);
         var saved = _dbContext.Events.AsNoTracking().Single();
@@ -215,7 +215,7 @@ public class EventControllerBaseTests
         await SeedOrganizationsAsync();
         SetUser("unknown-client");
 
-        var result = await _controller.SaveNewEvent(new ConfigEvent { Name = "E" });
+        var result = await _controller.SaveNewEvent(new ConfigEvent { Name = "E" }, OrgId);
 
         var notFound = result.Result as NotFoundObjectResult;
         Assert.IsNotNull(notFound);
@@ -228,7 +228,7 @@ public class EventControllerBaseTests
     {
         await SeedOrganizationsAsync();
 
-        var result = await _controller.SaveNewEvent(new ConfigEvent { Name = "E", OrganizationId = OtherOrgId });
+        var result = await _controller.SaveNewEvent(new ConfigEvent { Name = "E", OrganizationId = OtherOrgId }, OrgId);
 
         Assert.IsNull(result.Result);
         var saved = _dbContext.Events.AsNoTracking().Single();
@@ -242,7 +242,7 @@ public class EventControllerBaseTests
     {
         await SeedOrganizationsAsync();
 
-        await _controller.SaveNewEvent(new ConfigEvent { Name = "E", IsSimulation = true, EnableSourceDataLogging = false });
+        await _controller.SaveNewEvent(new ConfigEvent { Name = "E", IsSimulation = true, EnableSourceDataLogging = false }, OrgId);
 
         var saved = _dbContext.Events.AsNoTracking().Single();
         Assert.IsFalse(saved.IsSimulation, "A non-api client must not be flagged as a simulation.");
@@ -256,7 +256,7 @@ public class EventControllerBaseTests
         await _dbContext.SaveChangesAsync();
         SetUser("api-test");
 
-        await _controller.SaveNewEvent(new ConfigEvent { Name = "E", IsSimulation = false, EnableSourceDataLogging = true });
+        await _controller.SaveNewEvent(new ConfigEvent { Name = "E", IsSimulation = false, EnableSourceDataLogging = true }, OrgId);
 
         var saved = _dbContext.Events.AsNoTracking().Single();
         Assert.IsTrue(saved.IsSimulation);
@@ -268,7 +268,7 @@ public class EventControllerBaseTests
     {
         await SeedOrganizationsAsync();
 
-        await _controller.SaveNewEvent(new ConfigEvent { Name = "E", IsPrivate = false, AccessCode = "1234" });
+        await _controller.SaveNewEvent(new ConfigEvent { Name = "E", IsPrivate = false, AccessCode = "1234" }, OrgId);
 
         Assert.IsNull(_dbContext.Events.AsNoTracking().Single().AccessCode);
     }
@@ -278,7 +278,7 @@ public class EventControllerBaseTests
     {
         await SeedOrganizationsAsync();
 
-        await _controller.SaveNewEvent(new ConfigEvent { Name = "E", TimingSource = TimingSource.External, ExternalConfig = "{\"url\":\"x\"}" });
+        await _controller.SaveNewEvent(new ConfigEvent { Name = "E", TimingSource = TimingSource.External, ExternalConfig = "{\"url\":\"x\"}" }, OrgId);
 
         var saved = _dbContext.Events.AsNoTracking().Single();
         Assert.AreEqual(TimingSource.External, saved.TimingSource);
@@ -290,7 +290,7 @@ public class EventControllerBaseTests
     {
         await SeedOrganizationsAsync();
 
-        await _controller.SaveNewEvent(new ConfigEvent { Name = "E", TimingSource = TimingSource.Relay, ExternalConfig = "{\"url\":\"x\"}" });
+        await _controller.SaveNewEvent(new ConfigEvent { Name = "E", TimingSource = TimingSource.Relay, ExternalConfig = "{\"url\":\"x\"}" }, OrgId);
 
         Assert.IsNull(_dbContext.Events.AsNoTracking().Single().ExternalConfig);
     }
@@ -314,18 +314,18 @@ public class EventControllerBaseTests
     }
 
     [TestMethod]
-    public async Task UpdateEvent_OrganizationNotFoundForClient_ReturnsNotFound()
+    public async Task UpdateEvent_CallerActsForNoOrganization_IsRefused()
     {
         await SeedOrganizationsAsync();
         SetUser("unknown-client");
 
         var result = await _controller.UpdateEvent(new ConfigEvent { Id = 10, Name = "Changed" });
 
-        Assert.AreEqual("org", (result as NotFoundObjectResult)?.Value);
+        Assert.AreEqual("event", (result as NotFoundObjectResult)?.Value);
     }
 
     [TestMethod]
-    public async Task UpdateEvent_EventOwnedByAnotherOrganization_LeavesItUnchanged()
+    public async Task UpdateEvent_EventOwnedByAnotherOrganization_IsRefusedAndLeavesItUnchanged()
     {
         await SeedOrganizationsAsync();
         _dbContext.Events.Add(NewEvent(20, OtherOrgId, "Theirs", new DateTime(2026, 1, 1)));
@@ -333,7 +333,7 @@ public class EventControllerBaseTests
 
         var result = await _controller.UpdateEvent(new ConfigEvent { Id = 20, Name = "Hijacked", OrganizationId = OrgId });
 
-        Assert.IsInstanceOfType<OkResult>(result);
+        Assert.IsInstanceOfType<NotFoundObjectResult>(result);
         var stored = _dbContext.Events.AsNoTracking().Single();
         Assert.AreEqual("Theirs", stored.Name);
         Assert.AreEqual(OtherOrgId, stored.OrganizationId);
@@ -441,19 +441,19 @@ public class EventControllerBaseTests
     #region UpdateEventStatusActive
 
     [TestMethod]
-    public async Task UpdateEventStatusActive_OrganizationNotFoundForClient_ReturnsNotFound()
+    public async Task UpdateEventStatusActive_CallerActsForNoOrganization_IsRefused()
     {
         await SeedOrganizationsAsync();
         SetUser("unknown-client");
 
         var result = await _controller.UpdateEventStatusActive(10);
 
-        Assert.AreEqual("org", (result as NotFoundObjectResult)?.Value);
+        Assert.AreEqual("event", (result as NotFoundObjectResult)?.Value);
         VerifyPublishCount(10, Times.Never());
     }
 
     [TestMethod]
-    public async Task UpdateEventStatusActive_EventOwnedByAnotherOrganization_MakesNoChanges()
+    public async Task UpdateEventStatusActive_EventOwnedByAnotherOrganization_IsRefusedAndMakesNoChanges()
     {
         await SeedOrganizationsAsync();
         _dbContext.Events.Add(NewEvent(20, OtherOrgId, "Theirs", new DateTime(2026, 1, 1)));
@@ -461,7 +461,7 @@ public class EventControllerBaseTests
 
         var result = await _controller.UpdateEventStatusActive(20);
 
-        Assert.IsInstanceOfType<OkResult>(result);
+        Assert.IsInstanceOfType<NotFoundObjectResult>(result);
         Assert.IsFalse(_dbContext.Events.AsNoTracking().Single().IsActive);
         VerifyPublishCount(20, Times.Never());
     }
@@ -471,14 +471,14 @@ public class EventControllerBaseTests
     #region DeleteEvent
 
     [TestMethod]
-    public async Task DeleteEvent_OrganizationNotFoundForClient_ReturnsNotFoundOrg()
+    public async Task DeleteEvent_CallerActsForNoOrganization_IsRefused()
     {
         await SeedOrganizationsAsync();
         SetUser("unknown-client");
 
         var result = await _controller.DeleteEvent(10);
 
-        Assert.AreEqual("org", (result as NotFoundObjectResult)?.Value);
+        Assert.AreEqual("event", (result as NotFoundObjectResult)?.Value);
     }
 
     [TestMethod]

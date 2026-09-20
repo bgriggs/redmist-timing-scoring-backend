@@ -82,23 +82,60 @@ public abstract class OrganizationControllerBase : Controller
 
 
     /// <summary>
-    /// Loads the organization details for the authenticated user.
+    /// Every organization the caller may act for.
+    /// </summary>
+    /// <returns>The caller's organizations, ascending by id. Empty when it has none.</returns>
+    /// <response code="200">Returns the organizations, which may be an empty list.</response>
+    /// <remarks>
+    /// The entry point: every other action here names an organization by id, and this is where those
+    /// ids come from. A relay gets the single organization its Keycloak client belongs to and can
+    /// take the first element; a signed-in person gets everything they administer.
+    /// </remarks>
+    [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
+    [ProducesResponseType<List<Organization>>(StatusCodes.Status200OK)]
+    public virtual async Task<ActionResult<List<Organization>>> LoadOrganizations()
+    {
+        Logger.LogTrace("{m}", nameof(LoadOrganizations));
+        using var db = await tsContext.CreateDbContextAsync();
+        var permitted = await CallerOrganizations.ResolveAsync(db, User);
+        var orgs = await db.Organizations
+            .AsNoTracking()
+            .Where(o => permitted.Contains(o.Id))
+            .OrderBy(o => o.Id)
+            .ToListAsync();
+
+        var defaultLogo = orgs.Exists(o => o.Logo == null)
+            ? (await db.DefaultOrgImages.FirstOrDefaultAsync())?.ImageData
+            : null;
+        foreach (var org in orgs.Where(o => o.Logo == null))
+        {
+            org.Logo = defaultLogo;
+        }
+        return Ok(orgs);
+    }
+
+    /// <summary>
+    /// Loads one of the caller's organizations.
     /// </summary>
     /// <returns>The organization details, or null if not found.</returns>
     /// <response code="200">Returns the organization details.</response>
+    /// <response code="404">The caller does not act for that organization, or it does not exist.</response>
     /// <remarks>
-    /// The organization is determined by the authenticated user's client_id claim.
+    /// The organization is named by the caller. <see cref="LoadOrganizations"/> is how a caller finds
+    /// out which ids it may name.
     /// </remarks>
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<Organization>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public virtual async Task<ActionResult<Organization>> LoadOrganization()
+    public virtual async Task<ActionResult<Organization>> LoadOrganization(int organizationId)
     {
-        Logger.LogTrace("{m}", nameof(LoadOrganization));
-        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} {org}", nameof(LoadOrganization), organizationId);
         using var db = await tsContext.CreateDbContextAsync();
-        var org = await db.Organizations.AsNoTracking().FirstOrDefaultAsync(x => x.ClientId == clientId);
+        if (!await CallerOrganizations.IsPermittedAsync(db, User, organizationId))
+            return NotFound();
+        var org = await db.Organizations.AsNoTracking().FirstOrDefaultAsync(x => x.Id == organizationId);
         if (org == null)
             return NotFound();
 
@@ -128,9 +165,11 @@ public abstract class OrganizationControllerBase : Controller
         Logger.LogTrace("{o}", nameof(UpdateOrganization));
         OrgUpdateCounter.Inc();
 
-        var clientId = User.FindFirstValue("client_id");
         using var db = await tsContext.CreateDbContextAsync();
-        var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        if (!await CallerOrganizations.IsPermittedAsync(db, User, organization.Id))
+            return NotFound();
+
+        var org = await db.Organizations.FirstOrDefaultAsync(x => x.Id == organization.Id);
         if (org != null)
         {
             org.Website = organization.Website;
@@ -318,16 +357,14 @@ public abstract class OrganizationControllerBase : Controller
     [Produces("application/json")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public virtual async Task<ActionResult<List<string>>> LoadOrganizationAdministratorsAsync()
+    public virtual async Task<ActionResult<List<string>>> LoadOrganizationAdministratorsAsync(int organizationId)
     {
-        Logger.LogTrace("{m}", nameof(LoadOrganizationAdministratorsAsync));
-        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} {org}", nameof(LoadOrganizationAdministratorsAsync), organizationId);
         using var db = await tsContext.CreateDbContextAsync();
-        var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
-        if (org == null)
+        if (!await CallerOrganizations.IsPermittedAsync(db, User, organizationId))
             return NotFound();
         var adminEmails = await db.UserOrganizationMappings
-            .Where(uom => uom.OrganizationId == org.Id && uom.Role.ToLower() == AdminRole)
+            .Where(uom => uom.OrganizationId == organizationId && uom.Role.ToLower() == AdminRole)
             .Select(uom => uom.Username)
             .ToListAsync();
         return Ok(adminEmails);
@@ -339,14 +376,23 @@ public abstract class OrganizationControllerBase : Controller
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public virtual async Task<IActionResult> SaveOrganizationAdministratorsAsync(List<string> usernames)
+    public virtual async Task<IActionResult> SaveOrganizationAdministratorsAsync(List<string> usernames, int organizationId)
     {
-        Logger.LogTrace("{m}", nameof(SaveOrganizationAdministratorsAsync));
-        var clientId = User.FindFirstValue("client_id");
+        Logger.LogTrace("{m} {org}", nameof(SaveOrganizationAdministratorsAsync), organizationId);
         using var db = await tsContext.CreateDbContextAsync();
-        var org = await db.Organizations.FirstOrDefaultAsync(x => x.ClientId == clientId);
+        if (!await CallerOrganizations.IsPermittedAsync(db, User, organizationId))
+            return NotFound();
+        // FirstOrDefault, not First: a mapping row can outlive the organization it names, nothing
+        // enforces otherwise, and being permitted against a missing row is a 404 rather than a 500.
+        var org = await db.Organizations.FirstOrDefaultAsync(x => x.Id == organizationId);
         if (org == null)
             return NotFound();
+
+        // A blank username would become a mapping row that every token lacking a username matches,
+        // because the resolver lowercases whatever it is given and compares. [Required] on a string
+        // means NOT NULL, not non-empty, so the database would take it.
+        if (usernames.Exists(string.IsNullOrWhiteSpace))
+            return BadRequest("Usernames cannot be blank.");
 
         // Only the administrator mappings are replaced. A blanket RemoveRange would also drop
         // every other role this organization has, none of which this endpoint can re-create.

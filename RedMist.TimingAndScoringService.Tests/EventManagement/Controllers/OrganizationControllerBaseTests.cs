@@ -627,7 +627,7 @@ public class OrganizationControllerBaseTests
         await SeedOrganizationsAsync();
         SetUser("unknown-client-id");
 
-        var result = await _controller.LoadOrganization();
+        var result = await _controller.LoadOrganization(1);
 
         Assert.IsInstanceOfType<NotFoundResult>(result.Result);
     }
@@ -637,7 +637,7 @@ public class OrganizationControllerBaseTests
     {
         await SeedOrganizationsAsync();
 
-        var result = await _controller.LoadOrganization();
+        var result = await _controller.LoadOrganization(1);
 
         var org = (result.Result as OkObjectResult)?.Value as Organization;
         Assert.IsNotNull(org);
@@ -652,7 +652,7 @@ public class OrganizationControllerBaseTests
         _dbContext.DefaultOrgImages.Add(new DefaultOrgImage { Id = 1, ImageData = [1, 2, 3] });
         await _dbContext.SaveChangesAsync();
 
-        var result = await _controller.LoadOrganization();
+        var result = await _controller.LoadOrganization(1);
 
         var org = (result.Result as OkObjectResult)?.Value as Organization;
         Assert.IsNotNull(org);
@@ -668,7 +668,7 @@ public class OrganizationControllerBaseTests
         _dbContext.DefaultOrgImages.Add(new DefaultOrgImage { Id = 1, ImageData = [1, 2, 3] });
         await _dbContext.SaveChangesAsync();
 
-        var result = await _controller.LoadOrganization();
+        var result = await _controller.LoadOrganization(1);
 
         var org = (result.Result as OkObjectResult)?.Value as Organization;
         Assert.IsNotNull(org);
@@ -701,20 +701,35 @@ public class OrganizationControllerBaseTests
             HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([], "TestAuthType")) }
         };
 
-        var result = await _controller.LoadOrganization();
+        var result = await _controller.LoadOrganization(1);
 
         Assert.IsInstanceOfType<NotFoundResult>(result.Result);
     }
 
+    /// <summary>
+    /// The posted id selects the row, so it has to be checked rather than trusted. It used to be
+    /// ignored in favor of whichever organization the caller's client_id matched, which read as
+    /// safe only because a caller could hold exactly one.
+    /// </summary>
     [TestMethod]
-    public async Task UpdateOrganization_UpdatesCallersOrganizationOnly_IgnoringSuppliedId()
+    public async Task UpdateOrganization_NamingAnOrganizationTheCallerDoesNotHold_ChangesNothing()
     {
         await SeedOrganizationsAsync();
 
-        // Id 2 belongs to another organization; the caller's client_id is what selects the row.
+        var result = await _controller.UpdateOrganization(new Organization { Id = 2, Website = "https://taken.test" });
+
+        Assert.IsInstanceOfType<NotFoundResult>(result);
+        Assert.AreNotEqual("https://taken.test", _dbContext.Organizations.AsNoTracking().Single(o => o.Id == 2).Website);
+    }
+
+    [TestMethod]
+    public async Task UpdateOrganization_AppliesToTheOrganizationItNames()
+    {
+        await SeedOrganizationsAsync();
+
         var result = await _controller.UpdateOrganization(new Organization
         {
-            Id = 2,
+            Id = 1,
             Website = "https://mine.test",
             ControlLogType = "Sheets",
             ControlLogParams = "params",
@@ -808,16 +823,15 @@ public class OrganizationControllerBaseTests
     }
 
     /// <summary>
-    /// A logo that reaches the database is also pushed to the CDN, keyed by the caller's own
-    /// organization id rather than the one in the posted body.
+    /// A logo that reaches the database is also pushed to the CDN, keyed by the organization the
+    /// update names.
     /// </summary>
     [TestMethod]
     public async Task UpdateOrganization_WithALogo_StoresItAndUploadsItToTheCdn()
     {
         await SeedOrganizationsAsync();
 
-        // Id 2 belongs to another organization; the upload must still be keyed to the caller's org.
-        var result = await _controller.UpdateOrganization(new Organization { Id = 2, Logo = [4, 5, 6] });
+        var result = await _controller.UpdateOrganization(new Organization { Id = 1, Logo = [4, 5, 6] });
 
         Assert.IsInstanceOfType<OkResult>(result);
         CollectionAssert.AreEqual(new byte[] { 4, 5, 6 }, _dbContext.Organizations.AsNoTracking().Single(o => o.Id == 1).Logo);
@@ -882,7 +896,7 @@ public class OrganizationControllerBaseTests
         await SeedOrganizationsAsync();
         SetUser("unknown-client-id");
 
-        var result = await _controller.LoadOrganizationAdministratorsAsync();
+        var result = await _controller.LoadOrganizationAdministratorsAsync(1);
 
         Assert.IsInstanceOfType<NotFoundResult>(result.Result);
     }
@@ -897,7 +911,7 @@ public class OrganizationControllerBaseTests
             new UserOrganizationMapping { OrganizationId = 2, Username = "admin@theirs.test", Role = "admin" });
         await _dbContext.SaveChangesAsync();
 
-        var result = await _controller.LoadOrganizationAdministratorsAsync();
+        var result = await _controller.LoadOrganizationAdministratorsAsync(1);
 
         var emails = (result.Result as OkObjectResult)?.Value as List<string>;
         Assert.IsNotNull(emails);
@@ -910,7 +924,7 @@ public class OrganizationControllerBaseTests
         await SeedOrganizationsAsync();
         SetUser("unknown-client-id");
 
-        var result = await _controller.SaveOrganizationAdministratorsAsync(["a@b.test"]);
+        var result = await _controller.SaveOrganizationAdministratorsAsync(["a@b.test"], 1);
 
         Assert.IsInstanceOfType<NotFoundResult>(result);
         Assert.AreEqual(0, _dbContext.UserOrganizationMappings.Count());
@@ -936,7 +950,7 @@ public class OrganizationControllerBaseTests
             new UserOrganizationMapping { OrganizationId = 2, Username = "admin@theirs.test", Role = "admin" });
         await _dbContext.SaveChangesAsync();
 
-        var result = await _controller.SaveOrganizationAdministratorsAsync(["new@mine.test"]);
+        var result = await _controller.SaveOrganizationAdministratorsAsync(["new@mine.test"], 1);
 
         Assert.IsInstanceOfType<OkResult>(result);
         var mine = _dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1).ToList();
@@ -967,7 +981,7 @@ public class OrganizationControllerBaseTests
             new UserOrganizationMapping { OrganizationId = 1, Username = "owner@mine.test", Role = "Admin" });
         await _dbContext.SaveChangesAsync();
 
-        var result = await _controller.SaveOrganizationAdministratorsAsync(["viewer@mine.test", "owner@mine.test"]);
+        var result = await _controller.SaveOrganizationAdministratorsAsync(["viewer@mine.test", "owner@mine.test"], 1);
 
         Assert.IsInstanceOfType<OkResult>(result);
         var mine = _dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1).ToList();
@@ -986,7 +1000,7 @@ public class OrganizationControllerBaseTests
     {
         await SeedOrganizationsAsync();
 
-        var result = await _controller.SaveOrganizationAdministratorsAsync(["dup@mine.test", "dup@mine.test"]);
+        var result = await _controller.SaveOrganizationAdministratorsAsync(["dup@mine.test", "dup@mine.test"], 1);
 
         Assert.IsInstanceOfType<OkResult>(result);
         Assert.ContainsSingle(_dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1));
@@ -1006,7 +1020,7 @@ public class OrganizationControllerBaseTests
             new UserOrganizationMapping { OrganizationId = 1, Username = "viewer@mine.test", Role = "viewer" });
         await _dbContext.SaveChangesAsync();
 
-        var result = await _controller.LoadOrganizationAdministratorsAsync();
+        var result = await _controller.LoadOrganizationAdministratorsAsync(1);
 
         var emails = (result.Result as OkObjectResult)?.Value as List<string>;
         Assert.IsNotNull(emails);
@@ -1022,7 +1036,7 @@ public class OrganizationControllerBaseTests
             new UserOrganizationMapping { OrganizationId = 1, Username = "viewer@mine.test", Role = "viewer" });
         await _dbContext.SaveChangesAsync();
 
-        var result = await _controller.SaveOrganizationAdministratorsAsync([]);
+        var result = await _controller.SaveOrganizationAdministratorsAsync([], 1);
 
         Assert.IsInstanceOfType<OkResult>(result);
         var mine = _dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1).ToList();
@@ -1037,7 +1051,7 @@ public class OrganizationControllerBaseTests
         _dbContext.UserOrganizationMappings.Add(new UserOrganizationMapping { OrganizationId = 1, Username = "admin@mine.test", Role = "admin" });
         await _dbContext.SaveChangesAsync();
 
-        var result = await _controller.SaveOrganizationAdministratorsAsync(["admin@mine.test"]);
+        var result = await _controller.SaveOrganizationAdministratorsAsync(["admin@mine.test"], 1);
 
         Assert.IsInstanceOfType<OkResult>(result);
         var mine = _dbContext.UserOrganizationMappings.AsNoTracking().Where(m => m.OrganizationId == 1).ToList();
