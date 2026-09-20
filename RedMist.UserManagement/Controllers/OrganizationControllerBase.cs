@@ -76,19 +76,37 @@ public abstract class OrganizationControllerBase : ControllerBase
 
 
     /// <summary>
-    /// Loads the organization associated with the authenticated user.
+    /// Loads every organization the authenticated user belongs to, with their role in each.
     /// </summary>
-    /// <returns>Organization details including ID, name, website, and logo.</returns>
-    /// <response code="200">Returns the organization details.</response>
-    /// <response code="404">User organization mapping or organization not found.</response>
+    /// <returns>The user's memberships, ordered by organization name. Empty when they have none.</returns>
+    /// <response code="200">Returns the user's memberships, which may be an empty list.</response>
+    /// <response code="404">No identity in the authentication claims.</response>
     /// <remarks>
-    /// The user's identity (username) is extracted from authentication claims to find their organization.
+    /// <para>
+    /// A list, because a user can administer more than one organization. This replaces a pair of
+    /// endpoints that both answered "which organizations does this user have" - one of them by
+    /// taking whichever mapping row an unordered query happened to yield first, so an account with
+    /// two memberships was shown an arbitrary one of them and had no way to reach the other.
+    /// </para>
+    /// <para>
+    /// No logo. Logos run to tens of kilobytes each and callers poll this on authentication state
+    /// changes, so carrying one per membership would put that on a hot path for a field nothing
+    /// listing organizations reads. <see cref="LoadOrganization"/> carries the image for the single
+    /// organization being worked on; anything that only displays one can render it from the id.
+    /// </para>
+    /// <para>
+    /// Belonging to no organization is an answer rather than a failure - it is the ordinary state of
+    /// an account that has not created one yet - so that case is an empty list, not a 404. A mapping
+    /// row pointing at an organization that no longer exists is dropped the same way, silently: a
+    /// dangling row is our bookkeeping problem, not something to fail the caller's other memberships
+    /// over.
+    /// </para>
     /// </remarks>
     [HttpGet]
     [Produces("application/json")]
-    [ProducesResponseType<OrganizationDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<List<UserOrganizationDto>>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public virtual async Task<ActionResult<OrganizationDto>> LoadUserOrganization()
+    public virtual async Task<ActionResult<List<UserOrganizationDto>>> LoadUserOrganizations()
     {
         Logger.LogMethodEntry();
         var clientId = User.Identity?.Name;
@@ -103,74 +121,96 @@ public abstract class OrganizationControllerBase : ControllerBase
         // whose Keycloak username differs in case from its mapping row would silently have no
         // organization. See OrganizationMembership.
         var normalizedClientId = clientId.ToLowerInvariant();
-        var userOrganization = await context.UserOrganizationMappings
-            .FirstOrDefaultAsync(u => u.Username.ToLower() == normalizedClientId);
-        if (userOrganization == null)
+        var memberships = await context.UserOrganizationMappings
+            .AsNoTracking()
+            .Where(u => u.Username.ToLower() == normalizedClientId)
+            .Join(context.Organizations, uom => uom.OrganizationId, org => org.Id,
+                (uom, org) => new UserOrganizationDto
+                {
+                    OrganizationId = org.Id,
+                    Name = org.Name,
+                    ClientId = org.ClientId,
+                    Website = org.Website,
+                    Role = uom.Role
+                })
+            .ToListAsync();
+
+        // One entry per organization, however many mapping rows back it. The same account can hold
+        // two: (Username, OrganizationId) is the primary key and Postgres compares it case
+        // sensitively, so "Brian@Example.com" and "brian@example.com" are rows the database
+        // considers unrelated - and SaveOrganizationAdministratorsAsync stores whatever an
+        // administrator typed - while this read deliberately matches both. Those rows can even
+        // disagree about the role, and a caller handed both has no basis to choose between them, so
+        // the choice is made here and made the same way every time. Roles are compared without
+        // regard to case elsewhere, so duplicates differing only in spelling are the same role.
+        //
+        // The pick is alphabetical, which is arbitrary but stable, and it is only defensible while
+        // every role means the same thing. Add a role that outranks another and this silently hands
+        // back the alphabetically first one - "editor" over "owner" - so it has to become a
+        // privilege order at that point.
+        return memberships
+            .GroupBy(m => m.OrganizationId)
+            .Select(g => g.OrderBy(m => m.Role, StringComparer.OrdinalIgnoreCase)
+                          .ThenBy(m => m.Role, StringComparer.Ordinal)
+                          .First())
+            // Case-insensitive so the list reads alphabetically to a person choosing from it -
+            // ordinal would file every capitalized name above every lowercase one. Two
+            // organizations can share a display name - ChampCar runs under two - so the id breaks
+            // the tie rather than leaving the order to the query plan again.
+            .OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(m => m.OrganizationId)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Loads one of the authenticated user's organizations in full, including its logo.
+    /// </summary>
+    /// <param name="organizationId">The organization to load.</param>
+    /// <returns>The organization, with its own logo or the shared default.</returns>
+    /// <response code="200">Returns the organization.</response>
+    /// <response code="401">The user does not belong to that organization.</response>
+    /// <response code="404">Organization not found.</response>
+    /// <remarks>
+    /// The counterpart to <see cref="LoadUserOrganizations"/>: that lists the user's memberships
+    /// cheaply, this carries the image for the one they chose to work on. Membership is checked here
+    /// rather than assumed from the list, because the id arrives from the caller.
+    /// </remarks>
+    [HttpGet]
+    [Produces("application/json")]
+    [ProducesResponseType<OrganizationDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<ActionResult<OrganizationDto>> LoadOrganization(int organizationId)
+    {
+        Logger.LogMethodInfo($"LoadOrganization for organization {organizationId}");
+        if (!await ValidateUserOrganization(organizationId))
         {
-            return NotFound("User organization mapping not found.");
+            return Unauthorized("User is not authorized to access this organization.");
         }
 
+        using var context = await tsContext.CreateDbContextAsync();
         var org = await context.Organizations
-            .Where(o => o.Id == userOrganization.OrganizationId)
+            .AsNoTracking()
+            .Where(o => o.Id == organizationId)
             .Select(o => new { o.Id, o.Name, o.Website, o.Logo, o.ClientId })
             .FirstOrDefaultAsync();
 
         if (org == null)
         {
-            return NotFound($"Organization with ID {userOrganization.OrganizationId} not found.");
+            return NotFound($"Organization with ID {organizationId} not found.");
         }
 
-        byte[] defaultLogo = [];
-        if (org.Logo == null)
-        {
-            defaultLogo = context.DefaultOrgImages.FirstOrDefault()?.ImageData ?? [];
-        }
+        // An organization that never uploaded one shows the shared default rather than nothing.
+        var logo = org.Logo ?? (await context.DefaultOrgImages.FirstOrDefaultAsync())?.ImageData ?? [];
 
         return new OrganizationDto
         {
             Id = org.Id,
             Name = org.Name,
             Website = org.Website,
-            Logo = org.Logo ?? defaultLogo,
+            Logo = logo,
             ClientId = org.ClientId
         };
-    }
-
-    /// <summary>
-    /// Loads all organization roles for the authenticated user.
-    /// </summary>
-    /// <returns>A list of organization IDs and roles that the user belongs to.</returns>
-    /// <response code="200">Returns the list of user organization roles.</response>
-    /// <response code="404">User identity not found in claims.</response>
-    /// <remarks>
-    /// Users may belong to multiple organizations with different roles.
-    /// </remarks>
-    [HttpGet]
-    [Produces("application/json")]
-    [ProducesResponseType<List<UserOrganizationDto>>(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public virtual async Task<ActionResult<List<UserOrganizationDto>>> LoadUserOrganizationRoles()
-    {
-        Logger.LogMethodEntry();
-        var clientId = User.Identity?.Name;
-        if (string.IsNullOrEmpty(clientId))
-        {
-            return NotFound("Client Identity not found in user claims.");
-        }
-
-        using var context = await tsContext.CreateDbContextAsync();
-
-        var userOrganizations = await context.UserOrganizationMappings
-            .Where(u => u.Username.ToLower() == clientId.ToLower())
-            .Join(context.Organizations, uom => uom.OrganizationId, org => org.Id,
-                (uom, org) => new UserOrganizationDto
-                {
-                    OrganizationId = org.Id,
-                    Role = uom.Role
-                })
-              .ToListAsync();
-
-        return userOrganizations;
     }
 
     /// <summary>
