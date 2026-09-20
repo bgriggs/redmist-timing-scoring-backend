@@ -460,6 +460,13 @@ public class PostEventReportJobTests
         Assert.IsEmpty(Reports());
     }
 
+    /// <summary>
+    /// For a simulation this is the only thing standing between a load test and an organizer's
+    /// inbox. Capture deliberately records simulation events like any other - it is how the whole
+    /// path gets exercised, and a capture-side rule disagreed with the reconciler and cost the
+    /// accurate data - so the flag is honored here and nowhere else. Note the seeded viewing: the
+    /// point is that a simulation with real viewership behind it still produces no report.
+    /// </summary>
     [TestMethod]
     [DataRow("deleted")]
     [DataRow("simulation")]

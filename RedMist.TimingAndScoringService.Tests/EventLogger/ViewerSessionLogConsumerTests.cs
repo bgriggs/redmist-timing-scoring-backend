@@ -60,33 +60,13 @@ public class ViewerSessionLogConsumerTests
             }
             else
             {
-                // Upserted rather than left alone: Setup() has already seeded this event, so an
-                // insert-if-absent would quietly ignore isSimulation and hand back a gate for a
-                // non-simulation event. The sibling reconciler tests had the same trap.
                 existing.IsSimulation = isSimulation;
             }
             db.SaveChanges();
         }
 
         return new ViewerSessionLogConsumer(new DebugLoggerFactory(), redis.Mux.Object,
-            RedisStreamTestHarness.ConfigForEvent(EventId), dbFactory, NewGate(), clock);
-    }
-
-    private SimulationGate NewGate()
-        => new(dbFactory, NewHybridCache(), RedisStreamTestHarness.ConfigForEvent(EventId));
-
-    /// <summary>
-    /// A HybridCache of its own for each gate. It caches like any other, so it behaves as a
-    /// pass-through only because nothing reuses one across two reads of the simulation flag - a test
-    /// that flips <c>IsSimulation</c> between two calls on one gate would see the first answer twice.
-    /// </summary>
-    private static HybridCache NewHybridCache()
-    {
-        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
-        Microsoft.Extensions.DependencyInjection.HybridCacheServiceExtensions.AddHybridCache(services);
-        var provider = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions
-            .BuildServiceProvider(services);
-        return (HybridCache)provider.GetService(typeof(HybridCache))!;
+            RedisStreamTestHarness.ConfigForEvent(EventId), dbFactory, clock);
     }
 
     private static StreamEntry EntryFor(string id, ViewerSessionEvent viewerEvent)
@@ -292,18 +272,28 @@ public class ViewerSessionLogConsumerTests
     }
 
     /// <summary>
-    /// Load tests open hundreds of synthetic connections against simulation events, and counting them
-    /// would put fictional numbers into a real organization's report.
+    /// A simulation is still watched, and capture does not judge what it is watching. The flag
+    /// decides who gets told about an event afterwards, not whether the event is recorded:
+    /// PostEventReportJob leaves simulations out of its candidates, and SimulatedEventPurgeService
+    /// deletes their rows a day later, so nothing reaches an organizer and nothing accumulates.
     /// </summary>
+    /// <remarks>
+    /// Capture used to drop these. That cost the only realistic way to exercise the whole path -
+    /// a simulation with a browser attached to it is exactly how this feature gets tested - and it
+    /// disagreed with the reconciler, which had no such rule and reconstructed the sessions from
+    /// the connection hash anyway. The accurate transitions were discarded and the guesses kept.
+    /// </remarks>
     [TestMethod]
-    public async Task SimulationEvent_PersistsNothingButStillAcknowledges()
+    public async Task SimulationEvent_IsRecordedLikeAnyOther()
     {
         dbFactory = NewDbFactory();
         consumer = CreateConsumer(isSimulation: true);
 
         await ProcessAsync(EntryFor("1-0", Start("conn-a")));
 
-        Assert.IsEmpty(Sessions());
+        var session = Sessions().Single();
+        Assert.AreEqual("conn-a", session.ConnectionId);
+        Assert.IsFalse(session.StartInferred, "The consumer's own record was replaced by a guess.");
         Assert.Contains("1-0", redis.StreamAcknowledgements.Select(a => a.Id));
     }
 
@@ -369,7 +359,7 @@ public class ViewerSessionLogConsumerTests
         RedisStreamTestHarness.SetupReads(redis.Db, cts);
         await RedisStreamTestHarness.RunAsync(
             token => new TestableViewerSessionLogConsumer(new DebugLoggerFactory(), redis.Mux.Object,
-                RedisStreamTestHarness.ConfigForEvent(EventId), dbFactory, NewGate(), clock).RunAsync(token),
+                RedisStreamTestHarness.ConfigForEvent(EventId), dbFactory, clock).RunAsync(token),
             cts.Token);
 
         Assert.AreEqual(StreamPosition.Beginning.ToString(), created.Single(),

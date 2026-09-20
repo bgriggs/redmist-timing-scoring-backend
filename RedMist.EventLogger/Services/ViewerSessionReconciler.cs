@@ -39,7 +39,6 @@ public class ViewerSessionReconciler : BackgroundService
     private readonly string connectionsKey;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly SimulationGate simulationGate;
     private readonly TimeProvider timeProvider;
 
     /// <summary>How often the open sessions are checked against the live connection hash.</summary>
@@ -102,12 +101,11 @@ public class ViewerSessionReconciler : BackgroundService
 
 
     public ViewerSessionReconciler(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IDbContextFactory<TsContext> tsContext, SimulationGate simulationGate, TimeProvider? timeProvider = null)
+        IDbContextFactory<TsContext> tsContext, TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
-        this.simulationGate = simulationGate;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         eventId = configuration.GetValue("event_id", 0);
         connectionsKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId);
@@ -147,15 +145,6 @@ public class ViewerSessionReconciler : BackgroundService
         {
             // Everything was closed when the signal arrived, and the pod is about to go. Another
             // pass could only re-open what that close just settled.
-            return;
-        }
-
-        // The same gate the stream consumer applies. Without it this half would infer sessions for a
-        // simulation event from the live connection hash and write them anyway - so the consumer
-        // would drop the real transitions while the reconciler quietly reconstructed worse versions
-        // of them, which is how a load test ends up in an organization's numbers.
-        if (await simulationGate.IsSimulationAsync(stoppingToken))
-        {
             return;
         }
 
@@ -388,11 +377,6 @@ public class ViewerSessionReconciler : BackgroundService
 
     private async Task CloseAllOpenAsync()
     {
-        if (await simulationGate.IsSimulationAsync(CancellationToken.None))
-        {
-            return;
-        }
-
         await using var db = await tsContext.CreateDbContextAsync();
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var open = await db.EventViewerSessions

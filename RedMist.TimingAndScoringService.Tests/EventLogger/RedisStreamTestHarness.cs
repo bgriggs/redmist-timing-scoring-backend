@@ -206,9 +206,8 @@ internal sealed class TestableExternalMessageLogConsumer(ILoggerFactory loggerFa
 }
 
 internal sealed class TestableViewerSessionLogConsumer(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux,
-    IConfiguration configuration, IDbContextFactory<TsContext> tsContext, SimulationGate simulationGate,
-    TimeProvider timeProvider)
-    : ViewerSessionLogConsumer(loggerFactory, cacheMux, configuration, tsContext, simulationGate, timeProvider)
+    IConfiguration configuration, IDbContextFactory<TsContext> tsContext, TimeProvider timeProvider)
+    : ViewerSessionLogConsumer(loggerFactory, cacheMux, configuration, tsContext, timeProvider)
 {
     public Task RunAsync(CancellationToken token) => ExecuteAsync(token);
 }

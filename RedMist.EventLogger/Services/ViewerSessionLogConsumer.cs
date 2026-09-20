@@ -28,7 +28,6 @@ public class ViewerSessionLogConsumer : BackgroundService
     private readonly int eventId;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly SimulationGate simulationGate;
     private readonly TimeProvider timeProvider;
 
     private const string CONSUMER_GROUP = "log";
@@ -47,12 +46,11 @@ public class ViewerSessionLogConsumer : BackgroundService
 
 
     public ViewerSessionLogConsumer(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IDbContextFactory<TsContext> tsContext, SimulationGate simulationGate, TimeProvider? timeProvider = null)
+        IDbContextFactory<TsContext> tsContext, TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
-        this.simulationGate = simulationGate;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         eventId = configuration.GetValue("event_id", 0);
         streamKey = string.Format(Consts.EVENT_VIEWERSHIP_STREAM_KEY, eventId);
@@ -120,17 +118,6 @@ public class ViewerSessionLogConsumer : BackgroundService
     /// </remarks>
     internal async Task ProcessBatchAsync(IDatabase cache, StreamEntry[] entries, CancellationToken stoppingToken)
     {
-        if (await simulationGate.IsSimulationAsync(stoppingToken))
-        {
-            // Load tests open hundreds of synthetic connections against simulation events. Counting
-            // them would put fictional numbers into a real organization's report.
-            foreach (var entry in entries)
-            {
-                await cache.StreamAcknowledgeAsync(streamKey, CONSUMER_GROUP, entry.Id);
-            }
-            return;
-        }
-
         await using var db = await tsContext.CreateDbContextAsync(stoppingToken);
         var handled = new List<RedisValue>(entries.Length);
 
