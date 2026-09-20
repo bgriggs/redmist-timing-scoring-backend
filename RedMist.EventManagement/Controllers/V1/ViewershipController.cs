@@ -1,0 +1,17 @@
+using Asp.Versioning;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using RedMist.Database;
+
+namespace RedMist.EventManagement.Controllers.V1;
+
+[Route("v{version:apiVersion}/[controller]/[action]")]
+[Route("[controller]/[action]")]
+[ApiVersion("1.0")]
+public class ViewershipController : ViewershipControllerBase
+{
+    public ViewershipController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
+        : base(loggerFactory, tsContext)
+    {
+    }
+}

@@ -9,6 +9,7 @@ using RedMist.ControlLogs;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.EventManagement.Controllers;
+using RedMist.EventManagement.Models;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
@@ -615,6 +616,80 @@ public class OrganizationControllerBaseTests
         Assert.IsFalse(result.IsConnected);
         Assert.AreEqual(0, result.TotalEntries);
         Assert.IsFalse(result.IsStaleWarning);
+    }
+
+    #endregion
+
+    #region ReportSettings
+
+    /// <summary>Absence of a row is what "opted in" is stored as, so a fresh organization is opted in.</summary>
+    [TestMethod]
+    public async Task ReportSettings_WithNoRow_ReportsOptedIn()
+    {
+        await SeedOrganizationsAsync();
+
+        var settings = (await _controller.ReportSettings(1)).Value!;
+
+        Assert.IsTrue(settings.SendPostEventReport);
+    }
+
+    [TestMethod]
+    public async Task SaveReportSettings_CreatesTheRowOnFirstUseAndReadsBack()
+    {
+        await SeedOrganizationsAsync();
+
+        var saved = await _controller.SaveReportSettings(new ReportSettingsDto { SendPostEventReport = false }, 1);
+
+        Assert.IsInstanceOfType<OkResult>(saved);
+        Assert.IsFalse((await _controller.ReportSettings(1)).Value!.SendPostEventReport);
+        Assert.IsFalse(_dbContext.OrganizationReportSettings.AsNoTracking().Single(x => x.OrganizationId == 1).SendPostEventReport);
+    }
+
+    [TestMethod]
+    public async Task SaveReportSettings_TwiceUpdatesInPlace()
+    {
+        await SeedOrganizationsAsync();
+
+        await _controller.SaveReportSettings(new ReportSettingsDto { SendPostEventReport = false }, 1);
+        await _controller.SaveReportSettings(new ReportSettingsDto { SendPostEventReport = true }, 1);
+
+        Assert.ContainsSingle(_dbContext.OrganizationReportSettings.AsNoTracking().Where(x => x.OrganizationId == 1));
+        Assert.IsTrue((await _controller.ReportSettings(1)).Value!.SendPostEventReport);
+    }
+
+    /// <summary>
+    /// The one genuinely dangerous write here: silencing another organization's post-event report
+    /// would be invisible to them until they noticed the email had stopped arriving.
+    /// </summary>
+    [TestMethod]
+    public async Task SaveReportSettings_ForAnOrganizationTheCallerDoesNotHold_WritesNothing()
+    {
+        await SeedOrganizationsAsync();
+
+        var result = await _controller.SaveReportSettings(new ReportSettingsDto { SendPostEventReport = false }, 2);
+
+        Assert.IsInstanceOfType<NotFoundResult>(result);
+        Assert.IsEmpty(_dbContext.OrganizationReportSettings.AsNoTracking().Where(x => x.OrganizationId == 2));
+    }
+
+    [TestMethod]
+    public async Task ReportSettings_ForAnOrganizationTheCallerDoesNotHold_IsRefused()
+    {
+        await SeedOrganizationsAsync();
+
+        Assert.IsInstanceOfType<NotFoundResult>((await _controller.ReportSettings(2)).Result);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public async Task ReportSettings_WithAnUnusableOrganizationId_IsRefused(int organizationId)
+    {
+        await SeedOrganizationsAsync();
+
+        Assert.IsInstanceOfType<BadRequestObjectResult>((await _controller.ReportSettings(organizationId)).Result);
+        Assert.IsInstanceOfType<BadRequestObjectResult>(
+            await _controller.SaveReportSettings(new ReportSettingsDto(), organizationId));
     }
 
     #endregion

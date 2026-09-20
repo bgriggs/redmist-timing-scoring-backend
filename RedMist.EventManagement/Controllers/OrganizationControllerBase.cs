@@ -6,6 +6,7 @@ using RedMist.Backend.Shared.Utilities;
 using RedMist.ControlLogs;
 using RedMist.Database;
 using RedMist.Database.Models;
+using RedMist.EventManagement.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Configuration;
 using System.Security.Claims;
@@ -134,6 +135,100 @@ public abstract class OrganizationControllerBase : Controller
             org.Logo = db.DefaultOrgImages.FirstOrDefault()?.ImageData;
         }
         return Ok(org);
+    }
+
+    /// <summary>
+    /// Whether this organization receives the post-event report email.
+    /// </summary>
+    /// <param name="organizationId">The organization to read.</param>
+    /// <response code="200">The settings. An organization with no row is opted in.</response>
+    /// <response code="400">The organization id is unusable.</response>
+    /// <response code="404">The caller does not act for that organization.</response>
+    [HttpGet]
+    [Produces("application/json")]
+    [ProducesResponseType<ReportSettingsDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<ActionResult<ReportSettingsDto>> ReportSettings(int organizationId)
+    {
+        Logger.LogTrace("{m} {org}", nameof(ReportSettings), organizationId);
+        if (organizationId < 1)
+            return BadRequest("organizationId is required.");
+
+        using var db = await tsContext.CreateDbContextAsync();
+        if (!await CallerOrganizations.IsPermittedAsync(db, User, organizationId))
+            return NotFound();
+
+        // No row means opted in. The report job reads it the same way, so an organization that has
+        // never touched this setting is treated identically by both.
+        var settings = await db.OrganizationReportSettings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.OrganizationId == organizationId);
+
+        return new ReportSettingsDto { SendPostEventReport = settings?.SendPostEventReport ?? true };
+    }
+
+    /// <summary>
+    /// Turns the post-event report email on or off for this organization.
+    /// </summary>
+    /// <param name="settings">The desired setting.</param>
+    /// <param name="organizationId">The organization to change.</param>
+    /// <response code="200">Saved.</response>
+    /// <response code="400">The organization id is unusable.</response>
+    /// <response code="404">The caller does not act for that organization.</response>
+    /// <remarks>
+    /// Creates the row on first use, because absence is what "opted in" is stored as.
+    /// </remarks>
+    [HttpPost]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<IActionResult> SaveReportSettings(ReportSettingsDto settings, int organizationId)
+    {
+        Logger.LogTrace("{m} {org}", nameof(SaveReportSettings), organizationId);
+        if (organizationId < 1)
+            return BadRequest("organizationId is required.");
+
+        using var db = await tsContext.CreateDbContextAsync();
+        if (!await CallerOrganizations.IsPermittedAsync(db, User, organizationId))
+            return NotFound();
+
+        var existing = await db.OrganizationReportSettings
+            .FirstOrDefaultAsync(s => s.OrganizationId == organizationId);
+        if (existing == null)
+        {
+            db.OrganizationReportSettings.Add(new OrganizationReportSettings
+            {
+                OrganizationId = organizationId,
+                SendPostEventReport = settings.SendPostEventReport,
+            });
+        }
+        else
+        {
+            existing.SendPostEventReport = settings.SendPostEventReport;
+        }
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException) when (existing == null)
+        {
+            // Two first-time saves raced and the other one created the row. OrganizationId is the
+            // primary key, so this is the only way that throws here, and the answer is simply to
+            // write to the row that now exists - a toggle double-clicked should not be a 500.
+            db.ChangeTracker.Clear();
+            var created = await db.OrganizationReportSettings
+                .FirstOrDefaultAsync(s => s.OrganizationId == organizationId);
+            if (created == null)
+            {
+                throw;
+            }
+            created.SendPostEventReport = settings.SendPostEventReport;
+            await db.SaveChangesAsync();
+        }
+
+        return Ok();
     }
 
     /// <summary>
