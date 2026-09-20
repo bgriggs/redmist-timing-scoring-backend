@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Utilities;
@@ -29,12 +28,11 @@ public class ViewerSessionLogConsumer : BackgroundService
     private readonly int eventId;
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IDbContextFactory<TsContext> tsContext;
-    private readonly HybridCache hcache;
+    private readonly SimulationGate simulationGate;
     private readonly TimeProvider timeProvider;
 
     private const string CONSUMER_GROUP = "log";
     private const string CONSUMER_NAME = "logger";
-    private const string EVENT_SIMULATION_KEY = "event_simulation_{0}";
 
     /// <summary>
     /// Entries read per poll. Larger than the sibling consumers' 1 because the burst this has to
@@ -49,12 +47,12 @@ public class ViewerSessionLogConsumer : BackgroundService
 
 
     public ViewerSessionLogConsumer(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IConfiguration configuration,
-        IDbContextFactory<TsContext> tsContext, HybridCache hcache, TimeProvider? timeProvider = null)
+        IDbContextFactory<TsContext> tsContext, SimulationGate simulationGate, TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.tsContext = tsContext;
-        this.hcache = hcache;
+        this.simulationGate = simulationGate;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         eventId = configuration.GetValue("event_id", 0);
         streamKey = string.Format(Consts.EVENT_VIEWERSHIP_STREAM_KEY, eventId);
@@ -122,7 +120,7 @@ public class ViewerSessionLogConsumer : BackgroundService
     /// </remarks>
     internal async Task ProcessBatchAsync(IDatabase cache, StreamEntry[] entries, CancellationToken stoppingToken)
     {
-        if (await IsSimulationAsync(stoppingToken))
+        if (await simulationGate.IsSimulationAsync(stoppingToken))
         {
             // Load tests open hundreds of synthetic connections against simulation events. Counting
             // them would put fictional numbers into a real organization's report.
@@ -350,15 +348,5 @@ public class ViewerSessionLogConsumer : BackgroundService
         {
             streamCheckLock.Release();
         }
-    }
-
-    private async Task<bool> IsSimulationAsync(CancellationToken stoppingToken)
-    {
-        var key = string.Format(EVENT_SIMULATION_KEY, eventId);
-        return await hcache.GetOrCreateAsync(key, async cancel =>
-        {
-            await using var db = await tsContext.CreateDbContextAsync(cancel);
-            return await db.Events.Where(e => e.Id == eventId).Select(e => e.IsSimulation).FirstOrDefaultAsync(cancel);
-        }, cancellationToken: stoppingToken);
     }
 }

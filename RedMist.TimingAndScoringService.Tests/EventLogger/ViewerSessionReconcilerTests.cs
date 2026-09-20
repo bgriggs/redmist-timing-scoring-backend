@@ -40,8 +40,43 @@ public class ViewerSessionReconcilerTests
             .UseInMemoryDatabase($"ViewerSessionReconcilerTests_{Guid.NewGuid()}")
             .Options);
         clock = new FakeTimeProvider(new DateTimeOffset(Origin));
-        reconciler = new ViewerSessionReconciler(new DebugLoggerFactory(), redis.Mux.Object,
-            RedisStreamTestHarness.ConfigForEvent(EventId), dbFactory, clock);
+        reconciler = CreateReconciler(isSimulation: false);
+    }
+
+    private ViewerSessionReconciler CreateReconciler(bool isSimulation)
+    {
+        using (var db = dbFactory.CreateDbContext())
+        {
+            // Upserted rather than only inserted: Setup builds a non-simulation reconciler first, so
+            // an insert-if-absent would leave the flag at false and the test would pass for the
+            // wrong reason.
+            var existing = db.Events.FirstOrDefault(e => e.Id == EventId);
+            if (existing == null)
+            {
+                db.Events.Add(new TimingCommon.Models.Configuration.Event
+                {
+                    Id = EventId,
+                    OrganizationId = 7,
+                    Name = "Test Event",
+                    IsSimulation = isSimulation,
+                });
+            }
+            else
+            {
+                existing.IsSimulation = isSimulation;
+            }
+            db.SaveChanges();
+        }
+
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Microsoft.Extensions.DependencyInjection.HybridCacheServiceExtensions.AddHybridCache(services);
+        var cache = (Microsoft.Extensions.Caching.Hybrid.HybridCache)Microsoft.Extensions.DependencyInjection
+            .ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services)
+            .GetService(typeof(Microsoft.Extensions.Caching.Hybrid.HybridCache))!;
+
+        var config = RedisStreamTestHarness.ConfigForEvent(EventId);
+        return new ViewerSessionReconciler(new DebugLoggerFactory(), redis.Mux.Object, config, dbFactory,
+            new SimulationGate(dbFactory, cache, config), clock);
     }
 
     private static string ConnectionsKey => string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId);
@@ -455,6 +490,42 @@ public class ViewerSessionReconcilerTests
         var start = Sessions().Single().StartUtc;
         Assert.AreEqual(DateTimeKind.Utc, start.Kind);
         Assert.AreEqual(Origin.AddMinutes(3).TimeOfDay, start.TimeOfDay);
+    }
+
+    /// <summary>
+    /// Load tests and relay rehearsals open hundreds of synthetic connections against simulation
+    /// events, and the stream consumer already drops them. Without the same gate here this half
+    /// would infer those sessions from the live connection hash and write them anyway - so the
+    /// consumer would discard the real transitions while the reconciler reconstructed worse versions
+    /// of them, which is how a load test ends up in an organization's report.
+    /// </summary>
+    [TestMethod]
+    public async Task SimulationEvent_IsNeitherBackfilledNorClosed()
+    {
+        reconciler = CreateReconciler(isSimulation: true);
+        SeedSession("conn-orphan", Origin.AddMinutes(-10));
+        SeedLive("conn-new");
+
+        await PrimeAsync();
+        clock.Advance(ViewerSessionReconciler.ReconcileInterval);
+        await ReconcileAsync();
+        clock.Advance(ViewerSessionReconciler.ReconcileInterval);
+        await ReconcileAsync();
+
+        var sessions = Sessions();
+        Assert.HasCount(1, sessions, "The simulation's live connection was backfilled.");
+        Assert.IsNull(sessions[0].EndUtc, "The simulation's session was closed by reconciliation.");
+    }
+
+    [TestMethod]
+    public void SimulationEvent_IsNotClosedAtTeardownEither()
+    {
+        reconciler = CreateReconciler(isSimulation: true);
+        SeedSession("conn-a", Origin.AddMinutes(-30));
+
+        reconciler.HandleEventShutdown(JsonSerializer.Serialize(new List<int> { EventId }));
+
+        Assert.IsNull(Sessions().Single().EndUtc);
     }
 
     /// <summary>

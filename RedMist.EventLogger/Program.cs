@@ -43,6 +43,7 @@ public class Program
         // sessions; the reconciler closes the ones no end ever arrives for. Both belong here rather
         // than in the status API because exactly one of these pods runs per live event, so neither
         // needs a lock.
+        builder.Services.AddSingleton<SimulationGate>();
         builder.Services.AddHostedService<ViewerSessionLogConsumer>();
         builder.Services.AddHostedService<ViewerSessionReconciler>();
 

@@ -47,7 +47,8 @@ public class ViewerSessionLogConsumerTests
     {
         using (var db = dbFactory.CreateDbContext())
         {
-            if (!db.Events.Any(e => e.Id == EventId))
+            var existing = db.Events.FirstOrDefault(e => e.Id == EventId);
+            if (existing == null)
             {
                 db.Events.Add(new TimingCommon.Models.Configuration.Event
                 {
@@ -56,19 +57,30 @@ public class ViewerSessionLogConsumerTests
                     Name = "Test Event",
                     IsSimulation = isSimulation,
                 });
-                db.SaveChanges();
             }
+            else
+            {
+                // Upserted rather than left alone: Setup() has already seeded this event, so an
+                // insert-if-absent would quietly ignore isSimulation and hand back a gate for a
+                // non-simulation event. The sibling reconciler tests had the same trap.
+                existing.IsSimulation = isSimulation;
+            }
+            db.SaveChanges();
         }
 
         return new ViewerSessionLogConsumer(new DebugLoggerFactory(), redis.Mux.Object,
-            RedisStreamTestHarness.ConfigForEvent(EventId), dbFactory, PassThroughCache(), clock);
+            RedisStreamTestHarness.ConfigForEvent(EventId), dbFactory, NewGate(), clock);
     }
 
+    private SimulationGate NewGate()
+        => new(dbFactory, NewHybridCache(), RedisStreamTestHarness.ConfigForEvent(EventId));
+
     /// <summary>
-    /// A HybridCache that always calls the factory. The consumer only uses it to avoid re-reading the
-    /// simulation flag; caching it in a test would just hide the read.
+    /// A HybridCache of its own for each gate. It caches like any other, so it behaves as a
+    /// pass-through only because nothing reuses one across two reads of the simulation flag - a test
+    /// that flips <c>IsSimulation</c> between two calls on one gate would see the first answer twice.
     /// </summary>
-    private static HybridCache PassThroughCache()
+    private static HybridCache NewHybridCache()
     {
         var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
         Microsoft.Extensions.DependencyInjection.HybridCacheServiceExtensions.AddHybridCache(services);
@@ -357,7 +369,7 @@ public class ViewerSessionLogConsumerTests
         RedisStreamTestHarness.SetupReads(redis.Db, cts);
         await RedisStreamTestHarness.RunAsync(
             token => new TestableViewerSessionLogConsumer(new DebugLoggerFactory(), redis.Mux.Object,
-                RedisStreamTestHarness.ConfigForEvent(EventId), dbFactory, PassThroughCache(), clock).RunAsync(token),
+                RedisStreamTestHarness.ConfigForEvent(EventId), dbFactory, NewGate(), clock).RunAsync(token),
             cts.Token);
 
         Assert.AreEqual(StreamPosition.Beginning.ToString(), created.Single(),
