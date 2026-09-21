@@ -72,7 +72,7 @@ public class OrganizerDashboardPublisherTests
             .Build();
 
         return new OrganizerDashboardPublisher(new DebugLoggerFactory(), redis.Mux.Object, configuration,
-            hubContext.Object, sessionContext, dbFactory, clock);
+            hubContext.Object, sessionContext, clock);
     }
 
     private T Payload<T>(string method) => (T)sent.Single(x => x.Method == method).Args[0]!;
@@ -138,38 +138,34 @@ public class OrganizerDashboardPublisherTests
     }
 
     /// <summary>
-    /// Comes from the Sessions row, which is the only place it is written - SessionMonitor records it
-    /// with ExecuteUpdateAsync and never touches the in-memory copy. SessionState.LastUpdated exists
-    /// and nothing in the solution assigns it, so reading that would have shipped a field that was
-    /// null for every event forever while a test set it by hand and passed.
+    /// What the pipeline stamped as timing data arrived. Not Sessions.LastUpdated, which despite the
+    /// name moves only when the relay re-announces its session, and so stayed where it was at the
+    /// start of the session through a whole race. The end-to-end version, driving real messages
+    /// through the pipeline, is in SessionStateProcessingPipelineTests.
     /// </summary>
     [TestMethod]
-    public async Task LastDataUtc_ComesFromTheSessionRowRatherThanSessionState()
+    public async Task LastDataUtc_IsWhenTimingDataLastArrived()
     {
-        var wrote = new DateTime(2026, 9, 20, 13, 58, 0, DateTimeKind.Utc);
-        using (var db = dbFactory.CreateDbContext())
-        {
-            db.Sessions.Add(new RedMist.TimingCommon.Models.Session
-            {
-                Id = 7,
-                EventId = EventId,
-                Name = "Race",
-                LastUpdated = wrote,
-            });
-            await db.SaveChangesAsync();
-        }
         using (await sessionContext.SessionStateLock.AcquireWriteLockAsync(CancellationToken.None))
         {
-            sessionContext.SessionState.SessionId = 7;
+            sessionContext.MarkTimingDataReceived();
         }
+        var arrived = clock.GetUtcNow().UtcDateTime;
+        clock.Advance(TimeSpan.FromSeconds(4));
 
         await CreatePublisher().PublishAsync(CancellationToken.None);
 
-        Assert.AreEqual(wrote, Payload<EventStatusSummary>("ReceiveEventStatusSummary").LastDataUtc);
+        var lastData = Payload<EventStatusSummary>("ReceiveEventStatusSummary").LastDataUtc;
+        Assert.AreEqual(arrived, lastData);
+        Assert.AreEqual(DateTimeKind.Utc, lastData!.Value.Kind, "The wire format needs a UTC time to mean what it says.");
     }
 
+    /// <summary>
+    /// Null until the first timing message since this process started - a relay that has connected
+    /// but sent nothing has no data time, not an old one.
+    /// </summary>
     [TestMethod]
-    public async Task BeforeAnySessionStarts_LastDataIsNull()
+    public async Task BeforeAnyTimingDataArrives_LastDataIsNull()
     {
         await CreatePublisher().PublishAsync(CancellationToken.None);
 
@@ -212,6 +208,23 @@ public class OrganizerDashboardPublisherTests
 
         Assert.HasCount(2, sent);
         Assert.IsNull(Payload<EventStatusSummary>("ReceiveEventStatusSummary").RelayLastHeartbeatUtc);
+    }
+
+    /// <summary>
+    /// A failed read sends no counts at all, rather than a zero stamped with this tick's time - which
+    /// the page would show as "nobody is watching". Sending nothing lets the count it already has age,
+    /// and the status beside it still goes out.
+    /// </summary>
+    [TestMethod]
+    public async Task AFailedCountsRead_SendsNoCountsRatherThanAFreshZero()
+    {
+        SeedViewers("Web", "iOS");
+        redis.FailHashGetAll();
+
+        await CreatePublisher().PublishAsync(CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { "ReceiveEventStatusSummary" }, sent.Select(x => x.Method).ToArray(),
+            "A failed read went out as a count.");
     }
 
     /// <summary>

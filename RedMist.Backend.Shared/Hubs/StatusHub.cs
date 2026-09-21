@@ -58,7 +58,7 @@ public class StatusHub : Hub
     /// <param name="timeProvider">Clock for the timestamps written to the viewership stream.</param>
     /// <remarks>
     /// <paramref name="timeProvider"/> is optional because hubs are constructed through
-    /// <c>ActivatorUtilities</c>, which honours a default rather than requiring a registration.
+    /// <c>ActivatorUtilities</c>, which honors a default rather than requiring a registration.
     /// </remarks>
     public StatusHub(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IEventAccessValidator accessValidator,
         TimeProvider? timeProvider = null, IDbContextFactory<TsContext>? tsContext = null)
@@ -74,7 +74,11 @@ public class StatusHub : Hub
     /// Subscribes an organizer's dashboard to live viewer counts for events they administer.
     /// </summary>
     /// <param name="eventIds">The events to watch. Ids the caller does not administer are omitted.</param>
-    /// <returns>The counts as they stand now, keyed by event id, for the events actually joined.</returns>
+    /// <returns>
+    /// The counts as they stand now, keyed by event id, for the events actually joined. A joined event
+    /// whose counts could not be read just now is left out rather than reported as zero, and its
+    /// counts arrive with the next push if a processor is publishing for the event.
+    /// </returns>
     /// <remarks>
     /// <para>
     /// THIS DOES NOT COUNT THE CALLER AS A VIEWER. It joins the counts group and deliberately does
@@ -108,7 +112,15 @@ public class StatusHub : Hub
         foreach (var eventId in permitted)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, string.Format(Consts.EVENT_VIEWER_COUNTS_SUB, eventId));
-            snapshots[eventId] = await ViewerCounts.ReadAsync(cache, eventId, asOf);
+
+            // Still joined when the read fails - the caller is entitled to the event, and the next push
+            // carries its counts if a processor is publishing for it. Only the fabricated zero is
+            // withheld.
+            var snapshot = await ViewerCounts.ReadAsync(cache, eventId, asOf);
+            if (snapshot != null)
+            {
+                snapshots[eventId] = snapshot;
+            }
         }
 
         Logger.LogInformation("Client {connectionId} subscribed to viewer counts for {count} event(s)",

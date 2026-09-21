@@ -34,7 +34,12 @@ public record ViewerCountSnapshot(int EventId, DateTime AsOfUtc, int Total, Dict
 /// <param name="IsPracticeQualifying">Whether that session is practice or qualifying rather than a race.</param>
 /// <param name="Flag">The effective track flag.</param>
 /// <param name="CarCount">Cars currently in the session.</param>
-/// <param name="LastDataUtc">When timing data last arrived, or null if none has.</param>
+/// <param name="LastDataUtc">
+/// When live output from the timing system last reached Red Mist: an RMonitor heartbeat, multiloop,
+/// or a patch from an external timing source. Null when none has arrived since the event's processor
+/// last started. Replays of the relay's cache, X2 passings, Flagtronics and session changes do not
+/// count, because each can keep arriving while the timing system itself has gone quiet.
+/// </param>
 /// <param name="RelayLastHeartbeatUtc">When the relay last checked in, or null if it never has.</param>
 /// <remarks>
 /// <para>
@@ -72,17 +77,22 @@ public record EventStatusSummary(
 public static class ViewerCounts
 {
     /// <summary>
-    /// Reads one event's counts. Returns an empty snapshot rather than throwing if Redis is unwell.
+    /// Reads one event's counts, or returns null if Redis could not be read.
     /// </summary>
     /// <remarks>
-    /// A failed read is reported as zero rather than as an error because the caller is a dashboard
-    /// tile: the timestamp travels with it, so a stale or failed read shows as an aging number
-    /// rather than as a count anyone would trust. It matters most on the subscribe path, where one
-    /// unreachable event would otherwise fail the whole call - leaving a dashboard already joined to
-    /// some groups but believing the subscription failed, and showing nothing for events that were
-    /// perfectly readable.
+    /// <para>
+    /// Null rather than a zero, because a zero stamped with the time of asking is indistinguishable
+    /// from a real one: the page would say "nobody is watching" with a fresh timestamp on it. Sending
+    /// nothing lets the timestamp the page already holds age, which is the honest answer - its
+    /// staleness handling was built for exactly that.
+    /// </para>
+    /// <para>
+    /// Null rather than throwing, because on the subscribe path one unreachable event would otherwise
+    /// fail the whole call - leaving a dashboard already joined to some groups but believing the
+    /// subscription failed, and showing nothing for events that were perfectly readable.
+    /// </para>
     /// </remarks>
-    public static async Task<ViewerCountSnapshot> ReadAsync(IDatabase cache, int eventId, DateTime asOfUtc)
+    public static async Task<ViewerCountSnapshot?> ReadAsync(IDatabase cache, int eventId, DateTime asOfUtc)
     {
         var byType = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var total = 0;
@@ -93,9 +103,11 @@ public static class ViewerCounts
         {
             entries = await cache.HashGetAllAsync(key);
         }
-        catch (RedisException)
+        // Both, because a timeout - the commonest way Redis fails - is a RedisTimeoutException, which
+        // derives from TimeoutException and not from RedisException.
+        catch (Exception ex) when (ex is RedisException or RedisTimeoutException)
         {
-            return new ViewerCountSnapshot(eventId, asOfUtc, 0, byType);
+            return null;
         }
 
         foreach (var entry in entries)

@@ -1,10 +1,8 @@
 using Microsoft.AspNetCore.SignalR;
 using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
-using RedMist.Backend.Shared.Utilities;
-using Microsoft.EntityFrameworkCore;
 using RedMist.Backend.Shared.Models;
-using RedMist.Database;
+using RedMist.Backend.Shared.Utilities;
 using StackExchange.Redis;
 using System.Text.Json;
 
@@ -48,17 +46,15 @@ public class OrganizerDashboardPublisher : BackgroundService
     private ILogger Logger { get; }
 
     private readonly SessionContext sessionContext;
-    private readonly IDbContextFactory<TsContext> tsContext;
 
     public OrganizerDashboardPublisher(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux,
         IConfiguration configuration, IHubContext<StatusHub> hubContext, SessionContext sessionContext,
-        IDbContextFactory<TsContext> tsContext, TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.hubContext = hubContext;
         this.sessionContext = sessionContext;
-        this.tsContext = tsContext;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         eventId = configuration.GetValue("event_id", 0);
     }
@@ -108,8 +104,13 @@ public class OrganizerDashboardPublisher : BackgroundService
         var asOf = timeProvider.GetUtcNow().UtcDateTime;
         var group = string.Format(Consts.EVENT_VIEWER_COUNTS_SUB, eventId);
 
+        // Nothing rather than a zero when the read fails: the page ages the last count it had, where
+        // a zero would arrive stamped with this tick's time and read as "nobody is watching".
         var counts = await ViewerCounts.ReadAsync(cache, eventId, asOf);
-        await hubContext.Clients.Group(group).SendAsync("ReceiveViewerCounts", counts, stoppingToken);
+        if (counts != null)
+        {
+            await hubContext.Clients.Group(group).SendAsync("ReceiveViewerCounts", counts, stoppingToken);
+        }
 
         var status = await ReadStatusAsync(cache, asOf, stoppingToken);
         await hubContext.Clients.Group(group).SendAsync("ReceiveEventStatusSummary", status, stoppingToken);
@@ -130,6 +131,7 @@ public class OrganizerDashboardPublisher : BackgroundService
         string sessionName;
         bool isPracticeQualifying;
         string flag;
+        DateTime? lastData;
 
         using (await sessionContext.SessionStateLock.AcquireReadLockAsync(stoppingToken))
         {
@@ -139,49 +141,17 @@ public class OrganizerDashboardPublisher : BackgroundService
             isPracticeQualifying = state.IsPracticeQualifying;
             carCount = state.CarPositions.Count;
             flag = sessionContext.GetEffectiveTrackFlag().ToString();
+
+            // Stamped by the pipeline as each timing message arrives, so it is as fresh as the feed
+            // itself. Not Sessions.LastUpdated, which despite the name moves only when the relay
+            // re-announces its session - see SessionContext.LastTimingDataUtc.
+            lastData = sessionContext.LastTimingDataUtc;
         }
 
-        // Both of the remaining reads are outside the lock on purpose - neither touches session
-        // state, and holding it across a database or Redis round trip would put the pipeline behind
-        // the network.
-        var lastData = await ReadLastDataAsync(sessionId, stoppingToken);
+        // Outside the lock on purpose - it does not touch session state, and holding the lock across
+        // a Redis round trip would put the pipeline behind the network.
         return new EventStatusSummary(eventId, asOf, sessionId, sessionName, isPracticeQualifying,
             flag, carCount, lastData, await ReadRelayHeartbeatAsync(cache));
-    }
-
-    /// <summary>
-    /// When timing data last arrived for the running session, or null if none has.
-    /// </summary>
-    /// <remarks>
-    /// Read from the Sessions row rather than from session state, because that is the only place it
-    /// is recorded: SessionMonitor writes it with ExecuteUpdateAsync, which never touches the
-    /// in-memory copy. SessionState.LastUpdated exists but nothing in the solution ever assigns it,
-    /// so reading it would have shipped a field that was null for every event forever.
-    ///
-    /// The write is debounced, so this lags real arrivals slightly. That is the right trade for a
-    /// staleness indicator: it answers "is data still coming" rather than timing each message.
-    /// </remarks>
-    private async Task<DateTime?> ReadLastDataAsync(int sessionId, CancellationToken stoppingToken)
-    {
-        if (sessionId <= 0)
-        {
-            return null;
-        }
-
-        try
-        {
-            await using var db = await tsContext.CreateDbContextAsync(stoppingToken);
-            return await db.Sessions
-                .AsNoTracking()
-                .Where(s => s.EventId == eventId && s.Id == sessionId)
-                .Select(s => s.LastUpdated)
-                .FirstOrDefaultAsync(stoppingToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            Logger.LogWarning(ex, "Could not read last data timestamp for event {eventId}", eventId);
-            return null;
-        }
     }
 
     /// <summary>
@@ -192,6 +162,10 @@ public class OrganizerDashboardPublisher : BackgroundService
     /// tracks, so it reflects the relay's own connection rather than whether data happens to be
     /// flowing through the pipeline. A relay connected but sending nothing is a different problem
     /// from a relay that has gone, and a dashboard has to be able to tell them apart.
+    ///
+    /// A Redis failure is deliberately not caught here. Null means "no relay has ever connected", so
+    /// returning it for a failed read would be a made-up answer; letting it throw drops this tick's
+    /// status instead, and the page ages the last one it had.
     /// </remarks>
     private async Task<DateTime?> ReadRelayHeartbeatAsync(IDatabase cache)
     {

@@ -154,6 +154,44 @@ public class SessionContext
         return RMonitorTrackFlag;
     }
 
+    /// <summary>
+    /// When timing data last reached this processor, or null if none has since it started.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Kept here, in memory, because nothing else records it. Sessions.LastUpdated sounds like it
+    /// and is not: it moves only when the relay re-announces the session it is already on, which it
+    /// does on connect, on reconnect and whenever Red Mist asks it to resend - never on its own
+    /// through a healthy race, so for three hours it stays where it was when the session started.
+    /// </para>
+    /// <para>
+    /// Only live data moves it, which is decided in SessionStateProcessingPipeline. A resend of the
+    /// relay's cache is not live data: Red Mist asks for one on every processor start, and while car
+    /// positions fail the consistency check, so counting it would show a dead feed as fresh.
+    /// </para>
+    /// <para>
+    /// On the context rather than the session state, because data arriving is not a property of a
+    /// session: it carries across a session change, and a reset that replaces the state must not
+    /// make a live feed look like it has never sent anything.
+    /// </para>
+    /// <para>
+    /// The time this processor handled the message, not the time it reached Red Mist. Normally those
+    /// are milliseconds apart. A restarted processor drains whatever queued while it was down, which
+    /// can make a feed that stopped during the outage look fresher by up to the length of it. The
+    /// relay's own send queue does the same after it loses its hub connection, replaying up to fifteen
+    /// minutes of real but old heartbeats when it reconnects. Both happen once, bounded by the outage.
+    /// </para>
+    /// <para>
+    /// Written and read under <see cref="SessionStateLock"/>.
+    /// </para>
+    /// </remarks>
+    public DateTime? LastTimingDataUtc { get; private set; }
+
+    /// <summary>
+    /// Records that timing data has just arrived. The caller must hold the write lock.
+    /// </summary>
+    public void MarkTimingDataReceived() => LastTimingDataUtc = _timeProvider.GetUtcNow().UtcDateTime;
+
     private readonly Dictionary<string, CarPosition> numberToCarPositionLookup = [];
     private readonly Dictionary<uint, string> transponderToNumberLookup = [];
 

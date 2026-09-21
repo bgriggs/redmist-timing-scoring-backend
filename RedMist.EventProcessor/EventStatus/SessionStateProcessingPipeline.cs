@@ -74,6 +74,57 @@ public class SessionStateProcessingPipeline
     private const int EXTERNAL_DATA_FULL_UPDATE_MESSAGE_INTERVAL = 60;
     private long rmonitorMessageCounter = 0;
 
+    /// <summary>
+    /// Whether a message is live output from the timing system itself, as opposed to something the
+    /// relay replays, derives or gathers from elsewhere.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// RMonitor counts only when it carries a $F record. $F is the timing system's own heartbeat,
+    /// sent every second while it is running, and the relay's cached resend never contains one - it
+    /// is a synthetic $I followed by the $A/$COMP/$B/$C/$G/$H/$J records. Red Mist asks for that
+    /// resend on every processor start and while car positions fail the consistency check, so
+    /// counting any RMonitor message would keep a dead feed looking fresh indefinitely.
+    /// </para>
+    /// <para>
+    /// Multiloop is a live connection to the same timing system and is never replayed. External
+    /// patches are how a timing source without a relay feeds us, so they are its only signal.
+    /// </para>
+    /// <para>
+    /// Left out on purpose, because each can keep arriving while the timing system is silent -
+    /// exactly the case a stale timestamp exists to show:
+    /// X2 passings come over the relay's own connection to the MyLaps X2 server, not from the timing
+    /// system; flags are built by the relay from $F transitions, so a live one always rides with a
+    /// $F that already counted, and the rest are replays; Flagtronics is an in-car feed; session
+    /// changes are sent on every connect, reconnect and resend. Nor do configuration changes, the
+    /// lap-completed messages this processor writes to its own stream, or driver, video, loop and
+    /// competitor updates.
+    /// </para>
+    /// </remarks>
+    private static bool IsLiveTimingData(TimingMessage message) => message.Type switch
+    {
+        Backend.Shared.Consts.RMONITOR_TYPE => CarriesHeartbeat(message.Data),
+        Backend.Shared.Consts.MULTILOOP_TYPE => true,
+        Backend.Shared.Consts.EXTERNAL_PATCH_TYPE => true,
+        _ => false,
+    };
+
+    /// <summary>
+    /// Whether an RMonitor payload contains a $F record, matched the way RMonitorDataProcessor
+    /// splits and recognizes it.
+    /// </summary>
+    private static bool CarriesHeartbeat(string data)
+    {
+        foreach (var line in data.AsSpan().EnumerateLines())
+        {
+            if (line.TrimStart().StartsWith("$F", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
 
     public SessionStateProcessingPipeline(SessionContext context, ILoggerFactory loggerFactory,
         RMonitorDataProcessor rMonitorDataProcessorV2,
@@ -152,6 +203,15 @@ public class SessionStateProcessingPipeline
                 // Acquire write lock once for the entire message processing
                 using (await sessionContext.SessionStateLock.AcquireWriteLockAsync(sessionContext.CancellationToken))
                 {
+                    // Stamped on arrival rather than after processing succeeds. The organizer reads
+                    // this as "is my timing feed reaching Red Mist", and if we fail to process what
+                    // it sends, telling them it has stopped sends them to debug a relay that is
+                    // working. Our own failures surface in our logs and alerts.
+                    if (IsLiveTimingData(message))
+                    {
+                        sessionContext.MarkTimingDataReceived();
+                    }
+
                     // ** Pass 1: Primary Message Processing **
                     if (message.Type == Backend.Shared.Consts.RMONITOR_TYPE)
                     {

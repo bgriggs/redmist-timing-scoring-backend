@@ -1872,6 +1872,155 @@ public class SessionStateProcessingPipelineTests
         Assert.AreEqual(new DateTime(2026, 8, 2, 9, 9, 6), running.StartTime);
     }
 
+    #region Last timing data
+
+    private const string RMonitorHeartbeat = "$F,14,\"00:12:45\",\"13:34:23\",\"00:09:47\",\"Green \"";
+
+    /// <summary>
+    /// THE BUG. lastDataUtc used to come from Sessions.LastUpdated, which moves only when the relay
+    /// re-announces its session - on connect, reconnect or resend, never on its own during a healthy
+    /// race. So an hour of timing data left it where it was at the start of the session, and the
+    /// dashboard said "last timing data an hour ago" while the feed streamed. Checked end to end,
+    /// through what the organizer's card receives.
+    /// </summary>
+    [TestMethod]
+    public async Task TimingDataWithoutARepeatedSessionChange_AdvancesWhatTheDashboardReceives()
+    {
+        // The row as the relay leaves it at the start of the session. This is the value the old read
+        // returned for the rest of the race.
+        await using (var db = await _dbContextFactory.CreateDbContextAsync(TestContext.CancellationToken))
+        {
+            db.Sessions.Add(new Session { EventId = 1, Id = 5, Name = "Race", LastUpdated = _timeProvider.GetUtcNow().UtcDateTime });
+            await db.SaveChangesAsync(TestContext.CancellationToken);
+        }
+
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE,
+            JsonSerializer.Serialize(new Session { EventId = 1, Id = 5, Name = "Race" }), 5, DateTime.UtcNow));
+
+        for (var i = 0; i < 3; i++)
+        {
+            _timeProvider.Advance(TimeSpan.FromMinutes(20));
+            await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, RMonitorHeartbeat, 5, DateTime.UtcNow));
+        }
+        var lastArrival = _timeProvider.GetUtcNow().UtcDateTime;
+        _timeProvider.Advance(TimeSpan.FromSeconds(3));
+
+        var status = await PublishDashboardStatusAsync();
+
+        Assert.AreEqual(lastArrival, status.LastDataUtc,
+            "An hour of timing data arrived and the dashboard's last-data time did not follow it.");
+    }
+
+    /// <summary>
+    /// Live output from the timing system: an RMonitor heartbeat wherever it sits in the payload,
+    /// multiloop, and the patches an external timing source sends in place of a relay.
+    /// </summary>
+    [TestMethod]
+    [DataRow(Backend.Shared.Consts.RMONITOR_TYPE, RMonitorHeartbeat, DisplayName = "RMonitor heartbeat")]
+    [DataRow(Backend.Shared.Consts.RMONITOR_TYPE, "$G,3,\"1234BE\",14,\"01:12:47.872\"\r\n" + RMonitorHeartbeat,
+        DisplayName = "RMonitor heartbeat after another record")]
+    [DataRow(Backend.Shared.Consts.MULTILOOP_TYPE, "", DisplayName = "Multiloop")]
+    [DataRow(Backend.Shared.Consts.EXTERNAL_PATCH_TYPE, "{}", DisplayName = "External source")]
+    public async Task EachKindOfTimingData_StampsTheTimeItArrived(string type, string data)
+    {
+        _timeProvider.Advance(TimeSpan.FromMinutes(7));
+
+        await _pipeline.PostAsync(new TimingMessage(type, data, 1, DateTime.UtcNow));
+
+        Assert.AreEqual(_timeProvider.GetUtcNow().UtcDateTime, _sessionContext.LastTimingDataUtc);
+    }
+
+    /// <summary>
+    /// Everything else that reaches the pipeline. The first three matter most, because each keeps
+    /// arriving while the timing system is silent - exactly the failure this timestamp exists to
+    /// show: X2 passings come from the relay's own connection to the X2 server, flags are derived by
+    /// the relay (and replayed on reconnect), and Flagtronics is an in-car feed.
+    /// </summary>
+    [TestMethod]
+    [DataRow(Backend.Shared.Consts.X2PASS_TYPE, "[]", DisplayName = "X2 passings")]
+    [DataRow(Backend.Shared.Consts.FLAGS_TYPE, "[]", DisplayName = "Flags")]
+    [DataRow(Backend.Shared.Consts.FLAGTRONICS_TYPE, "[]", DisplayName = "Flagtronics")]
+    [DataRow(Backend.Shared.Consts.LAP_COMPLETED_TYPE, "{}", DisplayName = "Lap completed (our own echo)")]
+    [DataRow(Backend.Shared.Consts.DRIVER_EVENT_TYPE, "{}", DisplayName = "Driver")]
+    [DataRow(Backend.Shared.Consts.DRIVER_TRANS_TYPE, "{}", DisplayName = "Driver transponder")]
+    [DataRow(Backend.Shared.Consts.VIDEO_TYPE, "{}", DisplayName = "Video")]
+    [DataRow(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, "{}", DisplayName = "Configuration change")]
+    [DataRow("x2loop", "[]", DisplayName = "X2 loops")]
+    [DataRow("competitors", "[]", DisplayName = "Competitors")]
+    public async Task MessagesThatAreNotTimingData_LeaveItUnset(string type, string data)
+    {
+        await _pipeline.PostAsync(new TimingMessage(type, data, 1, DateTime.UtcNow));
+
+        Assert.IsNull(_sessionContext.LastTimingDataUtc);
+    }
+
+    /// <summary>
+    /// A session change is the relay saying where it is, and it says so on every connect and
+    /// reconnect - a relay with nothing to send still produces them, so one must not advance the
+    /// time. Nor may a new session clear it: the feed did not stop because the session changed.
+    /// </summary>
+    [TestMethod]
+    public async Task ASessionChange_NeitherAdvancesNorClearsIt()
+    {
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, RMonitorHeartbeat, 1, DateTime.UtcNow));
+        var arrived = _timeProvider.GetUtcNow().UtcDateTime;
+        _timeProvider.Advance(TimeSpan.FromMinutes(5));
+
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.EVENT_SESSION_CHANGED_TYPE,
+            JsonSerializer.Serialize(new Session { EventId = 1, Id = 9, Name = "Race" }), 9, DateTime.UtcNow));
+
+        Assert.AreEqual(9, _sessionContext.SessionState.SessionId, "The new session was not adopted, so nothing was reset.");
+        Assert.AreEqual(arrived, _sessionContext.LastTimingDataUtc);
+    }
+
+    /// <summary>
+    /// The relay's cached resend, in the shape it sends it: a synthetic reset followed by the records
+    /// that rebuild the field, and never a heartbeat. Red Mist asks for one on every processor start
+    /// and while car positions fail the consistency check - roughly every twelve seconds while they
+    /// do - so counting it would show a timing system that died an hour ago as live.
+    /// </summary>
+    [TestMethod]
+    public async Task ARelayCacheResend_IsNotTimingData()
+    {
+        const string cacheResend =
+            "$I, \"00:00:00\", \"0/0/0000\"\r\n" +
+            "$A,\"7\",\"7\",1007,\"Driver\",\"Seven\",\"USA\",1\r\n" +
+            "$COMP,\"7\",\"7\",1,\"Driver\",\"Seven\",\"USA\",\"\"\r\n" +
+            "$G,1,\"7\",3,\"00:05:12.345\"\r\n";
+
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, cacheResend, 1, DateTime.UtcNow));
+
+        Assert.IsNull(_sessionContext.LastTimingDataUtc, "A replay of the relay's cache was taken for a live feed.");
+
+        _timeProvider.Advance(TimeSpan.FromSeconds(1));
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.RMONITOR_TYPE, RMonitorHeartbeat, 1, DateTime.UtcNow));
+
+        Assert.AreEqual(_timeProvider.GetUtcNow().UtcDateTime, _sessionContext.LastTimingDataUtc,
+            "The timing system's own heartbeat did not count.");
+    }
+
+    private async Task<EventStatusSummary> PublishDashboardStatusAsync()
+    {
+        var sent = new List<(string Method, object?[] Args)>();
+        var proxy = new Mock<IClientProxy>();
+        proxy.Setup(p => p.SendCoreAsync(It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
+            .Callback<string, object?[], CancellationToken>((m, a, _) => sent.Add((m, a)))
+            .Returns(Task.CompletedTask);
+        var clients = new Mock<IHubClients>();
+        clients.Setup(c => c.Group(It.IsAny<string>())).Returns(proxy.Object);
+        var hub = new Mock<IHubContext<StatusHub>>();
+        hub.SetupGet(h => h.Clients).Returns(clients.Object);
+
+        var publisher = new OrganizerDashboardPublisher(_mockLoggerFactory.Object,
+            new RedMist.TimingAndScoringService.Tests.Shared.FakeRedisDatabase().Mux.Object, _configuration,
+            hub.Object, _sessionContext, _timeProvider);
+        await publisher.PublishAsync(CancellationToken.None);
+
+        return (EventStatusSummary)sent.Single(x => x.Method == "ReceiveEventStatusSummary").Args[0]!;
+    }
+
+    #endregion
+
     #region Database Initialization
 
     private void InitializeDatabase()

@@ -183,11 +183,15 @@ public sealed class FakeRedisDatabase
             .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "cache down"));
     }
 
-    /// <summary>Makes whole-hash reads fail, as an unreachable Redis would.</summary>
-    public void FailHashGetAll()
+    /// <summary>
+    /// Makes whole-hash reads fail, as an unreachable Redis would - with a timeout unless another
+    /// failure is given. The two are different exception hierarchies: RedisTimeoutException is a
+    /// TimeoutException, not a RedisException.
+    /// </summary>
+    public void FailHashGetAll(Exception? failure = null)
     {
         Db.Setup(x => x.HashGetAllAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
-            .ThrowsAsync(new RedisTimeoutException("hash read failed", CommandStatus.Unknown));
+            .ThrowsAsync(failure ?? new RedisTimeoutException("hash read failed", CommandStatus.Unknown));
     }
 
     public void FailStreamWrites()

@@ -276,6 +276,32 @@ public class ViewerCountSubscriptionTests
         Assert.AreNotEqual(default, snapshot.AsOfUtc, "A zero arrived with no timestamp to age.");
     }
 
+    /// <summary>
+    /// A read that fails is not a zero. Reported as one, it would arrive stamped with the time of
+    /// asking and the page would say "nobody is watching" about an event it simply could not see.
+    /// Still joined, because the caller is entitled to the event and the next push carries its counts.
+    /// </summary>
+    /// <remarks>
+    /// Both failures, because they share no base class below Exception: a catch for either one alone
+    /// lets the other throw out of the whole call.
+    /// </remarks>
+    [TestMethod]
+    [DataRow(true, DisplayName = "Timeout")]
+    [DataRow(false, DisplayName = "Connection lost")]
+    public async Task AnEventWhoseCountsCannotBeRead_IsJoinedButNotReportedAsZero(bool timeout)
+    {
+        await SeedAsync();
+        SeedViewers(MyEvent, "Web", "iOS");
+        redis.FailHashGetAll(timeout ? null
+            : new StackExchange.Redis.RedisConnectionException(StackExchange.Redis.ConnectionFailureType.SocketFailure, "down"));
+        var hub = CreateHub();
+
+        var snapshots = await hub.SubscribeToEventViewerCounts([MyEvent]);
+
+        Assert.IsFalse(snapshots.ContainsKey(MyEvent), "A failed read was reported as a count.");
+        VerifyJoined(string.Format(Consts.EVENT_VIEWER_COUNTS_SUB, MyEvent));
+    }
+
     [TestMethod]
     public async Task Unsubscribing_LeavesTheGroup()
     {
