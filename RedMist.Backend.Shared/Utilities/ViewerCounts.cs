@@ -8,7 +8,11 @@ namespace RedMist.Backend.Shared.Utilities;
 /// <param name="EventId">The event these counts describe.</param>
 /// <param name="AsOfUtc">When the hash was read. The age of this is how a caller tells a real zero from a stopped feed.</param>
 /// <param name="Total">Connections watching.</param>
-/// <param name="ByClientType">Counts per client type. A type with none is absent rather than zero.</param>
+/// <param name="ByClientType">
+/// Counts per live-count bucket: iOS, Android, Web, API, and InCar for a phone in driver mode. A
+/// phone in driver mode is counted under InCar and not also under its device, so the buckets always
+/// sum to <paramref name="Total"/>. A bucket with nobody in it is absent rather than zero.
+/// </param>
 /// <remarks>
 /// Connections, not people: a viewer who loses signal and reconnects is briefly two, and a phone
 /// that backgrounds is one fewer. It is a live gauge, not a headcount.

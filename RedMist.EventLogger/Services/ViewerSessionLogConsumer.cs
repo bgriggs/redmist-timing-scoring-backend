@@ -220,7 +220,7 @@ public class ViewerSessionLogConsumer : BackgroundService
                 ClientType = viewerEvent.ClientType,
                 StartUtc = timestamp,
                 IsInCar = viewerEvent.IsInCar,
-                CarNumber = viewerEvent.CarNumber,
+                CarNumber = EventViewerSession.FitCarNumber(viewerEvent.CarNumber),
             });
             ViewerSessionMetrics.Started.WithLabels(viewerEvent.ClientType, "false").Inc();
             return;

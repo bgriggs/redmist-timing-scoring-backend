@@ -5,6 +5,7 @@ using RedMist.Backend.Shared;
 using RedMist.Backend.Shared.Hubs;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Services;
+using RedMist.Backend.Shared.Utilities;
 using System.Security.Claims;
 using System.Text.Json;
 
@@ -371,6 +372,10 @@ public class StatusHubTests
     /// vanished from the event's live client counts, and on disconnect the cleanup no longer knew
     /// which event to tidy up. In-car mode is a phone feature, so what that lost was mobile viewers
     /// specifically. This asserts the opposite of what it used to.
+    ///
+    /// Counted under InCar rather than under its device: a phone in driver mode is its own live-count
+    /// bucket, not an addition to iOS or Android, so the relay can total the buckets without counting
+    /// the phone twice.
     /// </remarks>
     [TestMethod]
     [DataRow(false, DisplayName = "V1")]
@@ -385,7 +390,8 @@ public class StatusHubTests
 
         Assert.DoesNotContain((string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId), redis.HashDeletes);
         Assert.AreEqual(EventId, StoredConnection()!.SubscribedEventId);
-        Assert.AreEqual("Web", redis.GetHashValue(string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId));
+        Assert.AreEqual(ClientTypeHelper.InCar,
+            redis.GetHashValue(string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId));
     }
 
     /// <summary>
@@ -397,7 +403,9 @@ public class StatusHubTests
     [DataRow(true, DisplayName = "V2")]
     public async Task UnsubscribeFromInCarDriverEvent_LeavesTheEventSubscriptionIntact(bool v2)
     {
-        var hub = CreateHub();
+        // Android rather than the default: "Web" is also the fallback when no client id is known, so
+        // asserting Web could not tell a restored device from a lost one.
+        var hub = CreateHub("redmist-android-ui");
         await hub.OnConnectedAsync();
         await hub.SubscribeToEventV2(EventId);
         await (v2 ? hub.SubscribeToInCarDriverEventV2(EventId, "42") : hub.SubscribeToInCarDriverEvent(EventId, "42"));
@@ -406,6 +414,78 @@ public class StatusHubTests
 
         Assert.AreEqual(EventId, StoredConnection()!.SubscribedEventId);
         Assert.DoesNotContain((string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId), redis.HashDeletes);
+
+        // Back under its device. Leaving driver mode passes no event id, and the hash write used to key
+        // off that alone - so a phone that had left driver mode stayed counted as InCar until it
+        // disconnected.
+        Assert.AreEqual("Android", redis.GetHashValue(string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId),
+            "Leaving driver mode did not put the phone back under its own device.");
+    }
+
+    /// <summary>
+    /// The main safety property of keying the hash write on the connection's current event: once the
+    /// viewer has left the event, leaving driver mode afterwards must not put them back into its
+    /// count. The ordinary unsubscribe zeroes the subscribed event, and the in-car exit writes nothing
+    /// for event 0.
+    /// </summary>
+    [TestMethod]
+    [DataRow(false, DisplayName = "V1")]
+    [DataRow(true, DisplayName = "V2")]
+    public async Task LeavingDriverModeAfterLeavingTheEvent_DoesNotResurrectTheCount(bool v2)
+    {
+        var hub = CreateHub("redmist-android-ui");
+        await hub.OnConnectedAsync();
+        await hub.SubscribeToEventV2(EventId);
+        await (v2 ? hub.SubscribeToInCarDriverEventV2(EventId, "42") : hub.SubscribeToInCarDriverEvent(EventId, "42"));
+
+        await hub.UnsubscribeFromEventV2(EventId);
+        await (v2 ? hub.UnsubscribeFromInCarDriverEventV2(EventId, "42") : hub.UnsubscribeFromInCarDriverEvent(EventId, "42"));
+
+        Assert.IsNull(redis.GetHashValue(string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId),
+            "Leaving driver mode put a viewer who had already left back into the event's count.");
+    }
+
+    /// <summary>A connection with no record has no current event, so leaving driver mode writes nothing.</summary>
+    [TestMethod]
+    public async Task LeavingDriverModeWithNoConnectionRecord_WritesNothing()
+    {
+        var hub = CreateHub("redmist-android-ui");
+
+        await hub.UnsubscribeFromInCarDriverEventV2(EventId, "42");
+
+        Assert.IsNull(redis.GetHashValue(string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId));
+    }
+
+    /// <summary>Resubscribing to the same event while still driving keeps the phone in its InCar bucket.</summary>
+    [TestMethod]
+    public async Task ResubscribingWhileInDriverMode_KeepsTheInCarBucket()
+    {
+        var hub = CreateHub("redmist-android-ui");
+        await hub.OnConnectedAsync();
+        await hub.SubscribeToInCarDriverEventV2(EventId, "42");
+
+        await hub.SubscribeToEventV2(EventId);
+
+        Assert.AreEqual(ClientTypeHelper.InCar,
+            redis.GetHashValue(string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId));
+    }
+
+    /// <summary>
+    /// Driving at one event and watching another is counted "In Vehicle" only where the car is. At
+    /// the other event the phone is an ordinary viewer on its own device.
+    /// </summary>
+    [TestMethod]
+    public async Task WatchingAnotherEventWhileDriving_CountsTheDeviceThereNotInCar()
+    {
+        const int otherEvent = EventId + 1;
+        var hub = CreateHub("redmist-android-ui");
+        await hub.OnConnectedAsync();
+        await hub.SubscribeToInCarDriverEventV2(EventId, "42");
+
+        await hub.SubscribeToEventV2(otherEvent);
+
+        Assert.AreEqual("Android", redis.GetHashValue(string.Format(Consts.STATUS_EVENT_CONNECTIONS, otherEvent), connectionId),
+            "A phone driving at one event was counted in-vehicle at another.");
     }
 
     /// <summary>

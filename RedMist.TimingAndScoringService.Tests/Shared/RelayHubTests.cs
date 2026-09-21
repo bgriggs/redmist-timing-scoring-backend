@@ -388,8 +388,31 @@ public class RelayHubTests
     }
 
     /// <summary>
+    /// The relay shows "In Vehicle: N" from an InCar bucket and adds it to its total, matching the
+    /// name exactly. InCar has to survive the known-type filter, or every in-car connection is
+    /// rewritten to Web: the relay reads zero in driver mode while its Web count absorbs them.
+    /// </summary>
+    [TestMethod]
+    public async Task SendHeartbeatV2_ReportsInCarAsItsOwnBucket()
+    {
+        var eventId = NewEventId();
+        var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId);
+        redis.SeedHash(connKey, "c1", "Android");
+        redis.SeedHash(connKey, "c2", RedMist.Backend.Shared.Utilities.ClientTypeHelper.InCar);
+        redis.SeedHash(connKey, "c3", RedMist.Backend.Shared.Utilities.ClientTypeHelper.InCar);
+        var hub = CreateHub();
+
+        var telemetry = await hub.SendHeartbeatV2(eventId, "3.1.4");
+
+        var counts = telemetry.EventConnections.ToDictionary(c => c.ClientApplication, c => c.Clients);
+        Assert.AreEqual(2, counts["InCar"], "In-car connections were not reported under the exact name the relay reads.");
+        Assert.AreEqual(1, counts["Android"]);
+        Assert.IsFalse(counts.ContainsKey("Web"), "In-car connections were folded into Web.");
+    }
+
+    /// <summary>
     /// The per-event connection hash used to hold timestamps and now holds a client type. Anything
-    /// that is not one of the four known types - including the old timestamps - is counted as a web
+    /// that is not one of the known types - including the old timestamps - is counted as a web
     /// client.
     /// </summary>
     [TestMethod]

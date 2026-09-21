@@ -165,7 +165,9 @@ public class RelayHub : Hub
         return JsonSerializer.Deserialize<List<ServiceStatus>>(json.ToString()) ?? [];
     }
 
-    private static readonly HashSet<string> KnownClientTypes = ["iOS", "Android", "Web", "API"];
+    // InCar is here or every in-car connection is rewritten to "Web" two lines below, and the relay
+    // shows zero in driver mode while its Web count quietly absorbs them.
+    private static readonly HashSet<string> KnownClientTypes = ["iOS", "Android", "Web", "API", ClientTypeHelper.InCar];
 
     private async Task<List<EventConnectionStatus>> GetEventConnectionsAsync(int eventId)
     {

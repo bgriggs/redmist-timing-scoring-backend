@@ -54,6 +54,16 @@ public class ViewerSessionReconcilerTests
         => redis.SeedHash(Consts.STATUS_CONNECTIONS, connectionId,
             JsonSerializer.Serialize(new StatusConnection { ConnectedTimestamp = connectedAt, SubscribedEventId = EventId }));
 
+    private void SeedInCarConnectRecord(string connectionId, string clientId, string carNumber)
+        => redis.SeedHash(Consts.STATUS_CONNECTIONS, connectionId,
+            JsonSerializer.Serialize(new StatusConnection
+            {
+                ConnectedTimestamp = Origin.AddMinutes(-5),
+                SubscribedEventId = EventId,
+                ClientId = clientId,
+                InCarDriverConnection = new InCarDriverConnection(EventId, carNumber),
+            }));
+
     private void SeedSession(string connectionId, DateTime startUtc, int eventId = EventId)
     {
         using var db = dbFactory.CreateDbContext();
@@ -455,6 +465,103 @@ public class ViewerSessionReconcilerTests
         var start = Sessions().Single().StartUtc;
         Assert.AreEqual(DateTimeKind.Utc, start.Kind);
         Assert.AreEqual(Origin.AddMinutes(3).TimeOfDay, start.TimeOfDay);
+    }
+
+    /// <summary>
+    /// The live hash holds a count bucket, and for a phone in driver mode that bucket is InCar - which
+    /// says what the connection is doing, not what it is running on. A session reconstructed from the
+    /// hash has to recover the device from the connection record, because the report breaks viewing
+    /// down by device and would fold "InCar" into Web.
+    /// </summary>
+    [TestMethod]
+    public async Task BackfillingAnInCarConnection_RecordsItsRealDeviceAndDriverMode()
+    {
+        SeedLive("conn-car", RedMist.Backend.Shared.Utilities.ClientTypeHelper.InCar);
+        SeedInCarConnectRecord("conn-car", "redmist-android-ui", "42");
+
+        await PrimeAsync();
+        clock.Advance(ViewerSessionReconciler.ReconcileInterval);
+        await ReconcileAsync();
+
+        var session = Sessions().Single();
+        Assert.AreEqual("Android", session.ClientType, "The device was lost and replaced with the live-count bucket.");
+        Assert.IsTrue(session.IsInCar);
+        Assert.AreEqual("42", session.CarNumber);
+    }
+
+    /// <summary>
+    /// With no connection record to recover the device from, the bucket still says driver mode - and
+    /// "InCar" must never reach the report as a device.
+    /// </summary>
+    [TestMethod]
+    public async Task BackfillingAnInCarConnectionWithNoRecord_StillNeverReportsInCarAsADevice()
+    {
+        SeedLive("conn-car", RedMist.Backend.Shared.Utilities.ClientTypeHelper.InCar);
+
+        await PrimeAsync();
+        clock.Advance(ViewerSessionReconciler.ReconcileInterval);
+        await ReconcileAsync();
+
+        var session = Sessions().Single();
+        Assert.AreEqual("Web", session.ClientType, "InCar reached the report as a device.");
+        Assert.IsTrue(session.IsInCar);
+    }
+
+    /// <summary>
+    /// Driver mode is read from the connection record on every backfill, not only when the bucket
+    /// says InCar. Before, a reconstructed session never set IsInCar at all. The bucket here is the
+    /// device on purpose - a record that says driver mode has to win over it.
+    /// </summary>
+    [TestMethod]
+    public async Task BackfillingWhereOnlyTheRecordSaysDriverMode_IsStillMarkedInCar()
+    {
+        SeedLive("conn-car", "iOS");
+        SeedInCarConnectRecord("conn-car", "redmist-ios-ui", "7");
+
+        await PrimeAsync();
+        clock.Advance(ViewerSessionReconciler.ReconcileInterval);
+        await ReconcileAsync();
+
+        var session = Sessions().Single();
+        Assert.AreEqual("iOS", session.ClientType);
+        Assert.IsTrue(session.IsInCar, "Driver mode was ignored because the bucket did not say InCar.");
+        Assert.AreEqual("7", session.CarNumber);
+    }
+
+    /// <summary>
+    /// A car number is whatever the driver typed, and nothing limits it on the way in. Too long for
+    /// the column, it used to fail the whole save - and the failure handling discards every row added
+    /// in the pass, so one phone cost the event every other backfilled session, every pass.
+    /// </summary>
+    [TestMethod]
+    public void AnOverLongCarNumber_IsCutToFitTheColumn()
+    {
+        var typed = new string('9', EventViewerSession.CarNumberMaxLength + 10);
+
+        var fitted = EventViewerSession.FitCarNumber(typed);
+
+        Assert.AreEqual(EventViewerSession.CarNumberMaxLength, fitted!.Length);
+        Assert.AreEqual("42", EventViewerSession.FitCarNumber("42"));
+        Assert.IsNull(EventViewerSession.FitCarNumber(null));
+    }
+
+    /// <summary>
+    /// Driver mode is read from the connection record on every backfill. Before, a reconstructed
+    /// session never set IsInCar at all.
+    /// </summary>
+    [TestMethod]
+    public async Task BackfillingAnOrdinaryConnection_IsNotMarkedInCar()
+    {
+        SeedLive("conn-web", "Web");
+        SeedConnectRecord("conn-web", Origin.AddMinutes(-5));
+
+        await PrimeAsync();
+        clock.Advance(ViewerSessionReconciler.ReconcileInterval);
+        await ReconcileAsync();
+
+        var session = Sessions().Single();
+        Assert.AreEqual("Web", session.ClientType);
+        Assert.IsFalse(session.IsInCar);
     }
 
     /// <summary>

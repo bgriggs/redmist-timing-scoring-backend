@@ -76,6 +76,28 @@ public class StatusHubViewershipTests
             .Where(w => w.Field == Consts.VIEWER_SESSION_TYPE)
             .Select(w => JsonSerializer.Deserialize<ViewerSessionEvent>(w.Value)!)];
 
+    /// <summary>
+    /// The live hash counts a phone in driver mode as InCar, but the viewer session - which is what
+    /// the post-event report is built from - must still say what the phone is. The report breaks
+    /// viewership down by device and would fold an unrecognized "InCar" into Web.
+    /// </summary>
+    [TestMethod]
+    public async Task EnteringDriverMode_KeepsTheDeviceOnTheViewerSession()
+    {
+        var hub = CreateHub("redmist-android-ui");
+        await hub.OnConnectedAsync();
+
+        await hub.SubscribeToInCarDriverEventV2(EventId, "42");
+
+        var start = ViewerEventsFor(EventId).Single(e => e.Kind == ViewerSessionEventKind.Start);
+        Assert.AreEqual("Android", start.ClientType, "The report would record this phone as something it is not.");
+        Assert.IsTrue(start.IsInCar);
+        Assert.AreEqual("42", start.CarNumber);
+        Assert.AreEqual(RedMist.Backend.Shared.Utilities.ClientTypeHelper.InCar,
+            redis.GetHashValue(string.Format(Consts.STATUS_EVENT_CONNECTIONS, EventId), connectionId),
+            "The live count did not move the phone into its InCar bucket.");
+    }
+
     [TestMethod]
     public async Task SubscribeToEventV2_PublishesAViewerSessionStart()
     {

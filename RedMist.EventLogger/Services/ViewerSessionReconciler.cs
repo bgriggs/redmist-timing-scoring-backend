@@ -224,16 +224,18 @@ public class ViewerSessionReconciler : BackgroundService
                 continue;
             }
 
-            var start = await ResolveConnectTimeAsync(connectionId, now);
+            var resolved = await ResolveConnectionAsync(connectionId, clientType, now);
             db.EventViewerSessions.Add(new EventViewerSession
             {
                 EventId = eventId,
                 ConnectionId = connectionId,
-                ClientType = clientType,
-                StartUtc = start,
+                ClientType = resolved.ClientType,
+                StartUtc = resolved.Start,
                 StartInferred = true,
+                IsInCar = resolved.IsInCar,
+                CarNumber = EventViewerSession.FitCarNumber(resolved.CarNumber),
             });
-            ViewerSessionMetrics.Started.WithLabels(clientType, "true").Inc();
+            ViewerSessionMetrics.Started.WithLabels(resolved.ClientType, "true").Inc();
         }
 
         // Entries for connections that are neither still missing nor still open are spent: the
@@ -293,11 +295,37 @@ public class ViewerSessionReconciler : BackgroundService
         ViewerSessionMetrics.Closed.WithLabels(reason.ToString()).Inc();
     }
 
+    /// <summary>What a backfilled session needs to know about the connection behind it.</summary>
+    private readonly record struct ResolvedConnection(DateTime Start, string ClientType, bool IsInCar, string? CarNumber);
+
     /// <summary>
-    /// The connection's recorded connect time, or <paramref name="fallback"/> when there is none.
+    /// The connection's connect time, device and driver-mode state, from its connection record.
     /// </summary>
-    private async Task<DateTime> ResolveConnectTimeAsync(string connectionId, DateTime fallback)
+    /// <param name="connectionId">The connection being backfilled.</param>
+    /// <param name="liveBucket">The value the live hash holds for it.</param>
+    /// <param name="fallback">The time to use when no connect time is recorded.</param>
+    /// <remarks>
+    /// <para>
+    /// The live hash holds a count bucket, not necessarily a device. For a phone in driver mode it
+    /// holds InCar, which says what the connection is doing rather than what it runs on. The report
+    /// breaks viewership down by device, and it would fold an unrecognized "InCar" into Web - so an
+    /// in-car Android phone would have been reported as a web viewer. The device is recovered from the
+    /// client id the connection record keeps, which is where the hub derived it in the first place.
+    /// </para>
+    /// <para>
+    /// Driver mode is read from the record for every backfill, not only when the bucket says InCar.
+    /// Before, a reconstructed session never set IsInCar at all, even when the phone was plainly in
+    /// driver mode.
+    /// </para>
+    /// </remarks>
+    private async Task<ResolvedConnection> ResolveConnectionAsync(string connectionId, string liveBucket,
+        DateTime fallback)
     {
+        var start = fallback;
+        var clientType = liveBucket;
+        var isInCar = false;
+        string? carNumber = null;
+
         try
         {
             var cache = cacheMux.GetDatabase();
@@ -305,23 +333,42 @@ public class ViewerSessionReconciler : BackgroundService
             if (!json.IsNullOrEmpty)
             {
                 var conn = JsonSerializer.Deserialize<StatusConnection>(json.ToString());
-                if (conn != null && conn.ConnectedTimestamp != default)
+                if (conn != null)
                 {
-                    var connected = UtcTimestamp.Normalize(conn.ConnectedTimestamp);
+                    if (conn.ConnectedTimestamp != default)
+                    {
+                        var connected = UtcTimestamp.Normalize(conn.ConnectedTimestamp);
 
-                    // Clamp rather than trust: a connect time older than the cap would create a
-                    // session that is already over-length the moment it is written.
-                    var earliest = fallback - MaxSessionDuration;
-                    return connected < earliest ? earliest : connected;
+                        // Clamp rather than trust: a connect time older than the cap would create a
+                        // session that is already over-length the moment it is written.
+                        var earliest = fallback - MaxSessionDuration;
+                        start = connected < earliest ? earliest : connected;
+                    }
+
+                    isInCar = conn.InCarDriverConnection != null;
+                    carNumber = conn.InCarDriverConnection?.CarNumber;
+
+                    if (liveBucket == ClientTypeHelper.InCar)
+                    {
+                        clientType = ClientTypeHelper.ResolveClientType(conn.ClientId);
+                    }
                 }
             }
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Could not read connect time for {connectionId}", connectionId);
+            Logger.LogWarning(ex, "Could not read connection record for {connectionId}", connectionId);
         }
 
-        return fallback;
+        // The bucket alone still says driver mode even when the record is missing, and a device of
+        // "InCar" must never reach the report.
+        if (clientType == ClientTypeHelper.InCar)
+        {
+            isInCar = true;
+            clientType = ClientTypeHelper.ResolveClientType(null);
+        }
+
+        return new ResolvedConnection(start, clientType, isInCar, carNumber);
     }
 
     #region Event shutdown

@@ -51,8 +51,27 @@ public class EventViewerSession
     /// <summary>Whether the viewer was in in-car driver mode rather than watching the timing screen.</summary>
     public bool IsInCar { get; set; }
 
-    [MaxLength(16)]
+    [MaxLength(CarNumberMaxLength)]
     public string? CarNumber { get; set; }
+
+    /// <summary>The column width of <see cref="CarNumber"/>.</summary>
+    public const int CarNumberMaxLength = 16;
+
+    /// <summary>
+    /// A car number cut to fit the column, or null when there is none.
+    /// </summary>
+    /// <remarks>
+    /// The car number comes from whatever a driver typed into the app, and nothing limits it on the
+    /// way in. An over-long one used to be rejected by PostgreSQL, and both writers of this table
+    /// save in batches whose failure handling discards every row added in the pass - so one phone
+    /// with a long car number cost the event every other session recorded alongside it, on every
+    /// pass, for as long as it stayed connected.
+    ///
+    /// Cut here rather than where the number enters the hub, because there it also names the
+    /// driver's in-car group, and shortening it would put them in a group nobody is publishing to.
+    /// </remarks>
+    public static string? FitCarNumber(string? carNumber)
+        => carNumber is { Length: > CarNumberMaxLength } ? carNumber[..CarNumberMaxLength] : carNumber;
 
     /// <summary>
     /// Reserved for a stable per-install identifier supplied by the client. Nothing populates it yet;

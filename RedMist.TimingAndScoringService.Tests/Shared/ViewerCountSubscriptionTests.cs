@@ -181,6 +181,27 @@ public class ViewerCountSubscriptionTests
             string.Format(Consts.EVENT_VIEWER_COUNTS_SUB, TheirEvent), It.IsAny<CancellationToken>()), Times.Never());
     }
 
+    /// <summary>
+    /// The dashboard reads the same hash the relay does, so in-car phones arrive as an InCar key rather
+    /// than inside iOS or Android - and the total still counts them, once.
+    /// </summary>
+    [TestMethod]
+    public async Task InCarConnections_ArriveAsTheirOwnKeyAndCountTowardTheTotal()
+    {
+        await SeedAsync();
+        SeedViewers(MyEvent, "Android", RedMist.Backend.Shared.Utilities.ClientTypeHelper.InCar,
+            RedMist.Backend.Shared.Utilities.ClientTypeHelper.InCar);
+        var hub = CreateHub();
+
+        var snapshot = (await hub.SubscribeToEventViewerCounts([MyEvent]))[MyEvent];
+
+        Assert.AreEqual(3, snapshot.Total);
+        Assert.AreEqual(2, snapshot.ByClientType[RedMist.Backend.Shared.Utilities.ClientTypeHelper.InCar]);
+        Assert.AreEqual(1, snapshot.ByClientType["Android"]);
+        Assert.AreEqual(snapshot.Total, snapshot.ByClientType.Values.Sum(),
+            "The buckets no longer add up to the total, so something is counted twice or dropped.");
+    }
+
     [TestMethod]
     public async Task ANonAdminMember_GetsNothing()
     {

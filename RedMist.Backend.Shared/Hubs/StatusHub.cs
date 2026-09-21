@@ -662,8 +662,13 @@ public class StatusHub : Hub
     /// disconnect handler, or failing both the logger's reconciler closes the session.
     /// </para>
     /// <para>
-    /// SignalR's <c>MaximumParallelInvocationsPerClient</c> defaults to 1, so the read-modify-write of
-    /// this connection's record is serialized per connection despite how racy it looks.
+    /// This read-modify-write of the connection's record is NOT serialized per connection. SignalR's
+    /// <c>MaximumParallelInvocationsPerClient</c> defaults to 1, but AddRedMistSignalR raises it to 3,
+    /// so two calls a client sends without awaiting the first can interleave: one reads the record,
+    /// the other changes it, and the first writes its stale copy back. The first-party apps await
+    /// each call, and the result is bounded by disconnect, which clears the record - but a client
+    /// firing an unsubscribe and an in-car unsubscribe together can leave itself counted against an
+    /// event it has left until it disconnects.
     /// </para>
     /// </remarks>
     private async Task AddOrUpdateConnectionTracking(string connectionId, int? eventId,
@@ -671,6 +676,8 @@ public class StatusHub : Hub
     {
         int? switchedAwayFrom = null;
         int? startedWatching = null;
+        int? trackedEventId = null;
+        int? inCarEventId = inCarDriverConnection?.EventId;
         string clientType = ClientTypeHelper.ResolveClientType(null);
         bool isInCar = inCarDriverConnection != null;
         string? carNumber = inCarDriverConnection?.CarNumber;
@@ -714,22 +721,43 @@ public class StatusHub : Hub
                     {
                         isInCar = conn.InCarDriverConnection != null;
                         carNumber = conn.InCarDriverConnection?.CarNumber;
+                        inCarEventId = conn.InCarDriverConnection?.EventId;
                     }
 
                     if (conn.ClientId != null)
                     {
                         clientType = ClientTypeHelper.ResolveClientType(conn.ClientId);
                     }
+
+                    // The event the connection is on after this update. Not the eventId passed in:
+                    // leaving driver mode passes none, because it must not touch the event
+                    // subscription - but the hash entry for that same event still has to change.
+                    trackedEventId = conn.SubscribedEventId;
+
                     var updatedJson = JsonSerializer.Serialize(conn);
                     await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, connectionId, updatedJson);
                 }
             }
 
-            // Save off the connectionId in the event connections cache with the client type
-            if (eventId is > 0)
+            // Save off the connectionId in the event connections cache with its live-count bucket.
+            //
+            // Written against the event the connection is on, which is the passed eventId when one was
+            // given and otherwise the one it was already subscribed to. Keying this on the passed
+            // eventId alone meant leaving driver mode - which passes none - never rewrote the entry,
+            // and a phone that had exited driver mode stayed counted as InCar until it disconnected.
+            //
+            // InCar replaces the device here rather than accompanying it, so a phone in driver mode is
+            // counted once. clientType itself is left alone for the viewer session published below,
+            // which carries isInCar separately and has to keep the device for the report.
+            var hashEventId = trackedEventId ?? eventId;
+            if (hashEventId is > 0)
             {
-                var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, eventId.Value);
-                await cache.HashSetAsync(connKey, connectionId, clientType, When.Always, CommandFlags.FireAndForget);
+                var connKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, hashEventId.Value);
+                // In driver mode for THIS event, not merely in driver mode. A client can be driving at
+                // one event and also watching another; counting it "In Vehicle" at the second would
+                // show a car on track that is actually somewhere else.
+                var bucket = isInCar && inCarEventId == hashEventId ? ClientTypeHelper.InCar : clientType;
+                await cache.HashSetAsync(connKey, connectionId, bucket, When.Always, CommandFlags.FireAndForget);
             }
         }
         catch (Exception ex)
