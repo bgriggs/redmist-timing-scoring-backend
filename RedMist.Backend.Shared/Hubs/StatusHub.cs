@@ -5,6 +5,8 @@ using Prometheus;
 using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Services;
 using RedMist.Backend.Shared.Utilities;
+using RedMist.Database;
+using Microsoft.EntityFrameworkCore;
 using RedMist.Database.Models;
 using StackExchange.Redis;
 using System.Text.Json;
@@ -35,6 +37,15 @@ public class StatusHub : Hub
     private readonly IConnectionMultiplexer cacheMux;
     private readonly IEventAccessValidator accessValidator;
     private readonly TimeProvider timeProvider;
+    private readonly IDbContextFactory<TsContext>? tsContext;
+
+    /// <summary>The most events one dashboard may watch at once.</summary>
+    /// <remarks>
+    /// Far above any real organizer - the largest account administers a handful of organizations
+    /// with at most a few events running at once - and present only so a single connection cannot
+    /// ask the server to walk an unbounded list.
+    /// </remarks>
+    public const int MaxWatchedEvents = 50;
 
     private ILogger Logger { get; }
 
@@ -50,12 +61,110 @@ public class StatusHub : Hub
     /// <c>ActivatorUtilities</c>, which honours a default rather than requiring a registration.
     /// </remarks>
     public StatusHub(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IEventAccessValidator accessValidator,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null, IDbContextFactory<TsContext>? tsContext = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.accessValidator = accessValidator;
         this.timeProvider = timeProvider ?? TimeProvider.System;
+        this.tsContext = tsContext;
+    }
+
+    /// <summary>
+    /// Subscribes an organizer's dashboard to live viewer counts for events they administer.
+    /// </summary>
+    /// <param name="eventIds">The events to watch. Ids the caller does not administer are omitted.</param>
+    /// <returns>The counts as they stand now, keyed by event id, for the events actually joined.</returns>
+    /// <remarks>
+    /// <para>
+    /// THIS DOES NOT COUNT THE CALLER AS A VIEWER. It joins the counts group and deliberately does
+    /// not call <c>AddOrUpdateConnectionTracking</c>, so the connection never enters the event's
+    /// hash. That one omission covers both halves: the live counts read that hash, and the
+    /// post-event report is built from the viewer sessions the same method publishes. An organizer
+    /// with a dashboard open all weekend therefore appears in neither.
+    /// </para>
+    /// <para>
+    /// Takes a list because the dashboard is cross-organization: an account administering three
+    /// organizations watches every live event across all of them on one page. Each id is authorized
+    /// independently against its own event's organization, so one call may span organizations.
+    /// </para>
+    /// <para>
+    /// Returns the current snapshots rather than waiting for the first push, so a dashboard shows a
+    /// real number immediately - including for an event nothing is publishing for, where the
+    /// subscription would otherwise sit silent and look like a page that had failed to load.
+    /// </para>
+    /// </remarks>
+    public async Task<Dictionary<int, ViewerCountSnapshot>> SubscribeToEventViewerCounts(int[] eventIds)
+    {
+        var permitted = await PermittedEventsAsync(eventIds);
+        var snapshots = new Dictionary<int, ViewerCountSnapshot>();
+        if (permitted.Count == 0)
+        {
+            return snapshots;
+        }
+
+        var cache = cacheMux.GetDatabase();
+        var asOf = timeProvider.GetUtcNow().UtcDateTime;
+        foreach (var eventId in permitted)
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, string.Format(Consts.EVENT_VIEWER_COUNTS_SUB, eventId));
+            snapshots[eventId] = await ViewerCounts.ReadAsync(cache, eventId, asOf);
+        }
+
+        Logger.LogInformation("Client {connectionId} subscribed to viewer counts for {count} event(s)",
+            Context.ConnectionId, permitted.Count);
+        return snapshots;
+    }
+
+    /// <summary>
+    /// Stops receiving viewer counts for the given events.
+    /// </summary>
+    /// <param name="eventIds">The events to stop watching.</param>
+    /// <remarks>
+    /// Not authorized: leaving a group the caller was never in is harmless, and refusing would only
+    /// make a dashboard's teardown depend on permissions it may have lost in the meantime.
+    /// </remarks>
+    public async Task UnsubscribeFromEventViewerCounts(int[] eventIds)
+    {
+        foreach (var eventId in (eventIds ?? []).Distinct().Take(MaxWatchedEvents))
+        {
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, string.Format(Consts.EVENT_VIEWER_COUNTS_SUB, eventId));
+        }
+    }
+
+    /// <summary>
+    /// Of the events asked for, those the caller administers.
+    /// </summary>
+    /// <remarks>
+    /// The caller's organizations are resolved once and the events filtered against them, rather
+    /// than asking per event - the list spans organizations, and one membership read answers for all
+    /// of them. Unauthorized ids are dropped rather than failing the call, so a dashboard whose
+    /// event list has drifted still gets the ones it may see.
+    /// </remarks>
+    private async Task<List<int>> PermittedEventsAsync(int[] eventIds)
+    {
+        var requested = (eventIds ?? []).Where(id => id > 0).Distinct().Take(MaxWatchedEvents).ToList();
+        if (requested.Count == 0 || tsContext == null)
+        {
+            if (tsContext == null)
+            {
+                Logger.LogWarning("Viewer counts requested but no database is configured for this hub.");
+            }
+            return [];
+        }
+
+        await using var db = await tsContext.CreateDbContextAsync(Context.ConnectionAborted);
+        var organizations = await CallerOrganizations.ResolveAsync(db, Context.User, Context.ConnectionAborted);
+        if (organizations.Count == 0)
+        {
+            return [];
+        }
+
+        return await db.Events
+            .AsNoTracking()
+            .Where(e => requested.Contains(e.Id) && !e.IsDeleted && organizations.Contains(e.OrganizationId))
+            .Select(e => e.Id)
+            .ToListAsync(Context.ConnectionAborted);
     }
 
     private async Task EnsureAccessAsync(int eventId, string? accessCode)

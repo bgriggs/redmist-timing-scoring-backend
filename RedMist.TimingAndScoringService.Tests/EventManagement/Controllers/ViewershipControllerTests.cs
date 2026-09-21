@@ -284,6 +284,126 @@ public class ViewershipControllerTests
 
     #endregion
 
+    #region ReportStatus
+
+    /// <summary>
+    /// The three states a page has to tell apart. The middle one is the reason this endpoint exists:
+    /// an event nobody watched is processed and finished, and rendering it as "no report yet" would
+    /// leave an organizer waiting for something that is never coming.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportStatus_DistinguishesNotYetProcessedFromNothingToReport()
+    {
+        await SeedAsync();
+        await SeedReportAsync(10, MineId, withViewership: false, state: PostEventReportState.NoContent);
+        await SeedReportAsync(11, MineId);
+        db.Events.AddRange(NewEvent(12, MineId, "Unprocessed", new DateTime(2026, 2, 1)));
+        await db.SaveChangesAsync();
+
+        var statuses = (await controller.ReportStatus(MineId)).Value!.ToDictionary(x => x.EventId);
+
+        Assert.IsNull(statuses[12].State, "An unprocessed event did not read as unprocessed.");
+        Assert.AreEqual(PostEventReportState.NoContent, statuses[10].State);
+        Assert.AreEqual(PostEventReportState.Sent, statuses[11].State);
+    }
+
+    /// <summary>
+    /// The events needing "no report yet" are exactly the ones absent from the reports list, so a
+    /// caller with only ids would have to visit another service purely to label them.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportStatus_CarriesEnoughToRenderWithoutASecondCall()
+    {
+        await SeedAsync();
+
+        var status = (await controller.ReportStatus(MineId)).Value!.Single(x => x.EventId == 11);
+
+        Assert.AreEqual("Autumn Classic", status.EventName);
+        Assert.AreEqual(new DateTime(2026, 9, 2), status.EventEndDate);
+    }
+
+    [TestMethod]
+    public async Task ReportStatus_ExcludesEventsThatHaveNotFinished()
+    {
+        await SeedAsync();
+        db.Events.Add(NewEvent(13, MineId, "Next month", DateTime.UtcNow.AddDays(30)));
+        await db.SaveChangesAsync();
+
+        var ids = (await controller.ReportStatus(MineId)).Value!.Select(x => x.EventId).ToArray();
+
+        CollectionAssert.DoesNotContain(ids, 13);
+    }
+
+    [TestMethod]
+    public async Task ReportStatus_ExcludesDeletedEventsAndOtherOrganizations()
+    {
+        await SeedAsync();
+        db.Events.Single(e => e.Id == 10).IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        var mine = (await controller.ReportStatus(MineId)).Value!.Select(x => x.EventId).ToArray();
+
+        CollectionAssert.DoesNotContain(mine, 10);
+        CollectionAssert.DoesNotContain(mine, 20);
+        Assert.IsEmpty((await controller.ReportStatus(TheirsId)).Value!);
+    }
+
+    /// <summary>
+    /// A null state has to mean "not yet", which it cannot for an event the job will never look at.
+    /// Without this, every event from before the job's lookback window reads as pending forever, and
+    /// a page listing last season shows nothing but rows waiting for reports that are never coming.
+    /// </summary>
+    [TestMethod]
+    public async Task ReportStatus_SaysWhenTheJobWillNeverReachAnEvent()
+    {
+        await SeedAsync();
+        db.Events.AddRange(
+            NewEvent(30, MineId, "Recent", DateTime.UtcNow.AddDays(-3)),
+            NewEvent(31, MineId, "Last season", DateTime.UtcNow.AddDays(-200)));
+        await db.SaveChangesAsync();
+
+        var statuses = (await controller.ReportStatus(MineId)).Value!.ToDictionary(x => x.EventId);
+
+        Assert.IsNull(statuses[30].State);
+        Assert.IsTrue(statuses[30].Eligible, "A recent unprocessed event was reported as never coming.");
+        Assert.IsNull(statuses[31].State);
+        Assert.IsFalse(statuses[31].Eligible, "An event past the job's lookback was reported as still pending.");
+    }
+
+    /// <summary>The job never processes these, so listing them could only ever say "pending" about them.</summary>
+    [TestMethod]
+    public async Task ReportStatus_OmitsSimulationsAndEventsStillFlaggedLive()
+    {
+        await SeedAsync();
+        var sim = NewEvent(32, MineId, "Load test", DateTime.UtcNow.AddDays(-3));
+        sim.IsSimulation = true;
+        var stuck = NewEvent(33, MineId, "Stuck live", DateTime.UtcNow.AddDays(-3));
+        stuck.IsLive = true;
+        db.Events.AddRange(sim, stuck);
+        await db.SaveChangesAsync();
+
+        var ids = (await controller.ReportStatus(MineId)).Value!.Select(x => x.EventId).ToArray();
+
+        CollectionAssert.DoesNotContain(ids, 32);
+        CollectionAssert.DoesNotContain(ids, 33);
+    }
+
+    [TestMethod]
+    public async Task ReportStatus_IsPagedLikeTheReportsList()
+    {
+        await SeedAsync();
+
+        var first = (await controller.ReportStatus(MineId, skip: 0, take: 1)).Value!;
+        var second = (await controller.ReportStatus(MineId, skip: 1, take: 1)).Value!;
+
+        Assert.AreEqual(11, first.Single().EventId);
+        Assert.AreEqual(10, second.Single().EventId);
+        Assert.IsInstanceOfType<BadRequestObjectResult>((await controller.ReportStatus(MineId, take: 0)).Result);
+        Assert.IsInstanceOfType<BadRequestObjectResult>((await controller.ReportStatus(0)).Result);
+    }
+
+    #endregion
+
     #region Report
 
     [TestMethod]
@@ -383,5 +503,5 @@ public class ViewershipControllerTests
     }
 
     private sealed class TestViewershipController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
-        : ViewershipControllerBase(loggerFactory, tsContext);
+        : ViewershipControllerBase(loggerFactory, tsContext, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
 }

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
@@ -295,6 +296,63 @@ public class UserOrganizationsTests
         Assert.AreEqual("accountant", membership.Role, "The stable role pick changed.");
         Assert.IsTrue(membership.CanAdminister,
             "The flag contradicted the access the event endpoints actually grant.");
+    }
+
+    /// <summary>
+    /// The landing UI's organization editor loads through this service and saves the whole record
+    /// back. The read substitutes the shared placeholder for an organization with no logo, so
+    /// without the guard, changing only the website would adopt the placeholder as its logo.
+    /// The EventManagement half of this is tested separately; both exist because the relay and the
+    /// landing UI round-trip through different services.
+    /// </summary>
+    [TestMethod]
+    public async Task EditingAnOrganizationWithNoLogo_DoesNotAdoptThePlaceholder()
+    {
+        var (controller, db) = RecordingOrganizationController.Create(UserEmail);
+        SeedOrganization(db, 2, "Big Mission", "relay-test", logo: null);
+        SeedMembership(db, UserEmail, 2, "admin");
+        db.DefaultOrgImages.Add(new DefaultOrgImage { Id = 1, ImageData = [9, 9] });
+        await db.SaveChangesAsync();
+
+        var loaded = (await controller.LoadOrganization(2)).Value!;
+        Assert.IsTrue(loaded.LogoIsDefault, "The read did not say it was handing back the placeholder.");
+
+        loaded.Website = "https://changed.test";
+        await controller.UpdateOrganization(loaded);
+
+        var stored = db.Organizations.AsNoTracking().Single(o => o.Id == 2);
+        Assert.IsNull(stored.Logo, "The placeholder was adopted as the organization's own logo.");
+        Assert.AreEqual("https://changed.test", stored.Website, "The intended edit did not save.");
+    }
+
+    /// <summary>
+    /// The flag and the bytes have to agree: a stored zero-length logo is no logo, so it comes back
+    /// as the placeholder with the flag set, not as empty bytes the flag calls the placeholder.
+    /// </summary>
+    [TestMethod]
+    public async Task AZeroLengthStoredLogo_IsTreatedAsNoLogo()
+    {
+        var (controller, db) = RecordingOrganizationController.Create(UserEmail);
+        SeedOrganization(db, 2, "Big Mission", "relay-test", logo: []);
+        SeedMembership(db, UserEmail, 2, "admin");
+        db.DefaultOrgImages.Add(new DefaultOrgImage { Id = 1, ImageData = [9, 9] });
+        await db.SaveChangesAsync();
+
+        var loaded = (await controller.LoadOrganization(2)).Value!;
+
+        Assert.IsTrue(loaded.LogoIsDefault);
+        CollectionAssert.AreEqual(new byte[] { 9, 9 }, loaded.Logo);
+    }
+
+    [TestMethod]
+    public async Task AnOrganizationWithItsOwnLogo_IsNotFlaggedDefault()
+    {
+        var (controller, db) = RecordingOrganizationController.Create(UserEmail);
+        SeedOrganization(db, 2, "Big Mission", "relay-test", logo: [1, 2, 3]);
+        SeedMembership(db, UserEmail, 2, "admin");
+        await db.SaveChangesAsync();
+
+        Assert.IsFalse((await controller.LoadOrganization(2)).Value!.LogoIsDefault);
     }
 
     private static async Task<List<UserOrganizationDto>> LoadAsync(RecordingOrganizationController controller)

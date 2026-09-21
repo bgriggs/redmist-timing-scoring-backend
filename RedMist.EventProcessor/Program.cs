@@ -139,6 +139,7 @@ public class Program
         builder.Services.AddSingleton<SessionStateProcessingPipeline>();
         builder.Services.AddHostedService<EventAggregatorService>();
         builder.Services.AddHostedService<ConsistencyCheckService>();
+        builder.Services.AddHostedService<OrganizerDashboardPublisher>();
         builder.Services.AddMediatorFromAssemblyContaining<Program>();
 
         builder.Services.AddHealthChecks()

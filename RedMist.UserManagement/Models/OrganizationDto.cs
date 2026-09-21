@@ -24,6 +24,17 @@ public class OrganizationDto
 
     public byte[]? Logo { get; set; }
 
+    /// <summary>
+    /// Whether <see cref="Logo"/> is the shared placeholder rather than this organization's own.
+    /// </summary>
+    /// <remarks>
+    /// Reads substitute the placeholder so a page always has something to render, which otherwise
+    /// leaves a client unable to tell "no logo yet" from "this is their logo". Render on it if you
+    /// want to prompt for an upload; the server refuses a posted placeholder either way, so a client
+    /// that ignores this cannot make an organization adopt it by accident.
+    /// </remarks>
+    public bool LogoIsDefault { get; set; }
+
     [MaxLength(255)]
     public string ClientId { get; set; } = string.Empty;
 }

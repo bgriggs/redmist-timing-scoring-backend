@@ -10,8 +10,9 @@ namespace RedMist.EventManagement.Controllers.V1;
 [ApiVersion("1.0")]
 public class ViewershipController : ViewershipControllerBase
 {
-    public ViewershipController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
-        : base(loggerFactory, tsContext)
+    public ViewershipController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
+        IConfiguration configuration)
+        : base(loggerFactory, tsContext, configuration)
     {
     }
 }

@@ -30,15 +30,29 @@ namespace RedMist.EventManagement.Controllers;
 public abstract class ViewershipControllerBase : ControllerBase
 {
     protected readonly IDbContextFactory<TsContext> tsContext;
+    protected readonly IConfiguration configuration;
     protected ILogger Logger { get; }
 
     /// <summary>The largest page this will serve, however large a page is asked for.</summary>
     private const int MaxTake = 100;
 
-    protected ViewershipControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
+    /// <summary>
+    /// How far back the report job will look for events to process.
+    /// </summary>
+    /// <remarks>
+    /// Mirrors PostEventReport:LookbackDays, which the report job reads from the same key, so setting
+    /// it centrally keeps the two in step. It is used only to say whether an event can still be
+    /// picked up - being a day out makes one row read "pending" slightly longer, which is a far
+    /// smaller error than reporting every event from last season as pending forever.
+    /// </remarks>
+    private int LookbackDays => configuration.GetValue("PostEventReport:LookbackDays", 14);
+
+    protected ViewershipControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
+        IConfiguration configuration)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
+        this.configuration = configuration;
     }
 
     /// <summary>
@@ -104,6 +118,121 @@ public abstract class ViewershipControllerBase : ControllerBase
             .ToListAsync();
 
         return rows.ConvertAll(x => Project(x.Report, x.Viewership, x.EventName, x.EventStart));
+    }
+
+    /// <summary>
+    /// Where each of an organization's finished events stands with the report job.
+    /// </summary>
+    /// <param name="organizationId">The organization to report on.</param>
+    /// <param name="skip">Events to skip.</param>
+    /// <param name="take">Events to return, capped at 100.</param>
+    /// <response code="200">The events, newest first. May be empty.</response>
+    /// <response code="400">The organization id is unusable, or paging arguments are out of range.</response>
+    /// <remarks>
+    /// <para>
+    /// Answers "why is there no report for this event" without anybody having to guess. The job
+    /// writes a row for EVERY event it processes, including ones nobody watched, so the presence of
+    /// a row is a fact about what has happened rather than an estimate of when it will.
+    /// </para>
+    /// <para>
+    /// Deliberately not a predicted date. Computing one would mean duplicating the settle window and
+    /// the job's schedule into this service, where they would go stale the day somebody edited the
+    /// CronJob - and nothing would fail, the page would just start giving out dates that were never
+    /// true.
+    /// </para>
+    /// <para>
+    /// Carries the name and end date so a page can render from this and the reports list alone. The
+    /// events needing "no report yet" are exactly the ones absent from that list, so without a name
+    /// here a caller would have to go to another service purely to label rows it already has ids for.
+    /// </para>
+    /// </remarks>
+    [HttpGet]
+    [Produces("application/json")]
+    [ProducesResponseType<List<EventReportStatusDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public virtual async Task<ActionResult<List<EventReportStatusDto>>> ReportStatus(int organizationId,
+        int skip = 0, int take = 20)
+    {
+        Logger.LogTrace("{m} {org}", nameof(ReportStatus), organizationId);
+        if (organizationId < 1)
+        {
+            return BadRequest("organizationId is required.");
+        }
+        if (skip < 0 || take < 1)
+        {
+            return BadRequest("skip must not be negative and take must be at least 1.");
+        }
+
+        using var db = await tsContext.CreateDbContextAsync();
+        if (!await CallerOrganizations.IsPermittedAsync(db, User, organizationId))
+        {
+            return new List<EventReportStatusDto>();
+        }
+
+        // Paged like the reports list rather than answered whole: this is every finished event for
+        // all time, and the largest organizations already hold dozens.
+        //
+        // Simulations and events still flagged live are excluded because the job excludes them, so
+        // listing them could only ever say "pending" about something that will never be processed.
+        var now = DateTime.UtcNow;
+        var eligibleAfter = now.AddDays(-LookbackDays);
+        return await db.Events
+            .AsNoTracking()
+            .Where(e => e.OrganizationId == organizationId && !e.IsDeleted && e.EndDate <= now
+                        && !e.IsSimulation && !e.IsLive)
+            .OrderByDescending(e => e.StartDate)
+            .ThenByDescending(e => e.Id)
+            .Skip(skip)
+            .Take(Math.Min(take, MaxTake))
+            .Select(e => new EventReportStatusDto
+            {
+                EventId = e.Id,
+                EventName = e.Name,
+                EventEndDate = e.EndDate,
+                Eligible = e.EndDate >= eligibleAfter,
+                State = db.PostEventReports
+                    .Where(r => r.EventId == e.Id)
+                    .Select(r => r.State)
+                    .FirstOrDefault(),
+            })
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// How many reports an organization has, for paging.
+    /// </summary>
+    /// <param name="organizationId">The organization to count for.</param>
+    /// <response code="200">The count, which may be zero.</response>
+    /// <response code="400">The organization id is unusable.</response>
+    /// <remarks>
+    /// Counts exactly what <see cref="Reports"/> lists, so the two cannot disagree about how many
+    /// pages there are. "Load more until nothing comes back" is not the same fact as "12 reports",
+    /// which is one an organizer wants to read.
+    /// </remarks>
+    [HttpGet]
+    [Produces("application/json")]
+    [ProducesResponseType<int>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public virtual async Task<ActionResult<int>> ReportCount(int organizationId)
+    {
+        Logger.LogTrace("{m} {org}", nameof(ReportCount), organizationId);
+        if (organizationId < 1)
+        {
+            return BadRequest("organizationId is required.");
+        }
+
+        using var db = await tsContext.CreateDbContextAsync();
+        if (!await CallerOrganizations.IsPermittedAsync(db, User, organizationId))
+        {
+            return 0;
+        }
+
+        return await db.PostEventReports
+            .AsNoTracking()
+            .Where(r => r.OrganizationId == organizationId && r.Viewership != null)
+            .Join(db.Events.Where(e => !e.IsDeleted), r => r.EventId, e => e.Id, (r, e) => r.Id)
+            .CountAsync();
     }
 
     /// <summary>

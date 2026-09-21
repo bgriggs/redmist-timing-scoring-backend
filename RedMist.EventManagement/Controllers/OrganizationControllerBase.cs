@@ -275,9 +275,17 @@ public abstract class OrganizationControllerBase : Controller
             org.ShowOrbitsLogsConnection = organization.ShowOrbitsLogsConnection;
             org.ShowFlagtronicsConnection = organization.ShowFlagtronicsConnection;
 
-            // Update logo
+            // Update logo. A posted logo identical to the shared placeholder is the read coming
+            // back rather than a choice - LoadOrganization substitutes it for an organization with
+            // none, and the relay's settings screen loads and posts the whole record - so it is
+            // treated as "unchanged" rather than written in as this organization's own.
+            // See OrganizationLogo.
             Task? updateCdnTask = null;
-            if (organization.Logo != null && organization.Logo.Length > 0)
+            if (OrganizationLogo.IsDefault(organization.Logo, await OrganizationLogo.LoadDefaultAsync(db)))
+            {
+                // Leave org.Logo alone.
+            }
+            else if (organization.Logo != null && organization.Logo.Length > 0)
             {
                 org.Logo = organization.Logo;
                 updateCdnTask = assetsCdn.SaveLogoAsync(org.Id, organization.Logo);

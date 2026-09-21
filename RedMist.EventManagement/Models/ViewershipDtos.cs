@@ -132,6 +132,53 @@ public class ViewershipReportDto
     public List<ViewershipBucketDto> Buckets { get; set; } = [];
 }
 
+/// <summary>
+/// Where one finished event stands with the post-event report job.
+/// </summary>
+/// <remarks>
+/// Three states a page needs to tell apart, and only the first two are visible here - the third is
+/// the report itself, which is in the reports list:
+/// <list type="bullet">
+/// <item>State null: not processed yet. The job has not reached this event.</item>
+/// <item>State "NoContent": processed, and nobody watched. Not a pending report; there will never
+/// be one, so a page saying "no report yet" would leave an organizer waiting for nothing.</item>
+/// <item>Any other state: the report exists and is in the reports list.</item>
+/// </list>
+/// No separate "processed" flag: it would be a second field encoding the same fact as a null state,
+/// and two fields for one fact eventually disagree.
+/// </remarks>
+public class EventReportStatusDto
+{
+    public int EventId { get; set; }
+
+    public string EventName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The event's end date as the organizer entered it.
+    /// </summary>
+    /// <remarks>
+    /// A date, not an instant, for the same reason as
+    /// <see cref="ViewershipReportSummaryDto.EventStartDate"/> - it lands at midnight and carries no
+    /// reliable time base.
+    /// </remarks>
+    public DateTime EventEndDate { get; set; }
+
+    /// <summary>The report's state, or null when the job has not processed this event.</summary>
+    public string? State { get; set; }
+
+    /// <summary>
+    /// Whether the report job can still produce a report for this event.
+    /// </summary>
+    /// <remarks>
+    /// A separate fact from <see cref="State"/>, not a restatement of it: State says what has
+    /// happened, this says what still can. Without it a null State would read as "any moment now"
+    /// for an event the job will never look at again - every event older than the job's lookback
+    /// window, every simulation, and any event still flagged live - so a page listing last season
+    /// would show a wall of rows pending forever.
+    /// </remarks>
+    public bool Eligible { get; set; }
+}
+
 /// <summary>Whether an organization wants the post-event report email.</summary>
 public class ReportSettingsDto
 {

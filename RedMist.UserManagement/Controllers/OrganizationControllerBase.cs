@@ -211,7 +211,10 @@ public abstract class OrganizationControllerBase : ControllerBase
         }
 
         // An organization that never uploaded one shows the shared default rather than nothing.
-        var logo = org.Logo ?? (await context.DefaultOrgImages.FirstOrDefaultAsync())?.ImageData ?? [];
+        // Treated identically by both: a stored zero-length logo is no logo, so the substitution and
+        // the flag cannot disagree about whether what is being returned is the placeholder.
+        var ownsLogo = org.Logo is { Length: > 0 };
+        var logo = (ownsLogo ? org.Logo : await OrganizationLogo.LoadDefaultAsync(context)) ?? [];
 
         return new OrganizationDto
         {
@@ -219,6 +222,7 @@ public abstract class OrganizationControllerBase : ControllerBase
             Name = org.Name,
             Website = org.Website,
             Logo = logo,
+            LogoIsDefault = !ownsLogo,
             ClientId = org.ClientId
         };
     }
@@ -718,7 +722,17 @@ public abstract class OrganizationControllerBase : ControllerBase
 
         organization.Name = organizationDto.Name;
         organization.Website = organizationDto.Website;
-        organization.Logo = organizationDto.Logo;
+
+        // A posted logo identical to the shared placeholder is not a choice, it is the read coming
+        // back. LoadOrganization substitutes the placeholder for an organization that has none, so an
+        // editor that loads the record, changes the website and posts everything back would write the
+        // placeholder in as that organization's own logo - and afterwards nothing tells it apart from
+        // a deliberate one. See OrganizationLogo.
+        if (!OrganizationLogo.IsDefault(organizationDto.Logo, await OrganizationLogo.LoadDefaultAsync(context)))
+        {
+            organization.Logo = organizationDto.Logo;
+        }
+
         context.Organizations.Update(organization);
         await context.SaveChangesAsync();
 

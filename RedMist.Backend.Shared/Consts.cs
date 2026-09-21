@@ -3,6 +3,16 @@
 public class Consts
 {
     public const string EVENT_SUB_V2 = "evt{0}-sub";
+
+    /// <summary>
+    /// The group an organizer's dashboard joins to receive one event's viewer counts.
+    /// </summary>
+    /// <remarks>
+    /// Separate from the viewer group on purpose. Ordinary viewers have no use for the counts, and
+    /// joining this one deliberately does NOT record a connection in the event's hash - a dashboard
+    /// must not appear in the numbers it is reporting.
+    /// </remarks>
+    public const string EVENT_VIEWER_COUNTS_SUB = "evt{0}-counts";
     public const string STATUS_CHANNEL_PREFIX = "event-status";
     public const string EVENT_STATUS_STREAM_KEY = "evt-st-{0}";
     /// <summary>

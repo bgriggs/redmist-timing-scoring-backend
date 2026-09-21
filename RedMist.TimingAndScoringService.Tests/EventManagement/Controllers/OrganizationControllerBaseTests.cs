@@ -620,6 +620,51 @@ public class OrganizationControllerBaseTests
 
     #endregion
 
+    #region Logo round trip
+
+    /// <summary>
+    /// The read substitutes the shared placeholder for an organization with no logo, so any editor
+    /// that loads a record, changes something unrelated and posts the whole thing back would write
+    /// the placeholder in as that organization's own. Both the landing UI's editor and the relay's
+    /// settings screen work exactly that way, through different services, so the refusal lives on
+    /// the write rather than in either client.
+    /// </summary>
+    [TestMethod]
+    public async Task PostingBackTheSubstitutedDefaultLogo_DoesNotAdoptIt()
+    {
+        await SeedOrganizationsAsync();
+        _dbContext.DefaultOrgImages.Add(new DefaultOrgImage { Id = 1, ImageData = [1, 2, 3] });
+        await _dbContext.SaveChangesAsync();
+
+        // What an editor would have been handed by the read.
+        var loaded = (await _controller.LoadOrganization(1)).Result as OkObjectResult;
+        var handedBack = (Organization)loaded!.Value!;
+        CollectionAssert.AreEqual(new byte[] { 1, 2, 3 }, handedBack.Logo, "The read did not substitute.");
+
+        handedBack.Website = "https://changed.test";
+        await _controller.UpdateOrganization(handedBack);
+
+        var stored = _dbContext.Organizations.AsNoTracking().Single(o => o.Id == 1);
+        Assert.IsNull(stored.Logo, "The shared placeholder was adopted as the organization's own logo.");
+        Assert.AreEqual("https://changed.test", stored.Website, "The edit that was intended did not save.");
+    }
+
+    /// <summary>A logo that is genuinely the organization's own still saves.</summary>
+    [TestMethod]
+    public async Task PostingARealLogo_StillSavesIt()
+    {
+        await SeedOrganizationsAsync();
+        _dbContext.DefaultOrgImages.Add(new DefaultOrgImage { Id = 1, ImageData = [1, 2, 3] });
+        await _dbContext.SaveChangesAsync();
+
+        await _controller.UpdateOrganization(new Organization { Id = 1, Logo = [9, 9, 9] });
+
+        CollectionAssert.AreEqual(new byte[] { 9, 9, 9 },
+            _dbContext.Organizations.AsNoTracking().Single(o => o.Id == 1).Logo);
+    }
+
+    #endregion
+
     #region ReportSettings
 
     /// <summary>Absence of a row is what "opted in" is stored as, so a fresh organization is opted in.</summary>
