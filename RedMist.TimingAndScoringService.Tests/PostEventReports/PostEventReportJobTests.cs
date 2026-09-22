@@ -1,5 +1,7 @@
 using BigMission.TestHelpers.Testing;
 using MailKit.Net.Smtp;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -9,12 +11,16 @@ using Moq;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.Database.Models;
+using RedMist.EventManagement.Controllers.V1;
+using RedMist.EventManagement.Models;
+using RedMist.EventManagement.Viewership;
 using RedMist.EventProcessor.Tests.Utilities;
 using RedMist.PostEventReports;
 using RedMist.PostEventReports.Sections;
 using RedMist.PostEventReports.Sections.Viewership;
 using RedMist.PostEventReports.Suggestions;
 using RedMist.TimingCommon.Models;
+using System.Security.Claims;
 using Event = RedMist.TimingCommon.Models.Configuration.Event;
 
 namespace RedMist.TimingAndScoringService.Tests.PostEventReports;
@@ -149,6 +155,35 @@ public class PostEventReportJobTests
             });
         }
         db.SaveChanges();
+    }
+
+    private void SeedViewer(DateTime start, DateTime? end, int eventId = EventId)
+    {
+        using var db = dbFactory.CreateDbContext();
+        db.EventViewerSessions.Add(new EventViewerSession
+        {
+            EventId = eventId,
+            ConnectionId = Guid.NewGuid().ToString(),
+            ClientType = "Web",
+            StartUtc = start,
+            EndUtc = end,
+        });
+        db.SaveChanges();
+    }
+
+    /// <summary>The viewership the report recorded for an event, or null when it recorded none.</summary>
+    private EventViewershipSummary? Viewership(int eventId = EventId)
+    {
+        using var db = dbFactory.CreateDbContext();
+        return db.PostEventReports.Include(r => r.Viewership)
+            .Single(r => r.EventId == eventId).Viewership;
+    }
+
+    private async Task<List<int>> CandidatesAsync(PostEventReportSettings? settings = null)
+    {
+        var job = CreateJob(settings);
+        using var db = dbFactory.CreateDbContext();
+        return [.. (await job.LoadCandidateEventsAsync(db, CancellationToken.None)).Select(e => e.Id)];
     }
 
     private List<PostEventReport> Reports()
@@ -528,6 +563,318 @@ public class PostEventReportJobTests
         await RunAsync(new PostEventReportSettings { MaxEventsPerRun = 2 });
 
         Assert.HasCount(2, Reports());
+    }
+
+    #endregion
+
+    #region The last day
+
+    /// <summary>
+    /// The end date is stored as midnight at the start of the race day, and the report's upper bound
+    /// used to be that midnight plus twelve hours - 08:00 on the east coast, before anybody had
+    /// arrived. A single-day event in the Americas then found nobody watching at all, and its
+    /// organizer got no report.
+    /// </summary>
+    [TestMethod]
+    public async Task ASingleDayEventInTheAmericas_IsReportedWithItsRaceDay()
+    {
+        var raceDay = new DateTime(2026, 9, 17);
+        SeedOrganization();
+        SeedEvent(configure: e => { e.StartDate = raceDay; e.EndDate = raceDay; });
+        SeedAdmins("a@example.com");
+        SeedViewer(raceDay.AddHours(14), raceDay.AddHours(23.5));
+        SeedViewer(raceDay.AddHours(15), raceDay.AddHours(18));
+        SeedViewer(raceDay.AddHours(20), raceDay.AddHours(23.5));
+
+        var settings = new PostEventReportSettings();
+        var job = await RunAsync(settings);
+
+        Assert.AreEqual(PostEventReportState.Sent, Reports().Single().State);
+        Assert.HasCount(1, job.Sent);
+        var viewership = Viewership()!;
+        Assert.AreEqual(570 + 180 + 210, viewership.TotalViewerMinutes, 0.1);
+        Assert.IsTrue(viewership.TotalViewerMinutes >= settings.MinViewerMinutes);
+    }
+
+    /// <summary>
+    /// The last day of a longer event, likewise: racing after noon UTC is counted, and a row still
+    /// open from the final afternoon is counted to the bound. Under the old bound its clamped end fell
+    /// before its start, and it was thrown away as anomalous.
+    /// </summary>
+    [TestMethod]
+    public async Task AMultiDayEvent_CountsItsLastAfternoon_AndClampsAnOpenLastDayRow()
+    {
+        var firstDay = new DateTime(2026, 9, 15);
+        var lastDay = new DateTime(2026, 9, 17);
+        SeedOrganization();
+        SeedEvent(configure: e => { e.StartDate = firstDay; e.EndDate = lastDay; });
+        SeedAdmins("a@example.com");
+        SeedViewer(firstDay.AddHours(15), firstDay.AddHours(16));
+        SeedViewer(lastDay.AddHours(13), lastDay.AddHours(20));
+        SeedViewer(lastDay.AddHours(18), null);
+
+        await RunAsync();
+
+        var viewership = Viewership()!;
+        Assert.AreEqual(0, viewership.AnomalousSessions, "The open last-day row was discarded as anomalous.");
+        Assert.AreEqual(1, viewership.OpenSessions);
+        // 60 on the first day, 420 on the last afternoon, and the open row from 18:00 to the bound at
+        // 12:00 the next day.
+        Assert.AreEqual(60 + 420 + 18 * 60, viewership.TotalViewerMinutes, 0.1);
+        Assert.AreEqual(lastDay.AddHours(36), viewership.WindowEndUtc);
+    }
+
+    /// <summary>
+    /// The plausible span is now twelve hours, every day of the event, and twelve hours: for a
+    /// Friday-to-Sunday event exactly the 96-hour maximum window, so nothing is truncated even when a
+    /// viewer spans the whole of it.
+    /// </summary>
+    [TestMethod]
+    public async Task AFridayToSundayEvent_FitsTheLongestWindow_WithoutTruncation()
+    {
+        var friday = new DateTime(2026, 9, 15);
+        var sunday = new DateTime(2026, 9, 17);
+        SeedOrganization();
+        SeedEvent(configure: e => { e.StartDate = friday; e.EndDate = sunday; });
+        SeedAdmins("a@example.com");
+        SeedViewer(friday.AddHours(-16), null);
+
+        var settings = new PostEventReportSettings();
+        await RunAsync(settings);
+
+        var viewership = Viewership()!;
+        Assert.AreEqual(friday.AddHours(-12), viewership.WindowStartUtc);
+        Assert.AreEqual(sunday.AddHours(36), viewership.WindowEndUtc);
+        Assert.AreEqual(settings.MaxWindow, viewership.WindowEndUtc - viewership.WindowStartUtc);
+        Assert.AreEqual(settings.MaxWindow.TotalMinutes, viewership.TotalViewerMinutes, 0.1);
+    }
+
+    /// <summary>
+    /// A Thursday-to-Sunday event's plausible span is 120 hours, past the 96-hour maximum. One
+    /// connection on the Wednesday night pins the window start, and truncating at the maximum would
+    /// then cut the event off on Sunday afternoon Pacific - the report short of what the live view
+    /// showed. The span already bounds the window, so nothing inside it is truncated.
+    /// </summary>
+    [TestMethod]
+    public async Task AFourDayEvent_WithAConnectionTheNightBefore_IsNotTruncated_AndAgreesWithTheLiveView()
+    {
+        var thursday = new DateTime(2026, 9, 14);
+        var sunday = new DateTime(2026, 9, 17);
+        SeedOrganization();
+        SeedEvent(configure: e => { e.StartDate = thursday; e.EndDate = sunday; });
+        SeedAdmins("a@example.com");
+        SeedViewer(thursday.AddHours(-2), thursday.AddHours(-1));
+        SeedViewer(sunday.AddHours(20), sunday.AddHours(25));
+        SeedViewer(sunday.AddHours(21), null);
+
+        var settings = new PostEventReportSettings();
+        await RunAsync(settings);
+
+        var report = Viewership()!;
+        LiveViewershipDto live;
+        using (var db = dbFactory.CreateDbContext())
+        {
+            live = LiveViewershipCalculator.Compute(EventId, thursday, sunday, eventIsLive: false,
+                [.. db.Sessions.AsNoTracking().Where(x => x.EventId == EventId)],
+                [.. db.EventViewerSessions.AsNoTracking().Where(x => x.EventId == EventId)], Now);
+        }
+
+        Assert.IsTrue(report.WindowEndUtc - report.WindowStartUtc > settings.MaxWindow,
+            "The fixture no longer spans more than the maximum window, so it proves nothing.");
+        Assert.AreEqual(sunday.AddHours(36), report.WindowEndUtc, "The window was truncated inside the plausible span.");
+        // An hour on the Wednesday night, five on Sunday afternoon, and the open row from 21:00 to
+        // the bound at 12:00 the next day.
+        Assert.AreEqual(60 + 300 + 15 * 60, report.TotalViewerMinutes, 0.1);
+        Assert.AreEqual(report.WindowStartUtc, live.Event.WindowStartUtc);
+        Assert.AreEqual(report.TotalViewerMinutes, live.Event.TotalViewerSeconds / 60d, 0.1,
+            "The report and the live view counted different time.");
+        Assert.AreEqual(report.MaxConcurrent, live.Event.MaxConcurrent);
+    }
+
+    /// <summary>
+    /// The report the job actually produces - its own candidate query, session windows and bounds,
+    /// nothing chosen by the test - against the live view of the same rows read after the event. They
+    /// have to tell the organizer the same thing about the final day, which is exactly where the old
+    /// bound had the report stop at noon UTC while the live view carried on.
+    /// </summary>
+    [TestMethod]
+    public async Task TheReport_AgreesWithTheLiveView_AboutAFinishedEventsLastDay()
+    {
+        var saturday = new DateTime(2026, 9, 16);
+        var sunday = new DateTime(2026, 9, 17);
+        SeedOrganization();
+        SeedEvent(configure: e => { e.StartDate = saturday; e.EndDate = sunday; });
+        SeedAdmins("a@example.com");
+        using (var db = dbFactory.CreateDbContext())
+        {
+            db.Sessions.AddRange(
+                new Session { Id = 1, EventId = EventId, Name = "Saturday race", StartTime = saturday.AddHours(14),
+                    EndTime = saturday.AddHours(18), LocalTimeZoneOffset = -4 },
+                new Session { Id = 2, EventId = EventId, Name = "Sunday race", StartTime = sunday.AddHours(13),
+                    EndTime = sunday.AddHours(17), LocalTimeZoneOffset = -4 });
+            db.SaveChanges();
+        }
+        SeedViewer(saturday.AddHours(15), saturday.AddHours(17));
+        SeedViewer(sunday.AddHours(13.5), sunday.AddHours(16.75));
+        SeedViewer(sunday.AddHours(14), sunday.AddHours(15));
+        SeedViewer(sunday.AddHours(19), null);
+        SeedViewer(sunday.AddHours(16), sunday.AddHours(15));
+
+        await RunAsync();
+
+        LiveViewershipDto live;
+        EventViewershipSummary report;
+        using (var db = dbFactory.CreateDbContext())
+        {
+            live = LiveViewershipCalculator.Compute(EventId, saturday, sunday, eventIsLive: false,
+                [.. db.Sessions.AsNoTracking().Where(x => x.EventId == EventId)],
+                [.. db.EventViewerSessions.AsNoTracking().Where(x => x.EventId == EventId)], Now);
+            report = db.PostEventReports.Include(r => r.Viewership!).ThenInclude(v => v.Sessions)
+                .Single(r => r.EventId == EventId).Viewership!;
+        }
+
+        Assert.AreEqual(report.WindowStartUtc, live.Event.WindowStartUtc);
+        Assert.AreEqual(report.MaxConcurrent, live.Event.MaxConcurrent);
+        Assert.AreEqual(report.TotalViewerMinutes, live.Event.TotalViewerSeconds / 60d, 0.1,
+            "The report and the live view counted different time.");
+        Assert.AreEqual(report.TrackOffsetMinutes, live.TrackOffsetMinutes);
+        Assert.HasCount(2, live.Sessions);
+        foreach (var session in live.Sessions)
+        {
+            var reported = report.Sessions.Single(x => x.SessionId == session.SessionId);
+            Assert.AreEqual(reported.StartUtc, session.StartUtc);
+            Assert.AreEqual(reported.EndUtc, session.EndUtc);
+            Assert.AreEqual(reported.MaxConcurrent, session.MaxConcurrent, $"Session {session.SessionId} peak.");
+            Assert.AreEqual(reported.TotalViewerMinutes, session.TotalViewerSeconds / 60d, 0.1,
+                $"Session {session.SessionId} total.");
+        }
+    }
+
+    /// <summary>
+    /// Measured from the end date's midnight, a settle period shorter than a day made an event due
+    /// while its last day was still being raced, with only the live flag holding it back. That flag
+    /// clears once the relay has been silent for ten minutes.
+    /// </summary>
+    [TestMethod]
+    public async Task AnEventIsNotDueDuringItsLastDay_EvenWithAShortSettlePeriod()
+    {
+        var lastDay = Now.Date;
+        SeedOrganization();
+        SeedEvent(configure: e => { e.StartDate = lastDay.AddDays(-1); e.EndDate = lastDay; });
+        var settings = new PostEventReportSettings { SettlePeriod = TimeSpan.FromHours(6) };
+
+        clock.SetUtcNow(new DateTimeOffset(lastDay.AddHours(20), TimeSpan.Zero));
+        Assert.IsEmpty(await CandidatesAsync(settings), "Due at 20:00 on its own last day.");
+
+        clock.SetUtcNow(new DateTimeOffset(lastDay.AddDays(1).AddHours(6).AddTicks(-1), TimeSpan.Zero));
+        Assert.IsEmpty(await CandidatesAsync(settings));
+
+        clock.SetUtcNow(new DateTimeOffset(lastDay.AddDays(1).AddHours(6), TimeSpan.Zero));
+        CollectionAssert.AreEqual(new[] { EventId }, await CandidatesAsync(settings));
+    }
+
+    [TestMethod]
+    public async Task AnEventIsDue_ASettlePeriodAfterItsLastDayEnds()
+    {
+        var lastDay = Now.Date.AddDays(-1);
+        SeedOrganization();
+        SeedEvent(configure: e => { e.StartDate = lastDay.AddDays(-1); e.EndDate = lastDay; });
+
+        Assert.IsEmpty(await CandidatesAsync(), "Due a settle period after the end date's midnight.");
+
+        clock.SetUtcNow(new DateTimeOffset(lastDay.AddDays(2).AddTicks(-1), TimeSpan.Zero));
+        Assert.IsEmpty(await CandidatesAsync());
+
+        clock.SetUtcNow(new DateTimeOffset(lastDay.AddDays(2), TimeSpan.Zero));
+        CollectionAssert.AreEqual(new[] { EventId }, await CandidatesAsync());
+    }
+
+    /// <summary>The lookback is measured from the same moment as the settle period.</summary>
+    [TestMethod]
+    public async Task AnEventStaysEligible_ForTheLookbackAfterItsLastDayEnds()
+    {
+        // The last day ended at 00:00 on the 6th; fourteen days on is 00:00 on the 20th.
+        var lastDay = new DateTime(2026, 9, 5);
+        SeedOrganization();
+        SeedEvent(configure: e => { e.StartDate = lastDay; e.EndDate = lastDay; });
+
+        CollectionAssert.AreEqual(new[] { EventId }, await CandidatesAsync(),
+            "Dropped fourteen days after the end date's midnight rather than after the last day.");
+
+        clock.SetUtcNow(new DateTimeOffset(lastDay.AddDays(15), TimeSpan.Zero));
+        Assert.IsEmpty(await CandidatesAsync());
+    }
+
+    /// <summary>
+    /// The dashboard's report status and the job have to agree hour by hour about every event: it is
+    /// listed only once its last day has ended, and the job picks it up exactly when it was listed a
+    /// settle period ago and is still eligible. A dashboard saying "pending" for an event the job will
+    /// not touch, or "no report yet" for one still being raced, would be telling the organizer
+    /// something untrue.
+    /// </summary>
+    /// <remarks>
+    /// Two status readers, one lagging the other by the settle period, because "listed a settle period
+    /// ago" cannot be asked of a clock that only moves forward. Swept hour by hour from a midnight,
+    /// so every boundary - all of them fall on midnights - is sampled exactly.
+    /// </remarks>
+    [TestMethod]
+    public async Task ReportStatus_AgreesWithTheJob_AboutWhenEachEventIsPickedUp()
+    {
+        var settings = new PostEventReportSettings();
+        var start = Now.Date.AddDays(1);
+        SeedOrganization();
+        var endDates = Enumerable.Range(0, 17).Select(k => start.AddDays(-k))
+            .Append(start.AddDays(-2).AddHours(15))
+            .Append(start.AddDays(-14).AddHours(23))
+            .ToList();
+        for (var i = 0; i < endDates.Count; i++)
+        {
+            var endDate = endDates[i];
+            SeedEvent(EventId + i, e => { e.StartDate = endDate.AddDays(-1); e.EndDate = endDate; });
+        }
+
+        clock.SetUtcNow(new DateTimeOffset(start, TimeSpan.Zero));
+        var lagging = new FakeTimeProvider(new DateTimeOffset(start - settings.SettlePeriod));
+        var statusNow = StatusReader(clock);
+        var statusThen = StatusReader(lagging);
+
+        for (var hour = 0; hour <= 17 * 24; hour++)
+        {
+            var now = clock.GetUtcNow().UtcDateTime;
+            var picked = (await CandidatesAsync(settings)).ToHashSet();
+            var listed = (await statusNow.ReportStatus(OrganizationId, take: 100)).Value!.ToDictionary(s => s.EventId);
+            var listedThen = (await statusThen.ReportStatus(OrganizationId, take: 100)).Value!
+                .Select(s => s.EventId).ToHashSet();
+
+            for (var i = 0; i < endDates.Count; i++)
+            {
+                var id = EventId + i;
+                var lastDayEnded = endDates[i].Date.AddDays(1) <= now;
+                Assert.AreEqual(lastDayEnded, listed.ContainsKey(id),
+                    $"At {now:MM-dd HH:mm}, event ending {endDates[i]:MM-dd HH:mm} was listed={listed.ContainsKey(id)}.");
+
+                var expected = listedThen.Contains(id) && listed.TryGetValue(id, out var status) && status.Eligible;
+                Assert.AreEqual(expected, picked.Contains(id),
+                    $"At {now:MM-dd HH:mm}, event ending {endDates[i]:MM-dd HH:mm}: the job and the dashboard disagree.");
+            }
+
+            clock.Advance(TimeSpan.FromHours(1));
+            lagging.Advance(TimeSpan.FromHours(1));
+        }
+    }
+
+    private ViewershipController StatusReader(TimeProvider time)
+    {
+        var controller = new ViewershipController(new DebugLoggerFactory(), dbFactory,
+            new ConfigurationBuilder().Build(), new FakeHybridCache(), time);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("client_id", "relay-test")], "Test")),
+            },
+        };
+        return controller;
     }
 
     #endregion

@@ -159,7 +159,8 @@ public class EventReportStatusDto
     /// <remarks>
     /// A date, not an instant, for the same reason as
     /// <see cref="ViewershipReportSummaryDto.EventStartDate"/> - it lands at midnight and carries no
-    /// reliable time base.
+    /// reliable time base. It is the event's last day, so the event counts as finished - and appears
+    /// here - only once that whole day has ended in UTC, and the job's settle period runs from then.
     /// </remarks>
     public DateTime EventEndDate { get; set; }
 

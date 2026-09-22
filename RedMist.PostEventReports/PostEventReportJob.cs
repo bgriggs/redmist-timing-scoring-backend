@@ -142,27 +142,35 @@ public class PostEventReportJob(
     /// intended.
     /// </para>
     /// <para>
+    /// Both the settle period and the lookback are measured from the end of the event's last day
+    /// (<see cref="EventDates"/>), not from its end date. The end date is stored as midnight at the
+    /// start of the last day, so measuring from it made an event due a settle period into its own
+    /// final day - with a settle period under a day, while that day was still being raced - leaving
+    /// <c>IsLive</c> as the only thing holding it back. The dashboard's report status reads the same
+    /// cutoffs, so what it calls pending is what this will pick up.
+    /// </para>
+    /// <para>
     /// <c>IsLive</c> is a belt-and-braces guard, not the end marker: the orchestrator recomputes it
-    /// every ten seconds from relay heartbeats, so it means "a relay is talking right now". With a
-    /// settle period of a day it is nearly redundant, but it is what stops a report going out for an
-    /// event that was picked back up days later and is mid-session.
+    /// every ten seconds from relay heartbeats, so it means "a relay is talking right now". Measured
+    /// from the end of the last day it is nearly redundant, but it is what stops a report going out
+    /// for an event that was picked back up days later and is mid-session.
     /// </para>
     /// <para>
     /// There is deliberately no <c>IsArchived</c> filter. Archiving moves lap logs to cold storage
-    /// and does not touch viewer sessions, and it happens a day after the end date - which can beat
-    /// this job to an event. Filtering on it would silently drop those reports.
+    /// and does not touch viewer sessions, and it happens a day after the end date - which usually
+    /// beats this job to an event. Filtering on it would silently drop those reports.
     /// </para>
     /// </remarks>
     internal async Task<List<Event>> LoadCandidateEventsAsync(TsContext context, CancellationToken stoppingToken)
     {
         var now = clock.GetUtcNow().UtcDateTime;
-        var settled = now - settings.SettlePeriod;
-        var earliest = now - settings.LookbackWindow;
+        var settled = EventDates.LastDayEndedByCutoff(now - settings.SettlePeriod);
+        var lookback = EventDates.LastDayEndedByCutoff(now - settings.LookbackWindow);
 
         return await context.Events
             .AsNoTracking()
             .Where(e => !e.IsDeleted && !e.IsSimulation && !e.IsLive
-                        && e.EndDate <= settled && e.EndDate >= earliest)
+                        && e.EndDate < settled && e.EndDate >= lookback)
             .Where(e => !context.PostEventReports.Any(r => r.EventId == e.Id))
             .OrderBy(e => e.EndDate)
             .Take(settings.MaxEventsPerRun)
@@ -352,7 +360,7 @@ public class PostEventReportJob(
             .ToListAsync(stoppingToken);
 
         // The fallback end for a session that never recorded one: the last viewer activity seen for
-        // the event, or failing that the event's own end date.
+        // the event, or failing that the end of its last day.
         var lastActivity = await context.EventViewerSessions.AsNoTracking()
             .Where(s => s.EventId == evt.Id)
             .Select(s => (DateTime?)(s.EndUtc ?? s.StartUtc))

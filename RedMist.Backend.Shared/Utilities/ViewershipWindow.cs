@@ -25,12 +25,22 @@ public static class ViewershipWindow
     /// How far either side of the event's own dates a viewer timestamp is still believed.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Guards against one corrupt timestamp producing a window of weeks. The event's dates are used
     /// only as this bound, never as the window, because they land at midnight.
-    ///
-    /// Hours rather than days, and deliberately: the bound has to be tighter than the longest window
-    /// the report will cover, or a single stray early connection pins the window start and the
-    /// truncation at the far end cuts real racing sessions off the report entirely.
+    /// </para>
+    /// <para>
+    /// Hours rather than days, and deliberately: this is what bounds the report's window, and it
+    /// should bound it no wider than the event needs. The span from the lower bound to the upper is
+    /// twelve hours, plus every day of the event, plus twelve hours - 96 hours for a Friday-to-Sunday
+    /// event, 120 for Thursday to Sunday.
+    /// </para>
+    /// <para>
+    /// The report never truncates its window inside that span, whatever
+    /// <c>PostEventReportSettings.MaxWindow</c> says: a single stray early connection would otherwise
+    /// pin the window start, and the truncation at the far end would cut the final day's racing off
+    /// the report - and put it at odds with the live view, which counts the whole span.
+    /// </para>
     /// </remarks>
     public static readonly TimeSpan PlausibilityMargin = TimeSpan.FromHours(12);
 
@@ -40,45 +50,35 @@ public static class ViewershipWindow
         => DateTime.SpecifyKind(eventStartDate, DateTimeKind.Utc) - PlausibilityMargin;
 
     /// <summary>
-    /// The latest believable viewer timestamp for an event, and the end given to a row left open.
-    /// </summary>
-    /// <remarks>Never later than now: nobody has watched the future.</remarks>
-    /// <param name="eventEndDate">The event's end date as stored.</param>
-    /// <param name="nowUtc">The current time.</param>
-    public static DateTime LatestPlausibleUtc(DateTime eventEndDate, DateTime nowUtc)
-    {
-        var latest = DateTime.SpecifyKind(eventEndDate, DateTimeKind.Utc) + PlausibilityMargin;
-        return latest > nowUtc ? nowUtc : latest;
-    }
-
-    /// <summary>
-    /// The latest believable viewer timestamp, reading the event's end date as the calendar day it
-    /// is: the end of that day plus the margin, and never later than now.
+    /// The latest believable viewer timestamp for an event, and the end given to a row left open:
+    /// the end of the event's last day plus the margin, and never later than now.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The organizer enters the end date as a day, and it is stored as midnight at the start of that
-    /// day. Adding the margin to that midnight, as <see cref="LatestPlausibleUtc"/> does, lands on the
-    /// last day's morning in UTC - before a track behind UTC has started that day's racing, so
-    /// everything watched on the final day falls outside the bound. Reading the date as the whole day
-    /// and adding the margin after it covers the last day in full at any track within twelve hours of
-    /// UTC, and still bounds a stray row left open after the event.
+    /// The end date is read as the calendar day it is (<see cref="EventDates.LastDayEndUtc"/>). It is
+    /// stored as midnight at the start of the last day, and the margin used to be added to that
+    /// midnight - which lands on the last morning in UTC, before a track behind UTC has started that
+    /// day's racing. The report then counted nothing from the final day, recorded an open final-day
+    /// row as anomalous because its clamped end fell before its start, and for a single-day event in
+    /// the Americas found nothing to say at all. Adding the margin after the whole day covers the last
+    /// day in full at any track within twelve hours of UTC, and still bounds a stray row left open
+    /// after the event.
     /// </para>
     /// <para>
-    /// Only the time of day is discarded, so an end date that does carry one is still treated as that
-    /// whole day rather than as the moment it names.
+    /// Never later than now, because nobody has watched the future. For the report that only applies
+    /// if it runs before the bound has passed - with a settle period under twelve hours - and the live
+    /// view reaches the bound only once the event is over.
     /// </para>
     /// <para>
-    /// Used by the live viewership view. The post-event report still uses
-    /// <see cref="LatestPlausibleUtc"/>; moving it onto this rule changes stored report output and is
-    /// a separate decision.
+    /// The one upper bound for both the post-event report and the live viewership view, so the two
+    /// cannot disagree about which rows count.
     /// </para>
     /// </remarks>
     /// <param name="eventEndDate">The event's end date as stored.</param>
     /// <param name="nowUtc">The current time.</param>
-    public static DateTime LatestPlausibleUtcAfterLastDay(DateTime eventEndDate, DateTime nowUtc)
+    public static DateTime LatestPlausibleUtc(DateTime eventEndDate, DateTime nowUtc)
     {
-        var latest = DateTime.SpecifyKind(eventEndDate.Date, DateTimeKind.Utc).AddDays(1) + PlausibilityMargin;
+        var latest = EventDates.LastDayEndUtc(eventEndDate) + PlausibilityMargin;
         return latest > nowUtc ? nowUtc : latest;
     }
 
@@ -99,8 +99,15 @@ public static class ViewershipWindow
     /// The end given to an event's last racing session when it never recorded one of its own.
     /// </summary>
     /// <remarks>
-    /// The last viewer activity seen for the event, or failing that the event's own end date, and
-    /// never later than now. Handed to <see cref="SessionWindowResolver"/> as its fallback.
+    /// <para>
+    /// The last viewer activity seen for the event, or failing that the end of the event's last day,
+    /// and never later than now. Handed to <see cref="SessionWindowResolver"/> as its fallback.
+    /// </para>
+    /// <para>
+    /// The end of the last day rather than the end date itself, which is that day's first moment: a
+    /// final session with no viewers and no end of its own would otherwise be given an end before it
+    /// began, and dropped.
+    /// </para>
     /// </remarks>
     /// <param name="lastActivityUtc">
     /// The latest end - or, for a row still open, start - among the event's viewer sessions, or null
@@ -112,7 +119,7 @@ public static class ViewershipWindow
     {
         var fallback = lastActivityUtc is { } activity
             ? UtcTimestamp.Normalize(activity)
-            : DateTime.SpecifyKind(eventEndDate, DateTimeKind.Utc);
+            : EventDates.LastDayEndUtc(eventEndDate);
         return fallback > nowUtc ? nowUtc : fallback;
     }
 }

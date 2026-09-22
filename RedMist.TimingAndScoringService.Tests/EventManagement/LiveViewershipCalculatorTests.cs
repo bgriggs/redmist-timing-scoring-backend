@@ -2,6 +2,7 @@ using RedMist.Backend.Shared.Utilities;
 using RedMist.Database.Models;
 using RedMist.EventManagement.Models;
 using RedMist.EventManagement.Viewership;
+using RedMist.PostEventReports;
 using RedMist.PostEventReports.Sections.Viewership;
 using RedMist.TimingCommon.Models;
 using System.Collections;
@@ -422,6 +423,24 @@ public class LiveViewershipCalculatorTests
         Assert.AreEqual(At(20), result.Sessions.Single().EndUtc);
     }
 
+    /// <summary>
+    /// A final session that nobody watched and that never recorded an end falls back to the end of
+    /// the event's last day. Falling back to the end date itself - that day's first moment - gave it
+    /// an end before its start, and it vanished from the list.
+    /// </summary>
+    [TestMethod]
+    public void AnUnwatchedFinalSessionWithNoEnd_EndsWithTheLastDay()
+    {
+        var raceDay = new DateTime(2026, 9, 19);
+
+        var result = Compute([], [Racing(1, "Race", 0, null)], asOfMinute: 2 * 24 * 60, eventIsLive: false,
+            eventStart: raceDay, eventEnd: raceDay);
+
+        var session = result.Sessions.Single();
+        Assert.AreEqual(raceDay.AddDays(1), session.EndUtc);
+        Assert.HasCount(10 * 60, session.Buckets);
+    }
+
     /// <summary>The report drops a session whose end is not after its start; so does this.</summary>
     [TestMethod]
     public void ASessionEndingBeforeItStarted_IsDroppedAsTheReportDropsIt()
@@ -481,15 +500,17 @@ public class LiveViewershipCalculatorTests
     /// contradicts.
     /// </summary>
     /// <remarks>
-    /// Agreement under the corrected upper bound. The report is handed the bound the live view uses -
-    /// the end of the last day plus the margin, capped at now - rather than the one
-    /// <c>ViewershipSection</c> passes today, the end date's midnight plus the margin, which cuts off
-    /// a final day at a track behind UTC. That fix is pending; once the section moves onto
-    /// <see cref="ViewershipWindow.LatestPlausibleUtcAfterLastDay"/>, this is exactly the bound it will
-    /// pass, and this test needs no change.
+    /// Each side takes its bounds, track offset, session windows and maximum window exactly where its
+    /// production caller does - the live view inside the calculator, the report from the same helpers
+    /// <c>ViewershipSection</c> and the job call - with nothing chosen by the test. Checked twice: at
+    /// one instant during the event, and for the finished event read at two different times after
+    /// it, where both stop at the end of the last day plus the margin and so count the open row alike.
     /// </remarks>
     [TestMethod]
-    public void ForTheSameRows_TheLiveFiguresAgreeWithTheReport_UnderTheCorrectedUpperBound()
+    [DataRow(120d, 120d, true, DisplayName = "During the event, at the same instant")]
+    [DataRow((46 + 24) * 60d, (46 + 5 * 24) * 60d, false, DisplayName = "After the event, read at different times")]
+    public void ForTheSameRows_TheLiveFiguresAgreeWithTheReport(double liveAsOfMinute, double reportRunMinute,
+        bool eventIsLive)
     {
         List<EventViewerSession> viewers =
         [
@@ -497,13 +518,20 @@ public class LiveViewershipCalculatorTests
             Viewer(61, 62), Viewer(61, 75, "API"), Viewer(64, 64),
         ];
         List<Session> sessions = [Racing(1, "Practice", 5, 40), Racing(2, "Race", 55, 100)];
-        const double asOf = 120;
+        var reportRun = At(reportRunMinute);
 
-        var live = Compute(viewers, sessions, asOf);
-        var report = ViewershipAggregator.Aggregate(viewers, SessionWindowResolver.Resolve(sessions, At(asOf)),
-            TimeSpan.FromHours(-4), ViewershipWindow.EarliestPlausibleUtc(EventStart),
-            ViewershipWindow.LatestPlausibleUtcAfterLastDay(EventEnd, At(asOf)), TimeSpan.FromHours(96));
+        var live = Compute(viewers, sessions, liveAsOfMinute, eventIsLive);
+        var report = ViewershipAggregator.Aggregate(
+            viewers,
+            SessionWindowResolver.Resolve(sessions, ViewershipWindow.LastSessionFallbackEndUtc(
+                viewers.Max(v => v.EndUtc ?? v.StartUtc), EventEnd, reportRun)),
+            TrackTime.ForEvent(sessions.OrderBy(s => s.StartTime).Select(s => s.LocalTimeZoneOffset)),
+            ViewershipWindow.EarliestPlausibleUtc(EventStart),
+            ViewershipWindow.LatestPlausibleUtc(EventEnd, reportRun),
+            new PostEventReportSettings().MaxWindow);
 
+        Assert.AreEqual(1, report.OpenSessions, "The fixture is meant to exercise an open row.");
+        Assert.AreEqual(1, report.AnomalousSessions, "The fixture is meant to exercise an anomalous row.");
         Assert.AreEqual(report.WindowStartUtc, live.Event.WindowStartUtc);
         Assert.AreEqual(report.MaxConcurrent, live.Event.MaxConcurrent);
         Assert.AreEqual(report.TotalViewerMinutes, live.Event.TotalViewerSeconds / 60d, 0.1);

@@ -301,6 +301,16 @@ public class ViewershipControllerTests
 
     #region ReportStatus
 
+    /// <summary>A week after event 11 ended, inside the job's lookback.</summary>
+    private static readonly DateTime StatusDay = new(2026, 9, 10, 12, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>
+    /// Moves the clock the report status reads past the seeded events. It reads the injected clock
+    /// rather than the machine's, so that what it calls finished and eligible can be pinned to the
+    /// same instant the report job is asked at.
+    /// </summary>
+    private void AfterTheEvents() => clock.SetUtcNow(new DateTimeOffset(StatusDay));
+
     /// <summary>
     /// The three states a page has to tell apart. The middle one is the reason this endpoint exists:
     /// an event nobody watched is processed and finished, and rendering it as "no report yet" would
@@ -310,6 +320,7 @@ public class ViewershipControllerTests
     public async Task ReportStatus_DistinguishesNotYetProcessedFromNothingToReport()
     {
         await SeedAsync();
+        AfterTheEvents();
         await SeedReportAsync(10, MineId, withViewership: false, state: PostEventReportState.NoContent);
         await SeedReportAsync(11, MineId);
         db.Events.AddRange(NewEvent(12, MineId, "Unprocessed", new DateTime(2026, 2, 1)));
@@ -330,6 +341,7 @@ public class ViewershipControllerTests
     public async Task ReportStatus_CarriesEnoughToRenderWithoutASecondCall()
     {
         await SeedAsync();
+        AfterTheEvents();
 
         var status = (await controller.ReportStatus(MineId)).Value!.Single(x => x.EventId == 11);
 
@@ -341,7 +353,8 @@ public class ViewershipControllerTests
     public async Task ReportStatus_ExcludesEventsThatHaveNotFinished()
     {
         await SeedAsync();
-        db.Events.Add(NewEvent(13, MineId, "Next month", DateTime.UtcNow.AddDays(30)));
+        AfterTheEvents();
+        db.Events.Add(NewEvent(13, MineId, "Next month", StatusDay.AddDays(30)));
         await db.SaveChangesAsync();
 
         var ids = (await controller.ReportStatus(MineId)).Value!.Select(x => x.EventId).ToArray();
@@ -353,6 +366,7 @@ public class ViewershipControllerTests
     public async Task ReportStatus_ExcludesDeletedEventsAndOtherOrganizations()
     {
         await SeedAsync();
+        AfterTheEvents();
         db.Events.Single(e => e.Id == 10).IsDeleted = true;
         await db.SaveChangesAsync();
 
@@ -372,9 +386,10 @@ public class ViewershipControllerTests
     public async Task ReportStatus_SaysWhenTheJobWillNeverReachAnEvent()
     {
         await SeedAsync();
+        AfterTheEvents();
         db.Events.AddRange(
-            NewEvent(30, MineId, "Recent", DateTime.UtcNow.AddDays(-3)),
-            NewEvent(31, MineId, "Last season", DateTime.UtcNow.AddDays(-200)));
+            NewEvent(30, MineId, "Recent", StatusDay.AddDays(-3)),
+            NewEvent(31, MineId, "Last season", StatusDay.AddDays(-200)));
         await db.SaveChangesAsync();
 
         var statuses = (await controller.ReportStatus(MineId)).Value!.ToDictionary(x => x.EventId);
@@ -390,9 +405,10 @@ public class ViewershipControllerTests
     public async Task ReportStatus_OmitsSimulationsAndEventsStillFlaggedLive()
     {
         await SeedAsync();
-        var sim = NewEvent(32, MineId, "Load test", DateTime.UtcNow.AddDays(-3));
+        AfterTheEvents();
+        var sim = NewEvent(32, MineId, "Load test", StatusDay.AddDays(-3));
         sim.IsSimulation = true;
-        var stuck = NewEvent(33, MineId, "Stuck live", DateTime.UtcNow.AddDays(-3));
+        var stuck = NewEvent(33, MineId, "Stuck live", StatusDay.AddDays(-3));
         stuck.IsLive = true;
         db.Events.AddRange(sim, stuck);
         await db.SaveChangesAsync();
@@ -407,6 +423,7 @@ public class ViewershipControllerTests
     public async Task ReportStatus_IsPagedLikeTheReportsList()
     {
         await SeedAsync();
+        AfterTheEvents();
 
         var first = (await controller.ReportStatus(MineId, skip: 0, take: 1)).Value!;
         var second = (await controller.ReportStatus(MineId, skip: 1, take: 1)).Value!;

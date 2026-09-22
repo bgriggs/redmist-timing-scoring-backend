@@ -18,7 +18,9 @@ namespace RedMist.EventManagement.Viewership;
 /// <para>
 /// <b>What is shared with the report, and therefore cannot disagree with it.</b> Rows are turned into
 /// intervals by <see cref="ViewerIntervals"/> - open rows clamped, rows ending before they start
-/// discarded, starts before the plausible bound clamped up to it. The window starts where
+/// discarded, starts before the plausible bound clamped up to it - between the same two bounds:
+/// <see cref="ViewershipWindow.EarliestPlausibleUtc"/> and
+/// <see cref="ViewershipWindow.LatestPlausibleUtc"/>. The window starts where
 /// <see cref="ViewershipWindow.Start"/> says. Racing sessions are resolved by
 /// <see cref="SessionWindowResolver"/>, viewers are attributed to them by intersecting each interval
 /// with each session's own unrounded window, and every figure comes out of
@@ -33,14 +35,12 @@ namespace RedMist.EventManagement.Viewership;
 /// The window still starts on the report's quarter-hour grid, so its start is the report's start.
 /// </item>
 /// <item>
-/// The upper bound is the as-of time, or the end of the event's last day plus the plausibility
-/// margin if that is earlier (<see cref="ViewershipWindow.LatestPlausibleUtcAfterLastDay"/>). While
-/// the event runs that is the as-of time: nothing can have been watched after it, and an open row is
-/// clamped to it. Once the event is over the day bound takes over, so a stray row left open after
-/// the event is not counted until whenever somebody next asks, and the answer for a finished event
-/// stops growing. The report's own bound - the end date's midnight plus the margin - is not used: the
-/// end date is stored as midnight at the start of the last day, so for a track behind UTC that bound
-/// falls on the last morning and would flatten the live chart just as the final day's racing begins.
+/// The upper bound is the report's - the end of the event's last day plus the plausibility margin -
+/// capped at the as-of time rather than at whenever the report runs. While the event runs that cap
+/// is what applies: nothing can have been watched after it, and an open row is clamped to it. Once
+/// the event is over the day bound takes over, so a stray row left open after the event is not
+/// counted until whenever somebody next asks, and the answer for a finished event stops growing -
+/// at exactly the point the report's will.
 /// </item>
 /// <item>
 /// Racing sessions are charted only inside the plausible window. A session that began before it - a
@@ -128,7 +128,7 @@ public static class LiveViewershipCalculator
     {
         var asOf = UtcTimestamp.Normalize(asOfUtc);
         var earliest = ViewershipWindow.EarliestPlausibleUtc(eventStartDate);
-        var latest = ViewershipWindow.LatestPlausibleUtcAfterLastDay(eventEndDate, asOf);
+        var latest = ViewershipWindow.LatestPlausibleUtc(eventEndDate, asOf);
 
         // In the order the sessions ran, because the first usable offset wins: the sessions of one
         // event are at one track, so they either agree or the later ones are corrupt.
@@ -235,8 +235,8 @@ public static class LiveViewershipCalculator
     /// once a relay has been silent for the orchestrator's full timeout, so it does not flicker through
     /// an ordinary dropout at the track, and it is cleared at the same teardown that retires the
     /// session. A running session is swept to the as-of time. One that is not gets the report's
-    /// fallback - the last viewer activity seen for the event, or failing that the event's end date -
-    /// which is exactly where the report will end it.
+    /// fallback - the last viewer activity seen for the event, or failing that the end of its last
+    /// day - which is exactly where the report will end it.
     /// </para>
     /// <para>
     /// The running session is only ever the latest. An earlier session with no end of its own ends

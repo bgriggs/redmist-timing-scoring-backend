@@ -47,7 +47,8 @@ public abstract class ViewershipControllerBase : ControllerBase
     private const int MaxTake = 100;
 
     /// <summary>
-    /// How far back the report job will look for events to process.
+    /// How far back, from the end of an event's last day, the report job will look for events to
+    /// process.
     /// </summary>
     /// <remarks>
     /// Mirrors PostEventReport:LookbackDays, which the report job reads from the same key, so setting
@@ -177,6 +178,14 @@ public abstract class ViewershipControllerBase : ControllerBase
     /// events needing "no report yet" are exactly the ones absent from that list, so without a name
     /// here a caller would have to go to another service purely to label rows it already has ids for.
     /// </para>
+    /// <para>
+    /// "Finished" and "eligible" are measured from the end of the event's last day, through the same
+    /// <see cref="EventDates.LastDayEndedByCutoff"/> the report job's candidate query uses. The end
+    /// date is that day's first moment, and reading it as the end listed an event as awaiting its
+    /// report while its final day was still being raced. Sharing the cutoff is what makes the
+    /// listing true: an event listed as pending and eligible is one the job will pick up once it has
+    /// settled, and one listed as ineligible is one it never will.
+    /// </para>
     /// </remarks>
     [HttpGet]
     [Produces("application/json")]
@@ -207,11 +216,12 @@ public abstract class ViewershipControllerBase : ControllerBase
         //
         // Simulations and events still flagged live are excluded because the job excludes them, so
         // listing them could only ever say "pending" about something that will never be processed.
-        var now = DateTime.UtcNow;
-        var eligibleAfter = now.AddDays(-LookbackDays);
+        var now = clock.GetUtcNow().UtcDateTime;
+        var finished = EventDates.LastDayEndedByCutoff(now);
+        var lookback = EventDates.LastDayEndedByCutoff(now.AddDays(-LookbackDays));
         return await db.Events
             .AsNoTracking()
-            .Where(e => e.OrganizationId == organizationId && !e.IsDeleted && e.EndDate <= now
+            .Where(e => e.OrganizationId == organizationId && !e.IsDeleted && e.EndDate < finished
                         && !e.IsSimulation && !e.IsLive)
             .OrderByDescending(e => e.StartDate)
             .ThenByDescending(e => e.Id)
@@ -222,7 +232,7 @@ public abstract class ViewershipControllerBase : ControllerBase
                 EventId = e.Id,
                 EventName = e.Name,
                 EventEndDate = e.EndDate,
-                Eligible = e.EndDate >= eligibleAfter,
+                Eligible = e.EndDate >= lookback,
                 State = db.PostEventReports
                     .Where(r => r.EventId == e.Id)
                     .Select(r => r.State)

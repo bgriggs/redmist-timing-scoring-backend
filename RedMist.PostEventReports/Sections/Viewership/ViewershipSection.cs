@@ -34,10 +34,19 @@ public class ViewershipSection(PostEventReportSettings settings) : IReportSectio
         }
 
         // Guards against one corrupt timestamp producing a window of weeks. The event's own dates are
-        // used only as this bound, never as the window, because they land at midnight. See
-        // ViewershipWindow.PlausibilityMargin for why the margin is hours rather than days.
+        // used only as this bound, never as the window, because they land at midnight. The upper
+        // bound reads the end date as the whole last day - it is stored as that day's first moment -
+        // and is the one the live viewership view uses, so the two count the same rows. See
+        // ViewershipWindow for both rules and for why the margin is hours rather than days.
         var earliest = ViewershipWindow.EarliestPlausibleUtc(context.Event.StartDate);
         var latest = ViewershipWindow.LatestPlausibleUtc(context.Event.EndDate, context.NowUtc);
+
+        // Never narrower than the plausible span. That span already bounds the window - no interval
+        // reaches outside it - and truncating inside it is what a single connection the night before
+        // a four-day event would trigger: it pins the window start, and the far end is then cut on
+        // the final afternoon, leaving the report short of what the live view showed.
+        var span = latest - earliest;
+        var maxWindow = span > settings.MaxWindow ? span : settings.MaxWindow;
 
         var summary = ViewershipAggregator.Aggregate(
             sessions,
@@ -45,7 +54,7 @@ public class ViewershipSection(PostEventReportSettings settings) : IReportSectio
             TrackTime.ForEvent(await SessionOffsetsAsync(context, cancellationToken)),
             earliest,
             latest,
-            settings.MaxWindow);
+            maxWindow);
 
         if (summary.TotalViewerMinutes < settings.MinViewerMinutes)
         {
