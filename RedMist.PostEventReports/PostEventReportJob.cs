@@ -358,13 +358,8 @@ public class PostEventReportJob(
             .Select(s => (DateTime?)(s.EndUtc ?? s.StartUtc))
             .MaxAsync(stoppingToken);
 
-        var fallback = lastActivity ?? DateTime.SpecifyKind(evt.EndDate, DateTimeKind.Utc);
-        if (fallback > now)
-        {
-            fallback = now;
-        }
-
-        return SessionWindowResolver.Resolve(sessions, fallback);
+        return SessionWindowResolver.Resolve(sessions,
+            ViewershipWindow.LastSessionFallbackEndUtc(lastActivity, evt.EndDate, now));
     }
 
     /// <summary>

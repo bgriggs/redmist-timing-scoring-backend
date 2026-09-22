@@ -1,4 +1,4 @@
-using RedMist.PostEventReports.Sections.Viewership;
+using RedMist.Backend.Shared.Utilities;
 
 namespace RedMist.TimingAndScoringService.Tests.PostEventReports;
 
@@ -207,6 +207,49 @@ public class ConcurrencySweepTests
 
         Assert.HasCount(4, buckets);
         Assert.AreEqual(1, buckets[^1].Max);
+    }
+
+    /// <summary>
+    /// A window that is not a whole number of buckets ends in a short one. The report divides it by
+    /// the full length, and its stored numbers must not move; the live view divides it by what it
+    /// covers, or its line sags at "now". Both are pinned here so neither can be changed into the
+    /// other by accident.
+    /// </summary>
+    [TestMethod]
+    public void BucketCutShortByTheWindow_EndsAtTheWindow_AndAveragesEitherWay()
+    {
+        var buckets = ConcurrencySweep.Run([Watch(0, 20)], Origin, Origin.AddMinutes(20), Bucket);
+        var last = buckets[^1];
+
+        Assert.HasCount(2, buckets);
+        Assert.AreEqual(Origin.AddMinutes(20), last.EndUtc);
+        Assert.AreEqual(1d / 3, last.Average(Bucket), 0.0001, "The report's average moved.");
+        Assert.AreEqual(1d, last.AverageOverSpan(), 0.0001);
+        Assert.AreEqual(1d, buckets[0].AverageOverSpan(), 0.0001, "A full bucket averages the same either way.");
+    }
+
+    /// <summary>
+    /// A short bucket's mean has to come from the unrounded seconds. 0.6 connected seconds would round
+    /// to 1, and over a 0.6 second bucket read as 1.7 viewers when there was one.
+    /// </summary>
+    [TestMethod]
+    public void AShortBucketsAverage_IsTakenFromTheUnroundedSeconds()
+    {
+        var end = Origin.AddMinutes(15).AddMilliseconds(600);
+        var bucket = ConcurrencySweep.Run([new ViewerInterval(Origin, end, "Web")], Origin, end, Bucket)[^1];
+
+        Assert.AreEqual(1, bucket.ViewerSeconds);
+        Assert.AreEqual(1d, bucket.AverageOverSpan(), 0.0001);
+    }
+
+    [TestMethod]
+    public void Peak_IsTheFirstBucketToReachTheMaximum_AndHasNoTimeWhenNobodyWatched()
+    {
+        var peak = ConcurrencySweep.Peak([(Origin, 1), (Origin.AddMinutes(15), 3), (Origin.AddMinutes(30), 3)]);
+        var none = ConcurrencySweep.Peak([(Origin, 0), (Origin.AddMinutes(15), 0)]);
+
+        Assert.AreEqual((3, (DateTime?)Origin.AddMinutes(15)), peak);
+        Assert.AreEqual((0, (DateTime?)null), none);
     }
 
     private static double OverlapSeconds(ViewerInterval interval, DateTime start, DateTime end)

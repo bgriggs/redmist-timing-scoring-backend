@@ -1,4 +1,4 @@
-namespace RedMist.PostEventReports.Sections.Viewership;
+namespace RedMist.Backend.Shared.Utilities;
 
 /// <summary>
 /// The client types a viewer session can be attributed to, and the pseudo-type covering all of them.

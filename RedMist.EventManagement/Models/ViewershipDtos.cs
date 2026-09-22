@@ -184,3 +184,191 @@ public class ReportSettingsDto
 {
     public bool SendPostEventReport { get; set; } = true;
 }
+
+/// <summary>
+/// A running event's viewership as it stands right now: the post-event report's numbers, computed
+/// live.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Computed from the same viewer sessions by the same rules the report uses - the same treatment of
+/// rows still open and rows that end before they start, the same window start, the same attribution
+/// of viewers to racing sessions by intersecting each connection with each session's window, and the
+/// same concurrency sweep - so the peak an organizer watches climb on race day is the peak the report
+/// emails them afterwards. See <c>LiveViewershipCalculator</c> for where the two deliberately differ.
+/// </para>
+/// <para>
+/// Every count is a count of CONNECTIONS, not of people, for the reason given on
+/// <see cref="ViewershipReportSummaryDto"/>. Concurrency is the robust measure; nothing here is a
+/// headcount.
+/// </para>
+/// <para>
+/// Every timestamp is a UTC instant and is written with its "Z". PostgreSQL returns these columns with
+/// no Kind, and without the designator a browser parses them as its own local time, which moves every
+/// point on the chart by the viewer's offset from UTC.
+/// </para>
+/// </remarks>
+public class LiveViewershipDto
+{
+    public int EventId { get; set; }
+
+    /// <summary>
+    /// When these numbers were computed, and where the window and a running session's buckets end.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The server caches an answer for about thirty seconds, so this can be that much older than the
+    /// response. It is the honest time to label the numbers with.
+    /// </para>
+    /// <para>
+    /// Once an event is over, nothing is counted past the end of its last day plus twelve hours, so
+    /// the numbers for a finished event stop there however much later this is.
+    /// </para>
+    /// </remarks>
+    public DateTime AsOfUtc { get; set; }
+
+    /// <summary>The width of every bucket, in seconds.</summary>
+    public int BucketSeconds { get; set; }
+
+    /// <summary>
+    /// Minutes from UTC for the track, or null when no session reported a usable one.
+    /// </summary>
+    /// <remarks>
+    /// The same rule as <see cref="ViewershipReportSummaryDto.TrackOffsetMinutes"/>: null means label
+    /// every time UTC, and zero is never sent to mean Greenwich.
+    /// </remarks>
+    public int? TrackOffsetMinutes { get; set; }
+
+    public LiveViewershipEventDto Event { get; set; } = new();
+
+    /// <summary>
+    /// Every racing session of the event, oldest first.
+    /// </summary>
+    /// <remarks>
+    /// A session the report would drop - one whose end is not after its start - is dropped here too,
+    /// and so is one lying wholly outside the event's plausible window: from twelve hours before its
+    /// start date to twelve hours after the end of its last day. A session running into that window
+    /// from outside it - a relay test the day before, never retired - is shown from where the window
+    /// begins.
+    /// </remarks>
+    public List<LiveViewershipSessionDto> Sessions { get; set; } = [];
+}
+
+/// <summary>
+/// The event as a whole, from the start of its window to <see cref="LiveViewershipDto.AsOfUtc"/>.
+/// </summary>
+public class LiveViewershipEventDto
+{
+    /// <summary>
+    /// Where the window begins: the first connection, rounded down to the quarter-hour in track-local
+    /// time - where the post-event report's window will begin. The window ends at the as-of time.
+    /// </summary>
+    /// <remarks>
+    /// Equal to the as-of time when nobody has connected yet, making an empty window. The window ends
+    /// at the as-of time, or for a finished event at the end of its last day plus twelve hours.
+    /// </remarks>
+    public DateTime WindowStartUtc { get; set; }
+
+    /// <summary>
+    /// All connected time across the whole window, including the gaps between racing sessions.
+    /// </summary>
+    /// <remarks>
+    /// Not the sum of the sessions' totals: time between sessions belongs to no session, and a viewer
+    /// who stays on through a gap was still watching.
+    /// </remarks>
+    public long TotalViewerSeconds { get; set; }
+
+    /// <summary>The most connections held at once for a non-zero length of time, across the whole window.</summary>
+    public int MaxConcurrent { get; set; }
+
+    /// <summary>
+    /// Start of the first bucket that reached <see cref="MaxConcurrent"/>, or null when nobody has
+    /// watched.
+    /// </summary>
+    public DateTime? PeakUtc { get; set; }
+
+    /// <summary>
+    /// Mean concurrency across the racing sessions only: their connected time over their combined
+    /// length.
+    /// </summary>
+    /// <remarks>
+    /// The gaps between sessions are left out of both halves, so an audience that drifts away over
+    /// lunch does not drag down the figure for the racing. It is the per-session averages weighted by
+    /// session length, so it can never fall outside the range they span. Zero when no session has
+    /// run for any time yet.
+    /// </remarks>
+    public double AvgConcurrentDuringSessions { get; set; }
+}
+
+/// <summary>One racing session's viewership, live.</summary>
+/// <remarks>
+/// A viewer watching across a session boundary counts in both sessions, which is the right answer
+/// for each of them - and why the sessions' totals are not meant to sum to the event's.
+/// </remarks>
+public class LiveViewershipSessionDto
+{
+    public int SessionId { get; set; }
+
+    public string SessionName { get; set; } = string.Empty;
+
+    public bool IsPracticeQualifying { get; set; }
+
+    /// <summary>
+    /// When the session started, or where the event's plausible window begins if it started earlier.
+    /// </summary>
+    public DateTime StartUtc { get; set; }
+
+    /// <summary>When the session ended, or null while it is still running.</summary>
+    /// <remarks>
+    /// A running session's buckets run to <see cref="LiveViewershipDto.AsOfUtc"/>. At most one
+    /// session is running: the latest, and only while the event is live and the session has neither
+    /// recorded an end nor been retired by the timing processor.
+    /// </remarks>
+    public DateTime? EndUtc { get; set; }
+
+    public long TotalViewerSeconds { get; set; }
+
+    public int MaxConcurrent { get; set; }
+
+    /// <summary>Start of the first bucket that reached <see cref="MaxConcurrent"/>, or null when nobody watched.</summary>
+    public DateTime? PeakUtc { get; set; }
+
+    /// <summary>Mean concurrency over the session so far: its connected time over its length.</summary>
+    public double AvgConcurrent { get; set; }
+
+    /// <summary>
+    /// The session in buckets of <see cref="LiveViewershipDto.BucketSeconds"/>, from its start, across
+    /// every client type together.
+    /// </summary>
+    public List<LiveViewershipBucketDto> Buckets { get; set; } = [];
+}
+
+/// <summary>Concurrency over one bucket of a session.</summary>
+/// <remarks>
+/// <para>
+/// The first bucket starts exactly when the session did, not on a round minute. Rounding it would put
+/// the time just before the start into this session and the one before it both, counting a viewer
+/// watching across the boundary twice - the reason the report does not round either.
+/// </para>
+/// <para>
+/// The last bucket is usually short: a running session's ends at the as-of time, an ended session's
+/// at its end. Its <see cref="Min"/>, <see cref="Max"/> and <see cref="Avg"/> all describe only the
+/// part it covers, so the line does not sag at "now" merely because the minute is not over yet.
+/// </para>
+/// </remarks>
+public class LiveViewershipBucketDto
+{
+    public DateTime StartUtc { get; set; }
+
+    /// <summary>
+    /// The fewest connections held for a non-zero length of time in the bucket. Zero for any bucket
+    /// containing a moment with nobody watching.
+    /// </summary>
+    public int Min { get; set; }
+
+    /// <summary>The most connections held for a non-zero length of time in the bucket.</summary>
+    public int Max { get; set; }
+
+    /// <summary>Time-weighted mean concurrency over the part of the bucket that has elapsed.</summary>
+    public double Avg { get; set; }
+}

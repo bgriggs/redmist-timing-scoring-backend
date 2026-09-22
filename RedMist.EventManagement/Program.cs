@@ -108,6 +108,13 @@ public class Program
         builder.Services.AddTransient<AssetsCdn>();
         builder.Services.AddSingleton(TimeProvider.System);
 
+        // The live viewership answer, shared by every dashboard polling the same running event. The
+        // per-entry options are set where it is cached; this only lifts the payload ceiling above the
+        // 1MB default. An entry over it is not cached - the cache logs a warning and every poll then
+        // recomputes - and the events with the longest one-minute series are the ones with the most
+        // rows to read on a miss.
+        builder.Services.AddHybridCache(o => o.MaximumPayloadBytes = 8 * 1024 * 1024);
+
         // Deleting a post's results images. Registered unconditionally, unlike in the compose job:
         // whether new pictures are being captured has no bearing on whether the ones already stored
         // can be removed, and a reviewer rejecting a post is the main reason one ever is.

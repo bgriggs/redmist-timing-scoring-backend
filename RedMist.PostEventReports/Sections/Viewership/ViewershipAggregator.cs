@@ -14,7 +14,11 @@ namespace RedMist.PostEventReports.Sections.Viewership;
 public static class ViewershipAggregator
 {
     /// <summary>The bucket width every stored series uses.</summary>
-    public static readonly TimeSpan BucketLength = TimeSpan.FromMinutes(15);
+    /// <remarks>
+    /// The shared alignment grid rather than a width of its own, so the organizer's live view - which
+    /// starts its window on the same grid - begins exactly where this report does.
+    /// </remarks>
+    public static readonly TimeSpan BucketLength = ViewershipWindow.AlignmentBucket;
 
     /// <summary>
     /// Builds the viewership summary for an event.
@@ -40,48 +44,19 @@ public static class ViewershipAggregator
             SessionCount = sessions.Count,
         };
 
-        var intervals = new List<ViewerInterval>(sessions.Count);
-        foreach (var session in sessions)
-        {
-            // Left open. Not discarded: a browser tab open all weekend is real viewership, and the
-            // pod that should have closed the row may simply have been restarted. Clamped, and
-            // counted so the report can say how much of the total rests on an assumption.
-            var end = session.EndUtc ?? latestPlausibleUtc;
-
-            if (end < session.StartUtc)
-            {
-                // Counted here and not as an open session too: the footnote about open sessions
-                // tells the organizer they were counted to the end, and this one was discarded.
-                summary.AnomalousSessions++;
-                continue;
-            }
-
-            if (session.EndUtc == null)
-            {
-                summary.OpenSessions++;
-            }
-
-            var start = session.StartUtc < earliestPlausibleUtc ? earliestPlausibleUtc : session.StartUtc;
-            if (end > latestPlausibleUtc)
-            {
-                end = latestPlausibleUtc;
-            }
-            if (end <= start)
-            {
-                continue;
-            }
-
-            intervals.Add(new ViewerInterval(start, end, ViewerClientTypes.Normalize(session.ClientType)));
-        }
+        // Open rows clamped and counted, rows that end before they start discarded and counted: the
+        // rules the live viewership view applies too, so the two cannot disagree about either.
+        var built = ViewerIntervals.Build(sessions, earliestPlausibleUtc, latestPlausibleUtc);
+        summary.OpenSessions = built.OpenSessions;
+        summary.AnomalousSessions = built.AnomalousSessions;
+        var intervals = built.Intervals;
 
         if (intervals.Count == 0)
         {
             return summary;
         }
 
-        // The window comes from the sessions, not from the event's start and end dates: those land at
-        // midnight and would produce a chart with forty empty buckets before anyone arrived.
-        var windowStart = TrackTime.FloorToBucket(intervals.Min(i => i.StartUtc), offset, BucketLength);
+        var windowStart = ViewershipWindow.Start(intervals, offset);
         var windowEnd = TrackTime.CeilingToBucket(intervals.Max(i => i.EndUtc), offset, BucketLength);
         if (windowEnd - windowStart > maxWindow)
         {
@@ -202,18 +177,11 @@ public static class ViewershipAggregator
         summary.TopClientType = TopClientType(intervals, windowStart, windowEnd);
     }
 
+    /// <summary>
+    /// The first bucket that reached the maximum, by the rule the live viewership view uses as well.
+    /// </summary>
     private static (int Max, DateTime? At) Peak(List<EventViewershipBucket> series)
-    {
-        if (series.Count == 0)
-        {
-            return (0, null);
-        }
-
-        // First bucket that reached the maximum, so the reported time is when the crowd arrived
-        // rather than the last moment it happened to still be there.
-        var max = series.Max(b => b.MaxConcurrent);
-        return max == 0 ? (0, null) : (max, series.First(b => b.MaxConcurrent == max).BucketStartUtc);
-    }
+        => ConcurrencySweep.Peak(series.Select(b => (b.BucketStartUtc, b.MaxConcurrent)));
 
     /// <summary>
     /// The client type accounting for the most watching time in a window.

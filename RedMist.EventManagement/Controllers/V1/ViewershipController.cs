@@ -1,6 +1,7 @@
 using Asp.Versioning;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Database;
 
 namespace RedMist.EventManagement.Controllers.V1;
@@ -11,8 +12,8 @@ namespace RedMist.EventManagement.Controllers.V1;
 public class ViewershipController : ViewershipControllerBase
 {
     public ViewershipController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
-        IConfiguration configuration)
-        : base(loggerFactory, tsContext, configuration)
+        IConfiguration configuration, HybridCache hcache, TimeProvider clock)
+        : base(loggerFactory, tsContext, configuration, hcache, clock)
     {
     }
 }

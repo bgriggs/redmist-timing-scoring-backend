@@ -34,17 +34,10 @@ public class ViewershipSection(PostEventReportSettings settings) : IReportSectio
         }
 
         // Guards against one corrupt timestamp producing a window of weeks. The event's own dates are
-        // used only as this bound, never as the window, because they land at midnight.
-        //
-        // Hours rather than days, and deliberately: the bound has to be tighter than the longest
-        // window that will be reported on, or a single stray early connection pins the window start
-        // and the truncation at the far end cuts real racing sessions off the report entirely.
-        var earliest = DateTime.SpecifyKind(context.Event.StartDate, DateTimeKind.Utc).AddHours(-12);
-        var latest = DateTime.SpecifyKind(context.Event.EndDate, DateTimeKind.Utc).AddHours(12);
-        if (latest > context.NowUtc)
-        {
-            latest = context.NowUtc;
-        }
+        // used only as this bound, never as the window, because they land at midnight. See
+        // ViewershipWindow.PlausibilityMargin for why the margin is hours rather than days.
+        var earliest = ViewershipWindow.EarliestPlausibleUtc(context.Event.StartDate);
+        var latest = ViewershipWindow.LatestPlausibleUtc(context.Event.EndDate, context.NowUtc);
 
         var summary = ViewershipAggregator.Aggregate(
             sessions,

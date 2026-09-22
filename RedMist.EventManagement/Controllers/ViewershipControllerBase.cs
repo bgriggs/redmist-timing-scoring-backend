@@ -1,22 +1,30 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.EventManagement.Models;
+using RedMist.EventManagement.Viewership;
+using RedMist.TimingCommon.Models;
 
 namespace RedMist.EventManagement.Controllers;
 
 /// <summary>
-/// Reads the viewership an organization's finished events drew.
+/// Reads the viewership an organization's events drew: finished events from their post-event report,
+/// and a running event live.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The numbers themselves are produced once, by the post-event report job, and stored. Nothing here
-/// recomputes them: the report an organizer reads on the web has to be the same one that was
-/// emailed to them, and a second implementation of the aggregation would eventually disagree with
-/// the first.
+/// A finished event's numbers are produced once, by the post-event report job, and stored. Nothing
+/// here recomputes them: the report an organizer reads on the web has to be the same one that was
+/// emailed to them.
+/// </para>
+/// <para>
+/// A running event has no report yet, so <see cref="Live"/> computes its numbers on request - but
+/// through the rules the report job uses, shared rather than copied, because a second implementation
+/// of the aggregation would eventually disagree with the first.
 /// </para>
 /// <para>
 /// Every count is a count of CONNECTIONS, not of people. A viewer who loses signal and reconnects
@@ -31,6 +39,8 @@ public abstract class ViewershipControllerBase : ControllerBase
 {
     protected readonly IDbContextFactory<TsContext> tsContext;
     protected readonly IConfiguration configuration;
+    protected readonly HybridCache hcache;
+    protected readonly TimeProvider clock;
     protected ILogger Logger { get; }
 
     /// <summary>The largest page this will serve, however large a page is asked for.</summary>
@@ -47,12 +57,34 @@ public abstract class ViewershipControllerBase : ControllerBase
     /// </remarks>
     private int LookbackDays => configuration.GetValue("PostEventReport:LookbackDays", 14);
 
+    /// <summary>
+    /// The cache key for one event's live viewership, qualified by the state of its sessions.
+    /// </summary>
+    private const string LIVE_CACHE_KEY = "viewership-live-{0}-{1}";
+
+    /// <summary>
+    /// How long a computed live answer is served before it is computed again.
+    /// </summary>
+    /// <remarks>
+    /// Every dashboard open on a running event polls once a minute, and each computation reads every
+    /// viewer session the event has - a row per connection, and phones reconnect constantly. Half the
+    /// poll interval means no dashboard is shown numbers more than thirty seconds old, while every
+    /// dashboard on the event shares one computation.
+    /// </remarks>
+    private static readonly HybridCacheEntryOptions liveCacheOptions = new()
+    {
+        Expiration = TimeSpan.FromSeconds(30),
+        LocalCacheExpiration = TimeSpan.FromSeconds(30),
+    };
+
     protected ViewershipControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
-        IConfiguration configuration)
+        IConfiguration configuration, HybridCache hcache, TimeProvider clock)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.tsContext = tsContext;
         this.configuration = configuration;
+        this.hcache = hcache;
+        this.clock = clock;
     }
 
     /// <summary>
@@ -338,6 +370,111 @@ public abstract class ViewershipControllerBase : ControllerBase
                     ViewerSeconds = b.ViewerSeconds,
                 })],
         };
+    }
+
+    /// <summary>
+    /// A running event's viewership as it stands now: per-session one-minute series and the event's
+    /// totals.
+    /// </summary>
+    /// <param name="eventId">The event to report on.</param>
+    /// <response code="200">The viewership so far. An event nobody has watched yet reads as zeros.</response>
+    /// <response code="400">The event id is unusable.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="404">No such event, or the caller does not administer its organization.</response>
+    /// <remarks>
+    /// <para>
+    /// Authorized exactly as <see cref="Report"/> is: the event names its own organization, the caller
+    /// has to administer it, and an event the caller may not read is the same 404 as one that does not
+    /// exist. Deleted events are not found. Nothing beyond the event's own row is read until the
+    /// check has passed, so counting upwards through other organizations' event ids costs the server
+    /// that lookup and the check, and never a read of their viewers.
+    /// </para>
+    /// <para>
+    /// Computed by <see cref="LiveViewershipCalculator"/>, whose remarks set out what it shares with
+    /// the post-event report and where it deliberately differs - including why open rows are counted
+    /// to now rather than checked against the live connection hash, and the worst case that leaves.
+    /// </para>
+    /// <para>
+    /// Cached per event for thirty seconds, keyed on the state of the event's sessions and its live
+    /// flag as well as the event. The dashboard polls once a minute and once more whenever the session
+    /// changes, and that second poll is precisely the one that has to see the change: under a plain
+    /// per-event key it would be answered from before the change, and the new session would not
+    /// appear until the poll after. The sessions are a handful of rows read on every request anyway;
+    /// the viewer sessions are what the cache saves reading.
+    /// </para>
+    /// </remarks>
+    [HttpGet]
+    [Produces("application/json")]
+    [ProducesResponseType<LiveViewershipDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<ActionResult<LiveViewershipDto>> Live(int eventId)
+    {
+        Logger.LogTrace("{m} {event}", nameof(Live), eventId);
+        if (eventId < 1)
+        {
+            return BadRequest("eventId is required.");
+        }
+
+        var cancellationToken = HttpContext?.RequestAborted ?? CancellationToken.None;
+        using var db = await tsContext.CreateDbContextAsync(cancellationToken);
+
+        var evt = await db.Events
+            .AsNoTracking()
+            .Where(e => e.Id == eventId && !e.IsDeleted)
+            .Select(e => new { e.OrganizationId, e.StartDate, e.EndDate, e.IsLive })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (evt == null || !await CallerOrganizations.IsPermittedAsync(db, User, evt.OrganizationId, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        var sessions = await db.Sessions
+            .AsNoTracking()
+            .Where(s => s.EventId == eventId)
+            .ToListAsync(cancellationToken);
+
+        return await hcache.GetOrCreateAsync(
+            string.Format(LIVE_CACHE_KEY, eventId, LiveFingerprint(evt.IsLive, sessions)),
+            (EventId: eventId, evt.StartDate, evt.EndDate, evt.IsLive, Sessions: sessions),
+            async (state, cancel) =>
+            {
+                // A context of its own rather than the request's. The cache runs one computation for
+                // every caller waiting on the same key, and carries on for the others if the caller
+                // that started it goes away - by which point that request's context is disposed.
+                await using var context = await tsContext.CreateDbContextAsync(cancel);
+
+                // Only the three columns the numbers are made of, because this is every row the event
+                // has.
+                var viewers = await context.EventViewerSessions
+                    .AsNoTracking()
+                    .Where(s => s.EventId == state.EventId)
+                    .Select(s => new EventViewerSession { StartUtc = s.StartUtc, EndUtc = s.EndUtc, ClientType = s.ClientType })
+                    .ToListAsync(cancel);
+
+                return LiveViewershipCalculator.Compute(state.EventId, state.StartDate, state.EndDate,
+                    state.IsLive, state.Sessions, viewers, clock.GetUtcNow().UtcDateTime);
+            },
+            liveCacheOptions,
+            cancellationToken: cancellationToken);
+    }
+
+    /// <summary>
+    /// What changes about an event when its session does: a session starting, the latest one ending
+    /// or being retired, or the event going live or being torn down.
+    /// </summary>
+    /// <remarks>
+    /// Everything that decides whether a session is running is in here, so a cached answer can never
+    /// go on calling a session running after the rows say it has stopped.
+    /// </remarks>
+    private static string LiveFingerprint(bool eventIsLive, List<Session> sessions)
+    {
+        var latest = sessions.OrderBy(s => s.StartTime).ThenBy(s => s.Id).LastOrDefault();
+        return latest == null
+            ? $"{eventIsLive}-none"
+            : $"{eventIsLive}-{sessions.Count}-{latest.Id}-{latest.EndTime?.Ticks ?? 0}-{latest.IsLive}";
     }
 
     /// <summary>

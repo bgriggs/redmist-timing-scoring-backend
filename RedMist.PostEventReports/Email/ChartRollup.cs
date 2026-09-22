@@ -1,3 +1,4 @@
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database.Models;
 using RedMist.PostEventReports.Sections.Viewership;
 

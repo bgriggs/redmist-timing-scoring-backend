@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using RedMist.Database;
 using RedMist.Database.Models;
@@ -9,8 +12,10 @@ using RedMist.EventManagement.Controllers;
 using RedMist.EventManagement.Models;
 using RedMist.EventProcessor.Tests.Utilities;
 using System.Security.Claims;
+using System.Text.Json;
 using ConfigEvent = RedMist.TimingCommon.Models.Configuration.Event;
 using Organization = RedMist.TimingCommon.Models.Organization;
+using Session = RedMist.TimingCommon.Models.Session;
 
 namespace RedMist.TimingAndScoringService.Tests.EventManagement.Controllers;
 
@@ -24,30 +29,40 @@ public class ViewershipControllerTests
     private const int MineId = 1;
     private const int TheirsId = 2;
 
+    /// <summary>During event 11, which runs on 2026-09-01.</summary>
+    private static readonly DateTime Now = new(2026, 9, 1, 16, 0, 0, DateTimeKind.Utc);
+
     private IDbContextFactory<TsContext> dbFactory = null!;
     private TsContext db = null!;
+    private Mock<ILoggerFactory> loggerFactory = null!;
+    private FakeHybridCache cache = null!;
+    private FakeTimeProvider clock = null!;
     private TestViewershipController controller = null!;
 
     [TestInitialize]
     public void Setup()
     {
-        var loggerFactory = new Mock<ILoggerFactory>();
+        loggerFactory = new Mock<ILoggerFactory>();
         loggerFactory.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(new Mock<ILogger>().Object);
 
         dbFactory = new TestDbContextFactory(new DbContextOptionsBuilder<TsContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options);
         db = dbFactory.CreateDbContext();
-        controller = new TestViewershipController(loggerFactory.Object, dbFactory);
+        cache = new FakeHybridCache();
+        clock = new FakeTimeProvider(Now);
+        controller = new TestViewershipController(loggerFactory.Object, dbFactory, cache, clock);
         SignIn(Organizer);
     }
 
     [TestCleanup]
     public void Cleanup() => db.Dispose();
 
-    private void SignIn(string? username)
+    private void SignIn(string? username) => SignIn(controller, username);
+
+    private static void SignIn(ControllerBase controller, string? username, string clientId = "redmist-landing")
     {
-        List<Claim> claims = [new Claim("client_id", "redmist-landing")];
+        List<Claim> claims = [new Claim("client_id", clientId)];
         if (username != null)
         {
             claims.Add(new Claim(ClaimTypes.Name, username));
@@ -502,6 +517,344 @@ public class ViewershipControllerTests
             "A session's buckets were spliced into the event-level series.");
     }
 
-    private sealed class TestViewershipController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext)
-        : ViewershipControllerBase(loggerFactory, tsContext, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+    #region Live
+
+    /// <summary>
+    /// Makes event 11 live, with a running race and some viewers on it. Timestamps are stored with no
+    /// Kind, which is how PostgreSQL returns these columns.
+    /// </summary>
+    private async Task SeedLiveAsync()
+    {
+        static DateTime Unspecified(int hour, int minute) => new(2026, 9, 1, hour, minute, 0, DateTimeKind.Unspecified);
+
+        db.Events.Single(e => e.Id == 11).IsLive = true;
+        db.Sessions.AddRange(
+            new Session
+            {
+                Id = 1, EventId = 11, Name = "Practice", IsPracticeQualifying = true,
+                StartTime = Unspecified(14, 0), EndTime = Unspecified(14, 45), LocalTimeZoneOffset = -4,
+            },
+            new Session
+            {
+                Id = 2, EventId = 11, Name = "Race", StartTime = Unspecified(15, 0), IsLive = true,
+                LocalTimeZoneOffset = -4,
+            });
+        db.EventViewerSessions.AddRange(
+            NewViewer(11, Unspecified(14, 5), Unspecified(14, 40)),
+            NewViewer(11, Unspecified(14, 50), null),
+            NewViewer(11, Unspecified(15, 10), Unspecified(15, 30)),
+            // Another event's viewer, who must not appear in this one's numbers.
+            NewViewer(20, Unspecified(15, 0), null));
+        await db.SaveChangesAsync();
+    }
+
+    private static EventViewerSession NewViewer(int eventId, DateTime start, DateTime? end) => new()
+    {
+        EventId = eventId,
+        ConnectionId = Guid.NewGuid().ToString(),
+        ClientType = "Web",
+        StartUtc = start,
+        EndUtc = end,
+    };
+
+    [TestMethod]
+    public async Task Live_AnOrganizerSeesTheirRunningEvent()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+
+        var live = (await controller.Live(11)).Value!;
+
+        Assert.AreEqual(11, live.EventId);
+        Assert.AreEqual(Now, live.AsOfUtc);
+        Assert.AreEqual(60, live.BucketSeconds);
+        Assert.AreEqual(-240, live.TrackOffsetMinutes);
+        CollectionAssert.AreEqual(new[] { "Practice", "Race" }, live.Sessions.Select(s => s.SessionName).ToArray());
+        Assert.IsNull(live.Sessions[1].EndUtc, "The race is still running.");
+        // 35 + 70 + 20 minutes: the open row counted to now, the other event's viewer not at all.
+        Assert.AreEqual((35 + 70 + 20) * 60, live.Event.TotalViewerSeconds);
+        Assert.AreEqual(2, live.Event.MaxConcurrent);
+    }
+
+    /// <summary>
+    /// The same rule as <see cref="ViewershipControllerBase.Report"/>: an event belonging to somebody
+    /// else and an event that does not exist are the same answer, so the difference cannot be used to
+    /// confirm that another organization's event exists.
+    /// </summary>
+    [TestMethod]
+    public async Task Live_AnotherOrganizationsEvent_IsIndistinguishableFromAMissingOne()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+
+        Assert.IsInstanceOfType<NotFoundResult>((await controller.Live(20)).Result);
+        Assert.IsInstanceOfType<NotFoundResult>((await controller.Live(999)).Result);
+        Assert.IsEmpty(cache.FactoryInvocations, "Something was computed for an event the caller may not read.");
+    }
+
+    [TestMethod]
+    public async Task Live_ANonAdminMember_IsNotFound()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+        db.UserOrganizationMappings.Add(new UserOrganizationMapping
+        {
+            Username = "viewer@example.com",
+            OrganizationId = MineId,
+            Role = "viewer",
+        });
+        await db.SaveChangesAsync();
+        SignIn("viewer@example.com");
+
+        Assert.IsInstanceOfType<NotFoundResult>((await controller.Live(11)).Result);
+    }
+
+    /// <summary>
+    /// A relay or API client authenticates as its organization's own client id, with no person
+    /// behind it. It reads its own organization's live viewership and nobody else's.
+    /// </summary>
+    [TestMethod]
+    public async Task Live_AnOrganizationsOwnClient_ReadsItsEventsAndNoOneElses()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+
+        SignIn(controller, username: null, clientId: "relay-mine");
+        Assert.AreEqual(11, (await controller.Live(11)).Value!.EventId);
+
+        SignIn(controller, username: null, clientId: "relay-theirs");
+        Assert.IsInstanceOfType<NotFoundResult>((await controller.Live(11)).Result);
+    }
+
+    [TestMethod]
+    public async Task Live_ATokenIdentifyingNobody_ReadsNothing()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+        SignIn(username: null);
+
+        Assert.IsInstanceOfType<NotFoundResult>((await controller.Live(11)).Result);
+    }
+
+    [TestMethod]
+    public async Task Live_ADeletedEvent_IsNotFound()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+        db.Events.Single(e => e.Id == 11).IsDeleted = true;
+        await db.SaveChangesAsync();
+
+        Assert.IsInstanceOfType<NotFoundResult>((await controller.Live(11)).Result);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(-1)]
+    public async Task Live_AnEventIdThatCannotExist_IsRefused(int eventId)
+    {
+        await SeedAsync();
+
+        Assert.IsInstanceOfType<BadRequestObjectResult>((await controller.Live(eventId)).Result);
+    }
+
+    /// <summary>The whole controller refuses anonymous callers, the new action included.</summary>
+    [TestMethod]
+    public void Live_RequiresAnAuthenticatedCaller()
+    {
+        var authorize = typeof(ViewershipControllerBase)
+            .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), inherit: true);
+        var anonymous = typeof(ViewershipControllerBase).GetMethod(nameof(ViewershipControllerBase.Live))!
+            .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute), inherit: true);
+
+        Assert.IsNotEmpty(authorize);
+        Assert.IsEmpty(anonymous);
+    }
+
+    /// <summary>
+    /// Every dashboard on the event shares one computation until the answer is refreshed. A viewer
+    /// arriving in between does not appear until then; that is the cost of not reading every row the
+    /// event has on every poll.
+    /// </summary>
+    [TestMethod]
+    public async Task Live_IsServedFromTheCacheBetweenRefreshes()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+
+        var first = (await controller.Live(11)).Value!;
+        db.EventViewerSessions.Add(NewViewer(11, new DateTime(2026, 9, 1, 15, 55, 0), null));
+        await db.SaveChangesAsync();
+        var second = (await controller.Live(11)).Value!;
+
+        Assert.HasCount(1, cache.FactoryInvocations);
+        Assert.AreEqual(first.Event.TotalViewerSeconds, second.Event.TotalViewerSeconds);
+    }
+
+    /// <summary>
+    /// The dashboard polls again the moment the session changes, and that is the poll that most needs
+    /// to be fresh. Served from before the change, the new session would not appear until the next
+    /// regular poll a minute later.
+    /// </summary>
+    [TestMethod]
+    public async Task Live_ASessionChange_IsNotHiddenByTheCache()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+        await controller.Live(11);
+
+        // The race is retired and a second race begins, as the timing processor does it.
+        var race = db.Sessions.Single(s => s.EventId == 11 && s.Id == 2);
+        race.IsLive = false;
+        race.EndTime = new DateTime(2026, 9, 1, 15, 50, 0);
+        db.Sessions.Add(new Session
+        {
+            Id = 3, EventId = 11, Name = "Race 2", StartTime = new DateTime(2026, 9, 1, 15, 55, 0), IsLive = true,
+            LocalTimeZoneOffset = -4,
+        });
+        await db.SaveChangesAsync();
+
+        var live = (await controller.Live(11)).Value!;
+
+        Assert.HasCount(2, cache.FactoryInvocations);
+        CollectionAssert.AreEqual(new[] { 1, 2, 3 }, live.Sessions.Select(s => s.SessionId).ToArray());
+        Assert.IsNull(live.Sessions[2].EndUtc);
+    }
+
+    /// <summary>
+    /// The orchestrator tearing the event down is what finally ends a session whose own flag stuck,
+    /// so it has to reach the dashboard as promptly as a session ending does.
+    /// </summary>
+    [TestMethod]
+    public async Task Live_TheEventGoingOffline_IsNotHiddenByTheCache()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+        Assert.IsNull((await controller.Live(11)).Value!.Sessions[1].EndUtc);
+
+        db.Events.Single(e => e.Id == 11).IsLive = false;
+        await db.SaveChangesAsync();
+
+        Assert.IsNotNull((await controller.Live(11)).Value!.Sessions[1].EndUtc,
+            "The race was still reported as running after the event went offline.");
+    }
+
+    /// <summary>
+    /// Two events whose sessions happen to be in the same state must not share an answer. Seeded so
+    /// that everything but the event id is alike, which is what the cache key has to tell apart.
+    /// </summary>
+    [TestMethod]
+    public async Task Live_EachEventIsCachedSeparately()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+        static DateTime March(int hour, int minute) => new(2026, 3, 1, hour, minute, 0);
+        db.Events.Single(e => e.Id == 10).IsLive = true;
+        db.Sessions.AddRange(
+            new Session { Id = 1, EventId = 10, Name = "Practice", StartTime = March(14, 0), EndTime = March(14, 45) },
+            new Session { Id = 2, EventId = 10, Name = "Race", StartTime = March(15, 0), IsLive = true });
+        db.EventViewerSessions.Add(NewViewer(10, March(15, 0), March(15, 5)));
+        await db.SaveChangesAsync();
+
+        var theirs = (await controller.Live(10)).Value!;
+        var ours = (await controller.Live(11)).Value!;
+
+        Assert.AreEqual(10, theirs.EventId);
+        Assert.AreEqual(11, ours.EventId, "Event 11 was answered from event 10's cache entry.");
+        Assert.AreEqual(300, theirs.Event.TotalViewerSeconds);
+        Assert.AreNotEqual(theirs.Event.TotalViewerSeconds, ours.Event.TotalViewerSeconds);
+        Assert.HasCount(2, cache.FactoryInvocations);
+    }
+
+    [TestMethod]
+    public async Task Live_TheLatestSessionEnding_IsNotHiddenByTheCache()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+        Assert.IsNull((await controller.Live(11)).Value!.Sessions[1].EndUtc);
+
+        var race = db.Sessions.Single(s => s.EventId == 11 && s.Id == 2);
+        race.EndTime = new DateTime(2026, 9, 1, 15, 50, 0);
+        await db.SaveChangesAsync();
+
+        Assert.AreEqual(new DateTime(2026, 9, 1, 15, 50, 0), (await controller.Live(11)).Value!.Sessions[1].EndUtc);
+    }
+
+    /// <summary>
+    /// Every timestamp goes out with its "Z", including after a trip through the real cache, which
+    /// stores a serialized copy and hands back a deserialized one. A value that lost its Kind on that
+    /// round trip would be written as local time on every response but the first.
+    /// </summary>
+    [TestMethod]
+    public async Task Live_TimestampsAreWrittenAsUtc_IncludingWhenServedFromTheCache()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+        var realCache = new ServiceCollection().AddHybridCache().Services.BuildServiceProvider()
+            .GetRequiredService<HybridCache>();
+        var cached = new TestViewershipController(loggerFactory.Object, dbFactory, realCache, clock);
+        SignIn(cached, Organizer);
+
+        var computed = (await cached.Live(11)).Value!;
+
+        // A viewer the second answer would include if it were computed rather than cached. Without
+        // it both answers are computed from the same rows at the same fake time, and would match
+        // whether or not the cache was ever hit.
+        db.EventViewerSessions.Add(NewViewer(11, new DateTime(2026, 9, 1, 15, 40, 0), null));
+        await db.SaveChangesAsync();
+
+        var fromCache = (await cached.Live(11)).Value!;
+
+        foreach (var live in new[] { computed, fromCache })
+        {
+            Assert.IsTrue(LiveViewershipWireFormat.AllDateTimes(live).All(t => t.Kind == DateTimeKind.Utc));
+            LiveViewershipWireFormat.AssertEveryTimestampHasZ(JsonSerializer.Serialize(live, LiveViewershipWireFormat.WebOptions));
+        }
+        Assert.AreEqual(
+            JsonSerializer.Serialize(computed, LiveViewershipWireFormat.WebOptions),
+            JsonSerializer.Serialize(fromCache, LiveViewershipWireFormat.WebOptions),
+            "The second answer was not the cached copy of the first.");
+    }
+
+    /// <summary>
+    /// Pins the field names the dashboard was built against. A renamed or missing field fails here
+    /// rather than as a blank chart.
+    /// </summary>
+    [TestMethod]
+    public async Task Live_WireFormat_IsTheAgreedShape()
+    {
+        await SeedAsync();
+        await SeedLiveAsync();
+
+        var json = JsonSerializer.Serialize((await controller.Live(11)).Value!, LiveViewershipWireFormat.WebOptions);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var session = root.GetProperty("sessions")[1];
+
+        CollectionAssert.AreEquivalent(
+            new[] { "eventId", "asOfUtc", "bucketSeconds", "trackOffsetMinutes", "event", "sessions" },
+            Names(root));
+        CollectionAssert.AreEquivalent(
+            new[] { "windowStartUtc", "totalViewerSeconds", "maxConcurrent", "peakUtc", "avgConcurrentDuringSessions" },
+            Names(root.GetProperty("event")));
+        CollectionAssert.AreEquivalent(
+            new[]
+            {
+                "sessionId", "sessionName", "isPracticeQualifying", "startUtc", "endUtc", "totalViewerSeconds",
+                "maxConcurrent", "peakUtc", "avgConcurrent", "buckets",
+            },
+            Names(session));
+        CollectionAssert.AreEquivalent(new[] { "startUtc", "min", "max", "avg" }, Names(session.GetProperty("buckets")[0]));
+
+        Assert.AreEqual(JsonValueKind.Null, session.GetProperty("endUtc").ValueKind, "A running session's end is null.");
+        Assert.AreEqual(60, root.GetProperty("bucketSeconds").GetInt32());
+
+        static string[] Names(JsonElement element) => [.. element.EnumerateObject().Select(p => p.Name)];
+    }
+
+    #endregion
+
+    private sealed class TestViewershipController(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
+        HybridCache hcache, TimeProvider clock)
+        : ViewershipControllerBase(loggerFactory, tsContext, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
+            hcache, clock);
 }

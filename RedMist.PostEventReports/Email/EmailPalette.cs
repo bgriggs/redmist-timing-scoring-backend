@@ -1,4 +1,4 @@
-using RedMist.PostEventReports.Sections.Viewership;
+using RedMist.Backend.Shared.Utilities;
 
 namespace RedMist.PostEventReports.Email;
 
