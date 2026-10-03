@@ -114,6 +114,58 @@ public class Consts
     /// </summary>
     public const string EVENT_CURRENT_SESSION = "evt-{0}-current-session";
     public const string EVENT_SERVICE_STATUSES = "evt-{0}-svc-statuses";
+
+    /// <summary>
+    /// Per-event hash counting what the relay hub has received for an event since the counters were
+    /// created. Field <c>{type}</c> holds the running total for one message type and
+    /// <c>{type}-last</c> the time the last one arrived, in Unix epoch milliseconds (UTC). Types are
+    /// the names in <c>RelayMessageTypes</c>.
+    /// </summary>
+    /// <remarks>
+    /// Counted at the hub rather than read off the event status stream: that stream is capped, so its
+    /// length stops growing at the cap, and it also carries entries from producers other than the
+    /// relay. Deleted when the orchestrator tears the event down. Also expires
+    /// <see cref="RELAY_MESSAGE_COUNTS_TTL"/> after its last write, as a backstop for an id that is
+    /// never torn down.
+    /// </remarks>
+    public const string RELAY_MESSAGE_COUNTS = "relay-msgs-evt-{0}";
+
+    /// <summary>
+    /// How long a relay message totals hash outlives its last write. A backstop, not the cleanup:
+    /// teardown deletes the totals, but only for an event that had a heartbeat, so data sent for any
+    /// other id (a mistyped or stale event, a backlog arriving after teardown) would otherwise stay in
+    /// Redis forever. A live relay heartbeats every 10 s and each heartbeat is counted, refreshing
+    /// this, so a live event never reaches it.
+    /// </summary>
+    public static readonly TimeSpan RELAY_MESSAGE_COUNTS_TTL = TimeSpan.FromDays(2);
+
+    /// <summary>
+    /// Per-event, per-minute hash of the same counts, for a rate over the last hour. {1} is the UTC
+    /// minute as whole minutes since the Unix epoch. Field <c>{type}</c> holds that minute's count.
+    /// </summary>
+    /// <remarks>
+    /// Not deleted at teardown. Each one expires <see cref="RELAY_MESSAGE_MINUTE_TTL"/> after its last
+    /// write, so an event's minutes are gone within two hours of its last message whatever happens to
+    /// the event.
+    /// </remarks>
+    public const string RELAY_MESSAGE_MINUTE = "relay-msgs-evt-{0}-m{1}";
+
+    /// <summary>How long a per-minute relay message hash outlives its last write.</summary>
+    public static readonly TimeSpan RELAY_MESSAGE_MINUTE_TTL = TimeSpan.FromHours(2);
+
+    /// <summary>
+    /// The orchestrator's report of every pod in its namespace, with readiness, restarts and the
+    /// reasons a container is not running, for the site operations page. One JSON string
+    /// (<c>SitePodHealth</c>), rewritten every few seconds with a one-minute expiry, so it disappears
+    /// rather than going stale when the orchestrator stops reporting.
+    /// </summary>
+    /// <remarks>
+    /// A key of its own rather than more fields on <see cref="EVENT_SERVICE_STATUSES"/>. That one is
+    /// the MessagePack-keyed <c>ServiceStatus</c> contract the relay desktop app reads, and covers
+    /// event pods only; this one also covers the shared services, which belong to no event.
+    /// </remarks>
+    public const string SITE_POD_HEALTH = "site-pod-health";
+
     public const string EVENT_ACCESS = "evt-{0}-access";
     public const string EVENT_ACCESS_CODE_HEADER = "X-Event-Access-Code";
 

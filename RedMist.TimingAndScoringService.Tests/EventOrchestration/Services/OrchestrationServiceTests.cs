@@ -577,6 +577,8 @@ public class OrchestrationServiceTests
             new RedisKey(string.Format(Consts.STATUS_EVENT_CONNECTIONS, 42)), It.IsAny<CommandFlags>()), Times.Once);
         cache.Verify(x => x.KeyDeleteAsync(
             new RedisKey(string.Format(Consts.EVENT_SERVICE_STATUSES, 42)), It.IsAny<CommandFlags>()), Times.Once);
+        cache.Verify(x => x.KeyDeleteAsync(
+            new RedisKey(string.Format(Consts.RELAY_MESSAGE_COUNTS, 42)), It.IsAny<CommandFlags>()), Times.Once);
     }
 
     [TestMethod]
@@ -682,6 +684,277 @@ public class OrchestrationServiceTests
 
         Assert.IsEmpty(writes);
     }
+
+    #region Site pod health
+
+    private static readonly DateTime PodsAsOf = new(2026, 9, 1, 15, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>
+    /// Shared services carry no event label, and they are half of what the operations page is for,
+    /// so this list - unlike the per-event one - has no label selector.
+    /// </summary>
+    [TestMethod]
+    public async Task PublishSitePodHealthAsync_ListsEveryPodAndWritesOneReportWithAOneMinuteExpiry()
+    {
+        var svc = CreateService();
+        var writes = new Dictionary<string, (string Value, Expiration Expiry)>();
+        cache.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<Expiration>(),
+                It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
+            .Callback<RedisKey, RedisValue, Expiration, ValueCondition, CommandFlags>(
+                (key, value, expiry, _, _) => writes[key.ToString()] = (value.ToString(), expiry))
+            .ReturnsAsync(true);
+        k8s.Pods = PodList(
+            HealthyPod("tst-evt-42-event-processor-abcde", eventId: 42, app: "tst-evt-42-event-processor"),
+            SharedPod("redmist-status-api-7d9f8c-x1y2z", "redmist-status-api"));
+
+        await svc.PublishSitePodHealthAsync(k8s.Object, Namespace, PodsAsOf, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new string?[] { null }, k8s.PodListLabelSelectors,
+            "Every pod in the namespace has to be listed, shared services included");
+        Assert.IsTrue(writes.ContainsKey(Consts.SITE_POD_HEALTH));
+        Assert.AreEqual((Expiration)TimeSpan.FromMinutes(1), writes[Consts.SITE_POD_HEALTH].Expiry);
+        var report = JsonSerializer.Deserialize<SitePodHealth>(writes[Consts.SITE_POD_HEALTH].Value, SitePodHealth.JsonOptions)!;
+        Assert.AreEqual(PodsAsOf, report.AsOfUtc);
+        Assert.HasCount(2, report.Pods);
+        Assert.AreEqual(42, report.Pods[0].EventId, "Event pods first, by event.");
+        Assert.IsNull(report.Pods[1].EventId);
+    }
+
+    [TestMethod]
+    public void MapPodHealth_AHealthyEventPod()
+    {
+        var pod = HealthyPod("tst-evt-42-logger-abcde", eventId: 42, app: "tst-evt-42-logger");
+
+        var health = OrchestrationService.MapPodHealth(pod);
+
+        Assert.AreEqual("tst-evt-42-logger-abcde", health.PodName);
+        Assert.AreEqual(Namespace, health.Namespace);
+        Assert.AreEqual(42, health.EventId);
+        Assert.AreEqual(7, health.OrganizationId);
+        Assert.AreEqual("tst-evt-42-logger", health.AppName);
+        Assert.AreEqual("redmist-event-logger", health.ServiceName);
+        Assert.AreEqual("Running", health.Phase);
+        Assert.IsTrue(health.Ready);
+        Assert.AreEqual(1, health.ReadyContainers);
+        Assert.AreEqual(1, health.TotalContainers);
+        Assert.AreEqual(0, health.RestartCount);
+        Assert.IsNull(health.WaitingReason);
+        Assert.IsNull(health.LastTerminatedReason);
+        Assert.AreEqual(PodsAsOf.AddHours(-1), health.StartedUtc);
+        Assert.AreEqual(DateTimeKind.Utc, health.StartedUtc!.Value.Kind);
+        Assert.AreEqual("node-a", health.NodeName);
+        Assert.IsFalse(health.Deleting);
+    }
+
+    /// <summary>
+    /// The case the page exists to catch: a pod that is "Running" by phase while its container is in
+    /// a crash loop after being killed for memory. Phase alone - all the relay's statuses carry - says
+    /// nothing is wrong.
+    /// </summary>
+    [TestMethod]
+    public void MapPodHealth_ACrashLoopingContainer_ReportsWhyAndHowOften()
+    {
+        var pod = HealthyPod("tst-evt-42-event-processor-abcde", eventId: 42, app: "tst-evt-42-event-processor");
+        var finished = PodsAsOf.AddMinutes(-2);
+        pod.Status.ContainerStatuses[0] = new V1ContainerStatus
+        {
+            Name = "c", Image = "img", ImageID = "id", Ready = false, RestartCount = 5,
+            State = new V1ContainerState { Waiting = new V1ContainerStateWaiting { Reason = "CrashLoopBackOff" } },
+            LastState = new V1ContainerState
+            {
+                Terminated = new V1ContainerStateTerminated { Reason = "OOMKilled", ExitCode = 137, FinishedAt = finished },
+            },
+        };
+
+        var health = OrchestrationService.MapPodHealth(pod);
+
+        Assert.AreEqual("Running", health.Phase);
+        Assert.IsFalse(health.Ready);
+        Assert.AreEqual(0, health.ReadyContainers);
+        Assert.AreEqual(5, health.RestartCount);
+        Assert.AreEqual("CrashLoopBackOff", health.WaitingReason);
+        Assert.AreEqual("OOMKilled", health.LastTerminatedReason);
+        Assert.AreEqual(finished, health.LastTerminatedUtc);
+    }
+
+    [TestMethod]
+    public void MapPodHealth_RestartsAreSummedAndReadyMeansEveryContainer()
+    {
+        var pod = SharedPod("redmist-relay-api-1", "redmist-relay-api");
+        pod.Spec.Containers.Add(new V1Container { Name = "sidecar", Image = "envoy:1" });
+        pod.Status.ContainerStatuses =
+        [
+            new V1ContainerStatus { Name = "c", Image = "img", ImageID = "id", Ready = true, RestartCount = 2 },
+            new V1ContainerStatus { Name = "sidecar", Image = "img", ImageID = "id", Ready = false, RestartCount = 1 },
+        ];
+
+        var health = OrchestrationService.MapPodHealth(pod);
+
+        Assert.IsFalse(health.Ready);
+        Assert.AreEqual(1, health.ReadyContainers);
+        Assert.AreEqual(2, health.TotalContainers);
+        Assert.AreEqual(3, health.RestartCount);
+    }
+
+    /// <summary>A pod moments old has a spec and nothing else, and must still map.</summary>
+    [TestMethod]
+    public void MapPodHealth_APodWithNoStatusYet_IsUnknownAndNotReady()
+    {
+        var pod = HealthyPod("tst-evt-42-logger-abcde", eventId: 42, app: "tst-evt-42-logger");
+        pod.Status = null;
+        pod.Spec.NodeName = null;
+
+        var health = OrchestrationService.MapPodHealth(pod);
+
+        Assert.AreEqual("Unknown", health.Phase);
+        Assert.IsFalse(health.Ready);
+        Assert.AreEqual(1, health.TotalContainers);
+        Assert.IsNull(health.StartedUtc);
+        Assert.IsNull(health.NodeName);
+    }
+
+    [TestMethod]
+    public void MapPodHealth_AStuckInitContainer_IsTheWaitingReason()
+    {
+        var pod = SharedPod("redis-0", "redis");
+        pod.Status.ContainerStatuses = [];
+        pod.Status.InitContainerStatuses =
+        [
+            new V1ContainerStatus
+            {
+                Name = "init", Image = "img", ImageID = "id", Ready = false,
+                State = new V1ContainerState { Waiting = new V1ContainerStateWaiting { Reason = "ImagePullBackOff" } },
+            },
+        ];
+
+        Assert.AreEqual("ImagePullBackOff", OrchestrationService.MapPodHealth(pod).WaitingReason);
+    }
+
+    [TestMethod]
+    public void MapPodHealth_ASharedServicePod_HasNoEventAndIsNamedByItsLabelOrOwner()
+    {
+        var labeled = SharedPod("redmist-status-api-7d9f8c-x1y2z", "redmist-status-api");
+        var unlabeled = SharedPod("mystery-1", app: null);
+        unlabeled.Metadata.OwnerReferences = [new V1OwnerReference { Kind = "ReplicaSet", Name = "mystery-7d9f8c", ApiVersion = "apps/v1", Uid = "u" }];
+        var deleting = SharedPod("redmist-relay-api-1", "redmist-relay-api");
+        deleting.Metadata.DeletionTimestamp = PodsAsOf;
+
+        Assert.IsNull(OrchestrationService.MapPodHealth(labeled).EventId);
+        Assert.AreEqual("redmist-status-api", OrchestrationService.MapPodHealth(labeled).AppName);
+        Assert.AreEqual("mystery-7d9f8c", OrchestrationService.MapPodHealth(unlabeled).AppName);
+        Assert.IsTrue(OrchestrationService.MapPodHealth(deleting).Deleting);
+    }
+
+    /// <summary>
+    /// An event job with no pod shows up in no pod list at all, which is why it is reported on its
+    /// own. One whose pod exists - found by owner or by label - is not.
+    /// </summary>
+    [TestMethod]
+    public void BuildSitePodHealth_ReportsEventJobsThatHaveNoPod()
+    {
+        var owned = HealthyPod("tst-evt-42-logger-abcde", eventId: 42, app: null);
+        owned.Metadata.OwnerReferences = [new V1OwnerReference { Kind = "Job", Name = "tst-evt-42-logger", ApiVersion = "batch/v1", Uid = "u" }];
+        var labeled = HealthyPod("tst-evt-42-event-processor-abcde", eventId: 42, app: "tst-evt-42-event-processor");
+        var jobs = new[]
+        {
+            EventJob("tst-evt-42-logger", 42),
+            EventJob("tst-evt-42-event-processor", 42),
+            EventJob("tst-evt-42-control-log", 42),
+            EventJob("tst-evt-43-logger", 43),
+        };
+
+        var report = OrchestrationService.BuildSitePodHealth([owned, labeled], jobs, PodsAsOf);
+
+        CollectionAssert.AreEqual(new[] { "tst-evt-42-control-log", "tst-evt-43-logger" },
+            report.MissingJobs.Select(j => j.JobName).ToArray());
+        Assert.AreEqual(42, report.MissingJobs[0].EventId);
+        Assert.AreEqual("control-log", report.MissingJobs[0].Role);
+        Assert.AreEqual("logger", report.MissingJobs[1].Role);
+    }
+
+    /// <summary>
+    /// A job being deleted has had its pods removed first by foreground deletion, and a job created
+    /// moments ago has no pod yet. Neither is a fault; a job past the grace period with no pod is.
+    /// </summary>
+    [TestMethod]
+    public void BuildSitePodHealth_JobsBeingDeletedOrJustCreated_AreNotReportedMissing()
+    {
+        var deleting = EventJob("tst-evt-42-logger", 42);
+        deleting.Metadata.DeletionTimestamp = PodsAsOf.AddSeconds(-1);
+        deleting.Metadata.CreationTimestamp = PodsAsOf.AddHours(-1);
+        var young = EventJob("tst-evt-42-event-processor", 42);
+        young.Metadata.CreationTimestamp = PodsAsOf.AddSeconds(-2);
+        var old = EventJob("tst-evt-42-control-log", 42);
+        old.Metadata.CreationTimestamp = PodsAsOf - OrchestrationService.MissingJobGracePeriod - TimeSpan.FromSeconds(1);
+
+        var report = OrchestrationService.BuildSitePodHealth([], [deleting, young, old], PodsAsOf);
+
+        CollectionAssert.AreEqual(new[] { "tst-evt-42-control-log" }, report.MissingJobs.Select(j => j.JobName).ToArray());
+    }
+
+    /// <summary>The DTO the orchestrator writes is the DTO event management reads, field for field.</summary>
+    [TestMethod]
+    public void SitePodHealth_RoundTripsThroughTheSharedOptions()
+    {
+        var pod = HealthyPod("tst-evt-42-logger-abcde", eventId: 42, app: "tst-evt-42-logger");
+        var report = OrchestrationService.BuildSitePodHealth([pod], [EventJob("tst-evt-43-logger", 43)], PodsAsOf);
+
+        var json = JsonSerializer.Serialize(report, SitePodHealth.JsonOptions);
+        var back = JsonSerializer.Deserialize<SitePodHealth>(json, SitePodHealth.JsonOptions)!;
+
+        Assert.AreEqual(json, JsonSerializer.Serialize(back, SitePodHealth.JsonOptions));
+        Assert.AreEqual(DateTimeKind.Utc, back.Pods[0].StartedUtc!.Value.Kind);
+        Assert.Contains("\"podName\"", json);
+    }
+
+    private static V1Pod HealthyPod(string name, int eventId, string? app)
+    {
+        var labels = new Dictionary<string, string> { ["event_id"] = eventId.ToString(), ["organization_id"] = "7" };
+        if (app != null)
+        {
+            labels["app"] = app;
+        }
+
+        return new V1Pod
+        {
+            Metadata = new V1ObjectMeta { Name = name, NamespaceProperty = Namespace, Labels = labels },
+            Spec = new V1PodSpec
+            {
+                NodeName = "node-a",
+                Containers = [new V1Container { Name = "c", Image = "bigmission/redmist-event-logger:1.2.3" }],
+            },
+            Status = new V1PodStatus
+            {
+                Phase = "Running",
+                StartTime = PodsAsOf.AddHours(-1),
+                ContainerStatuses = [new V1ContainerStatus { Name = "c", Image = "img", ImageID = "id", Ready = true, RestartCount = 0 }],
+            },
+        };
+    }
+
+    private static V1Pod SharedPod(string name, string? app) => new()
+    {
+        Metadata = new V1ObjectMeta
+        {
+            Name = name,
+            NamespaceProperty = Namespace,
+            Labels = app == null ? new Dictionary<string, string>() : new Dictionary<string, string> { ["app"] = app },
+        },
+        Spec = new V1PodSpec { Containers = [new V1Container { Name = "c", Image = "bigmission/" + (app ?? "x") + ":2.0" }] },
+        Status = new V1PodStatus
+        {
+            Phase = "Running",
+            ContainerStatuses = [new V1ContainerStatus { Name = "c", Image = "img", ImageID = "id", Ready = true }],
+        },
+    };
+
+    private static V1Job EventJob(string name, int eventId) => new()
+    {
+        Metadata = new V1ObjectMeta { Name = name, Labels = new Dictionary<string, string> { ["event_id"] = eventId.ToString() } },
+    };
+
+    #endregion
+
 
     private Dictionary<string, string> CaptureStringSets()
     {

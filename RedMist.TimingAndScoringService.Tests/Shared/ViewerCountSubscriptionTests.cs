@@ -53,13 +53,14 @@ public class ViewerCountSubscriptionTests
     [TestCleanup]
     public void Cleanup() => db.Dispose();
 
-    private StatusHub CreateHub(string? username = Organizer)
+    private StatusHub CreateHub(string? username = Organizer, params string[] roles)
     {
         var claims = new List<Claim> { new("azp", "redmist-landing"), new("client_id", "redmist-landing") };
         if (username != null)
         {
             claims.Add(new Claim(ClaimTypes.Name, username));
         }
+        claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
         var context = new Mock<HubCallerContext>();
         context.SetupGet(c => c.ConnectionId).Returns(connectionId);
@@ -313,6 +314,77 @@ public class ViewerCountSubscriptionTests
         groups.Verify(g => g.RemoveFromGroupAsync(connectionId,
             string.Format(Consts.EVENT_VIEWER_COUNTS_SUB, MyEvent), It.IsAny<CancellationToken>()), Times.Once());
     }
+
+    #region Site administrators
+
+    /// <summary>
+    /// The site operations page watches every live event on the site, across organizations nobody
+    /// administers all of. The role lifts the organization filter for this one read-only count.
+    /// </summary>
+    [TestMethod]
+    public async Task ASiteAdministrator_MayWatchAnyOrganizationsEvent()
+    {
+        await SeedAsync();
+        SeedViewers(TheirEvent, "Web", "iOS");
+        var hub = CreateHub("ops@example.com", Consts.SITE_ADMIN_ROLE);
+
+        var snapshots = await hub.SubscribeToEventViewerCounts([MyEvent, TheirEvent]);
+
+        CollectionAssert.AreEquivalent(new[] { MyEvent, TheirEvent }, snapshots.Keys.ToArray());
+        Assert.AreEqual(2, snapshots[TheirEvent].Total);
+        VerifyJoined(string.Format(Consts.EVENT_VIEWER_COUNTS_SUB, TheirEvent));
+        Assert.IsNull(redis.GetHashValue(string.Format(Consts.STATUS_EVENT_CONNECTIONS, TheirEvent), connectionId),
+            "The operations page was counted as a viewer of the event it is watching.");
+    }
+
+    /// <summary>The role widens which organizations, and nothing else: deleted events stay refused.</summary>
+    [TestMethod]
+    public async Task ASiteAdministrator_StillCannotWatchADeletedOrMissingEvent()
+    {
+        await SeedAsync();
+        db.Events.Single(e => e.Id == TheirEvent).IsDeleted = true;
+        await db.SaveChangesAsync();
+        var hub = CreateHub("ops@example.com", Consts.SITE_ADMIN_ROLE);
+
+        var snapshots = await hub.SubscribeToEventViewerCounts([TheirEvent, 999]);
+
+        Assert.IsEmpty(snapshots);
+        groups.Verify(g => g.AddToGroupAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never());
+    }
+
+    /// <summary>The cap is per call for the role too; the page chunks its list to fit.</summary>
+    [TestMethod]
+    public async Task ASiteAdministrator_IsStillBoundedPerCall()
+    {
+        await SeedAsync();
+        var ids = new List<int>();
+        for (var i = 0; i < StatusHub.MaxWatchedEvents + 10; i++)
+        {
+            var id = 2000 + i;
+            db.Events.Add(NewEvent(id, TheirsId));
+            ids.Add(id);
+        }
+        await db.SaveChangesAsync();
+        var hub = CreateHub("ops@example.com", Consts.SITE_ADMIN_ROLE);
+
+        Assert.HasCount(StatusHub.MaxWatchedEvents, await hub.SubscribeToEventViewerCounts([.. ids]));
+    }
+
+    /// <summary>Role names match exactly, as they do for [Authorize(Roles = ...)].</summary>
+    [TestMethod]
+    [DataRow("Site-Admin")]
+    [DataRow("admin")]
+    public async Task ARoleThatMerelyResemblesIt_GetsNoBypass(string role)
+    {
+        await SeedAsync();
+        var hub = CreateHub(Organizer, role);
+
+        var snapshots = await hub.SubscribeToEventViewerCounts([MyEvent, TheirEvent]);
+
+        CollectionAssert.AreEqual(new[] { MyEvent }, snapshots.Keys.ToArray());
+    }
+
+    #endregion
 
     private void VerifyJoined(string group) =>
         groups.Verify(g => g.AddToGroupAsync(connectionId, group, It.IsAny<CancellationToken>()), Times.Once());

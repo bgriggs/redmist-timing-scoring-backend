@@ -140,6 +140,9 @@ public class RelayHub : Hub
         var streamId = string.Format(Consts.EVENT_PROCESSOR_LOGGING_STREAM_KEY, eventId);
         await cache.StreamAddAsync(streamId, Consts.RELAY_HEARTBEAT_TYPE, entryJson,
             maxLength: Consts.EVENT_PROCESSOR_LOGGING_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
+
+        // Once per call, and so once for SendHeartbeatV2 too, which comes through here.
+        CountMessages(eventId, RelayMessageTypes.Heartbeat);
     }
 
     public async Task<RelayTelemetry> SendHeartbeatV2(int eventId, string relayVersion)
@@ -219,6 +222,9 @@ public class RelayHub : Hub
             await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_RMON_STREAM_FIELD, eventId, sessionId), command,
                 maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
 
+            // One per call: the relay forwards each RMonitor command line as it reads it.
+            CountMessages(eventId, RelayMessageTypes.RMonitor);
+
             // Add the connection to the relay group for this event
             var connectionId = Context.ConnectionId;
             var groupName = string.Format(Consts.RELAY_GROUP_PREFIX, eventId);
@@ -250,6 +256,9 @@ public class RelayHub : Hub
             await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_MULTILOOP_STREAM_FIELD, eventId, sessionId), command,
                 maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
 
+            // One per call: the relay forwards each Multiloop command as it reads it.
+            CountMessages(eventId, RelayMessageTypes.Multiloop);
+
             // Add the connection to the relay group for this event
             var connectionId = Context.ConnectionId;
             var groupName = string.Format(Consts.RELAY_GROUP_PREFIX, eventId);
@@ -277,6 +286,10 @@ public class RelayHub : Hub
             // Send the data to the service responsible for the specific event
             await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_FLAGTRONICS_STREAM_FIELD, eventId, sessionId), data,
                 maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
+
+            // One per call, not one per car: the array is a single read of the vehicle info feed, so
+            // a field of forty cars is still one message.
+            CountMessages(eventId, RelayMessageTypes.Flagtronics);
 
             // Add the connection to the relay group for this event
             var connectionId = Context.ConnectionId;
@@ -382,6 +395,10 @@ public class RelayHub : Hub
                 var cache = cacheMux.GetDatabase();
                 await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_SESSION_CHANGED, eventId, sessionId), sJson,
                     maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
+
+                // Only once the event is known to be this relay's, so a relay pointed at the wrong
+                // event id cannot raise the counts of somebody else's event.
+                CountMessages(eventId, RelayMessageTypes.Session);
             }
             else
             {
@@ -428,6 +445,12 @@ public class RelayHub : Hub
             await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_PASSINGS_STREAM_FIELD, eventId, sessionId), json,
                 maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
         }
+
+        // Every passing counts, not every call. The relay batches passings as they accumulate, so a
+        // call is anything from one car crossing the line to a backlog after a reconnect, and a
+        // count of calls would say nothing about how much timing data actually arrived. An empty
+        // call carries nothing and is not counted.
+        CountMessages(eventId, RelayMessageTypes.Passings, passings.Count);
     }
 
     /// <summary>
@@ -473,6 +496,9 @@ public class RelayHub : Hub
         var json = JsonSerializer.Serialize(loops);
         await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_X2_LOOPS_STREAM_FIELD, eventId), json,
             maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
+
+        // One per call: the list is the decoder's whole loop configuration, sent as one update.
+        CountMessages(eventId, RelayMessageTypes.Loops);
     }
 
     /// <summary>
@@ -497,6 +523,9 @@ public class RelayHub : Hub
         var json = JsonSerializer.Serialize(flags);
         await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_FLAGS_STREAM_FIELD, eventId, sessionId), json,
             maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
+
+        // One per call: the list is the session's flag history so far, resent whole on each change.
+        CountMessages(eventId, RelayMessageTypes.Flags);
     }
 
     /// <summary>
@@ -531,6 +560,10 @@ public class RelayHub : Hub
         var json = JsonSerializer.Serialize(competitors);
         await cache.StreamAddAsync(streamId, string.Format(Consts.EVENT_COMPETITORS, eventId), json,
             maxLength: Consts.EVENT_STATUS_STREAM_MAX_LENGTH, useApproximateMaxLength: true);
+
+        // One per call, after the ownership check above: the list is the whole entry list, sent as
+        // one update.
+        CountMessages(eventId, RelayMessageTypes.Competitors);
 
         // Save the metadata to the database
         await SaveCompetitorMetadata(eventId, competitors);
@@ -631,6 +664,17 @@ public class RelayHub : Hub
             Logger.LogError(ex, "Error tracking relay log batch for client {ClientId}", clientId);
         }
     }
+
+    /// <summary>
+    /// Counts messages received for an event, for the site operations page.
+    /// </summary>
+    /// <remarks>
+    /// Fire-and-forget and never throws (see <see cref="RelayMessageCounter"/>), so it adds nothing to
+    /// a relay message's latency and cannot fail one. Each caller counts only after its message has
+    /// been handed on, so a message the hub refused is not counted as received.
+    /// </remarks>
+    private void CountMessages(int eventId, string type, long count = 1) =>
+        RelayMessageCounter.Record(cacheMux.GetDatabase(), eventId, type, count, DateTime.UtcNow, Logger);
 
     public async Task<int> GetOrganizationIdAsync(string clientId)
     {

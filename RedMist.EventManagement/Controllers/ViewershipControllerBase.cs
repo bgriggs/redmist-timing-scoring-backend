@@ -7,7 +7,6 @@ using RedMist.Database;
 using RedMist.Database.Models;
 using RedMist.EventManagement.Models;
 using RedMist.EventManagement.Viewership;
-using RedMist.TimingCommon.Models;
 
 namespace RedMist.EventManagement.Controllers;
 
@@ -59,24 +58,10 @@ public abstract class ViewershipControllerBase : ControllerBase
     private int LookbackDays => configuration.GetValue("PostEventReport:LookbackDays", 14);
 
     /// <summary>
-    /// The cache key for one event's live viewership, qualified by the state of its sessions.
+    /// Reads and caches a running event's live viewership. Shared with the site operations page, so
+    /// the two compute and cache it one way.
     /// </summary>
-    private const string LIVE_CACHE_KEY = "viewership-live-{0}-{1}";
-
-    /// <summary>
-    /// How long a computed live answer is served before it is computed again.
-    /// </summary>
-    /// <remarks>
-    /// Every dashboard open on a running event polls once a minute, and each computation reads every
-    /// viewer session the event has - a row per connection, and phones reconnect constantly. Half the
-    /// poll interval means no dashboard is shown numbers more than thirty seconds old, while every
-    /// dashboard on the event shares one computation.
-    /// </remarks>
-    private static readonly HybridCacheEntryOptions liveCacheOptions = new()
-    {
-        Expiration = TimeSpan.FromSeconds(30),
-        LocalCacheExpiration = TimeSpan.FromSeconds(30),
-    };
+    private readonly LiveViewershipSource liveSource;
 
     protected ViewershipControllerBase(ILoggerFactory loggerFactory, IDbContextFactory<TsContext> tsContext,
         IConfiguration configuration, HybridCache hcache, TimeProvider clock)
@@ -86,6 +71,7 @@ public abstract class ViewershipControllerBase : ControllerBase
         this.configuration = configuration;
         this.hcache = hcache;
         this.clock = clock;
+        liveSource = new LiveViewershipSource(tsContext, hcache, clock);
     }
 
     /// <summary>
@@ -405,12 +391,9 @@ public abstract class ViewershipControllerBase : ControllerBase
     /// to now rather than checked against the live connection hash, and the worst case that leaves.
     /// </para>
     /// <para>
-    /// Cached per event for thirty seconds, keyed on the state of the event's sessions and its live
-    /// flag as well as the event. The dashboard polls once a minute and once more whenever the session
-    /// changes, and that second poll is precisely the one that has to see the change: under a plain
-    /// per-event key it would be answered from before the change, and the new session would not
-    /// appear until the poll after. The sessions are a handful of rows read on every request anyway;
-    /// the viewer sessions are what the cache saves reading.
+    /// Read through <see cref="LiveViewershipSource"/>, whose remarks set out how the answer is cached:
+    /// per event for thirty seconds, keyed on the state of the event's sessions and its live flag so
+    /// the poll that follows a session change is never answered from before it.
     /// </para>
     /// </remarks>
     [HttpGet]
@@ -428,63 +411,11 @@ public abstract class ViewershipControllerBase : ControllerBase
         }
 
         var cancellationToken = HttpContext?.RequestAborted ?? CancellationToken.None;
-        using var db = await tsContext.CreateDbContextAsync(cancellationToken);
+        var live = await liveSource.ReadAsync(eventId,
+            (db, organizationId, cancel) => CallerOrganizations.IsPermittedAsync(db, User, organizationId, cancel),
+            cancellationToken);
 
-        var evt = await db.Events
-            .AsNoTracking()
-            .Where(e => e.Id == eventId && !e.IsDeleted)
-            .Select(e => new { e.OrganizationId, e.StartDate, e.EndDate, e.IsLive })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (evt == null || !await CallerOrganizations.IsPermittedAsync(db, User, evt.OrganizationId, cancellationToken))
-        {
-            return NotFound();
-        }
-
-        var sessions = await db.Sessions
-            .AsNoTracking()
-            .Where(s => s.EventId == eventId)
-            .ToListAsync(cancellationToken);
-
-        return await hcache.GetOrCreateAsync(
-            string.Format(LIVE_CACHE_KEY, eventId, LiveFingerprint(evt.IsLive, sessions)),
-            (EventId: eventId, evt.StartDate, evt.EndDate, evt.IsLive, Sessions: sessions),
-            async (state, cancel) =>
-            {
-                // A context of its own rather than the request's. The cache runs one computation for
-                // every caller waiting on the same key, and carries on for the others if the caller
-                // that started it goes away - by which point that request's context is disposed.
-                await using var context = await tsContext.CreateDbContextAsync(cancel);
-
-                // Only the three columns the numbers are made of, because this is every row the event
-                // has.
-                var viewers = await context.EventViewerSessions
-                    .AsNoTracking()
-                    .Where(s => s.EventId == state.EventId)
-                    .Select(s => new EventViewerSession { StartUtc = s.StartUtc, EndUtc = s.EndUtc, ClientType = s.ClientType })
-                    .ToListAsync(cancel);
-
-                return LiveViewershipCalculator.Compute(state.EventId, state.StartDate, state.EndDate,
-                    state.IsLive, state.Sessions, viewers, clock.GetUtcNow().UtcDateTime);
-            },
-            liveCacheOptions,
-            cancellationToken: cancellationToken);
-    }
-
-    /// <summary>
-    /// What changes about an event when its session does: a session starting, the latest one ending
-    /// or being retired, or the event going live or being torn down.
-    /// </summary>
-    /// <remarks>
-    /// Everything that decides whether a session is running is in here, so a cached answer can never
-    /// go on calling a session running after the rows say it has stopped.
-    /// </remarks>
-    private static string LiveFingerprint(bool eventIsLive, List<Session> sessions)
-    {
-        var latest = sessions.OrderBy(s => s.StartTime).ThenBy(s => s.Id).LastOrDefault();
-        return latest == null
-            ? $"{eventIsLive}-none"
-            : $"{eventIsLive}-{sessions.Count}-{latest.Id}-{latest.EndTime?.Ticks ?? 0}-{latest.IsLive}";
+        return live == null ? NotFound() : live;
     }
 
     /// <summary>

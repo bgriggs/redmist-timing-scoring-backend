@@ -34,8 +34,17 @@ public sealed class FakeRedisDatabase
     public List<(string Key, string Value)> SetAdds { get; } = [];
     public List<(string Key, string Group, string Id)> StreamAcknowledgements { get; } = [];
 
+    /// <summary>How many batches the code under test executed.</summary>
+    public int BatchesExecuted { get; private set; }
+
     public FakeRedisDatabase()
     {
+        // A batch is the same object seen through IBatch. Its async methods are IDatabaseAsync's, the
+        // very ones set up below, so a command queued on a batch lands in the same hashes and capture
+        // lists as one sent directly. Has to come before Db.Object is first read.
+        Db.As<IBatch>().Setup(x => x.Execute()).Callback(() => BatchesExecuted++);
+        Db.Setup(x => x.CreateBatch(It.IsAny<object>())).Returns(() => (IBatch)Db.Object);
+
         Mux.Setup(x => x.GetDatabase(It.IsAny<int>(), It.IsAny<object>())).Returns(Db.Object);
 
         Db.Setup(x => x.HashSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<RedisValue>(),

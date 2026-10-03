@@ -399,6 +399,11 @@ public class OrchestrationService : BackgroundService
         // Remove the service statuses from cache
         var serviceStatusKey = string.Format(Consts.EVENT_SERVICE_STATUSES, eventEntry.EventId);
         await cache.KeyDeleteAsync(serviceStatusKey, CommandFlags.FireAndForget);
+
+        // Remove the relay message totals. The per-minute hashes are left to expire on their own:
+        // there are up to a hundred and twenty of them, each gone within two hours of its last write.
+        var relayMessageCountsKey = string.Format(Consts.RELAY_MESSAGE_COUNTS, eventEntry.EventId);
+        await cache.KeyDeleteAsync(relayMessageCountsKey, CommandFlags.FireAndForget);
     }
 
     /// <summary>
@@ -695,23 +700,258 @@ public class OrchestrationService : BackgroundService
     /// Polls Kubernetes pod statuses every second and saves per-event service statuses to Redis.
     /// Each entry has a 1-minute TTL as a safeguard in case cleanup is missed.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every <see cref="SitePodHealthEveryNthPoll"/>th pass also publishes the site-wide pod health,
+    /// with the same client but in a try of its own so that neither report can stop the other: the
+    /// relay's per-event statuses are what its operator watches during a session, and must not depend
+    /// on a whole-namespace list that only the site operations page reads.
+    /// </para>
+    /// <para>
+    /// A failed site pod health report is logged at warning, on the first failure and then every
+    /// <see cref="SitePodHealthWarnEveryNthFailure"/>th in a run, so that a page stuck on "pod data
+    /// unavailable" has a reason in the logs without one line every five seconds.
+    /// </para>
+    /// </remarks>
     private async Task PollPodStatusesAsync(CancellationToken stoppingToken)
     {
+        var pass = 0;
+        var sitePodHealthFailures = 0;
         while (!stoppingToken.IsCancellationRequested)
         {
+            IKubernetes? client = null;
             try
             {
                 string currentNamespace = await GetCurrentNamespaceAsync(stoppingToken);
-                using var client = kubernetesFactory();
-                await PublishPodStatusesAsync(client, currentNamespace, stoppingToken);
+                client = kubernetesFactory();
+
+                try
+                {
+                    await PublishPodStatusesAsync(client, currentNamespace, stoppingToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+                {
+                    Logger.LogDebug(ex, "Error polling pod statuses");
+                }
+
+                if (pass++ % SitePodHealthEveryNthPoll == 0)
+                {
+                    try
+                    {
+                        await PublishSitePodHealthAsync(client, currentNamespace, DateTime.UtcNow, stoppingToken);
+                        if (sitePodHealthFailures > 0)
+                        {
+                            Logger.LogInformation("Site pod health publishing recovered after {failures} failure(s)", sitePodHealthFailures);
+                        }
+                        sitePodHealthFailures = 0;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
+                    {
+                        if (sitePodHealthFailures++ % SitePodHealthWarnEveryNthFailure == 0)
+                        {
+                            Logger.LogWarning(ex, "Error publishing site pod health ({failures} consecutive failure(s))", sitePodHealthFailures);
+                        }
+                        else
+                        {
+                            Logger.LogDebug(ex, "Error publishing site pod health");
+                        }
+                    }
+                }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
-                Logger.LogDebug(ex, "Error polling pod statuses");
+                Logger.LogDebug(ex, "Error creating Kubernetes client for pod polling");
+            }
+            finally
+            {
+                client?.Dispose();
             }
 
             await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
         }
+    }
+
+    /// <summary>
+    /// How many consecutive site pod health failures pass between warnings: about once a minute at
+    /// one report every five seconds.
+    /// </summary>
+    private const int SitePodHealthWarnEveryNthFailure = 12;
+
+    /// <summary>
+    /// How many one-second pod polls pass between site-wide pod health reports.
+    /// </summary>
+    /// <remarks>
+    /// Five seconds rather than every second, because this list is of the whole namespace rather than
+    /// just the event pods, and is read by a page that refreshes every fifteen. Comfortably inside the
+    /// key's one-minute expiry, so a missed report or two never makes the page say the data is gone.
+    /// </remarks>
+    internal const int SitePodHealthEveryNthPoll = 5;
+
+    /// <summary>
+    /// How old a job must be before having no pod counts as missing: several report intervals, so the
+    /// job controller has had time to create its pod.
+    /// </summary>
+    internal static readonly TimeSpan MissingJobGracePeriod = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long a site pod health report survives without being rewritten.</summary>
+    private static readonly TimeSpan sitePodHealthTtl = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// Lists every pod in the namespace and the event jobs, and publishes their health to
+    /// <see cref="Consts.SITE_POD_HEALTH"/> for the site operations page.
+    /// </summary>
+    /// <remarks>
+    /// No label selector on the pod list, on purpose: the shared services - status, relay, event
+    /// management, this orchestrator, Redis - carry no event label, and they are half of what the page
+    /// is for. The orchestration role already grants list on pods across its namespace. The jobs are
+    /// listed again rather than borrowed from the reconcile loop, which runs on a ten-second cycle of
+    /// its own and would hand this a list up to ten seconds old. Jobs are listed before pods, so a job
+    /// that is already listed has the longest possible time for its pod to appear in the pod list.
+    /// </remarks>
+    internal async Task PublishSitePodHealthAsync(IKubernetes client, string ns, DateTime asOfUtc, CancellationToken stoppingToken)
+    {
+        var jobs = await client.BatchV1.ListNamespacedJobAsync(ns, labelSelector: "event_id", cancellationToken: stoppingToken);
+        var pods = await client.CoreV1.ListNamespacedPodAsync(ns, cancellationToken: stoppingToken);
+
+        var health = BuildSitePodHealth(pods.Items ?? [], jobs.Items ?? [], asOfUtc);
+
+        var cache = cacheMux.GetDatabase();
+        var json = JsonSerializer.Serialize(health, SitePodHealth.JsonOptions);
+        await cache.StringSetAsync(Consts.SITE_POD_HEALTH, json, sitePodHealthTtl);
+    }
+
+    /// <summary>
+    /// Builds the site pod health report from a pod list and the event jobs.
+    /// </summary>
+    /// <remarks>
+    /// A job counts as having a pod when any pod is owned by it, or carries its name in one of the
+    /// labels Kubernetes and this orchestrator put on a job's pods. Several are checked because each
+    /// can be missing: the owner reference on an orphaned pod, <c>batch.kubernetes.io/job-name</c> on
+    /// older clusters, and <c>app</c> on a pod this orchestrator did not template.
+    /// A job being deleted, or created less than <see cref="MissingJobGracePeriod"/> ago, is never
+    /// reported, because it has no pod for a reason that is not a fault.
+    /// </remarks>
+    internal static SitePodHealth BuildSitePodHealth(IEnumerable<V1Pod> pods, IEnumerable<V1Job> jobs, DateTime asOfUtc)
+    {
+        var podList = pods.Where(p => p?.Metadata != null).ToList();
+        var health = new SitePodHealth
+        {
+            AsOfUtc = UtcTimestamp.Normalize(asOfUtc),
+            Pods = [.. podList.Select(MapPodHealth)
+                .OrderBy(p => p.EventId ?? int.MaxValue)
+                .ThenBy(p => p.PodName, StringComparer.Ordinal)],
+        };
+
+        var podJobNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pod in podList)
+        {
+            foreach (var owner in pod.Metadata.OwnerReferences ?? [])
+            {
+                if (string.Equals(owner.Kind, "Job", StringComparison.Ordinal) && !string.IsNullOrEmpty(owner.Name))
+                {
+                    podJobNames.Add(owner.Name);
+                }
+            }
+            foreach (var label in new[] { "job-name", "batch.kubernetes.io/job-name", "app" })
+            {
+                if (pod.Metadata.Labels?.TryGetValue(label, out var name) == true && !string.IsNullOrEmpty(name))
+                {
+                    podJobNames.Add(name);
+                }
+            }
+        }
+
+        foreach (var job in jobs)
+        {
+            var jobName = job?.Metadata?.Name;
+            if (string.IsNullOrEmpty(jobName) || podJobNames.Contains(jobName))
+            {
+                continue;
+            }
+            // A job being torn down (foreground deletion removes its pods before the job) or created
+            // moments ago (the job controller has not made its pod yet, or it was created between the
+            // job and pod lists) has no pod for a reason that is not a fault.
+            if (job!.Metadata.DeletionTimestamp != null)
+            {
+                continue;
+            }
+            if (job.Metadata.CreationTimestamp is { } created
+                && UtcTimestamp.Normalize(asOfUtc) - UtcTimestamp.Normalize(created) < MissingJobGracePeriod)
+            {
+                continue;
+            }
+            if (!TryParseLabel(job.Metadata.Labels, "event_id", out var eventId))
+            {
+                continue;
+            }
+
+            var key = EventJobKey(eventId);
+            var at = jobName.IndexOf(key, StringComparison.OrdinalIgnoreCase);
+            var role = at >= 0 && at + key.Length < jobName.Length ? jobName[(at + key.Length)..] : null;
+            health.MissingJobs.Add(new MissingJob { JobName = jobName, EventId = eventId, Role = role });
+        }
+
+        health.MissingJobs.Sort((a, b) => a.EventId != b.EventId
+            ? a.EventId.CompareTo(b.EventId)
+            : string.CompareOrdinal(a.JobName, b.JobName));
+        return health;
+    }
+
+    /// <summary>
+    /// Reduces one pod to what tells an operator whether it is healthy.
+    /// </summary>
+    /// <remarks>
+    /// Everything here comes from the pod list response the orchestrator is already permitted to
+    /// read; nothing needs a get, a watch or the logs. Every field is read defensively, because a pod
+    /// moments old has a spec and little else.
+    /// </remarks>
+    internal static PodHealth MapPodHealth(V1Pod pod)
+    {
+        var labels = pod.Metadata?.Labels;
+        var statuses = pod.Status?.ContainerStatuses ?? [];
+        var totalContainers = pod.Spec?.Containers?.Count ?? 0;
+        var readyContainers = statuses.Count(s => s.Ready);
+
+        var firstImage = pod.Spec?.Containers?.FirstOrDefault()?.Image;
+
+        // The previous run's reason where a container has one, since that is why it restarted; failing
+        // that, the reason a container that is not running now stopped.
+        var terminated = statuses.Select(s => s.LastState?.Terminated).FirstOrDefault(t => t != null)
+            ?? statuses.Select(s => s.State?.Terminated).FirstOrDefault(t => t != null);
+
+        return new PodHealth
+        {
+            PodName = pod.Metadata?.Name ?? string.Empty,
+            Namespace = pod.Metadata?.NamespaceProperty,
+            EventId = TryParseLabel(labels, "event_id", out var eventId) ? eventId : null,
+            OrganizationId = TryParseLabel(labels, "organization_id", out var orgId) ? orgId : null,
+            AppName = LabelOrNull(labels, "app")
+                ?? LabelOrNull(labels, "app.kubernetes.io/name")
+                ?? pod.Metadata?.OwnerReferences?.FirstOrDefault()?.Name,
+            ServiceName = string.IsNullOrEmpty(firstImage) ? null : ExtractServiceName(firstImage),
+            Phase = string.IsNullOrEmpty(pod.Status?.Phase) ? "Unknown" : pod.Status.Phase,
+            Ready = totalContainers > 0 && readyContainers >= totalContainers,
+            ReadyContainers = readyContainers,
+            TotalContainers = totalContainers,
+            RestartCount = statuses.Sum(s => s.RestartCount),
+            WaitingReason = statuses.Concat(pod.Status?.InitContainerStatuses ?? [])
+                .Select(s => s.State?.Waiting?.Reason)
+                .FirstOrDefault(r => !string.IsNullOrEmpty(r)),
+            LastTerminatedReason = terminated?.Reason,
+            LastTerminatedUtc = terminated?.FinishedAt is { } finished ? UtcTimestamp.Normalize(finished) : null,
+            StartedUtc = pod.Status?.StartTime is { } started ? UtcTimestamp.Normalize(started) : null,
+            NodeName = pod.Spec?.NodeName,
+            Deleting = pod.Metadata?.DeletionTimestamp != null,
+        };
+    }
+
+    private static string? LabelOrNull(IDictionary<string, string>? labels, string name) =>
+        labels != null && labels.TryGetValue(name, out var value) && !string.IsNullOrEmpty(value) ? value : null;
+
+    private static bool TryParseLabel(IDictionary<string, string>? labels, string name, out int value)
+    {
+        value = 0;
+        return labels != null && labels.TryGetValue(name, out var raw) && int.TryParse(raw, out value);
     }
 
     /// <summary>

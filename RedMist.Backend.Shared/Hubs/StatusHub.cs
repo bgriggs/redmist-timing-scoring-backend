@@ -73,7 +73,10 @@ public class StatusHub : Hub
     /// <summary>
     /// Subscribes an organizer's dashboard to live viewer counts for events they administer.
     /// </summary>
-    /// <param name="eventIds">The events to watch. Ids the caller does not administer are omitted.</param>
+    /// <param name="eventIds">
+    /// The events to watch. Ids the caller does not administer are omitted, unless the caller is a
+    /// site administrator, who may watch any event that has not been deleted.
+    /// </param>
     /// <returns>
     /// The counts as they stand now, keyed by event id, for the events actually joined. A joined event
     /// whose counts could not be read just now is left out rather than reported as zero, and its
@@ -152,6 +155,14 @@ public class StatusHub : Hub
     /// than asking per event - the list spans organizations, and one membership read answers for all
     /// of them. Unauthorized ids are dropped rather than failing the call, so a dashboard whose
     /// event list has drifted still gets the ones it may see.
+    ///
+    /// A site administrator skips the organization filter, and only that: the site operations page
+    /// watches every live event on the site, which spans organizations nobody administers all of.
+    /// Deleted events are still refused and the per-call cap still applies, so the role widens which
+    /// events may be watched and nothing else. The bypass sits here rather than in
+    /// <c>CallerOrganizations.ResolveAsync</c> on purpose - that answers for every organizer endpoint
+    /// in the system, and widening it there would hand the role every organization's data rather
+    /// than one read-only count.
     /// </remarks>
     private async Task<List<int>> PermittedEventsAsync(int[] eventIds)
     {
@@ -166,6 +177,19 @@ public class StatusHub : Hub
         }
 
         await using var db = await tsContext.CreateDbContextAsync(Context.ConnectionAborted);
+
+        // The hub itself is not [Authorize]d, so this is only true for a connection that presented a
+        // token: StatusApi's JWT handler reads it from the access_token query parameter on this path,
+        // and its Keycloak realm role mapping is the same as event management's.
+        if (Context.User?.IsInRole(Consts.SITE_ADMIN_ROLE) == true)
+        {
+            return await db.Events
+                .AsNoTracking()
+                .Where(e => requested.Contains(e.Id) && !e.IsDeleted)
+                .Select(e => e.Id)
+                .ToListAsync(Context.ConnectionAborted);
+        }
+
         var organizations = await CallerOrganizations.ResolveAsync(db, Context.User, Context.ConnectionAborted);
         if (organizations.Count == 0)
         {

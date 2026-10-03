@@ -127,17 +127,8 @@ public static class LiveViewershipCalculator
         IReadOnlyCollection<EventViewerSession> viewerSessions, DateTime asOfUtc)
     {
         var asOf = UtcTimestamp.Normalize(asOfUtc);
-        var earliest = ViewershipWindow.EarliestPlausibleUtc(eventStartDate);
-        var latest = ViewershipWindow.LatestPlausibleUtc(eventEndDate, asOf);
-
-        // In the order the sessions ran, because the first usable offset wins: the sessions of one
-        // event are at one track, so they either agree or the later ones are corrupt.
-        var trackOffset = TrackTime.ForEvent(racingSessions
-            .OrderBy(s => s.StartTime)
-            .ThenBy(s => s.Id)
-            .Select(s => s.LocalTimeZoneOffset));
-
-        var intervals = ViewerIntervals.Build(viewerSessions, earliest, latest).Intervals;
+        var (intervals, trackOffset, earliest, latest) =
+            PrepareEvent(eventStartDate, eventEndDate, racingSessions, viewerSessions, asOf);
 
         var result = new LiveViewershipDto
         {
@@ -186,18 +177,173 @@ public static class LiveViewershipCalculator
         return result;
     }
 
+    /// <summary>
+    /// The furthest back the site-wide series reaches, however early the earliest event's window
+    /// began.
+    /// </summary>
+    /// <remarks>
+    /// The site operations page is a view of what is running now. An event live for three days would
+    /// otherwise make every poll sweep and send three days of minutes - over four thousand buckets -
+    /// to draw a chart whose useful part is the last few hours.
+    /// </remarks>
+    public static readonly TimeSpan OverallMaxLookback = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// The earliest moment the site-wide series can start as of <paramref name="asOfUtc"/>:
+    /// <see cref="OverallMaxLookback"/> before it, rounded up to a whole minute.
+    /// </summary>
+    /// <remarks>
+    /// A viewer row that ended before this cannot reach any bucket, so the caller can leave such rows
+    /// out of what it reads, and pass only <see cref="OverallEventInput.RowsBeforeFloor"/> in their
+    /// place.
+    /// </remarks>
+    public static DateTime OverallFloor(DateTime asOfUtc) =>
+        TrackTime.CeilingToBucket(UtcTimestamp.Normalize(asOfUtc) - OverallMaxLookback, TimeSpan.Zero, BucketLength);
+
+    /// <summary>
+    /// The span of an event's viewer rows that ended before <see cref="OverallFloor"/> with a positive
+    /// length: the earliest start and the latest end among them.
+    /// </summary>
+    public readonly record struct RowSpan(DateTime MinStartUtc, DateTime MaxEndUtc);
+
+    /// <summary>One event's inputs to <see cref="ComputeOverall"/>: the same rows <see cref="Compute"/> takes.</summary>
+    /// <param name="EventId">The event.</param>
+    /// <param name="EventStartDate">As for <see cref="Compute"/>.</param>
+    /// <param name="EventEndDate">As for <see cref="Compute"/>.</param>
+    /// <param name="RacingSessions">Every racing session of the event.</param>
+    /// <param name="ViewerSessions">
+    /// The event's viewer rows. Rows that ended before <see cref="OverallFloor"/> may be left out, as
+    /// long as <paramref name="RowsBeforeFloor"/> says they were there.
+    /// </param>
+    /// <param name="RowsBeforeFloor">
+    /// The span of the rows left out, or null when there were none. Those rows add nothing to any
+    /// bucket; they only decide whether the event's window began before the floor, which keeps the
+    /// series starting at the floor rather than at the first row that is still in range.
+    /// </param>
+    public sealed record OverallEventInput(int EventId, DateTime EventStartDate, DateTime EventEndDate,
+        IReadOnlyCollection<Session> RacingSessions, IReadOnlyCollection<EventViewerSession> ViewerSessions,
+        RowSpan? RowsBeforeFloor = null);
+
+    /// <summary>
+    /// Concurrent connections summed across several events, as of <paramref name="asOfUtc"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each event's rows become intervals exactly as they do for that event alone - its own plausible
+    /// bounds, its own track offset - and each event's window starts where its own live viewership
+    /// says it does. The series starts at the earliest of those, clamped to
+    /// <see cref="OverallMaxLookback"/> before the as-of time and rounded up to a whole minute so the
+    /// buckets still fall on minute boundaries.
+    /// </para>
+    /// <para>
+    /// Then one sweep over every event's intervals together, to the as-of time. Swept together rather
+    /// than summing each event's series, because maxima do not add: one event peaking at ten past and
+    /// another at twenty past would sum to a number that never happened. Sessions do not enter into
+    /// it, so the time between one event's sessions is covered like any other.
+    /// </para>
+    /// </remarks>
+    public static OverallViewershipDto ComputeOverall(IReadOnlyCollection<OverallEventInput> events, DateTime asOfUtc)
+    {
+        var asOf = UtcTimestamp.Normalize(asOfUtc);
+        var result = new OverallViewershipDto
+        {
+            AsOfUtc = asOf,
+            BucketSeconds = (int)BucketLength.TotalSeconds,
+            WindowStartUtc = asOf,
+            EventIds = [.. events.Select(e => e.EventId).Order()],
+        };
+
+        var floor = OverallFloor(asOf);
+        var allIntervals = new List<ViewerInterval>();
+        DateTime? windowStart = null;
+        foreach (var evt in events)
+        {
+            var (intervals, trackOffset, earliest, latest) =
+                PrepareEvent(evt.EventStartDate, evt.EventEndDate, evt.RacingSessions, evt.ViewerSessions, asOf);
+            var eventStart = WindowStart(intervals, trackOffset ?? TimeSpan.Zero, asOf);
+            // A row left out for ending before the floor, but long enough to survive the plausibility
+            // clamp, would have started the event's window before the floor. Judged from the span of
+            // those rows rather than each one, so it can err only towards starting at the floor, which
+            // costs nothing more than leading empty buckets.
+            if (evt.RowsBeforeFloor is { } before
+                && UtcTimestamp.Normalize(before.MaxEndUtc) > earliest
+                && UtcTimestamp.Normalize(before.MinStartUtc) < latest
+                && earliest < latest
+                && eventStart > floor)
+            {
+                eventStart = floor;
+            }
+            if (windowStart == null || eventStart < windowStart)
+            {
+                windowStart = eventStart;
+            }
+            allIntervals.AddRange(intervals);
+        }
+
+        if (windowStart == null)
+        {
+            return result;
+        }
+
+        var start = windowStart.Value < floor ? floor : windowStart.Value;
+        result.WindowStartUtc = start;
+
+        var buckets = ConcurrencySweep.Run(allIntervals, start, asOf, BucketLength);
+        var peak = ConcurrencySweep.Peak(buckets.Select(b => (b.StartUtc, b.Max)));
+        result.MaxConcurrent = peak.Max;
+        result.PeakUtc = peak.AtUtc;
+        result.Buckets = buckets.ConvertAll(b => new LiveViewershipBucketDto
+        {
+            StartUtc = b.StartUtc,
+            Min = b.Min,
+            Max = b.Max,
+            Avg = Math.Round(b.AverageOverSpan(), 4),
+        });
+        return result;
+    }
+
+    /// <summary>
+    /// One event's rows as intervals, with its track offset and the plausible bounds they were
+    /// clamped to. Shared by <see cref="Compute"/> and <see cref="ComputeOverall"/>, so an event
+    /// contributes the same intervals to the site-wide series as to its own.
+    /// </summary>
+    private static (List<ViewerInterval> Intervals, TimeSpan? TrackOffset, DateTime Earliest, DateTime Latest) PrepareEvent(
+        DateTime eventStartDate, DateTime eventEndDate, IReadOnlyCollection<Session> racingSessions,
+        IReadOnlyCollection<EventViewerSession> viewerSessions, DateTime asOf)
+    {
+        var earliest = ViewershipWindow.EarliestPlausibleUtc(eventStartDate);
+        var latest = ViewershipWindow.LatestPlausibleUtc(eventEndDate, asOf);
+
+        // In the order the sessions ran, because the first usable offset wins: the sessions of one
+        // event are at one track, so they either agree or the later ones are corrupt.
+        var trackOffset = TrackTime.ForEvent(racingSessions
+            .OrderBy(s => s.StartTime)
+            .ThenBy(s => s.Id)
+            .Select(s => s.LocalTimeZoneOffset));
+
+        var intervals = ViewerIntervals.Build(viewerSessions, earliest, latest).Intervals;
+        return (intervals, trackOffset, earliest, latest);
+    }
+
+    /// <summary>
+    /// Where an event's window begins: see <see cref="LiveViewershipEventDto.WindowStartUtc"/>.
+    /// </summary>
+    /// <remarks>
+    /// Nobody has connected when there are no intervals, so there is no first connection for the
+    /// window to start at. An empty window at "now" says so without inventing a start.
+    /// </remarks>
+    private static DateTime WindowStart(List<ViewerInterval> intervals, TimeSpan trackOffset, DateTime asOf) =>
+        intervals.Count == 0 ? asOf : ViewershipWindow.Start(intervals, trackOffset);
+
     /// <summary>The figures for the whole window, gaps between sessions included.</summary>
     private static LiveViewershipEventDto EventFigures(List<ViewerInterval> intervals, TimeSpan trackOffset,
         DateTime asOf, double avgDuringSessions)
     {
+        var windowStart = WindowStart(intervals, trackOffset, asOf);
         if (intervals.Count == 0)
         {
-            // Nobody has connected, so there is no first connection for the window to start at. An
-            // empty window at "now" says so without inventing a start.
-            return new LiveViewershipEventDto { WindowStartUtc = asOf };
+            return new LiveViewershipEventDto { WindowStartUtc = windowStart };
         }
-
-        var windowStart = ViewershipWindow.Start(intervals, trackOffset);
 
         // Swept only as far as the last connection rather than all the way to the as-of time. Every
         // bucket past it is empty, so the total, the peak and the peak's time come out the same - and
