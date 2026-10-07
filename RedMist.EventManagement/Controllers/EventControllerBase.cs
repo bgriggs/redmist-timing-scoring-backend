@@ -359,6 +359,167 @@ public abstract class EventControllerBase : ControllerBase
     }
 
     /// <summary>
+    /// Loads every session recorded against an event, for the organization that owns it.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>The event's sessions, newest first.</returns>
+    /// <response code="200">Returns the event's sessions.</response>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <response code="404">If the event is not found or does not belong to one of the caller's organizations.</response>
+    /// <remarks>
+    /// <para>Not StatusApi's LoadSessions. That one is public, cached for thirty seconds, hides sessions with
+    /// nothing to show and asks for the access code on a private event - all right for somebody following
+    /// along and all wrong for the organizer cleaning up after a weekend, who needs to see what is actually
+    /// stored, straight after deleting some of it.</para>
+    /// <para>Live sessions are included and flagged; which of them to offer for deletion is the caller's call,
+    /// and <see cref="DeleteSession"/> refuses a live one regardless.</para>
+    /// </remarks>
+    [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
+    [ProducesResponseType<List<TimingCommon.Models.Session>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<ActionResult<List<TimingCommon.Models.Session>>> LoadEventSessions(int eventId)
+    {
+        Logger.LogTrace("LoadEventSessions {event}", eventId);
+        using var context = await tsContext.CreateDbContextAsync();
+        var permitted = await CallerOrganizations.ResolveAsync(context, User);
+        if (!await context.Events.AnyAsync(e => e.Id == eventId && permitted.Contains(e.OrganizationId) && !e.IsDeleted))
+            return NotFound("event");
+
+        return await context.Sessions
+            .AsNoTracking()
+            .Where(s => s.EventId == eventId)
+            .OrderByDescending(s => s.StartTime)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Permanently deletes a completed session and the results, laps and flags recorded against it.
+    /// </summary>
+    /// <param name="eventId">The event the session belongs to.</param>
+    /// <param name="sessionId">The session to delete.</param>
+    /// <returns>No content on success.</returns>
+    /// <response code="200">Session deleted.</response>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <response code="404">"event" if the event is not one of the caller's; "session" if the event has no such session.</response>
+    /// <response code="409">"live" if the session is still running; "current" if it is the timing system's
+    /// current session and was active within <see cref="CurrentSessionWindow"/>.</response>
+    /// <remarks>
+    /// <para>A hard delete, unlike <see cref="DeleteEvent"/>: Session is a TimingCommon model with no
+    /// IsDeleted column, and every reader of sessions - the public viewer, results, exports, the post-event
+    /// reports - would need to learn a filter that the session row's absence gives them for free.</para>
+    /// <para>The raw inputs are kept: EventStatusLogs, ExternalMessageLogs and X2 passings are what the
+    /// relay sent, are shared across the event's sessions, and are what a replay would rebuild from.
+    /// Everything derived from them for this one session goes. Laps already moved to the CDN by archiving
+    /// are left there, unreachable once the session row is gone.</para>
+    /// <para>IsLive alone is not enough to say nothing will write to the session again. It clears at the
+    /// checkered flag, but the processor keeps tagging flags with the session until the next one starts,
+    /// cool-down laps and the lap-log stream land after it, and a relay that reconnects resumes the
+    /// session it was on - which re-creates the Session row. So a session is also refused while it is the
+    /// one the timing system is on (the processor's cached current session) and was active recently. The
+    /// cached id lives for seven days and nothing clears it when the relay goes home, so the window is
+    /// what lets a junk session run after the event be cleaned up the same week.</para>
+    /// <para>StatusApi caches an event's session list for up to thirty seconds, so the public viewer can
+    /// still list a deleted session briefly.</para>
+    /// </remarks>
+    [HttpDelete]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public virtual async Task<IActionResult> DeleteSession(int eventId, int sessionId)
+    {
+        Logger.LogTrace("DeleteSession {event} {session}", eventId, sessionId);
+        using var context = await tsContext.CreateDbContextAsync();
+        var permitted = await CallerOrganizations.ResolveAsync(context, User);
+        if (!await context.Events.AnyAsync(e => e.Id == eventId && permitted.Contains(e.OrganizationId) && !e.IsDeleted))
+            return NotFound("event");
+
+        var session = await context.Sessions.AsNoTracking().FirstOrDefaultAsync(s => s.EventId == eventId && s.Id == sessionId);
+        if (session == null)
+            return NotFound("session");
+        if (session.IsLive)
+            return Conflict("live");
+        if (await IsRecentCurrentSessionAsync(session))
+            return Conflict("current");
+
+        // The IsLive check above is advisory; the delete re-checks it atomically, since the relay can
+        // resume the session between the two.
+        if (!await DeleteSessionRowsAsync(context, eventId, sessionId))
+            return Conflict("live");
+        Logger.LogInformation("Deleted session {SessionId} of event {EventId}", sessionId, eventId);
+        return Ok();
+    }
+
+    /// <summary>
+    /// How long after its last activity the timing system's current session stays undeletable.
+    /// </summary>
+    protected static readonly TimeSpan CurrentSessionWindow = TimeSpan.FromHours(12);
+
+    /// <summary>
+    /// Whether the session is the one the event processor would resume, and was active recently enough
+    /// that the relay may still be at the track to resume it.
+    /// </summary>
+    /// <remarks>
+    /// A Redis failure throws rather than answering false: the cost of guessing wrong is a deleted session
+    /// written straight back half-empty, while the cost of refusing is a retry.
+    /// </remarks>
+    private async Task<bool> IsRecentCurrentSessionAsync(TimingCommon.Models.Session session)
+    {
+        var cached = await cacheMux.GetDatabase().StringGetAsync(string.Format(Consts.EVENT_CURRENT_SESSION, session.EventId));
+        if (cached.IsNullOrEmpty || !int.TryParse(cached.ToString(), out var currentId) || currentId != session.Id)
+            return false;
+
+        var lastActivity = session.LastUpdated ?? session.EndTime ?? session.StartTime;
+        return DateTime.UtcNow - lastActivity < CurrentSessionWindow;
+    }
+
+    /// <summary>
+    /// Removes one session and everything derived for it, all or nothing.
+    /// </summary>
+    /// <returns>False, with nothing deleted, when the session went live (or went away) since it was checked.</returns>
+    /// <remarks>
+    /// <para>The Session row goes first, conditioned on it not being live, so a relay resuming the session
+    /// between the caller's check and this delete leaves it untouched rather than deleting a running race
+    /// whose results would then never be saved.</para>
+    /// <para>Set-based deletes against a relational database, so a session's few thousand lap rows are not
+    /// loaded only to be thrown away. The in-memory provider used by the tests can run neither
+    /// ExecuteDelete nor a transaction, so there the same queries are loaded and removed instead -
+    /// the predicates are shared, which keeps the tests honest about what is deleted.</para>
+    /// </remarks>
+    private static async Task<bool> DeleteSessionRowsAsync(TsContext context, int eventId, int sessionId)
+    {
+        var relational = context.Database.IsRelational();
+        await using var transaction = relational ? await context.Database.BeginTransactionAsync() : null;
+
+        var sessions = await DeleteWhereAsync(context, context.Sessions.Where(x => x.EventId == eventId && x.Id == sessionId && !x.IsLive), relational);
+        if (sessions == 0)
+            return false; // Disposing the transaction rolls it back; the in-memory path has saved nothing.
+
+        await DeleteWhereAsync(context, context.CarLapLogs.Where(x => x.EventId == eventId && x.SessionId == sessionId), relational);
+        await DeleteWhereAsync(context, context.CarLastLaps.Where(x => x.EventId == eventId && x.SessionId == sessionId), relational);
+        await DeleteWhereAsync(context, context.FlagLog.Where(x => x.EventId == eventId && x.SessionId == sessionId), relational);
+        await DeleteWhereAsync(context, context.SessionResults.Where(x => x.EventId == eventId && x.SessionId == sessionId), relational);
+
+        if (transaction != null)
+            await transaction.CommitAsync();
+        else
+            await context.SaveChangesAsync();
+        return true;
+    }
+
+    private static async Task<int> DeleteWhereAsync<T>(TsContext context, IQueryable<T> rows, bool relational) where T : class
+    {
+        if (relational)
+            return await rows.ExecuteDeleteAsync();
+
+        var loaded = await rows.ToListAsync();
+        context.RemoveRange(loaded);
+        return loaded.Count;
+    }
+
+    /// <summary>
     /// Publishes an event configuration change notification via Redis pub/sub.
     /// Notifies dependent services (e.g., timing processors) to reload event configuration.
     /// </summary>

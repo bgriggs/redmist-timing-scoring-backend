@@ -726,6 +726,182 @@ public class EventControllerBaseTests
 
     #endregion
 
+    #region Sessions
+
+    /// <summary>
+    /// Event 10 is the caller's, with a completed session 1, a live session 2 and a completed session 3;
+    /// event 11 is the caller's too and also has a session 1; event 12 is another organization's.
+    /// Session 1 of event 10 gets one row in every table DeleteSession clears, plus a status log it keeps.
+    /// </summary>
+    private async Task SeedSessionsAsync()
+    {
+        await SeedOrganizationsAsync();
+        var start = new DateTime(2026, 4, 1, 9, 0, 0);
+        _dbContext.Events.Add(NewEvent(10, OrgId, "Mine", start));
+        _dbContext.Events.Add(NewEvent(11, OrgId, "Mine too", start));
+        _dbContext.Events.Add(NewEvent(12, OtherOrgId, "Theirs", start));
+        _dbContext.Sessions.AddRange(
+            new Session { EventId = 10, Id = 1, Name = "Practice", StartTime = start, EndTime = start.AddHours(1) },
+            new Session { EventId = 10, Id = 2, Name = "Race", StartTime = start.AddHours(3), IsLive = true },
+            new Session { EventId = 10, Id = 3, Name = "Qualifying", StartTime = start.AddHours(2), EndTime = start.AddHours(2.5) },
+            new Session { EventId = 11, Id = 1, Name = "Other event practice", StartTime = start },
+            new Session { EventId = 12, Id = 1, Name = "Their practice", StartTime = start });
+
+        foreach (var (eventId, sessionId) in new[] { (10, 1), (10, 3), (11, 1) })
+        {
+            _dbContext.CarLapLogs.Add(new CarLapLog { EventId = eventId, SessionId = sessionId, CarNumber = "7", Timestamp = start, LapNumber = 1, LapData = "{}" });
+            _dbContext.CarLastLaps.Add(new CarLastLap { EventId = eventId, SessionId = sessionId, CarNumber = "7", LastLapNumber = 1, LastLapTimestamp = start });
+            _dbContext.FlagLog.Add(new FlagLog { EventId = eventId, SessionId = sessionId, Flag = Flags.Green, StartTime = start });
+            _dbContext.SessionResults.Add(new SessionResult { EventId = eventId, SessionId = sessionId, Start = start });
+        }
+        _dbContext.EventStatusLogs.Add(new EventStatusLog { Id = 1, EventId = 10, SessionId = 1, Timestamp = start, Data = "raw" });
+        await _dbContext.SaveChangesAsync();
+    }
+
+    [TestMethod]
+    public async Task LoadEventSessions_OwnEvent_ReturnsItsSessionsNewestFirstIncludingLive()
+    {
+        await SeedSessionsAsync();
+
+        var sessions = (await _controller.LoadEventSessions(10)).Value!;
+
+        CollectionAssert.AreEqual(new[] { 2, 3, 1 }, sessions.Select(s => s.Id).ToArray());
+        Assert.IsTrue(sessions[0].IsLive);
+    }
+
+    [TestMethod]
+    public async Task LoadEventSessions_EventOwnedByAnotherOrganization_ReturnsNotFound()
+    {
+        await SeedSessionsAsync();
+
+        var result = await _controller.LoadEventSessions(12);
+
+        Assert.AreEqual("event", (result.Result as NotFoundObjectResult)?.Value);
+    }
+
+    [TestMethod]
+    public async Task LoadEventSessions_DeletedEvent_ReturnsNotFound()
+    {
+        await SeedSessionsAsync();
+        (await _dbContext.Events.FirstAsync(e => e.Id == 10)).IsDeleted = true;
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _controller.LoadEventSessions(10);
+
+        Assert.AreEqual("event", (result.Result as NotFoundObjectResult)?.Value);
+    }
+
+    [TestMethod]
+    public async Task DeleteSession_CompletedSession_RemovesItAndItsDerivedDataOnly()
+    {
+        await SeedSessionsAsync();
+
+        var result = await _controller.DeleteSession(10, 1);
+
+        Assert.IsInstanceOfType<OkResult>(result);
+        await using var check = _dbContextFactory.CreateDbContext();
+        CollectionAssert.AreEquivalent(new[] { (10, 2), (10, 3), (11, 1), (12, 1) },
+            await check.Sessions.Select(s => ValueTuple.Create(s.EventId, s.Id)).ToArrayAsync());
+        // Session 3 of the same event and session 1 of another event share neither key, so keep everything.
+        foreach (var (eventId, sessionId) in new[] { (10, 3), (11, 1) })
+        {
+            Assert.AreEqual(1, await check.CarLapLogs.CountAsync(x => x.EventId == eventId && x.SessionId == sessionId));
+            Assert.AreEqual(1, await check.CarLastLaps.CountAsync(x => x.EventId == eventId && x.SessionId == sessionId));
+            Assert.AreEqual(1, await check.FlagLog.CountAsync(x => x.EventId == eventId && x.SessionId == sessionId));
+            Assert.AreEqual(1, await check.SessionResults.CountAsync(x => x.EventId == eventId && x.SessionId == sessionId));
+        }
+        Assert.AreEqual(0, await check.CarLapLogs.CountAsync(x => x.EventId == 10 && x.SessionId == 1));
+        Assert.AreEqual(0, await check.CarLastLaps.CountAsync(x => x.EventId == 10 && x.SessionId == 1));
+        Assert.AreEqual(0, await check.FlagLog.CountAsync(x => x.EventId == 10 && x.SessionId == 1));
+        Assert.AreEqual(0, await check.SessionResults.CountAsync(x => x.EventId == 10 && x.SessionId == 1));
+        // The raw relay input is kept.
+        Assert.AreEqual(1, await check.EventStatusLogs.CountAsync(x => x.EventId == 10 && x.SessionId == 1));
+    }
+
+    [TestMethod]
+    public async Task DeleteSession_LiveSession_IsRefusedAndLeavesItAlone()
+    {
+        await SeedSessionsAsync();
+
+        var result = await _controller.DeleteSession(10, 2);
+
+        Assert.AreEqual("live", (result as ConflictObjectResult)?.Value);
+        await using var check = _dbContextFactory.CreateDbContext();
+        Assert.IsTrue(await check.Sessions.AnyAsync(s => s.EventId == 10 && s.Id == 2));
+    }
+
+    private void SetCurrentSession(int eventId, int sessionId)
+        => _mockDatabase.Setup(x => x.StringGetAsync(It.Is<RedisKey>(k => k == string.Format(Consts.EVENT_CURRENT_SESSION, eventId)), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(new RedisValue(sessionId.ToString()));
+
+    [TestMethod]
+    public async Task DeleteSession_TimingSystemsCurrentSessionActiveRecently_IsRefusedAndLeavesItAlone()
+    {
+        await SeedSessionsAsync();
+        var session = await _dbContext.Sessions.FirstAsync(s => s.EventId == 10 && s.Id == 1);
+        session.LastUpdated = DateTime.UtcNow.AddMinutes(-5);
+        await _dbContext.SaveChangesAsync();
+        SetCurrentSession(10, 1);
+
+        var result = await _controller.DeleteSession(10, 1);
+
+        Assert.AreEqual("current", (result as ConflictObjectResult)?.Value);
+        await using var check = _dbContextFactory.CreateDbContext();
+        Assert.IsTrue(await check.Sessions.AnyAsync(s => s.EventId == 10 && s.Id == 1));
+        Assert.AreEqual(1, await check.CarLapLogs.CountAsync(x => x.EventId == 10 && x.SessionId == 1));
+    }
+
+    [TestMethod]
+    public async Task DeleteSession_TimingSystemsCurrentSessionLongIdle_IsDeleted()
+    {
+        // The cached current session outlives the weekend by days. Past the window the relay has gone
+        // home, and a junk session run after the event can be cleaned up.
+        await SeedSessionsAsync();
+        SetCurrentSession(10, 1); // Seeded session 1 ended in April, well outside the window.
+
+        var result = await _controller.DeleteSession(10, 1);
+
+        Assert.IsInstanceOfType<OkResult>(result);
+    }
+
+    [TestMethod]
+    public async Task DeleteSession_AnotherSessionIsCurrent_IsDeleted()
+    {
+        await SeedSessionsAsync();
+        var session = await _dbContext.Sessions.FirstAsync(s => s.EventId == 10 && s.Id == 1);
+        session.LastUpdated = DateTime.UtcNow.AddMinutes(-5);
+        await _dbContext.SaveChangesAsync();
+        SetCurrentSession(10, 3);
+
+        var result = await _controller.DeleteSession(10, 1);
+
+        Assert.IsInstanceOfType<OkResult>(result);
+    }
+
+    [TestMethod]
+    public async Task DeleteSession_EventOwnedByAnotherOrganization_IsRefusedAndLeavesItAlone()
+    {
+        await SeedSessionsAsync();
+
+        var result = await _controller.DeleteSession(12, 1);
+
+        Assert.AreEqual("event", (result as NotFoundObjectResult)?.Value);
+        await using var check = _dbContextFactory.CreateDbContext();
+        Assert.IsTrue(await check.Sessions.AnyAsync(s => s.EventId == 12 && s.Id == 1));
+    }
+
+    [TestMethod]
+    public async Task DeleteSession_UnknownSession_ReturnsNotFoundSession()
+    {
+        await SeedSessionsAsync();
+
+        var result = await _controller.DeleteSession(10, 99);
+
+        Assert.AreEqual("session", (result as NotFoundObjectResult)?.Value);
+    }
+
+    #endregion
+
     /// <summary>
     /// Concrete controller used for testing. Exposes the protected publish helper and can stand in
     /// for <see cref="EventControllerBase.UpdateEventStatusActive"/> so the active-event reassignment
