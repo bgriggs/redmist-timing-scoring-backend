@@ -38,6 +38,24 @@ public class RMonitorDataProcessor
     private DateTimeOffset lastForcedResetTime = DateTimeOffset.MinValue;
     private TimeSpan currentResetBackoff = FirstResetBackoff;
 
+    // Set while processing a message when a car moved to a new number
+    private bool carRenumbered;
+
+    // Set while processing a message that reset the field. The data set that follows a reset is the
+    // timing system's complete current listing, so a transponder appearing twice in it is two cars
+    // sharing one by mistake, not a renumber.
+    private bool resetInMessage;
+
+    // Orbits re-lists every competitor every few seconds without an $I. If two cars that are both still
+    // listed hold one transponder - a rental handed on, or a new entry added instead of the old one
+    // edited - each listing would look like a renumber and flip the car between their numbers. A
+    // transponder that keeps moving in quick succession is taken to be shared instead, and its cars kept
+    // apart until the next reset. One move back is allowed, for a mistyped number being corrected.
+    private const int MaxQuickRenumbers = 2;
+    private static readonly TimeSpan QuickRenumberWindow = TimeSpan.FromSeconds(60);
+    private readonly Dictionary<uint, (int count, DateTimeOffset last)> quickRenumbers = [];
+    private readonly HashSet<uint> sharedTransponders = [];
+
     /// <summary>
     /// Callback to flush pending lap completions before reading lap history during mid-race reset.
     /// This ensures the lap history service has all completed laps before SetLastLapTimeBeforeResetAsync reads it.
@@ -80,6 +98,8 @@ public class RMonitorDataProcessor
             isMidRaceStandaloneReset = IsStandaloneMidRaceReset(message.Data);
 
         bool classChanged = false;
+        carRenumbered = false;
+        resetInMessage = false;
 
         foreach (var command in commands)
         {
@@ -186,6 +206,7 @@ public class RMonitorDataProcessor
 
                     // Init record (reset) - apply immediately
                     ProcessI();
+                    resetInMessage = true;
 
                     // Handle reset immediately as subsequent commands are likely grouped together in one string
                     await resetProcessor.Process();
@@ -228,9 +249,10 @@ public class RMonitorDataProcessor
         if (classChanged)
         {
             // If classes changed, have all cars re-evaluated for class name
-            foreach (var comp in competitors)
+            // Over a copy: a renumber removes the old number's competitor record
+            foreach (var regNum in competitors.Keys.ToList())
             {
-                var p = AddUpdateCompetitor(comp.Key);
+                var p = AddUpdateCompetitor(regNum);
                 if (p != null)
                     carPatches.Add(p);
             }
@@ -266,6 +288,20 @@ public class RMonitorDataProcessor
 
             carPatches.AddRange(await sessionContext.SetLastLapTimeBeforeResetAsync());
             Logger.LogInformation("Completed resetting lap times for mid-race reset");
+        }
+
+        // A patch can add or change a car but not remove one, so clients still holding the car under its
+        // old number are told to reset and re-read the field.
+        if (carRenumbered)
+        {
+            try
+            {
+                await resetProcessor.SendClientResetAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error sending client reset after a car was renumbered");
+            }
         }
 
         return new PatchUpdates([.. sessionPatches], [.. carPatches]);
@@ -321,10 +357,92 @@ public class RMonitorDataProcessor
         }
     }
 
+    /// <summary>
+    /// Detects a car being renumbered and moves its existing entry to the new number. RMonitor has no
+    /// record to retire a competitor, so a timing operator changing 216 to 216x produces only an $A for
+    /// 216x; the transponder, which stays with the car, is what ties the two together.
+    /// </summary>
+    /// <remarks>
+    /// Only a number that is new to the field counts. A transponder arriving on a car that is already
+    /// in the field is a transponder being moved between cars - swapped back after being entered the
+    /// wrong way round, say - and both cars stay. The one exception is an entry that has never been
+    /// timed and has no transponder, which is what a $COMP for the new number leaves behind when it
+    /// arrives ahead of the $A.
+    /// </remarks>
+    /// <returns>true when a car was renumbered</returns>
+    private bool RenumberByTransponder(string regNum, Competitor comp)
+    {
+        var tp = comp.Transponder;
+        if (tp == 0 || sharedTransponders.Contains(tp))
+            return false;
+
+        // Cars are listed by the competitor's number; the RMonitor records are keyed by registration,
+        // which Orbits sets to the number but the protocol allows to differ.
+        var newNumber = comp.Number;
+        var oldNumber = sessionContext.GetCarNumberForTransponder(tp);
+        if (oldNumber == null || oldNumber == newNumber)
+            return false;
+
+        var existing = sessionContext.GetCarByNumber(newNumber);
+        if (existing != null && (existing.TransponderId != 0 || existing.LastLapCompleted != 0 || existing.OverallPosition != 0))
+            return false;
+
+        // The transponder lookup keeps a mapping after the car has moved to another transponder, so
+        // only move a car that still carries this one.
+        var oldCar = sessionContext.GetCarByNumber(oldNumber);
+        if (oldCar == null || oldCar.TransponderId != tp)
+            return false;
+
+        var oldReg = competitors.FirstOrDefault(kv => kv.Key != regNum && kv.Value.Number == oldNumber).Key;
+        if (oldReg != null && competitors[oldReg].Transponder != tp)
+            return false;
+
+        var now = timeProvider.GetUtcNow();
+        var count = quickRenumbers.TryGetValue(tp, out var quick) && now - quick.last <= QuickRenumberWindow ? quick.count : 0;
+        if (count >= MaxQuickRenumbers)
+        {
+            sharedTransponders.Add(tp);
+            quickRenumbers.Remove(tp);
+            Logger.LogWarning("Transponder {tp} is listed on both {old} and {new}; keeping them as separate cars", tp, oldNumber, newNumber);
+            return false;
+        }
+        quickRenumbers[tp] = (count + 1, now);
+
+        sessionContext.RenumberCar(oldNumber, newNumber);
+
+        if (oldReg != null)
+        {
+            comp.InheritAdditionalData(competitors[oldReg]);
+            competitors.Remove(oldReg);
+            MoveRecord(raceInformation, oldReg, regNum, r => r.RegistrationNumber = regNum);
+            MoveRecord(practiceQualifying, oldReg, regNum, r => r.RegistrationNumber = regNum);
+            MoveRecord(passingInformation, oldReg, regNum, r => r.RegistrationNumber = regNum);
+        }
+
+        Logger.LogInformation("Car {old} renumbered to {new} (transponder {tp})", oldNumber, newNumber, comp.Transponder);
+        return true;
+    }
+
+    /// <summary>
+    /// Moves a car's record to its new registration, replacing any the new registration already has:
+    /// the moved car is the one that has been timed, so its record is the one that matches it.
+    /// </summary>
+    private static void MoveRecord<T>(Dictionary<string, T> records, string oldReg, string newReg, Action<T> setReg)
+    {
+        if (records.Remove(oldReg, out var record))
+        {
+            setReg(record);
+            records[newReg] = record;
+        }
+    }
+
     private CarPositionPatch? AddUpdateCompetitor(string regNum)
     {
         if (competitors.TryGetValue(regNum, out var comp))
         {
+            if (!resetInMessage && RenumberByTransponder(regNum, comp))
+                carRenumbered = true;
+
             var patch = new CarPositionPatch();
             classes.TryGetValue(comp.ClassNumber, out var className);
             var car = sessionContext.GetCarByNumber(regNum);
@@ -591,6 +709,8 @@ public class RMonitorDataProcessor
         competitors.Clear();
         raceInformation.Clear();
         practiceQualifying.Clear();
+        quickRenumbers.Clear();
+        sharedTransponders.Clear();
 
         // Allow for reset when the event is initializing. Once it has started,
         // suppress the resets to reduce user confusion

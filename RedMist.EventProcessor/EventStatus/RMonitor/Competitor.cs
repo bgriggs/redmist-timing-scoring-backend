@@ -29,6 +29,10 @@ public partial class Competitor
         Number = parts[2].Replace("\"", "");
         if (uint.TryParse(parts[3], out uint transponder))
             Transponder = transponder;
+        // A blank transponder is cleared, not ignored: the field emptied in the timing system means the
+        // car no longer has one, and keeping the old value would still tie it to that transponder.
+        else if (string.IsNullOrWhiteSpace(parts[3].Replace("\"", "")))
+            Transponder = 0;
         FirstName = parts[4].Replace("\"", "");
         LastName = parts[5].Replace("\"", "");
         Country = parts[6].Replace("\"", "");
@@ -46,6 +50,16 @@ public partial class Competitor
         LastName = parts[5].Replace("\"", "");
         Country = parts[6].Replace("\"", "");
         AdditionalData = parts[7].Replace("\"", "").Trim();
+    }
+
+    /// <summary>
+    /// Carries the team name over from the car's record under its previous number, for a renumber
+    /// where the timing system sent the new number's $A without a $COMP.
+    /// </summary>
+    public void InheritAdditionalData(Competitor previous)
+    {
+        if (string.IsNullOrEmpty(AdditionalData))
+            AdditionalData = previous.AdditionalData;
     }
 
     public EventEntry ToEventEntry()
