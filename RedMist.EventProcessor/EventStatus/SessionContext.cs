@@ -277,6 +277,47 @@ public class SessionContext
     }
 
     /// <summary>
+    /// Moves a car to a new number, keeping its laps, positions and starting position. Timing systems
+    /// renumber a car mid-session (216 to 216x for championship points, or a typo corrected) by sending
+    /// a competitor record under the new number with nothing to retire the old one, so without this the
+    /// car ends up listed twice. The caller must hold the write lock.
+    /// </summary>
+    /// <returns>The car now under the new number, or null when there was no car under the old one.</returns>
+    public virtual CarPosition? RenumberCar(string oldNumber, string newNumber)
+    {
+        if (oldNumber == newNumber || !numberToCarPositionLookup.Remove(oldNumber, out var car))
+            return null;
+
+        // An entry already under the new number - a $COMP can create one ahead of the $A - is replaced:
+        // the car being moved is the one that has been timed.
+        if (numberToCarPositionLookup.TryGetValue(newNumber, out var existing))
+            SessionState.CarPositions.Remove(existing);
+
+        car.Number = newNumber;
+        numberToCarPositionLookup[newNumber] = car;
+
+        if (car.TransponderId != 0)
+            transponderToNumberLookup[car.TransponderId] = newNumber;
+
+        MoveByNumber(startingPositions, oldNumber, newNumber);
+        MoveByNumber(inClassStartingPositions, oldNumber, newNumber);
+        MoveByNumber(flagtronicsPitOwners, oldNumber, newNumber);
+        if (pitOwnershipHoldReleased.Remove(oldNumber))
+            pitOwnershipHoldReleased.Add(newNumber);
+        SessionState.EventEntries.RemoveAll(e => e.Number == oldNumber);
+
+        // Clients are told to reset and re-read, and must not be served the field with the old number.
+        InvalidateSnapshot();
+        return car;
+    }
+
+    private static void MoveByNumber<T>(Dictionary<string, T> byNumber, string oldNumber, string newNumber)
+    {
+        if (byNumber.Remove(oldNumber, out var value))
+            byNumber[newNumber] = value;
+    }
+
+    /// <summary>
     /// Gets all car positions for a given class name.
     /// </summary>
     /// <param name="className"></param>

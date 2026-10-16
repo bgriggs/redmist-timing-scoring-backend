@@ -22,15 +22,23 @@ public class ResetProcessor
     {
         try
         {
-            var eventId = sessionContext.EventId.ToString();
-            var subKey = string.Format(Consts.EVENT_SUB_V2, eventId);
-            Logger.LogInformation("*** Processing RESET for event {EventId} ***", eventId);
+            Logger.LogInformation("*** Processing RESET for event {EventId} ***", sessionContext.EventId);
             sessionContext.ResetCommand();
-            await hubContext.Clients.Group(subKey).SendAsync("ReceiveReset", sessionContext.CancellationToken);
+            await SendClientResetAsync();
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error processing reset");
         }
+    }
+
+    /// <summary>
+    /// Tells connected clients to drop their field and re-read the status, without clearing the session.
+    /// For changes the patch feed cannot express, such as a car leaving the field.
+    /// </summary>
+    public virtual async Task SendClientResetAsync()
+    {
+        var subKey = string.Format(Consts.EVENT_SUB_V2, sessionContext.EventId.ToString());
+        await hubContext.Clients.Group(subKey).SendAsync("ReceiveReset", sessionContext.CancellationToken);
     }
 }
