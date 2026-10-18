@@ -254,4 +254,112 @@ public class FlagtronicsPitContradictionTests
 
         Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("77"), "full bars must not hand the car back");
     }
+
+    private async Task DemoteFrozenCar()
+    {
+        Advance(TimeSpan.FromSeconds(30));
+        await Pass(loopId: 1, inPit: true);
+        Advance(SessionContext.PitContradictionGrace + TimeSpan.FromSeconds(5));
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("77"), "precondition: car handed to X2");
+        _pitProcessor.ProcessCar("77");
+        _car.IsInPit = false;
+    }
+
+    [TestMethod]
+    public async Task DemotedCar_ReturnsToFlagtronics_AfterHealthyRecoveryWindow()
+    {
+        await DemoteFrozenCar();
+
+        Advance(SessionContext.FlagtronicsRecoveryWindow - TimeSpan.FromMinutes(1), moveGps: true);
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("77"), "not before the window has run");
+
+        Advance(TimeSpan.FromMinutes(2), moveGps: true);
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("77"), "a recovered device takes the car back");
+    }
+
+    [TestMethod]
+    public async Task DemotedCar_FreezeDuringWindow_RestartsIt()
+    {
+        await DemoteFrozenCar();
+
+        Advance(TimeSpan.FromMinutes(20), moveGps: true);
+        Advance(SessionContext.GpsFrozenAfter + TimeSpan.FromSeconds(10));
+        Advance(TimeSpan.FromMinutes(20), moveGps: true);
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("77"), "the stall restarted the window");
+
+        Advance(TimeSpan.FromMinutes(11), moveGps: true);
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("77"));
+    }
+
+    [TestMethod]
+    public async Task DemotedCar_LowBarsAtWindowEnd_WaitsForBars()
+    {
+        await DemoteFrozenCar();
+
+        // A brief dip mid-window does not restart it; bars only gate the handover itself.
+        Advance(TimeSpan.FromMinutes(10), moveGps: true);
+        _car.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS - 1;
+        Advance(TimeSpan.FromSeconds(10), moveGps: true);
+        _car.SignalBars = CarPosition.MaxSignalBars;
+        Advance(TimeSpan.FromMinutes(10), moveGps: true);
+
+        _car.SignalBars = SessionContext.MIN_TRUSTED_PIT_SIGNAL_BARS - 1;
+        Advance(TimeSpan.FromMinutes(15), moveGps: true);
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("77"), "bars too low to hand back");
+
+        _car.SignalBars = CarPosition.MaxSignalBars;
+        Advance(TimeSpan.FromSeconds(5), moveGps: true);
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("77"));
+    }
+
+    [TestMethod]
+    public async Task DemotedCar_FreezesWhileHandoverWaitsForPitExit_StaysOnX2()
+    {
+        await DemoteFrozenCar();
+        _car.IsInPit = true;
+        Advance(SessionContext.FlagtronicsRecoveryWindow + TimeSpan.FromMinutes(1), moveGps: true);
+
+        // The window has run, but the car is in the pit, and its GPS freezes during the stop.
+        Advance(TimeSpan.FromMinutes(2));
+        _car.IsInPit = false;
+        Advance(TimeSpan.FromSeconds(5));
+
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("77"), "a device that froze again is not given back");
+    }
+
+    [TestMethod]
+    public async Task RedemotedCar_WaitsTwiceAsLong_AndIsCaughtAgain()
+    {
+        await DemoteFrozenCar();
+        Advance(SessionContext.FlagtronicsRecoveryWindow + TimeSpan.FromMinutes(1), moveGps: true);
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("77"), "precondition: handed back");
+
+        // Freezes again on track, and a pit loop catches it out a second time.
+        Advance(TimeSpan.FromMinutes(2));
+        await Pass(loopId: 1, inPit: true);
+        Advance(SessionContext.PitContradictionGrace + TimeSpan.FromSeconds(5));
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("77"), "loop evidence is accepted again");
+        _pitProcessor.ProcessCar("77");
+        _car.IsInPit = false;
+
+        Advance(SessionContext.FlagtronicsRecoveryWindow + TimeSpan.FromMinutes(1), moveGps: true);
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("77"), "the second window is longer");
+
+        Advance(SessionContext.FlagtronicsRecoveryWindow, moveGps: true);
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("77"));
+    }
+
+    [TestMethod]
+    public async Task DemotedCar_InPitOnX2_WaitsForPitExitBeforeReturning()
+    {
+        await DemoteFrozenCar();
+        _car.IsInPit = true;
+
+        Advance(SessionContext.FlagtronicsRecoveryWindow + TimeSpan.FromMinutes(1), moveGps: true);
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("77"), "no handover mid-stop");
+
+        _car.IsInPit = false;
+        Advance(TimeSpan.FromSeconds(5), moveGps: true);
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("77"));
+    }
 }

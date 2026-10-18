@@ -118,7 +118,8 @@ public class SessionContext
             {
                 // The hold on changing owner mid-stop protects a car whose state is right. This
                 // one's is provably wrong, and leaving it with Flagtronics is the failure itself.
-                flagtronicsPitDemoted.Add(car.Number);
+                flagtronicsPitDemoted[car.Number] = now;
+                flagtronicsPitDemotionCount[car.Number] = flagtronicsPitDemotionCount.GetValueOrDefault(car.Number) + 1;
                 flagtronicsPitOwners[car.Number] = false;
                 pitOwnershipHoldReleased.Remove(car.Number);
                 (demotedNow ??= []).Add(car.Number);
@@ -126,7 +127,10 @@ public class SessionContext
             }
 
             // Null bars mean no in-car device, and null >= n is false, which is the wanted answer.
-            bool eligible = car.SignalBars >= MIN_TRUSTED_PIT_SIGNAL_BARS && !flagtronicsPitDemoted.Contains(car.Number);
+            // A demoted car's recovery is re-tested on every pass rather than settled once, so a
+            // device that freezes again while the handover waits out a pit stop is not given back.
+            bool eligible = car.SignalBars >= MIN_TRUSTED_PIT_SIGNAL_BARS
+                && (!flagtronicsPitDemoted.ContainsKey(car.Number) || HasRecoveredFromDemotion(car.Number, now));
             if (!flagtronicsPitOwners.TryGetValue(car.Number, out var owned))
             {
                 // First sight of the car establishes ownership outright; any release recorded
@@ -146,6 +150,8 @@ public class SessionContext
             {
                 flagtronicsPitOwners[car.Number] = eligible;
                 pitOwnershipHoldReleased.Remove(car.Number);
+                if (eligible && flagtronicsPitDemoted.Remove(car.Number))
+                    Logger.LogInformation("Car {Car} Flagtronics GPS has recovered; returning its pit state to Flagtronics", car.Number);
             }
         }
 
@@ -167,11 +173,33 @@ public class SessionContext
     public static readonly TimeSpan PitAgreementLookback = TimeSpan.FromSeconds(60);
 
     /// <summary>
-    /// Cars whose Flagtronics pit data was shown wrong by X2 loop passings. They stay on X2 for
-    /// the rest of the session: the fault behind this is a device whose GPS has frozen while it
-    /// keeps transmitting, which leaves signal bars full and so is never caught by them.
+    /// How long a car's GPS has to keep moving before a car taken off Flagtronics is given back
+    /// to it. Long, because handing a car back to a device that is still faulty costs another stop
+    /// or lap shown wrong before it is caught again, while staying on X2 a little longer costs
+    /// nothing - X2 is right, only coarser. Doubles with each further demotion in the session, up
+    /// to <see cref="MaxFlagtronicsRecoveryWindow"/>, so an intermittent device is not handed back
+    /// every half hour of a 24 hour race.
     /// </summary>
-    private readonly HashSet<string> flagtronicsPitDemoted = [];
+    public static readonly TimeSpan FlagtronicsRecoveryWindow = TimeSpan.FromMinutes(30);
+    public static readonly TimeSpan MaxFlagtronicsRecoveryWindow = TimeSpan.FromHours(4);
+
+    /// <summary>How many times each car has been taken off Flagtronics this session.</summary>
+    private readonly Dictionary<string, int> flagtronicsPitDemotionCount = [];
+
+    /// <summary>
+    /// How long a position can stay identical before the device counts as frozen rather than
+    /// between updates. Above the gap between records of even a slow device, and far below the
+    /// recovery window, so one stall anywhere in that window resets it.
+    /// </summary>
+    public static readonly TimeSpan GpsFrozenAfter = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Cars whose Flagtronics pit data was shown wrong by X2 loop passings, and when. The fault
+    /// behind this is a device whose GPS has frozen while it keeps transmitting, which leaves
+    /// signal bars full and so is never caught by them. A car stays on X2 until its device has
+    /// been healthy for <see cref="FlagtronicsRecoveryWindow"/>; see <see cref="HasRecoveredFromDemotion"/>.
+    /// </summary>
+    private readonly Dictionary<string, DateTimeOffset> flagtronicsPitDemoted = [];
 
     private readonly Dictionary<string, PitObservation> pitObservations = [];
     private readonly Dictionary<string, PitContradiction> pitContradictions = [];
@@ -183,6 +211,13 @@ public class SessionContext
         public double? Latitude;
         public double? Longitude;
         public DateTimeOffset? LastMoved;
+
+        /// <summary>
+        /// Last time the position had been identical for longer than <see cref="GpsFrozenAfter"/>.
+        /// A device that stops sending altogether also lands here, since its position then stops
+        /// changing too.
+        /// </summary>
+        public DateTimeOffset? LastFrozen;
     }
 
     private sealed record PitContradiction(bool LoopSaysInPit, uint LoopId, DateTimeOffset Since, int Count);
@@ -259,6 +294,36 @@ public class SessionContext
             obs.Longitude = car.Longitude;
             obs.LastMoved = now;
         }
+
+        // Bars are deliberately not folded in: they gate ownership on their own at the moment of
+        // handover, and a brief dip at some GPS-shadowed spot each lap would otherwise keep
+        // restarting the window and never let a working device back.
+        if (now - obs.LastMoved > GpsFrozenAfter)
+            obs.LastFrozen = now;
+    }
+
+    /// <summary>
+    /// Whether a car taken off Flagtronics has had its position changing for the whole recovery
+    /// window. The window starts no earlier than the demotion, so a device that was fine right up
+    /// to the moment it was caught out does not walk straight back in.
+    /// </summary>
+    private bool HasRecoveredFromDemotion(string carNumber, DateTimeOffset now)
+    {
+        if (!flagtronicsPitDemoted.TryGetValue(carNumber, out var demotedAt))
+            return false;
+
+        var healthySince = demotedAt;
+        if (pitObservations.TryGetValue(carNumber, out var obs) && obs.LastFrozen is DateTimeOffset frozen && frozen > healthySince)
+            healthySince = frozen;
+
+        return now - healthySince >= GetRecoveryWindow(carNumber);
+    }
+
+    private TimeSpan GetRecoveryWindow(string carNumber)
+    {
+        int priorDemotions = Math.Max(0, flagtronicsPitDemotionCount.GetValueOrDefault(carNumber) - 1);
+        var window = FlagtronicsRecoveryWindow * Math.Pow(2, Math.Min(priorDemotions, 8));
+        return window < MaxFlagtronicsRecoveryWindow ? window : MaxFlagtronicsRecoveryWindow;
     }
 
     /// <summary>
@@ -489,8 +554,8 @@ public class SessionContext
         MoveByNumber(flagtronicsPitOwners, oldNumber, newNumber);
         if (pitOwnershipHoldReleased.Remove(oldNumber))
             pitOwnershipHoldReleased.Add(newNumber);
-        if (flagtronicsPitDemoted.Remove(oldNumber))
-            flagtronicsPitDemoted.Add(newNumber);
+        MoveByNumber(flagtronicsPitDemoted, oldNumber, newNumber);
+        MoveByNumber(flagtronicsPitDemotionCount, oldNumber, newNumber);
         MoveByNumber(pitObservations, oldNumber, newNumber);
         MoveByNumber(pitContradictions, oldNumber, newNumber);
         SessionState.EventEntries.RemoveAll(e => e.Number == oldNumber);
@@ -583,6 +648,7 @@ public class SessionContext
         flagtronicsPitOwners.Clear();
         pitOwnershipHoldReleased.Clear();
         flagtronicsPitDemoted.Clear();
+        flagtronicsPitDemotionCount.Clear();
         pitObservations.Clear();
         pitContradictions.Clear();
 
