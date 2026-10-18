@@ -333,7 +333,10 @@ public class SessionStateProcessingPipeline
                                 allAppliedChanges.Add(signalChanges);
                             // Which source owns each car's pit state follows from the bars just
                             // recomputed above.
-                            sessionContext.UpdatePitOwnership();
+                            var demotedPitCars = sessionContext.UpdatePitOwnership();
+                            var demotedPitPatches = RepublishX2PitState(demotedPitCars);
+                            if (demotedPitPatches.Count > 0)
+                                allAppliedChanges.Add(new PatchUpdates([], [.. demotedPitPatches]));
 
                             // Retire GPS-derived track positions here as well as on GPS arrival: when
                             // the GPS source goes down entirely there are no positions left to carry
@@ -556,7 +559,7 @@ public class SessionStateProcessingPipeline
             // own patches as it computes them, so dropping the result would commit the change
             // server-side and never send it: the next sweep sees no delta and clients stay stale.
             var signalChanges = telemetrySignalTracker.Process();
-            sessionContext.UpdatePitOwnership();
+            var demotedPitCars = sessionContext.UpdatePitOwnership();
 
             // GPS positions feed the track-map learner and each car's position around the lap,
             // the same enrichment the external patch lane receives. A car reporting an unchanged
@@ -566,6 +569,7 @@ public class SessionStateProcessingPipeline
             // any early return: a message that changed nothing is exactly what a device with dead
             // GPS produces, and that is when a stale position most needs retiring.
             var carPatches = updates?.CarPatches.ToList() ?? [];
+            carPatches.AddRange(RepublishX2PitState(demotedPitCars));
             gpsLapPositionEnricher.MarkSeen(flagtronicsProcessor.CarsWithUsableFix, confirmed: true);
             await ApplyGpsEnrichmentAsync(carPatches, fromInCarTelemetry: true);
 
@@ -617,6 +621,23 @@ public class SessionStateProcessingPipeline
             _pipelineErrors.WithLabels("flagtronics", ex.GetType().Name).Inc();
             return null;
         }
+    }
+
+    /// <summary>
+    /// Publishes X2's pit state for cars just taken off Flagtronics. X2 otherwise only speaks for
+    /// a car on its next passing or lap, which for a car frozen in the pit is a lap of being
+    /// shown wrong after the fault was already proven.
+    /// </summary>
+    private List<CarPositionPatch> RepublishX2PitState(List<string>? cars)
+    {
+        var patches = new List<CarPositionPatch>();
+        foreach (var cn in cars ?? [])
+        {
+            var patch = pitProcessor.ProcessCar(cn, includeUntypedPassings: true);
+            if (patch != null)
+                patches.Add(patch);
+        }
+        return patches;
     }
 
     /// <summary>

@@ -98,15 +98,35 @@ public class SessionContext
     /// enter/exit flapping this split exists to remove. It matters because a long stop is a
     /// common cause of losing a GPS fix, which is what drives the bars down in the first place.
     /// </summary>
-    public virtual void UpdatePitOwnership()
+    /// <returns>
+    /// Cars just taken off Flagtronics because loop evidence showed their in-car pit data to be
+    /// wrong. X2 has to republish these straight away: nothing else will prompt it to until the
+    /// car's next passing or lap.
+    /// </returns>
+    public virtual List<string> UpdatePitOwnership()
     {
+        var now = _timeProvider.GetUtcNow();
+        List<string>? demotedNow = null;
+
         foreach (var car in SessionState.CarPositions)
         {
             if (string.IsNullOrEmpty(car.Number))
                 continue;
 
+            ObservePitAndPosition(car, now);
+            if (EvaluatePitContradiction(car, now))
+            {
+                // The hold on changing owner mid-stop protects a car whose state is right. This
+                // one's is provably wrong, and leaving it with Flagtronics is the failure itself.
+                flagtronicsPitDemoted.Add(car.Number);
+                flagtronicsPitOwners[car.Number] = false;
+                pitOwnershipHoldReleased.Remove(car.Number);
+                (demotedNow ??= []).Add(car.Number);
+                continue;
+            }
+
             // Null bars mean no in-car device, and null >= n is false, which is the wanted answer.
-            bool eligible = car.SignalBars >= MIN_TRUSTED_PIT_SIGNAL_BARS;
+            bool eligible = car.SignalBars >= MIN_TRUSTED_PIT_SIGNAL_BARS && !flagtronicsPitDemoted.Contains(car.Number);
             if (!flagtronicsPitOwners.TryGetValue(car.Number, out var owned))
             {
                 // First sight of the car establishes ownership outright; any release recorded
@@ -128,6 +148,171 @@ public class SessionContext
                 pitOwnershipHoldReleased.Remove(car.Number);
             }
         }
+
+        return demotedNow ?? [];
+    }
+
+    /// <summary>
+    /// How long Flagtronics gets to agree with an X2 loop passing before the disagreement counts.
+    /// Comfortably longer than its own pit confirm window, so a car crossing a pit loop a few
+    /// seconds before its device commits the stop is not mistaken for a broken device.
+    /// </summary>
+    public static readonly TimeSpan PitContradictionGrace = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How far before a pit loop passing an in-pit reading from Flagtronics still counts as
+    /// agreeing with it. Covers a pit exit loop, which the car crosses just after its device
+    /// has already moved it back on track.
+    /// </summary>
+    public static readonly TimeSpan PitAgreementLookback = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Cars whose Flagtronics pit data was shown wrong by X2 loop passings. They stay on X2 for
+    /// the rest of the session: the fault behind this is a device whose GPS has frozen while it
+    /// keeps transmitting, which leaves signal bars full and so is never caught by them.
+    /// </summary>
+    private readonly HashSet<string> flagtronicsPitDemoted = [];
+
+    private readonly Dictionary<string, PitObservation> pitObservations = [];
+    private readonly Dictionary<string, PitContradiction> pitContradictions = [];
+
+    private sealed class PitObservation
+    {
+        public DateTimeOffset? LastInPit;
+        public DateTimeOffset? LastOutOfPit;
+        public double? Latitude;
+        public double? Longitude;
+        public DateTimeOffset? LastMoved;
+    }
+
+    private sealed record PitContradiction(bool LoopSaysInPit, uint LoopId, DateTimeOffset Since, int Count);
+
+    /// <summary>
+    /// Records an X2 loop passing as evidence about a Flagtronics-owned car's pit state. Loop
+    /// passings are physical: a car cannot cross a pit loop without being in the pit lane, nor a
+    /// track loop while sitting in its box. When the in-car data disagrees and keeps disagreeing
+    /// (see <see cref="EvaluatePitContradiction"/>), the car is handed to X2 on the next
+    /// <see cref="UpdatePitOwnership"/>.
+    /// </summary>
+    /// <param name="loopId">The loop crossed, so a repeat can be told from one transit over two loops.</param>
+    /// <param name="loopSaysInPit">True for a pit-lane loop, false for a loop on the racing surface.</param>
+    public virtual void RecordLoopPitEvidence(string? carNumber, uint loopId, bool loopSaysInPit)
+    {
+        if (string.IsNullOrEmpty(carNumber) || !IsFlagtronicsPitTrusted(carNumber))
+            return;
+
+        var car = GetCarByNumber(carNumber);
+        if (car == null)
+            return;
+
+        var now = _timeProvider.GetUtcNow();
+        ObservePitAndPosition(car, now);
+
+        if (pitContradictions.TryGetValue(carNumber, out var existing))
+        {
+            if (existing.LoopSaysInPit == car.IsInPit)
+            {
+                // The device has come round to what the loops said, so it was only slow.
+                pitContradictions.Remove(carNumber);
+            }
+            else if (existing.LoopSaysInPit == loopSaysInPit)
+            {
+                // Only the same loop again, after the grace, counts as a repeat: one transit of the
+                // pit lane can cross-read two different loops, but only a car out lapping can cross
+                // the same one twice.
+                if (existing.LoopId == loopId && now - existing.Since >= PitContradictionGrace)
+                    pitContradictions[carNumber] = existing with { Count = existing.Count + 1 };
+                return;
+            }
+            else
+            {
+                // The device matches this loop only because its state has not moved since the
+                // earlier one; keep the evidence rather than let a stuck state clear it.
+                return;
+            }
+        }
+
+        if (car.IsInPit == loopSaysInPit)
+            return;
+
+        pitContradictions[carNumber] = new PitContradiction(loopSaysInPit, loopId, now, 1);
+    }
+
+    private void ObservePitAndPosition(CarPosition car, DateTimeOffset now)
+    {
+        if (!pitObservations.TryGetValue(car.Number!, out var obs))
+        {
+            obs = new PitObservation();
+            pitObservations[car.Number!] = obs;
+        }
+
+        if (car.IsInPit)
+            obs.LastInPit = now;
+        else
+            obs.LastOutOfPit = now;
+
+        // Exact comparison on purpose: a live receiver jitters in the last digits even standing
+        // still, whereas a frozen one repeats the identical value.
+        if (obs.LastMoved == null || obs.Latitude != car.Latitude || obs.Longitude != car.Longitude)
+        {
+            obs.Latitude = car.Latitude;
+            obs.Longitude = car.Longitude;
+            obs.LastMoved = now;
+        }
+    }
+
+    /// <summary>
+    /// Whether a recorded loop contradiction has held long enough to prove the car's in-car pit
+    /// data wrong. The two directions need different proof, because each has an innocent
+    /// look-alike:
+    ///   - Pit loop, device says on track: a strong transponder on the racing surface can be read
+    ///     by a pit loop laid alongside it. So it only counts when the device's position has not
+    ///     moved either - a frozen GPS - and it never showed the car in the pit around the time.
+    ///   - Track loop, device says in pit: the same cross-read from the pit lane, once. So it
+    ///     takes a second track passing at least a grace period later with the car shown in the
+    ///     pit throughout, which only a car out lapping can produce.
+    /// </summary>
+    private bool EvaluatePitContradiction(CarPosition car, DateTimeOffset now)
+    {
+        var number = car.Number!;
+        if (!pitContradictions.TryGetValue(number, out var c))
+            return false;
+
+        if (!IsFlagtronicsPitTrusted(number))
+        {
+            pitContradictions.Remove(number);
+            return false;
+        }
+
+        if (now - c.Since < PitContradictionGrace)
+            return false;
+
+        pitObservations.TryGetValue(number, out var obs);
+        if (c.LoopSaysInPit)
+        {
+            pitContradictions.Remove(number);
+            bool shownInPit = obs?.LastInPit is DateTimeOffset inPit && inPit >= c.Since - PitAgreementLookback;
+            bool frozen = obs?.LastMoved is DateTimeOffset moved && moved < c.Since;
+            if (shownInPit || !frozen)
+                return false;
+
+            Logger.LogWarning("Car {Car} crossed a pit loop but its Flagtronics data never showed it in the pit and its GPS position is frozen; using X2 for its pit state", number);
+            return true;
+        }
+
+        if (obs?.LastOutOfPit is DateTimeOffset outOfPit && outOfPit > c.Since)
+        {
+            // The device did take the car out of the pit, so it was only slow.
+            pitContradictions.Remove(number);
+            return false;
+        }
+
+        if (c.Count < 2)
+            return false;
+
+        pitContradictions.Remove(number);
+        Logger.LogWarning("Car {Car} kept crossing track loops while its Flagtronics data held it in the pit; using X2 for its pit state", number);
+        return true;
     }
 
     /// <summary>
@@ -304,6 +489,10 @@ public class SessionContext
         MoveByNumber(flagtronicsPitOwners, oldNumber, newNumber);
         if (pitOwnershipHoldReleased.Remove(oldNumber))
             pitOwnershipHoldReleased.Add(newNumber);
+        if (flagtronicsPitDemoted.Remove(oldNumber))
+            flagtronicsPitDemoted.Add(newNumber);
+        MoveByNumber(pitObservations, oldNumber, newNumber);
+        MoveByNumber(pitContradictions, oldNumber, newNumber);
         SessionState.EventEntries.RemoveAll(e => e.Number == oldNumber);
 
         // Clients are told to reset and re-read, and must not be served the field with the old number.
@@ -393,6 +582,9 @@ public class SessionContext
         FlagtronicsFullCourseFlag = Flags.Unknown;
         flagtronicsPitOwners.Clear();
         pitOwnershipHoldReleased.Clear();
+        flagtronicsPitDemoted.Clear();
+        pitObservations.Clear();
+        pitContradictions.Clear();
 
         // Again after the state object itself has been replaced: the reset above invalidated the
         // snapshot as it stood before any of this.

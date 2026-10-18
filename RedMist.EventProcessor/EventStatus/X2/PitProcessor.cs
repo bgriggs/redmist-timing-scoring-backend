@@ -35,6 +35,13 @@ public class PitProcessor
     private readonly Dictionary<uint, Passing> pitSf = [];
     private readonly Dictionary<uint, Passing> pitOther = [];
     private readonly Dictionary<uint, Passing> other = [];
+
+    /// <summary>
+    /// Every transponder with a passing this session. The loop collections alone miss a car whose
+    /// latest passing was on a loop with no metadata and no in-pit flag - a plain track crossing
+    /// at an event whose loops were never typed - which is still something real to say.
+    /// </summary>
+    private readonly HashSet<uint> seenTransponders = [];
     private int lastSessionId = -1;
 
     /// <summary>
@@ -137,6 +144,7 @@ public class PitProcessor
             pitSf.Clear();
             pitOther.Clear();
             other.Clear();
+            seenTransponders.Clear();
             lastSessionId = sessionContext.SessionState.SessionId;
         }
 
@@ -161,6 +169,7 @@ public class PitProcessor
         foreach (var pass in passings)
         {
             RemoveTransponderFromAllPassings(pass.TransponderId);
+            seenTransponders.Add(pass.TransponderId);
 
             if (pass.IsInPit)
             {
@@ -198,7 +207,21 @@ public class PitProcessor
             // A car whose in-car pit data is trusted is owned by Flagtronics; publishing loop
             // state for it as well would have the two sources fight over IsInPit.
             if (sessionContext.IsFlagtronicsPitTrusted(carNumber))
+            {
+                // The passing is still evidence of where the car physically is, which is how a
+                // device stuck reporting the wrong place is caught - its bars stay full while its
+                // GPS is frozen. A loop typed pit exit or pit other without X2's in-pit flag is
+                // left out: it is in the pit lane, yet X2 itself does not treat it as in pit, so
+                // it says nothing either way.
+                if (!pass.IsResend)
+                {
+                    var type = loopMetadata.TryGetValue(pass.LoopId, out var plm) ? plm.Type : (LoopType?)null;
+                    bool loopSaysInPit = pass.IsInPit || type == LoopType.PitIn || type == LoopType.PitStartFinish;
+                    if (loopSaysInPit || (type != LoopType.PitExit && type != LoopType.PitOther))
+                        sessionContext.RecordLoopPitEvidence(carNumber, pass.LoopId, loopSaysInPit);
+                }
                 continue;
+            }
 
             var change = new PitStateUpdate(
                 carNumber,
@@ -243,7 +266,13 @@ public class PitProcessor
         return new PatchUpdates([], [.. patches]);
     }
 
-    public CarPositionPatch? ProcessCar(string number)
+    /// <param name="includeUntypedPassings">
+    /// Also publish for a car whose only passings were on untyped loops with no in-pit flag. Used
+    /// when a car has just been taken off Flagtronics, where such a passing - a plain track
+    /// crossing - is exactly what proves it out of the pit. Off by default so the routine
+    /// re-application keeps its long-standing behavior.
+    /// </param>
+    public CarPositionPatch? ProcessCar(string number, bool includeUntypedPassings = false)
     {
         if (sessionContext.IsFlagtronicsPitTrusted(number))
         {
@@ -255,7 +284,8 @@ public class PitProcessor
         // about its pit state. Publishing anyway would drive every field false and clear the pit
         // badge of a car handed over in an event with no X2 coverage.
         var carPosition = sessionContext.GetCarByNumber(number);
-        if (carPosition != null && !HasAnyPassing(carPosition.TransponderId))
+        if (carPosition != null && !HasAnyPassing(carPosition.TransponderId)
+            && !(includeUntypedPassings && seenTransponders.Contains(carPosition.TransponderId)))
             return null;
 
         var loopMetadata = GetLoopMetadata();
