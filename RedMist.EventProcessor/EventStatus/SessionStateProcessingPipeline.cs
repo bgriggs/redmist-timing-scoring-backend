@@ -249,10 +249,16 @@ public class SessionStateProcessingPipeline
 
                                 // Fallback: a completed lap means the car crossed the main S/F line
                                 // on track. If Flagtronics reports it stuck in the pit with no GPS to
-                                // self-correct, clear the frozen pit state.
+                                // self-correct, clear the frozen pit state. Only a new lap counts: a
+                                // mid-race reset re-sends every car's lap count, and that is no
+                                // evidence a car parked in the pit has left it.
                                 var ftLapPatches = new List<CarPositionPatch>();
                                 foreach (var cn in carNumbers)
                                 {
+                                    var lapCar = cars.FirstOrDefault(c => c.Number == cn);
+                                    if (lapCar == null || !sessionContext.RecordCompletedLap(cn, lapCar.LastLapCompleted))
+                                        continue;
+
                                     var ftLapPatch = flagtronicsProcessor.NotifyLapCompleted(cn ?? string.Empty);
                                     if (ftLapPatch != null)
                                         ftLapPatches.Add(ftLapPatch);

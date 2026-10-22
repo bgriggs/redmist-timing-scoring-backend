@@ -717,6 +717,58 @@ public class FlagtronicsProcessorTests
         Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"), "a completed lap lifts the hold");
     }
 
+    /// <summary>What the pipeline does with a changed lap count: only a new lap lifts the hold.</summary>
+    private void LapCountChanged(string number, int lapCompleted)
+    {
+        if (_sessionContext.RecordCompletedLap(number, lapCompleted))
+            _sessionContext.ReleasePitOwnershipHold(number);
+    }
+
+    [TestMethod]
+    public void PitOwnershipHold_IsNotLiftedByAResetResendingTheLapCount()
+    {
+        // The car's lap 10 was scored on track before it pitted.
+        LapCountChanged("42", 10);
+        _sessionContext.UpdatePitOwnership();
+
+        ProcessSettled("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 0 }]""");
+        Assert.IsTrue(_sessionContext.GetCarByNumber("42")!.IsInPit);
+
+        // A mid-race reset rebuilds the field. The rebuilt car comes back with the lap count it
+        // already had and, for a moment, the low bars of a parked device; Flagtronics then
+        // restores its in-pit state.
+        _sessionContext.ResetCommand();
+        _sessionContext.UpdateCars(
+            [new CarPosition { Number = "42", TransponderId = 42, LastLapCompleted = 10, SignalBars = CarPosition.MinSignalBars }]);
+        _processor.ProcessCar("42");
+        Assert.IsTrue(_sessionContext.GetCarByNumber("42")!.IsInPit, "in-pit state restored after the reset");
+
+        // The pipeline sees the re-sent lap count as a lap change. It is not a lap, so the car
+        // must stay with Flagtronics for the rest of its stop.
+        LapCountChanged("42", 10);
+        _sessionContext.UpdatePitOwnership();
+        Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("42"), "a reset is not a completed lap");
+
+        // A real lap still lifts the hold.
+        LapCountChanged("42", 11);
+        _sessionContext.UpdatePitOwnership();
+        Assert.IsFalse(_sessionContext.IsFlagtronicsPitTrusted("42"), "the next lap lifts the hold");
+    }
+
+    [TestMethod]
+    public void RecordCompletedLap_CountsOnlyLapsAboveTheHighestSeen()
+    {
+        Assert.IsTrue(_sessionContext.RecordCompletedLap("42", 10), "first lap seen");
+        Assert.IsFalse(_sessionContext.RecordCompletedLap("42", 10), "the same count re-sent");
+        Assert.IsFalse(_sessionContext.RecordCompletedLap("42", 9), "a lap taken back");
+        Assert.IsTrue(_sessionContext.RecordCompletedLap("42", 11), "the next lap");
+        Assert.IsFalse(_sessionContext.RecordCompletedLap(null, 12), "no car");
+
+        // A reset keeps what has been seen.
+        _sessionContext.ResetCommand();
+        Assert.IsFalse(_sessionContext.RecordCompletedLap("42", 11), "re-sent after a reset");
+    }
+
     [TestMethod]
     public void PitTrustBoundary_IsInclusiveOfTheFloor()
     {
