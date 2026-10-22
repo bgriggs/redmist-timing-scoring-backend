@@ -13,7 +13,8 @@ public record PitStateUpdate(
     Dictionary<uint, Passing> PitSf,
     Dictionary<uint, Passing> PitOther,
     Dictionary<uint, Passing> Other,
-    Dictionary<uint, LoopMetadata> LoopMetadata) : ICarStateChange
+    Dictionary<uint, LoopMetadata> LoopMetadata,
+    Func<uint, bool>? IsExitRecent = null) : ICarStateChange
 {
     public string Number => CarNumber;
 
@@ -21,20 +22,38 @@ public record PitStateUpdate(
     {
         var patch = new CarPositionPatch { Number = CarNumber };
 
-        // Set IsInPit based on whether the transponder is in the InPit collection
-        // This reflects the actual IsInPit flag from the passing data
-        bool newIsInPit = InPit.ContainsKey(state.TransponderId);
+        // Set loop-specific flags based on loop types. Exited holds only briefly past the pit-exit
+        // loop, as the pit phase does, rather than until the car's next passing a lap later.
+        bool exitedLoop = PitExit.TryGetValue(state.TransponderId, out _);
+        patch.IsEnteredPit = PitEntrance.TryGetValue(state.TransponderId, out _);
+        patch.IsExitedPit = exitedLoop && (IsExitRecent?.Invoke(state.TransponderId) ?? true);
+        patch.IsPitStartFinish = PitSf.TryGetValue(state.TransponderId, out _);
+
+        // IsInPit follows the passing's own in-pit flag, and the pit-in and pit S/F loops put the
+        // car in the pit whatever that flag says. Worked out as a level and then compared, so a
+        // typed loop lacking the flag puts a car in the pit that was not already there.
+        bool newIsInPit = InPit.ContainsKey(state.TransponderId)
+            || patch.IsEnteredPit == true || patch.IsPitStartFinish == true;
         if (state.IsInPit != newIsInPit)
             patch.IsInPit = newIsInPit;
 
-        // Set loop-specific flags based on loop types
-        patch.IsEnteredPit = PitEntrance.TryGetValue(state.TransponderId, out _);
-        patch.IsExitedPit = PitExit.TryGetValue(state.TransponderId, out _);
-        patch.IsPitStartFinish = PitSf.TryGetValue(state.TransponderId, out _);
-
-        // Allow the enter or S/F loop to enable pit flag
-        if (!patch.IsInPit ?? false)
-            patch.IsInPit = (patch.IsEnteredPit ?? false) || (patch.IsPitStartFinish ?? false);
+        // Loops only say which one the car crossed last, so the visit is entered at the pit-in
+        // loop, in the pit (with no finer detail) past the pit start/finish or any in-pit loop, and
+        // exited at the pit-exit loop. An event with no pit-in or pit-exit loop simply never shows
+        // those. The phase never reads None while the car is shown in the pit, so a client falling
+        // back to the in-pit flag on None agrees with it.
+        bool inPitAfter = patch.IsInPit ?? state.IsInPit;
+        PitPhase phase;
+        if (patch.IsEnteredPit == true)
+            phase = PitPhase.EnteredPit;
+        else if (patch.IsExitedPit == true)
+            phase = PitPhase.ExitedPit;
+        else if (inPitAfter)
+            phase = PitPhase.InPit;
+        else
+            phase = PitPhase.None;
+        if (state.PitPhase != phase)
+            patch.PitPhase = phase;
 
         if (Other.TryGetValue(state.TransponderId, out var otherPass) &&
             LoopMetadata.TryGetValue(otherPass.Id, out var lm) && state.LastLoopName != lm.Name)
@@ -69,6 +88,12 @@ public record PitStateUpdate(
         {
             patch.LapIncludedPit = false;
         }
+
+        // Several clients only move a pit badge off "entered" or "exited" when the in-pit flag
+        // arrives, so it is resent unchanged when either drops. Last, so the lap bookkeeping above
+        // only ever sees a real change in the flag.
+        if ((state.IsEnteredPit && patch.IsEnteredPit == false) || (state.IsExitedPit && patch.IsExitedPit == false))
+            patch.IsInPit ??= inPitAfter;
 
         return patch;
     }

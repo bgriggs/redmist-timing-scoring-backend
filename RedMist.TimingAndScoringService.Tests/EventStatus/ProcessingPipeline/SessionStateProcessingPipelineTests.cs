@@ -192,7 +192,7 @@ public class SessionStateProcessingPipelineTests
         _startingPositionProcessor = new StartingPositionProcessor(_sessionContext, _mockLoggerFactory.Object, _dbContextFactory);
         _rMonitorProcessor = new RMonitorDataProcessor(_mockLoggerFactory.Object, _sessionContext, _resetProcessor, _startingPositionProcessor, new Mock<IMediator>().Object);
         _multiloopProcessor = new MultiloopProcessor(_mockLoggerFactory.Object, _sessionContext);
-        _pitProcessor = new PitProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
+        _pitProcessor = new PitProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext, _timeProvider);
         _controlLogEnricher = new ControlLogEnricher(_mockLoggerFactory.Object, _mockConnectionMultiplexer.Object, _configuration, _sessionContext);
         _flagProcessor = new FlagProcessor(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext);
         _sessionMonitor = new SessionMonitor(_configuration, _dbContextFactory, _mockLoggerFactory.Object, _sessionContext, _mockConnectionMultiplexer.Object, new SessionMetricsDeriver());
@@ -516,6 +516,66 @@ public class SessionStateProcessingPipelineTests
         // Assert
         var car = _sessionContext.GetCarByNumber("42");
         Assert.IsTrue(car!.IsInPit);
+    }
+
+    [TestMethod]
+    public async Task X2_ExitedPitPhase_ClearsAfterTheHoldOnTheNextMessage_Test()
+    {
+        await using (var db = await _dbContextFactory.CreateDbContextAsync())
+        {
+            db.Events.Add(new RedMist.TimingCommon.Models.Configuration.Event
+            {
+                Id = 1,
+                LoopsMetadata = [new RedMist.TimingCommon.Models.Configuration.LoopMetadata
+                    { Id = 3, Type = RedMist.TimingCommon.Models.Configuration.LoopType.PitExit, Name = "PitOut" }],
+            });
+            await db.SaveChangesAsync();
+        }
+        await _pitProcessor.Initialize(1);
+        _sessionContext.UpdateCars([new CarPosition { Number = "77", TransponderId = 77 }]);
+        _sessionContext.UpdatePitOwnership();
+
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE,
+            """[{ "t": 77, "l": 3, "p": false }]""", 1, DateTime.UtcNow));
+        var car = _sessionContext.GetCarByNumber("77")!;
+        Assert.AreEqual(PitPhase.ExitedPit, car.PitPhase);
+
+        // Any later message - here a passing for a car not in the field - carries the sweep.
+        _timeProvider.Advance(PitProcessor.ExitedHold);
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE,
+            """[{ "t": 999, "l": 3, "p": false }]""", 1, DateTime.UtcNow));
+
+        Assert.AreEqual(PitPhase.None, car.PitPhase);
+        Assert.IsFalse(car.IsExitedPit);
+    }
+
+    [TestMethod]
+    public async Task Flagtronics_ExitedPitPhase_ClearsAfterTheHoldWhenTheDeviceGoesQuiet_Test()
+    {
+        _sessionContext.UpdateCars([new CarPosition { Number = "42", TransponderId = 1042, SignalBars = CarPosition.MaxSignalBars }]);
+        async Task Record(int zone, int speed, int seconds)
+        {
+            for (int i = 0; i < seconds; i++)
+            {
+                _timeProvider.Advance(TimeSpan.FromSeconds(1));
+                await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.FLAGTRONICS_TYPE,
+                    $$"""[{ "carNumber": "42", "flaggingZone": {{zone}}, "speed": {{speed}}, "lat": 27.45, "lon": -81.35 }]""", 1, DateTime.UtcNow));
+            }
+        }
+
+        await Record(zone: 5, speed: 100, seconds: 3);
+        await Record(zone: 128, speed: 35, seconds: 10);
+        await Record(zone: 1, speed: 70, seconds: 9);
+        var car = _sessionContext.GetCarByNumber("42")!;
+        Assert.AreEqual(PitPhase.ExitedPit, car.PitPhase);
+
+        // The device then goes quiet; any other message carries the sweep.
+        _timeProvider.Advance(PitProcessor.ExitedHold);
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE,
+            """[{ "t": 999, "l": 3, "p": false }]""", 1, DateTime.UtcNow));
+
+        Assert.AreEqual(PitPhase.None, car.PitPhase);
+        Assert.IsFalse(car.IsExitedPit);
     }
 
     [TestMethod]

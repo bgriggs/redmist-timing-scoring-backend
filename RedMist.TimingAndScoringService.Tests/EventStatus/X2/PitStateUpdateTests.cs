@@ -197,10 +197,9 @@ public class PitStateUpdateTests
     [TestMethod]
     public void GetChanges_IsEnteredPitOrIsPitSfTrue_EnablesIsInPit()
     {
-        // Arrange - state IsInPit is false initially, so when newIsInPit is also false, patch.IsInPit stays null
-        // But we need IsInPit to be explicitly set to false first for the condition to work
+        // Arrange - a car on track crossing a pit-in loop whose passing lacks the in-pit flag
         var state = CreateCarPosition("123", 123);
-        state.IsInPit = true; // Set initial state to true
+        state.IsInPit = false;
         
         var pitEntrance = new Dictionary<uint, Passing>
         {
@@ -213,9 +212,6 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        // patch.IsInPit will be set to false (state.IsInPit=true != newIsInPit=false)
-        // Then the condition `if (!patch.IsInPit ?? false)` will be true (since !false ?? false = true)
-        // So IsInPit gets set to IsEnteredPit (true)
         Assert.IsTrue(patch.IsInPit); // Enabled by entrance
         Assert.IsTrue(patch.IsEnteredPit);
     }
@@ -223,9 +219,9 @@ public class PitStateUpdateTests
     [TestMethod]
     public void GetChanges_IsPitStartFinishTrue_EnablesIsInPit()
     {
-        // Arrange - state IsInPit needs to be different from newIsInPit for patch.IsInPit to be set
+        // Arrange - a car on track crossing a pit S/F loop whose passing lacks the in-pit flag
         var state = CreateCarPosition("123", 123);
-        state.IsInPit = true; // Set initial state to true
+        state.IsInPit = false;
         
         var pitSf = new Dictionary<uint, Passing>
         {
@@ -238,9 +234,6 @@ public class PitStateUpdateTests
 
         // Assert
         Assert.IsNotNull(patch);
-        // patch.IsInPit will be set to false (state.IsInPit=true != newIsInPit=false)
-        // Then the condition `if (!patch.IsInPit ?? false)` will be true (since !false ?? false = true)
-        // So IsInPit gets set to IsPitStartFinish (true)
         Assert.IsTrue(patch.IsInPit); // Enabled by S/F
         Assert.IsTrue(patch.IsPitStartFinish);
     }

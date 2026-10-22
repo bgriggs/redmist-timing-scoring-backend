@@ -362,4 +362,15 @@ public class FlagtronicsPitContradictionTests
         Advance(TimeSpan.FromSeconds(5), moveGps: true);
         Assert.IsTrue(_sessionContext.IsFlagtronicsPitTrusted("77"));
     }
+
+    [TestMethod]
+    public async Task Demotion_QueuesTheCarForX2Once()
+    {
+        Advance(TimeSpan.FromSeconds(30));
+        await Pass(loopId: 1, inPit: true);
+        Advance(SessionContext.PitContradictionGrace + TimeSpan.FromSeconds(5));
+
+        CollectionAssert.AreEqual(new[] { "77" }, _sessionContext.TakeCarsHandedToX2());
+        Assert.AreEqual(0, _sessionContext.TakeCarsHandedToX2().Count);
+    }
 }

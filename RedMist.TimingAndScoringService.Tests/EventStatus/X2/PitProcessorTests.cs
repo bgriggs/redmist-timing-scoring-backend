@@ -269,18 +269,9 @@ public class PitProcessorTests
         var carPatch = result.CarPatches[0];
         Assert.AreEqual("123", carPatch.Number);
         Assert.IsTrue(carPatch.IsEnteredPit);
-        
-        // The patch may or may not contain IsInPit depending on whether it changed from current state
-        if (carPatch.IsInPit.HasValue)
-        {
-            Assert.IsFalse(carPatch.IsInPit); // IsInPit was false
-        }
-        else
-        {
-            // If patch doesn't contain IsInPit, verify current state is correct
-            var currentCar = _sessionContext.GetCarByNumber("123");
-            Assert.IsFalse(currentCar?.IsInPit);
-        }
+        // The pit-in loop puts the car in the pit even though the passing lacks the in-pit flag.
+        Assert.IsTrue(carPatch.IsInPit);
+        Assert.IsTrue(_sessionContext.GetCarByNumber("123")?.IsInPit);
     }
 
     [TestMethod]
