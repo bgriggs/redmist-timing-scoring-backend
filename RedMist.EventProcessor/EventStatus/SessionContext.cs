@@ -93,11 +93,41 @@ public class SessionContext
     private readonly HashSet<string> pitOwnershipHoldReleased = [];
 
     /// <summary>
+    /// The highest completed lap each car has been seen with this session. It survives
+    /// <see cref="ResetCommand"/>, so a reset re-sending the field's lap counts is not taken for
+    /// every car completing a lap. It only rises: after a scoring edit takes a lap away, the next
+    /// lap counts once the car is past its old count.
+    /// </summary>
+    private readonly Dictionary<string, int> completedLapsSeen = [];
+
+    /// <summary>
+    /// Records a change to a car's completed lap count and says whether it is a new lap - one above
+    /// the highest already seen for the car - as opposed to a count re-sent or taken back. A
+    /// mid-race reset rebuilds every car and re-sends its lap count; treated as laps, those lifted
+    /// the in-pit ownership hold on every car parked in the pit, handing any whose bars happened
+    /// to be low to X2 mid-stop.
+    /// </summary>
+    /// <param name="carNumber">The car whose lap count changed.</param>
+    /// <param name="lapCompleted">The car's completed lap count after the change.</param>
+    public virtual bool RecordCompletedLap(string? carNumber, int lapCompleted)
+    {
+        if (string.IsNullOrEmpty(carNumber))
+            return false;
+
+        if (completedLapsSeen.TryGetValue(carNumber, out var seen) && lapCompleted <= seen)
+            return false;
+
+        completedLapsSeen[carNumber] = lapCompleted;
+        return true;
+    }
+
+    /// <summary>
     /// Lifts the in-pit hold on changing a car's pit-state owner. Called when the car completes a
-    /// lap: crossing start/finish proves it is on track, so the mid-stop protection no longer
-    /// applies. Without this, a car whose telemetry stopped while it was shown in the pit would
-    /// keep its owner forever - that owner has nothing left to say and the other source is not
-    /// allowed to take over, so the car would sit in the pit for the rest of the session.
+    /// lap (see <see cref="RecordCompletedLap"/>): crossing start/finish proves it is on track, so
+    /// the mid-stop protection no longer applies. Without this, a car whose telemetry stopped while
+    /// it was shown in the pit would keep its owner forever - that owner has nothing left to say
+    /// and the other source is not allowed to take over, so the car would sit in the pit for the
+    /// rest of the session.
     /// </summary>
     public virtual void ReleasePitOwnershipHold(string? carNumber)
     {
@@ -578,6 +608,7 @@ public class SessionContext
             carsHandedToX2.Add(newNumber);
         if (pitOwnershipHoldReleased.Remove(oldNumber))
             pitOwnershipHoldReleased.Add(newNumber);
+        MoveByNumber(completedLapsSeen, oldNumber, newNumber);
         MoveByNumber(flagtronicsPitDemoted, oldNumber, newNumber);
         MoveByNumber(flagtronicsPitDemotionCount, oldNumber, newNumber);
         MoveByNumber(pitObservations, oldNumber, newNumber);
@@ -672,6 +703,7 @@ public class SessionContext
         flagtronicsPitOwners.Clear();
         carsHandedToX2.Clear();
         pitOwnershipHoldReleased.Clear();
+        completedLapsSeen.Clear();
         flagtronicsPitDemoted.Clear();
         flagtronicsPitDemotionCount.Clear();
         pitObservations.Clear();
