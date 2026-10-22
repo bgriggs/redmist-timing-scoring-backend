@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.Memory;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.StatusApi.Filters;
 using RedMist.TimingCommon;
@@ -132,12 +133,23 @@ public class EventsController : EventsControllerBase
     }
 
     /// <summary>
-    /// Retrieves a paginated list of archived events, ordered by start date in descending order.
+    /// Retrieves a paginated list of completed events, ordered by start date in descending order:
+    /// every archived event, plus the unarchived events whose last day is over (UTC), that are not
+    /// live and are too old for the recent list in <see cref="EventsControllerBase.LoadLiveAndRecentEvents"/>.
     /// </summary>
-    /// <param name="offset">The zero-based index of the first archived event to retrieve. Must be greater than or equal to 0.</param>
-    /// <param name="take">The maximum number of archived events to return. Must be between 1 and 100.</param>
+    /// <remarks>
+    /// The unarchived events are included because archiving can lag or be switched off. Without
+    /// them, events that fell off the end of the 25-event recent list appeared in neither list
+    /// until they were archived. Each item's IsArchived says whether that event has been archived.
+    /// An event still under way past the recent cap is in the recent list instead, and an upcoming
+    /// one is left out rather than listed as completed. The end date is when the last day begins,
+    /// so an event counts as over only once that whole day has passed (see <see cref="EventDates"/>).
+    /// </remarks>
+    /// <param name="offset">The zero-based index of the first completed event to retrieve. Must be greater than or equal to 0.</param>
+    /// <param name="take">The maximum number of completed events to return. Must be between 1 and 100.</param>
     /// <returns>An <see cref="ActionResult{T}">ActionResult</see> containing a list of <see cref="EventListSummary"/> objects
-    /// representing the archived events. Returns a 400 Bad Request response if <paramref name="take"/> exceeds 100.</returns>
+    /// representing the completed events. Returns a 400 Bad Request response if <paramref name="offset"/> is negative
+    /// or <paramref name="take"/> is outside 1 to 100.</returns>
     [HttpGet]
     [AllowAnonymous]
     [Produces("application/json", "application/x-msgpack")]
@@ -146,15 +158,27 @@ public class EventsController : EventsControllerBase
     public virtual async Task<ActionResult<List<EventListSummary>>> LoadArchivedEventsAsync(int offset, int take)
     {
         Logger.LogTrace(nameof(LoadArchivedEventsAsync));
+        // PostgreSQL rejects a negative OFFSET or LIMIT, which would otherwise surface as a 500. An
+        // empty page is refused too, matching the documented range; no client asks for one.
+        if (offset < 0)
+            return BadRequest("Offset parameter must not be negative");
+        if (take < 1)
+            return BadRequest("Take parameter must be at least 1");
         if (take > 100)
             return BadRequest("Take parameter exceeds maximum of 100");
 
         using var db = await tsContext.CreateDbContextAsync();
-        var archivedEvents = await (
+        var recentEventIds = await LoadRecentEventIdsAsync(db);
+        // StartDate too, so an upcoming event saved without an end date is not taken for an old one
+        var lastDayEndedBy = EventDates.LastDayEndedByCutoff(DateTime.UtcNow);
+        var completedEvents = await (
             from e in db.Events
             join o in db.Organizations on e.OrganizationId equals o.Id
-            where !e.IsDeleted && e.IsArchived
-            orderby e.StartDate descending
+            where !e.IsDeleted
+                && (e.IsArchived
+                    || (!e.IsLive && e.EndDate < lastDayEndedBy && e.StartDate < lastDayEndedBy
+                        && !recentEventIds.Contains(e.Id)))
+            orderby e.StartDate descending, e.Id descending
             select new EventListSummary
             {
                 Id = e.Id,
@@ -168,11 +192,12 @@ public class EventsController : EventsControllerBase
                 IsPrivate = e.IsPrivate,
                 HideName = e.HideName,
                 TrackName = e.TrackName,
+                HasResults = db.SessionResults.Any(sr => sr.EventId == e.Id),
             })
             .Skip(offset)
             .Take(take)
             .ToListAsync();
-        return Ok(archivedEvents);
+        return Ok(completedEvents);
     }
 
     #region Track Map

@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.Memory;
 using RedMist.Backend.Shared;
+using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
 using RedMist.StatusApi.Filters;
 using RedMist.TimingCommon.Extensions;
@@ -33,6 +34,13 @@ public abstract class EventsControllerBase : ControllerBase
 {
     private const string LIVE_EVENTS_KEY = "live-events";
     private const string SESSIONS_KEY = "sessions:{0}"; // {0} = eventId
+
+    /// <summary>
+    /// How many of the newest unarchived events <see cref="LoadLiveAndRecentEvents"/> draws its recent
+    /// list from. The completed list picks up the finished events past this cap, so the two must agree on it.
+    /// </summary>
+    protected const int RECENT_EVENTS_COUNT = 25;
+
     protected readonly IDbContextFactory<TsContext> tsContext;
     protected readonly HybridCache hcache;
     protected readonly IConnectionMultiplexer cacheMux;
@@ -227,13 +235,43 @@ public abstract class EventsControllerBase : ControllerBase
     }
 
     /// <summary>
-    /// Retrieves all live events and the most recent 100 non-live events.
+    /// The Ids of the <see cref="RECENT_EVENTS_COUNT"/> newest unarchived, undeleted events, which
+    /// the recent list shows (less any that are live) and the completed list leaves out. Both lists
+    /// read the cap here, so an event past it lands in at most one of them: the recent list if it is
+    /// under way, the completed list once it is over, and neither while it is still upcoming.
+    /// </summary>
+    /// <remarks>
+    /// Live events count toward the cap even though neither list shows them. If they did not, an
+    /// event going live or ending would move the cap by one, sliding every event in the completed
+    /// list along a place and making its pages skip or repeat an event. The price is that an event
+    /// under way can be pushed past the cap by a live one, so the recent list also takes any event
+    /// under way past the cap (see <see cref="LoadLiveAndRecentEvents"/>). Id breaks ties between
+    /// events starting the same day, which is common; without it the database could put a different
+    /// event at the cap on each query and show it twice or not at all.
+    /// </remarks>
+    protected static Task<List<int>> LoadRecentEventIdsAsync(TsContext db) =>
+        db.Events
+            .Where(e => !e.IsDeleted && !e.IsArchived)
+            .OrderByDescending(e => e.StartDate)
+            .ThenByDescending(e => e.Id)
+            .Select(e => e.Id)
+            .Take(RECENT_EVENTS_COUNT)
+            .ToListAsync();
+
+    /// <summary>
+    /// Retrieves all live events, then the non-live events among the 25 newest unarchived events
+    /// along with any other unarchived event that is under way but not live.
     /// </summary>
     /// <returns>A combined list of live and recent event summaries.</returns>
     /// <response code="200">Returns the list of live and recent events.</response>
     /// <remarks>
     /// This endpoint is publicly accessible (no authentication required).
     /// Useful for displaying both current and past events in user interfaces.
+    /// An event under way past the cap is usually one a live event pushed there - say two events on
+    /// the same weekend, one with its relay connected - or one behind 25 or more upcoming events.
+    /// Neither this list nor the completed list would show it otherwise: the completed list waits for
+    /// an event's last day to end. "Under way" is the exact complement of the completed list's "over",
+    /// so an event moves from one list to the other at the cutoff without falling between them.
     /// </remarks>
     [AllowAnonymous]
     [HttpGet]
@@ -245,11 +283,16 @@ public abstract class EventsControllerBase : ControllerBase
         Logger.LogTrace("{method} for clientId {clientId}", nameof(LoadLiveAndRecentEvents), clientId);
 
         using var db1 = await tsContext.CreateDbContextAsync();
+        var recentEventIds = await LoadRecentEventIdsAsync(db1);
+        var now = DateTime.UtcNow;
+        var lastDayEndedBy = EventDates.LastDayEndedByCutoff(now);
         var recentEvents = await (
             from e in db1.Events
             join o in db1.Organizations on e.OrganizationId equals o.Id
-            where !e.IsDeleted && !e.IsLive && !e.IsArchived
-            orderby e.StartDate descending
+            where !e.IsDeleted && !e.IsArchived && !e.IsLive
+                && (recentEventIds.Contains(e.Id)
+                    || (e.StartDate <= now && (e.EndDate >= lastDayEndedBy || e.StartDate >= lastDayEndedBy)))
+            orderby e.StartDate descending, e.Id descending
             select new EventListSummary
             {
                 Id = e.Id,
@@ -264,7 +307,6 @@ public abstract class EventsControllerBase : ControllerBase
                 TrackName = e.TrackName,
                 HasResults = db1.SessionResults.Any(sr => sr.EventId == e.Id),
             })
-            .Take(25)
             .ToListAsync();
         var liveEvents = await LoadLiveEvents();
 
