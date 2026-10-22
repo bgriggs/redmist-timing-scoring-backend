@@ -219,6 +219,223 @@ public class GpsLapPositionEnricherTests
 
     #endregion
 
+    #region Holding position forward
+
+    /// <summary>Moves the car and feeds it in a second later, clear of the throttle.</summary>
+    private async Task<CarPositionPatch?> NextReadingAsync(CarPosition car, double fraction)
+    {
+        _timeProvider.Advance(TimeSpan.FromSeconds(1));
+        MoveTo(car, fraction);
+        return await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+    }
+
+    [TestMethod]
+    public async Task ProcessCar_ReadingSlightlyBehind_HoldsTheFurthestPosition()
+    {
+        // A percent back is GPS noise, not a car reversing: the bar should stay put.
+        await GivenCalibratedMapAsync();
+        var car = GivenCarAt(0.505);
+        await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+
+        var patch = await NextReadingAsync(car, 0.495);
+
+        Assert.IsNull(patch, "A reading just behind the held position should not move it back");
+        Assert.AreEqual(50, car.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task ProcessCar_ReadingSlightlyBehind_ThenAhead_MovesForward()
+    {
+        await GivenCalibratedMapAsync();
+        var car = GivenCarAt(0.505);
+        await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+        await NextReadingAsync(car, 0.495);
+
+        var patch = await NextReadingAsync(car, 0.525);
+
+        Assert.IsNotNull(patch);
+        Assert.AreEqual(52, patch.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task ProcessCar_SustainedLargeStepBack_IsAcceptedOnceConfirmed()
+    {
+        // Ten percent back, and staying there: either the car really went backwards or the held
+        // position was a bad reading. Five seconds of agreement is enough to believe it.
+        await GivenCalibratedMapAsync();
+        var car = GivenCarAt(0.505);
+        await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+
+        for (int i = 0; i < 5; i++)
+        {
+            await NextReadingAsync(car, 0.405);
+            Assert.AreEqual(50, car.LapPositionPercent, $"Still held after {i + 1}s");
+        }
+
+        var patch = await NextReadingAsync(car, 0.405);
+
+        Assert.IsNotNull(patch);
+        Assert.AreEqual(40, patch.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task ProcessCar_LapTicksBeforeTheGpsCrosses_ReportsTheLineNotTheOldLap()
+    {
+        // The timing loop says the car is over the line while its GPS still puts it at 98%. The bar
+        // goes to the line with the lap count rather than carrying 98% into the new lap.
+        await GivenCalibratedMapAsync();
+        var car = GivenCarAt(0.975, lap: 3);
+        await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+        Assert.AreEqual(97, car.LapPositionPercent);
+
+        car.LastLapCompleted = 4;
+        var atTick = await NextReadingAsync(car, 0.985);
+        Assert.IsNotNull(atTick);
+        Assert.AreEqual(0, atTick.LapPositionPercent);
+
+        var stillShort = await NextReadingAsync(car, 0.995);
+        Assert.IsNull(stillShort, "The GPS catching up to the line should not move the bar back to 99");
+        Assert.AreEqual(0, car.LapPositionPercent);
+
+        var pastTheLine = await NextReadingAsync(car, 0.025);
+        Assert.IsNotNull(pastTheLine);
+        Assert.AreEqual(2, pastTheLine.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task ProcessCar_LapTicksAtRacePace_IsJudgedOnTheReadingThatCarriesIt()
+    {
+        // About 66 m between readings. The previous reading is outside the 150 m crossing window,
+        // the one carrying the tick is inside it, and it is the latter that says where the car is.
+        await GivenCalibratedMapAsync();
+        var car = GivenCarAt(0.90, lap: 3);
+        await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+
+        car.LastLapCompleted = 4;
+        var atTick = await NextReadingAsync(car, 0.935);
+        Assert.IsNotNull(atTick);
+        Assert.AreEqual(0, atTick.LapPositionPercent);
+
+        Assert.IsNull(await NextReadingAsync(car, 0.97));
+        Assert.IsNull(await NextReadingAsync(car, 0.005));
+        var pastTheLine = await NextReadingAsync(car, 0.035);
+        Assert.IsNotNull(pastTheLine);
+        Assert.AreEqual(3, pastTheLine.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task ProcessCar_GpsCrossesBeforeTheLapTicks_WrapsForward()
+    {
+        await GivenCalibratedMapAsync();
+        var car = GivenCarAt(0.985, lap: 3);
+        await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+
+        var patch = await NextReadingAsync(car, 0.015);
+
+        Assert.IsNotNull(patch);
+        Assert.AreEqual(1, patch.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task ProcessCar_AfterThePits_DoesNotHoldThePositionFromBefore()
+    {
+        // A pit stop ends the run of positions the hold was built from. The car comes out wherever
+        // the pit exit is, which may well be behind where it went in.
+        await GivenCalibratedMapAsync();
+        var car = GivenCarAt(0.505);
+        await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+
+        car.IsInPit = true;
+        await NextReadingAsync(car, 0.505);
+        car.IsInPit = false;
+        var patch = await NextReadingAsync(car, 0.455);
+
+        Assert.IsNotNull(patch);
+        Assert.AreEqual(45, patch.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task ProcessCar_AfterADropout_DoesNotHoldThePositionFromBefore()
+    {
+        await GivenCalibratedMapAsync();
+        var car = GivenCarAt(0.505);
+        await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+
+        // Exactly the fix timeout, so the sweep retires the car. It has to stay under the time a car
+        // could cover half this lap at full speed (about 10.5 s here): past that, the hold restarts
+        // on its own and this would pass even if retiring the car stopped resetting it.
+        _timeProvider.Advance(TimeSpan.FromSeconds(10));
+        Assert.AreEqual(1, _enricher.ExpireStalePositions().Count, "The dropout should retire the car");
+
+        MoveTo(car, 0.455);
+        var patch = await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+
+        Assert.IsNotNull(patch);
+        Assert.AreEqual(45, patch.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task ProcessCar_ParkedCarStillReporting_KeepsItsHoldThroughTheStop()
+    {
+        // Stopped for a red flag with a steady fix: no new positions arrive, but the car keeps being
+        // reported. When it moves off, a reading just behind the held point is still noise.
+        await GivenCalibratedMapAsync();
+        var car = GivenCarAt(0.505);
+        await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+        await NextReadingAsync(car, 0.495);
+
+        for (int i = 0; i < 15; i++)
+        {
+            _timeProvider.Advance(TimeSpan.FromSeconds(1));
+            _enricher.MarkSeen(["5"], confirmed: true);
+            Assert.AreEqual(0, _enricher.ExpireStalePositions().Count);
+        }
+
+        var patch = await NextReadingAsync(car, 0.495);
+
+        Assert.IsNull(patch, "The hold from before the stop should still stand");
+        Assert.AreEqual(50, car.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task ExpireStale_ParkedCarBehindItsHold_IsCorrectedWithoutANewReading()
+    {
+        // The hold is well ahead of a car that then stops and sends nothing new. The correction still
+        // has to land once it has been confirmed, or the bar stays ahead for the whole stop.
+        await GivenCalibratedMapAsync();
+        var car = GivenCarAt(0.505);
+        await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+        await NextReadingAsync(car, 0.405);
+
+        List<CarPositionPatch> patches = [];
+        for (int i = 0; i < 5 && patches.Count == 0; i++)
+        {
+            _timeProvider.Advance(TimeSpan.FromSeconds(1));
+            _enricher.MarkSeen(["5"], confirmed: true);
+            patches = _enricher.ExpireStalePositions();
+        }
+
+        Assert.AreEqual(1, patches.Count);
+        Assert.AreEqual(40, patches[0].LapPositionPercent);
+        Assert.AreEqual(40, car.LapPositionPercent);
+    }
+
+    [TestMethod]
+    public async Task ProcessCar_LapCountRisesMidLap_DoesNotSendTheBarToTheLine()
+    {
+        await GivenCalibratedMapAsync();
+        var car = GivenCarAt(0.705, lap: 3);
+        await _enricher.ProcessCarAsync(car, fromInCarTelemetry: true);
+
+        car.LastLapCompleted = 4;
+        var patch = await NextReadingAsync(car, 0.715);
+
+        Assert.IsNotNull(patch);
+        Assert.AreEqual(71, patch.LapPositionPercent);
+    }
+
+    #endregion
+
     #region Ambiguous geometry
 
     /// <summary>Learns the dogbone map and pins its start/finish line to the path origin.</summary>
