@@ -185,6 +185,23 @@ public class EventsControllerVersionedTests
         Assert.AreEqual("Take parameter exceeds maximum of 100", bad.Value);
     }
 
+    /// <summary>
+    /// PostgreSQL rejects a negative OFFSET or LIMIT, so these must not reach the query. An empty page
+    /// is refused as well, matching the documented range.
+    /// </summary>
+    [TestMethod]
+    [DataRow(-1, 10, "Offset parameter must not be negative")]
+    [DataRow(0, 0, "Take parameter must be at least 1")]
+    [DataRow(0, -5, "Take parameter must be at least 1")]
+    public async Task V2_LoadArchivedEvents_OutOfRangePaging_ReturnsBadRequest(int offset, int take, string message)
+    {
+        var result = await _h.Controller.LoadArchivedEventsAsync(offset, take);
+
+        var bad = result.Result as BadRequestObjectResult;
+        Assert.IsNotNull(bad);
+        Assert.AreEqual(message, bad.Value);
+    }
+
     [TestMethod]
     public async Task V2_LoadArchivedEvents_TakeAtLimit_IsAccepted()
     {
@@ -193,8 +210,9 @@ public class EventsControllerVersionedTests
         Assert.IsInstanceOfType<OkObjectResult>(result.Result);
     }
 
+    /// <summary>"NotArchived" is still in the recent list, so it must not show in this one too.</summary>
     [TestMethod]
-    public async Task V2_LoadArchivedEvents_ReturnsOnlyArchivedNonDeletedEvents()
+    public async Task V2_LoadArchivedEvents_ReturnsArchivedEventsButNotDeletedOrRecentOnes()
     {
         _h.AddOrganization(1);
         _h.AddEvent("Archived", isArchived: true);
@@ -208,6 +226,222 @@ public class EventsControllerVersionedTests
         Assert.AreEqual("Archived", events[0].EventName);
         Assert.IsTrue(events[0].IsArchived);
         Assert.IsFalse(events[0].IsLive);
+    }
+
+    /// <summary>
+    /// The gap this list exists to close: with archiving behind or switched off, an unarchived event
+    /// older than the 25 the recent list holds was in neither list. It belongs here, in date order
+    /// among the archived ones, and says it is not archived.
+    /// </summary>
+    [TestMethod]
+    public async Task V2_LoadArchivedEvents_IncludesUnarchivedEventsPastTheRecentCap()
+    {
+        _h.AddOrganization(1);
+        var baseDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        _h.AddEvent("OldArchived", startDate: baseDate.AddDays(-10), isArchived: true);
+        for (int i = 0; i < 28; i++)
+            _h.AddEvent($"Event{i:00}", startDate: baseDate.AddDays(i));
+        // Archived but newer than every unarchived event: date order, not archive state, places it.
+        _h.AddEvent("NewArchived", startDate: baseDate.AddDays(100), isArchived: true);
+        await _h.Db.SaveChangesAsync();
+
+        var events = Summaries(await _h.Controller.LoadArchivedEventsAsync(0, 50));
+
+        // Event27..Event03 are the 25 recent ones; Event02..Event00 fell past the cap.
+        CollectionAssert.AreEqual(
+            new[] { "NewArchived", "Event02", "Event01", "Event00", "OldArchived" },
+            events.Select(e => e.EventName).ToArray());
+        CollectionAssert.AreEqual(
+            new[] { true, false, false, false, true },
+            events.Select(e => e.IsArchived).ToArray());
+    }
+
+    /// <summary>
+    /// Being old enough to fall past the recent cap does not let a live or deleted event in. Deleted
+    /// ones show nowhere. A live one is left out even when it is not the active event
+    /// ("OldStaleLive"), the same as in the recent list: it shows in no list until its relay
+    /// disconnects and orchestration clears IsLive. A simulation is listed like any other past event,
+    /// matching the recent list.
+    /// </summary>
+    [TestMethod]
+    public async Task V2_LoadArchivedEvents_UnarchivedPastTheCap_LeavesOutLiveAndDeleted()
+    {
+        _h.AddOrganization(1);
+        var baseDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (int i = 0; i < 25; i++)
+            _h.AddEvent($"Recent{i:00}", startDate: baseDate.AddDays(i));
+        var old = baseDate.AddDays(-30);
+        _h.AddEvent("OldLive", startDate: old, isLive: true, isActive: true);
+        _h.AddEvent("OldStaleLive", startDate: old, isLive: true, isActive: false);
+        _h.AddEvent("OldDeleted", startDate: old, isDeleted: true);
+        _h.AddEvent("OldSimulation", startDate: old, isSimulation: true);
+        await _h.Db.SaveChangesAsync();
+
+        var events = Summaries(await _h.Controller.LoadArchivedEventsAsync(0, 50));
+
+        CollectionAssert.AreEqual(new[] { "OldSimulation" }, events.Select(e => e.EventName).ToArray());
+        Assert.IsTrue(events[0].IsSimulation);
+    }
+
+    /// <summary>
+    /// The recent and completed lists are two separate queries splitting one ordering. Events that
+    /// start the same day are common, and if the two queries broke that tie differently an event at
+    /// the cap could show in both lists or neither. Paged through, the two cover every past event
+    /// exactly once.
+    /// </summary>
+    [TestMethod]
+    public async Task V2_LoadArchivedEvents_WithRecentList_CoversEveryEventOnce_WhenStartDatesTie()
+    {
+        _h.AddOrganization(1);
+        var sameDay = new DateTime(2026, 2, 28, 0, 0, 0, DateTimeKind.Utc);
+        for (int i = 0; i < 40; i++)
+            _h.AddEvent($"Event{i:00}", startDate: sameDay, isArchived: i % 4 == 0);
+        await _h.Db.SaveChangesAsync();
+        var expected = _h.Db.Events.Select(e => e.Id).ToList();
+
+        var recent = await _h.Controller.LoadLiveAndRecentEvents();
+        var completed = new List<EventListSummary>();
+        for (int offset = 0; ; offset += 7)
+        {
+            var page = Summaries(await _h.Controller.LoadArchivedEventsAsync(offset, 7));
+            completed.AddRange(page);
+            if (page.Count < 7)
+                break;
+        }
+
+        Assert.AreEqual(25, recent.Count);
+        var listed = recent.Concat(completed).Select(e => e.Id).ToList();
+        Assert.AreEqual(listed.Count, listed.Distinct().Count(), "an event was listed twice");
+        CollectionAssert.AreEquivalent(expected, listed);
+        // Ties fall to the higher Id first, in both lists.
+        CollectionAssert.AreEqual(recent.Select(e => e.Id).OrderByDescending(id => id).ToArray(),
+            recent.Select(e => e.Id).ToArray());
+        CollectionAssert.AreEqual(completed.Select(e => e.Id).OrderByDescending(id => id).ToArray(),
+            completed.Select(e => e.Id).ToArray());
+    }
+
+    /// <summary>
+    /// An event going live or ending must not move the recent cap. If it did, every event in the
+    /// completed list would slide along a place, and a client paging through it would skip or repeat
+    /// one. The live event still counts toward the cap; the recent list just doesn't show it.
+    /// </summary>
+    [TestMethod]
+    public async Task V2_LoadArchivedEvents_AnEventGoingLiveDoesNotMoveTheRecentCap()
+    {
+        _h.AddOrganization(1);
+        var baseDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var events = new List<RedMist.TimingCommon.Models.Configuration.Event>();
+        for (int i = 0; i < 30; i++)
+            events.Add(_h.AddEvent($"Event{i:00}", startDate: baseDate.AddDays(i)));
+        await _h.Db.SaveChangesAsync();
+        var before = Summaries(await _h.Controller.LoadArchivedEventsAsync(0, 50)).Select(e => e.EventName).ToArray();
+
+        events[29].IsLive = true;
+        events[29].IsActive = true;
+        await _h.Db.SaveChangesAsync();
+        var after = Summaries(await _h.Controller.LoadArchivedEventsAsync(0, 50)).Select(e => e.EventName).ToArray();
+        var recent = await _h.Controller.LoadLiveAndRecentEvents();
+
+        CollectionAssert.AreEqual(new[] { "Event04", "Event03", "Event02", "Event01", "Event00" }, before);
+        CollectionAssert.AreEqual(before, after);
+        Assert.AreEqual("Event29", recent[0].EventName);
+        Assert.IsTrue(recent[0].IsLive);
+        Assert.AreEqual(24, recent.Count(e => !e.IsLive), "the live event keeps its place in the cap");
+    }
+
+    /// <summary>
+    /// Upcoming events sort first, so with more than 25 of them the soonest would fall past the cap.
+    /// They have not run yet, so they must not be listed as completed.
+    /// </summary>
+    [TestMethod]
+    public async Task V2_LoadArchivedEvents_LeavesOutUpcomingEventsPastTheRecentCap()
+    {
+        _h.AddOrganization(1);
+        var tomorrow = DateTime.UtcNow.Date.AddDays(1);
+        // Saved without an end date, and added first so the lowest Id puts it past the cap: only its
+        // start date says it is upcoming
+        _h.AddEvent("UpcomingNoEndDate", startDate: tomorrow);
+        for (int i = 0; i < 26; i++)
+            _h.AddEvent($"Upcoming{i:00}", startDate: tomorrow.AddDays(i), endDate: tomorrow.AddDays(i + 1));
+        _h.AddEvent("Past", startDate: tomorrow.AddDays(-30), endDate: tomorrow.AddDays(-29));
+        await _h.Db.SaveChangesAsync();
+
+        var events = Summaries(await _h.Controller.LoadArchivedEventsAsync(0, 50));
+        var recent = await _h.Controller.LoadLiveAndRecentEvents();
+
+        CollectionAssert.AreEqual(new[] { "Past" }, events.Select(e => e.EventName).ToArray());
+        // Not under way either, so the recent list does not take them in its place
+        Assert.IsFalse(recent.Any(e => e.EventName is "Upcoming00" or "UpcomingNoEndDate"));
+    }
+
+    /// <summary>
+    /// The end date is when the last day begins, so an event on its final day has not finished: it
+    /// stays in the recent list until that day is over, then moves here. Together the two lists
+    /// still show it exactly once.
+    /// </summary>
+    [TestMethod]
+    public async Task V2_LoadArchivedEvents_EventOnItsFinalDay_IsRecentUntilTheDayIsOver()
+    {
+        _h.AddOrganization(1);
+        var today = DateTime.UtcNow.Date;
+        for (int i = 0; i < 25; i++)
+            _h.AddEvent($"Upcoming{i:00}", startDate: today.AddDays(i + 1), endDate: today.AddDays(i + 2));
+        _h.AddEvent("FinalDay", startDate: today.AddDays(-1), endDate: today);
+        _h.AddEvent("EndedYesterday", startDate: today.AddDays(-2), endDate: today.AddDays(-1));
+        await _h.Db.SaveChangesAsync();
+
+        var completed = Summaries(await _h.Controller.LoadArchivedEventsAsync(0, 50));
+        var recent = await _h.Controller.LoadLiveAndRecentEvents();
+
+        CollectionAssert.AreEqual(new[] { "EndedYesterday" }, completed.Select(e => e.EventName).ToArray());
+        Assert.AreEqual(1, recent.Count(e => e.EventName == "FinalDay"));
+        Assert.AreEqual(0, recent.Count(e => e.EventName == "EndedYesterday"));
+    }
+
+    /// <summary>
+    /// A live event takes a place in the recent cap, so on a busy weekend it can push an event that
+    /// is under way, but whose relay is not connected, past the cap. That event has not ended, so the
+    /// completed list will not take it; the recent list must, or it would show nowhere.
+    /// </summary>
+    [TestMethod]
+    public async Task LoadLiveAndRecentEvents_KeepsAnEventUnderWayThatALiveEventPushedPastTheCap()
+    {
+        _h.AddOrganization(1);
+        var today = DateTime.UtcNow.Date;
+        for (int i = 0; i < 24; i++)
+            _h.AddEvent($"Upcoming{i:00}", startDate: today.AddDays(i + 1), endDate: today.AddDays(i + 2));
+        var notLive = _h.AddEvent("UnderWayNotLive", startDate: today, endDate: today.AddDays(1));
+        await _h.Db.SaveChangesAsync();
+        // Added second so its higher Id wins the same-day tie and takes the last place in the cap
+        _h.AddEvent("UnderWayLive", startDate: today, endDate: today.AddDays(1), isLive: true, isActive: true);
+        await _h.Db.SaveChangesAsync();
+
+        var recent = await _h.Controller.LoadLiveAndRecentEvents();
+        var completed = Summaries(await _h.Controller.LoadArchivedEventsAsync(0, 50));
+
+        Assert.AreEqual(1, recent.Count(e => e.Id == notLive.Id));
+        Assert.IsFalse(recent.Single(e => e.Id == notLive.Id).IsLive);
+        Assert.AreEqual(0, completed.Count);
+    }
+
+    /// <summary>
+    /// An event keeps its Results button when it moves from the recent list to this one. Archiving
+    /// keeps an event's session results, so this holds for archived events too.
+    /// </summary>
+    [TestMethod]
+    public async Task V2_LoadArchivedEvents_SetsHasResults()
+    {
+        _h.AddOrganization(1);
+        var withResults = _h.AddEvent("WithResults", isArchived: true);
+        _h.AddEvent("WithoutResults", isArchived: true);
+        await _h.Db.SaveChangesAsync();
+        _h.AddSession(1, withResults.Id);
+        await _h.Db.SaveChangesAsync();
+
+        var events = Summaries(await _h.Controller.LoadArchivedEventsAsync(0, 10));
+
+        Assert.IsTrue(events.Single(e => e.EventName == "WithResults").HasResults);
+        Assert.IsFalse(events.Single(e => e.EventName == "WithoutResults").HasResults);
     }
 
     [TestMethod]

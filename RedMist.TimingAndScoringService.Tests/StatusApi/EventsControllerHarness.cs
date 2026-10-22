@@ -151,13 +151,15 @@ internal sealed class EventsControllerHarness : IDisposable
 
     public ConfigEvent AddEvent(string name = "Event", int organizationId = 1, DateTime? startDate = null,
         bool isLive = false, bool isActive = false, bool isDeleted = false, bool isArchived = false,
-        bool isPrivate = false, bool hideName = false, bool isSimulation = false, string trackName = "Track")
+        bool isPrivate = false, bool hideName = false, bool isSimulation = false, string trackName = "Track",
+        DateTime? endDate = null)
     {
         var evt = new ConfigEvent
         {
             Name = name,
             OrganizationId = organizationId,
             StartDate = startDate ?? new DateTime(2026, 5, 1, 9, 0, 0, DateTimeKind.Utc),
+            EndDate = endDate ?? default,
             IsLive = isLive,
             IsActive = isActive,
             IsDeleted = isDeleted,
