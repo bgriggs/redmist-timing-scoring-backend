@@ -418,6 +418,16 @@ public class SessionStateProcessingPipeline
                         if (flagtronicsChanges != null)
                             allAppliedChanges.Add(flagtronicsChanges);
                     }
+
+                    // A car shown as having just exited the pit returns to no phase after a few
+                    // seconds. Neither source necessarily says anything more about it by then - X2
+                    // not until its next passing, Flagtronics not if the device went quiet - so it
+                    // is checked on every message, whatever the event's timing sources are. Only
+                    // cars currently in that phase are looked at.
+                    var exitedPitPatches = pitProcessor.ExpireExitedPitPhases();
+                    exitedPitPatches.AddRange(flagtronicsProcessor.ExpireExitedPitPhases());
+                    if (exitedPitPatches.Count > 0)
+                        allAppliedChanges.Add(new PatchUpdates([], [.. exitedPitPatches]));
                 }
 
                 // ** Phase 3: Client Notification (outside the lock) **
@@ -624,16 +634,19 @@ public class SessionStateProcessingPipeline
     }
 
     /// <summary>
-    /// Publishes X2's pit state for cars just taken off Flagtronics. X2 otherwise only speaks for
-    /// a car on its next passing or lap, which for a car frozen in the pit is a lap of being
-    /// shown wrong after the fault was already proven.
+    /// Hands every car just taken off Flagtronics to X2 (see <see cref="PitProcessor.TakeOver"/>).
+    /// For a car taken off because loop evidence proved it wrong, X2's state is published at once:
+    /// X2 otherwise only speaks for a car on its next passing or lap, which for a car frozen in the
+    /// pit is a lap of being shown wrong after the fault was already proven. For every handover, the
+    /// pit phase Flagtronics published is withdrawn if X2 has nothing to replace it with.
     /// </summary>
-    private List<CarPositionPatch> RepublishX2PitState(List<string>? cars)
+    /// <param name="demoted">Cars taken off Flagtronics because loop evidence proved it wrong.</param>
+    private List<CarPositionPatch> RepublishX2PitState(List<string>? demoted)
     {
         var patches = new List<CarPositionPatch>();
-        foreach (var cn in cars ?? [])
+        foreach (var cn in sessionContext.TakeCarsHandedToX2())
         {
-            var patch = pitProcessor.ProcessCar(cn, includeUntypedPassings: true);
+            var patch = pitProcessor.TakeOver(cn, demoted: demoted?.Contains(cn) ?? false);
             if (patch != null)
                 patches.Add(patch);
         }

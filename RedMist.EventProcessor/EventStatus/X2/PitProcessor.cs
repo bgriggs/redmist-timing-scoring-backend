@@ -42,6 +42,20 @@ public class PitProcessor
     /// at an event whose loops were never typed - which is still something real to say.
     /// </summary>
     private readonly HashSet<uint> seenTransponders = [];
+
+    /// <summary>
+    /// When each transponder last crossed a pit-exit loop, by this processor's clock, for ending
+    /// <see cref="PitPhase.ExitedPit"/> after <see cref="ExitedHold"/>. The passing's own timestamp
+    /// comes from the decoder's clock, which is not the one the hold is measured against.
+    /// </summary>
+    private readonly Dictionary<uint, DateTimeOffset> pitExitSeenAt = [];
+
+    /// <summary>
+    /// How long <see cref="PitPhase.ExitedPit"/> is shown after the pit-exit loop.
+    /// </summary>
+    public static readonly TimeSpan ExitedHold = Flagtronics.PitPhaseTracker.ExitedHold;
+
+    private readonly TimeProvider timeProvider;
     private int lastSessionId = -1;
 
     /// <summary>
@@ -50,8 +64,10 @@ public class PitProcessor
     /// </summary>
     public Func<HashSet<string>, Task>? NotifyLapProcessorOfPitMessages { get; set; }
 
-    public PitProcessor(IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory, SessionContext sessionContext)
+    public PitProcessor(IDbContextFactory<TsContext> tsContext, ILoggerFactory loggerFactory, SessionContext sessionContext,
+        TimeProvider? timeProvider = null)
     {
+        this.timeProvider = timeProvider ?? TimeProvider.System;
         this.tsContext = tsContext ?? throw new ArgumentNullException(nameof(tsContext));
         Logger = (loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory))).CreateLogger(GetType().Name);
         this.sessionContext = sessionContext ?? throw new ArgumentNullException(nameof(sessionContext));
@@ -145,6 +161,7 @@ public class PitProcessor
             pitOther.Clear();
             other.Clear();
             seenTransponders.Clear();
+            pitExitSeenAt.Clear();
             lastSessionId = sessionContext.SessionState.SessionId;
         }
 
@@ -185,6 +202,10 @@ public class PitProcessor
                 else if (lm.Type == LoopType.PitExit)
                 {
                     pitExit[pass.TransponderId] = pass;
+                    // A resend repeats an earlier crossing, possibly one from before a restart; it
+                    // must not show a car as having just left the pit.
+                    if (!pass.IsResend)
+                        pitExitSeenAt[pass.TransponderId] = timeProvider.GetUtcNow();
                 }
                 else if (lm.Type == LoopType.PitStartFinish)
                 {
@@ -232,8 +253,12 @@ public class PitProcessor
                 PitSf: pitSf,
                 PitOther: pitOther,
                 Other: other,
-                LoopMetadata: loopMetadata);
+                LoopMetadata: loopMetadata,
+                IsExitRecent: IsExitRecent);
 
+            // The in-pit flag can ride along unchanged, for clients that only move their badge on
+            // it, so only a car actually entering the pit counts as a pit message here.
+            bool wasInPit = sessionContext.GetCarByNumber(carNumber)?.IsInPit ?? false;
             CarPositionPatch? p;
             lock (pitLapsLock)
             {
@@ -243,7 +268,7 @@ public class PitProcessor
             {
                 patches.Add(p);
 
-                if (p.IsInPit ?? false)
+                if ((p.IsInPit ?? false) && !wasInPit)
                     carsWithPitMessages.Add(carNumber);
             }
         }
@@ -274,6 +299,11 @@ public class PitProcessor
     /// </param>
     public CarPositionPatch? ProcessCar(string number, bool includeUntypedPassings = false)
     {
+        // Multiloop owns pit state while it is active, and loop state kept from before it started
+        // says nothing current.
+        if (sessionContext.IsMultiloopActive)
+            return null;
+
         if (sessionContext.IsFlagtronicsPitTrusted(number))
         {
             // Flagtronics in-car pit data is trusted for this car and takes precedence
@@ -298,12 +328,83 @@ public class PitProcessor
                 PitSf: pitSf,
                 PitOther: pitOther,
                 Other: other,
-                LoopMetadata: loopMetadata);
+                LoopMetadata: loopMetadata,
+                IsExitRecent: IsExitRecent);
 
         lock (pitLapsLock)
         {
             return change.ApplyCarChange(sessionContext);
         }
+    }
+
+    /// <summary>
+    /// Takes over a car's pit state from Flagtronics.
+    ///
+    /// A car taken off Flagtronics because loop evidence proved it wrong gets this source's view
+    /// straight away: its device's last word is known to be false, and the loops say where it is.
+    /// Any other handover waits for the car's next passing, as it always has. The handover itself
+    /// can lag - it is held while the car is shown in the pit - so the last passing may describe
+    /// the pit lane the car has since left.
+    ///
+    /// Either way, the pit phase and the entered and exited flags Flagtronics published are
+    /// withdrawn when this source has nothing to replace them with, since nothing else would. The
+    /// phase goes to None rather than following the in-pit flag, which another source - Multiloop -
+    /// may be maintaining while nothing maintains a phase. The in-pit flag itself is left alone,
+    /// but resent when a flag clients badge on is dropped.
+    /// </summary>
+    /// <param name="demoted">Whether the car was taken off Flagtronics because its data was proven wrong.</param>
+    public CarPositionPatch? TakeOver(string number, bool demoted = false)
+    {
+        if (demoted && ProcessCar(number, includeUntypedPassings: true) is CarPositionPatch loopView)
+            return loopView;
+
+        var car = sessionContext.GetCarByNumber(number);
+        if (car == null || sessionContext.IsFlagtronicsPitTrusted(number))
+            return null;
+
+        // The loops' view from before the handover is set aside, so the routine re-application of
+        // pit state cannot put the car back in a pit lane it has since left. Its next passing
+        // starts afresh.
+        if (!demoted)
+            RemoveTransponderFromAllPassings(car.TransponderId);
+
+        if (car.PitPhase == PitPhase.None && !car.IsEnteredPit && !car.IsExitedPit)
+            return null;
+
+        var patch = new CarPositionPatch { Number = number };
+        if (car.PitPhase != PitPhase.None)
+            patch.PitPhase = PitPhase.None;
+        if (car.IsEnteredPit || car.IsExitedPit)
+        {
+            patch.IsEnteredPit = false;
+            patch.IsExitedPit = false;
+            patch.IsInPit = car.IsInPit;
+        }
+        TimingCommon.Models.Mappers.CarPositionMapper.ApplyPatch(patch, car);
+        return patch;
+    }
+
+    private bool IsExitRecent(uint transponderId) =>
+        pitExitSeenAt.TryGetValue(transponderId, out var at) && timeProvider.GetUtcNow() - at < ExitedHold;
+
+    /// <summary>
+    /// Ends <see cref="PitPhase.ExitedPit"/> for loop-owned cars once its hold has passed. Nothing
+    /// else would: X2 says no more about a car until its next passing, a lap later.
+    /// </summary>
+    public List<CarPositionPatch> ExpireExitedPitPhases()
+    {
+        var patches = new List<CarPositionPatch>();
+        foreach (var car in sessionContext.SessionState.CarPositions)
+        {
+            if (car.PitPhase != PitPhase.ExitedPit || string.IsNullOrEmpty(car.Number)
+                || sessionContext.IsFlagtronicsPitTrusted(car.Number) || IsExitRecent(car.TransponderId))
+                continue;
+
+            var patch = ProcessCar(car.Number);
+            if (patch != null)
+                patches.Add(patch);
+        }
+        return patches;
     }
 
     private async Task RefreshEventConfiguration(TimingMessage message)

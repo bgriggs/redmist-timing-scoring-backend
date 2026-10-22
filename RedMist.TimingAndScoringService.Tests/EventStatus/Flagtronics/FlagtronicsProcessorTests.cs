@@ -468,14 +468,16 @@ public class FlagtronicsProcessorTests
     }
 
     [TestMethod]
-    public void Process_SecondUpdateInPit_ClearsEnteredEdge()
+    public void Process_SecondUpdateInPitWithoutSpeed_StaysEntered()
     {
         ProcessSettled("""[{ "carNumber": "42", "pitActive": true }]""");
         Process("""[{ "carNumber": "42", "pitActive": true, "pitDuration": "00:00:30.000" }]""");
 
+        // Nothing says the car has stopped, so it is still entering.
         var car = _sessionContext.GetCarByNumber("42")!;
         Assert.IsTrue(car.IsInPit);
-        Assert.IsFalse(car.IsEnteredPit);
+        Assert.IsTrue(car.IsEnteredPit);
+        Assert.AreEqual(PitPhase.EnteredPit, car.PitPhase);
     }
 
     [TestMethod]
@@ -782,7 +784,9 @@ public class FlagtronicsProcessorTests
         _time.Advance(TimeSpan.FromSeconds(2));
         Process("""[{ "carNumber": "42", "pitActive": true, "flaggingZone": 129, "speed": 31 }]""");
         Assert.IsTrue(car.IsInPit);
-        Assert.IsFalse(car.IsEnteredPit);
+        // Still the same visit: never exited, so it is still entering rather than entering again.
+        Assert.AreEqual(PitPhase.EnteredPit, car.PitPhase);
+        Assert.IsFalse(car.IsExitedPit);
     }
 
     [TestMethod]
@@ -1127,7 +1131,7 @@ public class FlagtronicsProcessorTests
     #region Reset re-apply
 
     [TestMethod]
-    public void ProcessCar_ReappliesLastStateWithoutEdges()
+    public void ProcessCar_ReappliesLastStateAndPitPhase()
     {
         ProcessSettled("""[{ "carNumber": "42", "pitActive": true, "speed": 30, "lat": 36.5, "lon": -121.7 }]""");
 
@@ -1135,6 +1139,7 @@ public class FlagtronicsProcessorTests
         var resetCar = _sessionContext.GetCarByNumber("42")!;
         resetCar.IsInPit = false;
         resetCar.IsEnteredPit = false;
+        resetCar.PitPhase = PitPhase.None;
         resetCar.SpeedMph = null;
         resetCar.Latitude = null;
         resetCar.Longitude = null;
@@ -1144,7 +1149,10 @@ public class FlagtronicsProcessorTests
         Assert.IsNotNull(patch);
         var car = _sessionContext.GetCarByNumber("42")!;
         Assert.IsTrue(car.IsInPit);
-        Assert.IsFalse(car.IsEnteredPit); // no spurious edge on re-apply
+        // Entered is a level that follows the visit, and the car is still driving to its box, so
+        // a re-apply restores it rather than deriving a new edge.
+        Assert.IsTrue(car.IsEnteredPit);
+        Assert.AreEqual(PitPhase.EnteredPit, car.PitPhase);
         Assert.AreEqual(30, car.SpeedMph);
         Assert.AreEqual(36.5, car.Latitude);
     }
@@ -1170,7 +1178,9 @@ public class FlagtronicsProcessorTests
         Assert.IsNotNull(result);
         var car = _sessionContext.GetCarByNumber("23")!;
         Assert.IsTrue(car.IsInPit);
-        Assert.IsTrue(car.IsEnteredPit);
+        // Stopped throughout but never yet seen on track, so in the pit without a box clock.
+        Assert.AreEqual(PitPhase.InPit, car.PitPhase);
+        Assert.IsFalse(car.IsEnteredPit);
         Assert.AreEqual(0, car.SpeedMph); // 254 = stopped
         Assert.AreEqual(36.5593572, car.Latitude);
         Assert.AreEqual(-79.2102957, car.Longitude);

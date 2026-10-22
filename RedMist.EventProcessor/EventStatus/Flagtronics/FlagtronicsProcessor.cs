@@ -54,6 +54,13 @@ public class FlagtronicsProcessor
     private readonly Dictionary<string, (bool State, DateTimeOffset Since, DateTimeOffset LastSeen, int Lap)> pendingPitState = [];
 
     /// <summary>
+    /// Where each car is in a pit visit, built on <see cref="committedPitState"/>. Advanced on
+    /// every live record whether or not this source owns the car's pit state, so a car handed back
+    /// from X2 picks up where it really is.
+    /// </summary>
+    private readonly PitPhaseTracker pitPhases = new();
+
+    /// <summary>
     /// Cars in the message just processed whose record carried real coordinates and was not
     /// faulted. A car reporting an unchanged position produces no patch at all, so consumers that
     /// need to tell "still reporting a good fix" from "gone off the air" cannot infer it from the
@@ -237,6 +244,7 @@ public class FlagtronicsProcessor
             pitActiveSuppressed.Clear();
             committedPitState.Clear();
             pendingPitState.Clear();
+            pitPhases.Clear();
             lastAcceptedFix.Clear();
             lastRecordPositionRejected.Clear();
             driverAttempts.Clear();
@@ -522,6 +530,7 @@ public class FlagtronicsProcessor
         pitActiveSuppressed.Add(number);
         committedPitState[number] = false;
         pendingPitState.Remove(number);
+        var phase = pitPhases.Observe(number, inPit: false, speedMph: null, flaggingZone: null, timeProvider.GetUtcNow());
 
         // Internal state is corrected either way, but only the owning source publishes. This
         // fallback fires precisely when the car has no GPS, which is also when it is likely to
@@ -530,9 +539,101 @@ public class FlagtronicsProcessor
         if (!car.IsInPit || !sessionContext.IsFlagtronicsPitTrusted(number))
             return null;
 
-        var patch = new CarPositionPatch { Number = number, IsInPit = false };
+        var patch = new CarPositionPatch { Number = number };
+        ApplyPitFields(patch, car, inPit: false, phase);
         CarPositionMapper.ApplyPatch(patch, car);
         return patch;
+    }
+
+    /// <summary>
+    /// Ends <see cref="PitPhase.ExitedPit"/> for cars that have shown it for
+    /// <see cref="PitPhaseTracker.ExitedHold"/>. Records arriving for the car end it too; this is for
+    /// a device that has gone quiet, and is driven from the pipeline's regular pass.
+    /// </summary>
+    public List<CarPositionPatch> ExpireExitedPitPhases()
+    {
+        var patches = new List<CarPositionPatch>();
+        // The phases belong to the session this processor last saw; until a record arrives for the
+        // new one they say nothing about its cars, which may reuse the same numbers.
+        if (lastSessionId != sessionContext.SessionState.SessionId)
+            return patches;
+
+        var now = timeProvider.GetUtcNow();
+        foreach (var number in pitPhases.CarsExited())
+        {
+            if (!pitPhases.Expire(number, now) || !sessionContext.IsFlagtronicsPitTrusted(number))
+                continue;
+
+            var car = sessionContext.GetCarByNumber(number);
+            if (car == null)
+                continue;
+
+            var patch = new CarPositionPatch { Number = number };
+            ApplyPitFields(patch, car, committedPitState.GetValueOrDefault(number), pitPhases.GetPhase(number));
+            if (CarPositionMapper.GetChangedProperties(patch).Length > 1)
+            {
+                CarPositionMapper.ApplyPatch(patch, car);
+                patches.Add(patch);
+            }
+        }
+        return patches;
+    }
+
+    /// <summary>
+    /// Writes the car's pit state and pit visit fields to a patch, wherever they differ from what
+    /// the car shows. The entered and exited flags are levels that follow the phase, which is also
+    /// what X2 means by them: a car stays entered until it stops, and exited for the hold.
+    /// </summary>
+    /// <remarks>
+    /// Several clients only move a pit badge off "entered" or "exited" when the in-pit flag
+    /// arrives, so when either flag drops the in-pit flag is resent even though it has not changed.
+    /// Without it those clients would show "entered" for the whole stop and "exited" until the next
+    /// one.
+    /// </remarks>
+    private void ApplyPitFields(CarPositionPatch patch, CarPosition car, bool inPit, PitPhase phase)
+    {
+        var number = car.Number ?? string.Empty;
+        var stopStart = pitPhases.GetStopStart(number);
+
+        // A stop that could not be timed is shown as plain in-pit: in the box, clients would time it
+        // from whatever start the car last carried, which a patch cannot clear.
+        if (phase == PitPhase.InPitBox && stopStart == null)
+            phase = PitPhase.InPit;
+
+        if (car.IsInPit != inPit)
+            patch.IsInPit = inPit;
+
+        bool entered = phase == PitPhase.EnteredPit;
+        if (car.IsEnteredPit != entered)
+        {
+            patch.IsEnteredPit = entered;
+            if (!entered)
+                patch.IsInPit = inPit;
+        }
+
+        bool exited = phase == PitPhase.ExitedPit;
+        if (car.IsExitedPit != exited)
+        {
+            patch.IsExitedPit = exited;
+            if (!exited)
+                patch.IsInPit = inPit;
+        }
+
+        // X2 sets the pit start/finish flag. A car taken back from it would otherwise keep the flag,
+        // and with it a pit badge, for as long as this source owns it. Multiloop sets it too, and
+        // keeps setting it, so it is left alone there rather than fought over on every record.
+        if (car.IsPitStartFinish && !sessionContext.IsMultiloopActive)
+            patch.IsPitStartFinish = false;
+
+        if (car.PitPhase != phase)
+            patch.PitPhase = phase;
+
+        if (stopStart != null && car.PitStopStartTime != stopStart)
+            patch.PitStopStartTime = stopStart;
+
+        var lastStop = pitPhases.GetLastStopDurationMs(number);
+        if (lastStop != null && car.LastPitStopDurationMs != lastStop)
+            patch.LastPitStopDurationMs = lastStop;
     }
 
     /// <param name="vehicle">The record to map onto the car.</param>
@@ -596,7 +697,7 @@ public class FlagtronicsProcessor
         // Single-tick disagreements are glitches, not pit stops: hold the committed state until
         // the new reading proves itself. This is what keeps the badge from running
         // enter -> pit -> exit -> pit -> exit within a few seconds of one real stop.
-        var (inPit, confirmedEntryLap) = ResolvePitState(vehicle.CarNumber, rawInPit, car, isLiveTick);
+        var (inPit, confirmedEntryLap, confirmedEntrySince) = ResolvePitState(vehicle.CarNumber, rawInPit, car, isLiveTick);
 
         bool onTrackZone = hasValidZone && vehicle.FlaggingZone!.Value <= MAX_ON_TRACK_ZONE;
         if (onTrackZone)
@@ -610,26 +711,24 @@ public class FlagtronicsProcessor
         // would withhold the duration for the confirm window at the start of a genuine stop.
         bool stuckOverride = vehicle.PitActive && !rawInPit;
 
-        // Pit state: inPit is the level; entry/exit edges are derived from the transition
+        // Pit state: inPit is the level, and the visit's phase follows it (see PitPhaseTracker).
         // Once this car's telemetry has degraded far enough, X2 loop data owns its pit state and
         // none of the pit fields below are published - otherwise the two sources would fight.
         // The debounced state is still tracked, so the car can be taken back cleanly if its
         // device recovers. Position, speed and flag fields are unaffected and keep flowing.
         bool pitTrusted = sessionContext.IsFlagtronicsPitTrusted(vehicle.CarNumber);
 
-        bool wasInPit = car.IsInPit;
-        if (pitTrusted && car.IsInPit != inPit)
-            patch.IsInPit = inPit;
-
-        if (isLiveTick && pitTrusted)
-        {
-            bool entered = inPit && !wasInPit;
-            bool exited = !inPit && wasInPit;
-            if (car.IsEnteredPit != entered)
-                patch.IsEnteredPit = entered;
-            if (car.IsExitedPit != exited)
-                patch.IsExitedPit = exited;
-        }
+        // The visit's phase is advanced only by a live record; a replay restores it as it stands.
+        // Before the car has run on track - the whole field waiting in the pit for the start - the
+        // visit is followed but not timed. Unlike the pit-lap tagging below, a pitActive flag does
+        // not count as evidence otherwise: it can be latched from an earlier session.
+        bool staging = !carsSeenOnTrack.Contains(vehicle.CarNumber);
+        var phase = isLiveTick
+            ? pitPhases.Observe(vehicle.CarNumber, inPit, ToSpeedMph(vehicle.Speed), vehicle.FlaggingZone, timeProvider.GetUtcNow(),
+                canTime: pitTrusted && !staging, enteredAt: confirmedEntrySince)
+            : pitPhases.GetPhase(vehicle.CarNumber);
+        if (pitTrusted)
+            ApplyPitFields(patch, car, inPit, phase);
 
         // Apply pit entry time / duration except when overriding a stuck pitActive, whose
         // reported duration runs away and whose entry time is bogus, or when the duration itself
@@ -697,13 +796,7 @@ public class FlagtronicsProcessor
                 patch.Longitude = lon;
         }
 
-        // Speed: 255 = bad GPS (skip), 254 = stopped
-        var speed = vehicle.Speed switch
-        {
-            null or FlagtronicsVehicle.SPEED_BAD_GPS => null,
-            FlagtronicsVehicle.SPEED_STOPPED => 0,
-            _ => vehicle.Speed
-        };
+        var speed = ToSpeedMph(vehicle.Speed);
         if (speed != null && car.SpeedMph != speed)
             patch.SpeedMph = speed;
 
@@ -723,15 +816,27 @@ public class FlagtronicsProcessor
     }
 
     /// <summary>
+    /// Reported speed in mph, with the stopped sentinel (254) as 0 and the bad-GPS sentinel (255) as
+    /// no speed at all.
+    /// </summary>
+    private static int? ToSpeedMph(int? reported) => reported switch
+    {
+        null or FlagtronicsVehicle.SPEED_BAD_GPS => null,
+        FlagtronicsVehicle.SPEED_STOPPED => 0,
+        _ => reported
+    };
+
+    /// <summary>
     /// Applies the debounce to a raw per-tick pit reading and returns the state clients should
     /// see. A change is only committed once the same reading has persisted for
     /// <see cref="PitStateConfirmWindow"/>; anything shorter is a glitch and is discarded.
     /// Replays (<paramref name="isLiveTick"/> false) return the committed state untouched.
     /// EntryLap is set only on the tick a pit entry is committed, and carries the lap the car
     /// was on when the entry was first seen, so a stop confirmed just after a start/finish
-    /// crossing still tags the lap the car actually entered on.
+    /// crossing still tags the lap the car actually entered on. EntrySince, likewise, is when the
+    /// entry was first seen.
     /// </summary>
-    private (bool InPit, int? EntryLap) ResolvePitState(string carNumber, bool rawInPit, CarPosition car, bool isLiveTick)
+    private (bool InPit, int? EntryLap, DateTimeOffset? EntrySince) ResolvePitState(string carNumber, bool rawInPit, CarPosition car, bool isLiveTick)
     {
         if (!committedPitState.TryGetValue(carNumber, out var committed))
         {
@@ -740,13 +845,13 @@ public class FlagtronicsProcessor
         }
 
         if (!isLiveTick)
-            return (committed, null);
+            return (committed, null, null);
 
         if (rawInPit == committed)
         {
             // Reading agrees with what clients already show: any candidate change is over.
             pendingPitState.Remove(carNumber);
-            return (committed, null);
+            return (committed, null, null);
         }
 
         var now = timeProvider.GetUtcNow();
@@ -759,19 +864,19 @@ public class FlagtronicsProcessor
             || now - pending.LastSeen > PitStateEvidenceGap)
         {
             pendingPitState[carNumber] = (rawInPit, now, now, car.LastLapCompleted + 1);
-            return (committed, null);
+            return (committed, null, null);
         }
 
         if (now - pending.Since < PitStateConfirmWindow)
         {
             pendingPitState[carNumber] = pending with { LastSeen = now };
-            return (committed, null);
+            return (committed, null, null);
         }
 
         pendingPitState.Remove(carNumber);
         committedPitState[carNumber] = rawInPit;
 
-        return (rawInPit, rawInPit ? pending.Lap : null);
+        return (rawInPit, rawInPit ? pending.Lap : null, rawInPit ? pending.Since : null);
     }
 
     private void AddPitLap(string carNumber, int lapNumber)

@@ -69,6 +69,25 @@ public class SessionContext
     private readonly Dictionary<string, bool> flagtronicsPitOwners = [];
 
     /// <summary>
+    /// Cars whose pit state has moved from Flagtronics to X2 since <see cref="TakeCarsHandedToX2"/>
+    /// was last called, for whatever reason.
+    /// </summary>
+    private readonly HashSet<string> carsHandedToX2 = [];
+
+    /// <summary>
+    /// Returns, and forgets, the cars whose pit state has moved from Flagtronics to X2 since the last
+    /// call. Whatever Flagtronics last published for them - a pit phase in particular - stays on the
+    /// car until something replaces it, and X2 may have nothing to say until the car's next passing,
+    /// or ever, at an event without loops.
+    /// </summary>
+    public virtual List<string> TakeCarsHandedToX2()
+    {
+        var cars = carsHandedToX2.ToList();
+        carsHandedToX2.Clear();
+        return cars;
+    }
+
+    /// <summary>
     /// Cars allowed to change pit-state owner despite currently being shown in the pit.
     /// </summary>
     private readonly HashSet<string> pitOwnershipHoldReleased = [];
@@ -121,6 +140,7 @@ public class SessionContext
                 flagtronicsPitDemoted[car.Number] = now;
                 flagtronicsPitDemotionCount[car.Number] = flagtronicsPitDemotionCount.GetValueOrDefault(car.Number) + 1;
                 flagtronicsPitOwners[car.Number] = false;
+                carsHandedToX2.Add(car.Number);
                 pitOwnershipHoldReleased.Remove(car.Number);
                 (demotedNow ??= []).Add(car.Number);
                 continue;
@@ -149,6 +169,8 @@ public class SessionContext
             if (!car.IsInPit || pitOwnershipHoldReleased.Contains(car.Number))
             {
                 flagtronicsPitOwners[car.Number] = eligible;
+                if (!eligible)
+                    carsHandedToX2.Add(car.Number);
                 pitOwnershipHoldReleased.Remove(car.Number);
                 if (eligible && flagtronicsPitDemoted.Remove(car.Number))
                     Logger.LogInformation("Car {Car} Flagtronics GPS has recovered; returning its pit state to Flagtronics", car.Number);
@@ -552,6 +574,8 @@ public class SessionContext
         MoveByNumber(startingPositions, oldNumber, newNumber);
         MoveByNumber(inClassStartingPositions, oldNumber, newNumber);
         MoveByNumber(flagtronicsPitOwners, oldNumber, newNumber);
+        if (carsHandedToX2.Remove(oldNumber))
+            carsHandedToX2.Add(newNumber);
         if (pitOwnershipHoldReleased.Remove(oldNumber))
             pitOwnershipHoldReleased.Add(newNumber);
         MoveByNumber(flagtronicsPitDemoted, oldNumber, newNumber);
@@ -646,6 +670,7 @@ public class SessionContext
         RMonitorTrackFlag = Flags.Unknown;
         FlagtronicsFullCourseFlag = Flags.Unknown;
         flagtronicsPitOwners.Clear();
+        carsHandedToX2.Clear();
         pitOwnershipHoldReleased.Clear();
         flagtronicsPitDemoted.Clear();
         flagtronicsPitDemotionCount.Clear();
