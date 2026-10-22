@@ -109,6 +109,8 @@ public class GpsLapPositionEnricher
         public DateTime LastTrustedSnapUtc;
         public int? LastLapCompleted;
         public int? PublishedPercent;
+        /// <summary>Holds the published position forward through GPS noise.</summary>
+        public readonly StickyLapPosition Sticky = new();
     }
 
     private readonly Dictionary<string, CarTrackState> carStates = [];
@@ -182,7 +184,7 @@ public class GpsLapPositionEnricher
             return null;
         state.LastEmitUtc = now;
 
-        return Publish(car, state, DeterminePercent(snap, trusted));
+        return Publish(car, state, DeterminePercent(car, state, snap, trusted, now));
     }
 
     /// <summary>
@@ -211,7 +213,15 @@ public class GpsLapPositionEnricher
                 carStates[number] = state = new CarTrackState();
             state.LastFixUtc = now;
             if (confirmed)
+            {
                 state.LastConfirmedFixUtc = now;
+
+                // A car reporting a fix of its own is still where its last reading put it, so its
+                // hold has not aged. Second-hand evidence does not count: it cannot tell a parked
+                // car from one that kept driving while the source stopped positioning it, and a
+                // hold kept alive across that would judge the car's return against a stale point.
+                state.Sticky.KeepAlive(now);
+            }
         }
     }
 
@@ -219,6 +229,9 @@ public class GpsLapPositionEnricher
     /// Retires the position of every car whose GPS has gone quiet. Driven by the pipeline rather
     /// than a timer of its own: by other cars' GPS arriving, and by the timing feed's own heartbeat
     /// so that a source going down entirely - taking every car's GPS with it - is still noticed.
+    ///
+    /// The same sweep completes a backward correction for a car that is still on the air but has
+    /// stopped sending new positions, since no reading of its own will arrive to complete it.
     /// </summary>
     public List<CarPositionPatch> ExpireStalePositions()
     {
@@ -236,14 +249,19 @@ public class GpsLapPositionEnricher
             if (state.PublishedPercent == CarPosition.InvalidTrackPosition)
                 continue;
             if (now - state.LastFixUtc < FixTimeout && now - state.LastConfirmedFixUtc < UnconfirmedFixCeiling)
+            {
+                if (ReleaseHold(car, state, now) is CarPositionPatch released)
+                    patches.Add(released);
                 continue;
+            }
 
             Logger.LogDebug("No GPS for car {car} in {seconds:F0}s; retiring its track position.",
                 car.Number, (now - state.LastFixUtc).TotalSeconds);
 
-            // Drop the anchor as well: where the car was ten seconds ago says nothing useful about
-            // where it is when it comes back.
+            // Drop the anchor and the hold as well: where the car was ten seconds ago says nothing
+            // useful about where it is when it comes back.
             state.LastDistanceAlongMeters = null;
+            state.Sticky.Reset();
 
             var patch = Publish(car, state, CarPosition.InvalidTrackPosition);
             if (patch != null)
@@ -251,6 +269,20 @@ public class GpsLapPositionEnricher
         }
 
         return patches;
+    }
+
+    /// <summary>
+    /// Publishes a backward correction that has finished confirming with no reading left to apply
+    /// it, or returns null when there is none.
+    /// </summary>
+    private CarPositionPatch? ReleaseHold(CarPosition car, CarTrackState state, DateTime now)
+    {
+        var map = trackMapService.CurrentMap;
+        if (map == null || map.StartFinishOffsetMeters is not double offset)
+            return null;
+        if (state.Sticky.TryRelease(map.TotalLengthMeters, offset, now) is not double released)
+            return null;
+        return Publish(car, state, ToPercent(released, map.TotalLengthMeters));
     }
 
     /// <summary>
@@ -342,19 +374,34 @@ public class GpsLapPositionEnricher
     /// <summary>
     /// Converts a trusted snap into a percentage to publish, or
     /// <see cref="CarPosition.InvalidTrackPosition"/> when there is nothing trustworthy to state.
+    /// The snap is passed through the car's <see cref="StickyLapPosition"/> first, so that GPS noise
+    /// cannot step the published position backwards; see there for how a hold is kept and released.
     /// </summary>
-    private int DeterminePercent(TrackSnapResult? snap, bool trusted)
+    private int DeterminePercent(CarPosition car, CarTrackState state, TrackSnapResult? snap, bool trusted, DateTime now)
     {
         var map = trackMapService.CurrentMap;
-        if (map == null || snap == null || !trusted || !trackMapService.IsStartFinishCalibrated)
+        if (map == null || snap == null || !trusted || map.StartFinishOffsetMeters is not double offset)
+        {
+            // Whatever ends the run of trusted positions - the pits, a bad fix, a failing device -
+            // also ends what the hold knew. The next trusted reading starts it again from scratch.
+            state.Sticky.Reset();
             return CarPosition.InvalidTrackPosition;
+        }
 
-        // Truncated, not rounded: a car has completed 99% of the lap right up until it crosses the
-        // line, at which point it wraps to 0. Rounding would instead produce a half-width bucket of
-        // "100" that means the same place as 0.
-        var fraction = TrackGeometry.FractionFromStartFinish(map, snap.Value.DistanceAlongMeters);
-        return Math.Clamp((int)(fraction * 100), 0, 99);
+        var length = map.TotalLengthMeters;
+        var measured = TrackGeometry.FractionFromStartFinish(map, snap.Value.DistanceAlongMeters) * length;
+        var held = state.Sticky.Apply(measured, car.LastLapCompleted, length, offset,
+            MaxTrackSpeedMetersPerSecond, now);
+        return ToPercent(held, length);
     }
+
+    /// <summary>
+    /// A distance along the lap from the line as a whole percent. Truncated, not rounded: a car has
+    /// completed 99% of the lap right up until it crosses the line, at which point it wraps to 0.
+    /// Rounding would instead produce a half-width bucket of "100" that means the same place as 0.
+    /// </summary>
+    private static int ToPercent(double lapMeters, double lapLengthMeters) =>
+        Math.Clamp((int)(lapMeters / lapLengthMeters * 100), 0, 99);
 
     /// <summary>Applies a percentage to the car and returns a patch, or null when nothing changed.</summary>
     private static CarPositionPatch? Publish(CarPosition car, CarTrackState state, int percent)
