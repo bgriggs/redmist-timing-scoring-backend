@@ -2,5 +2,6 @@ apiVersion: v2
 name: cloudflare-tunnel
 description: Cloudflare Tunnel for RedMist Kubernetes cluster
 type: application
-version: 1.0.0
-appVersion: "2025.10.0"
+version: 1.1.0
+# cloudflared image tag. 2026.10.2+ required: older versions trust the compromised eMudhra intermediates.
+appVersion: "2026.10.3"
