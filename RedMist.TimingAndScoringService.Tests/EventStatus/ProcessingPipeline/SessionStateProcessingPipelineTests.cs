@@ -21,6 +21,7 @@ using RedMist.EventProcessor.EventStatus.PenaltyEnricher;
 using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.EventProcessor.EventStatus.RMonitor;
+using RedMist.EventProcessor.EventStatus.Sectors;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring.Metrics;
 using RedMist.EventProcessor.EventStatus.Video;
@@ -242,7 +243,8 @@ public class SessionStateProcessingPipelineTests
             _staleCarEnricher,
             _updateConsolidator,
             _flagtronicsProcessor,
-            _telemetrySignalTracker
+            _telemetrySignalTracker,
+            new SectorProcessor(_mockLoggerFactory.Object, _sessionContext)
         );
     }
 
@@ -425,6 +427,37 @@ public class SessionStateProcessingPipelineTests
         var batch = new RedMist.TimingCommon.Models.ExternalPatchBatch { CarPatches = [.. patches] };
         return new TimingMessage(Backend.Shared.Consts.EXTERNAL_PATCH_TYPE,
             System.Text.Json.JsonSerializer.Serialize(batch), 1, DateTime.UtcNow);
+    }
+
+    [TestMethod]
+    public async Task External_Sectors_ArePublishedWithServerBests_Test()
+    {
+        // A car new in this batch, carrying the source's own sector list with a flag the source has
+        // no business setting, and an existing car sending legacy sections.
+        _sessionContext.UpdateCars([new CarPosition { Number = "42", Class = "GT", LastLapCompleted = 3 }]);
+
+        await _pipeline.PostAsync(ExternalBatch(
+            new CarPositionPatch
+            {
+                Number = "41", Class = "GT", LastLapCompleted = 3,
+                Sectors = [new SectorTime { Index = 1, Lap = 4, TimeMs = 31_000, IsOverallBest = true }],
+            },
+            new CarPositionPatch
+            {
+                Number = "42",
+                CompletedSections = [new RedMist.TimingCommon.Models.CompletedSection { Number = "42", SectionId = "S1", LastSectionTimeMs = 30_000, LastLap = 3 }],
+            }));
+
+        var newCar = _sessionContext.GetCarByNumber("41")!.Sectors.Single();
+        Assert.AreEqual(31_000, newCar.TimeMs);
+        Assert.IsTrue(newCar.IsPersonalBest);
+        Assert.IsFalse(newCar.IsOverallBest, "Bests are the server's to decide");
+
+        var legacy = _sessionContext.GetCarByNumber("42")!.Sectors.Single();
+        Assert.AreEqual(4, legacy.Lap);
+        Assert.IsTrue(legacy.IsOverallBest && legacy.IsClassBest && legacy.IsPersonalBest);
+        Assert.AreEqual(SectorSource.External, _sessionContext.SessionState.SectorSource);
+        Assert.AreEqual(1, _sessionContext.SessionState.SectorLayout.Count);
     }
 
     [TestMethod]

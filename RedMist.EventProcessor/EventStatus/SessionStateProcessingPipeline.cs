@@ -9,6 +9,7 @@ using RedMist.EventProcessor.EventStatus.PenaltyEnricher;
 using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.EventProcessor.EventStatus.RMonitor;
+using RedMist.EventProcessor.EventStatus.Sectors;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring;
 using RedMist.EventProcessor.EventStatus.Video;
 using RedMist.EventProcessor.EventStatus.X2;
@@ -50,6 +51,7 @@ public class SessionStateProcessingPipeline
     private readonly UpdateConsolidator updateConsolidator;
     private readonly FlagtronicsProcessor flagtronicsProcessor;
     private readonly TelemetrySignalTracker telemetrySignalTracker;
+    private readonly SectorProcessor sectorProcessor;
 
     // Metrics for pipeline performance
     private readonly PipelineMetrics _overallProcessorMetrics = new("sequential_processor");
@@ -145,7 +147,8 @@ public class SessionStateProcessingPipeline
         StaleCarEnricher staleCarEnricher,
         UpdateConsolidator updateConsolidator,
         FlagtronicsProcessor flagtronicsProcessor,
-        TelemetrySignalTracker telemetrySignalTracker)
+        TelemetrySignalTracker telemetrySignalTracker,
+        SectorProcessor sectorProcessor)
     {
         sessionContext = context;
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -170,6 +173,7 @@ public class SessionStateProcessingPipeline
         this.updateConsolidator = updateConsolidator;
         this.flagtronicsProcessor = flagtronicsProcessor;
         this.telemetrySignalTracker = telemetrySignalTracker;
+        this.sectorProcessor = sectorProcessor;
 
         // Wire up flush of pending laps for mid-race reset handling
         rMonitorDataProcessorV2.FlushPendingLaps = () => lapProcessor.FlushPendingLapsAsync();
@@ -316,6 +320,11 @@ public class SessionStateProcessingPipeline
                             {
                                 multiloopProcessor.ApplyCarValues(sessionContext.SessionState.CarPositions);
                             }
+
+                            // Sector times, likewise
+                            var sectorPatches = sectorProcessor.ApplyCarValues(sessionContext.SessionState.CarPositions);
+                            if (sectorPatches.Count > 0)
+                                allAppliedChanges.Add(new PatchUpdates([], [.. sectorPatches]));
 
                             // Apply penalties
                             var penaltyPatches = controlLogEnricher.Process();
@@ -478,10 +487,15 @@ public class SessionStateProcessingPipeline
             }
 
             var carPatches = new List<CarPositionPatch>();
+            var sectorCrossings = new List<SectorCrossing>();
             foreach (var cp in batch.CarPatches)
             {
                 if (string.IsNullOrWhiteSpace(cp.Number))
                     continue;
+
+                // Taken before the patch is applied: the sector processor publishes the car's
+                // sectors, with the bests the source does not compute.
+                sectorCrossings.AddRange(ExternalSectorSource.TakeCrossings(cp));
 
                 var car = sessionContext.GetCarByNumber(cp.Number);
                 if (car != null)
@@ -490,10 +504,20 @@ public class SessionStateProcessingPipeline
                 }
                 else
                 {
-                    // New car: materialise from the patch and register it in the context.
+                    // New car: materialize from the patch and register it in the context.
                     sessionContext.UpdateCars([CarPositionMapper.PatchToEntity(cp)]);
                 }
                 carPatches.Add(cp);
+            }
+
+            // After every patch in the batch is applied, so a car new in this batch exists and its
+            // class is known when the bests are worked out; and before laps are logged below, so a
+            // lap completed in this batch is logged with the sectors that came with it.
+            var sectorChanges = sectorProcessor.Process(sectorCrossings, SectorSource.External);
+            if (sectorChanges != null)
+            {
+                sessionPatches.AddRange(sectorChanges.SessionPatches);
+                carPatches.AddRange(sectorChanges.CarPatches);
             }
 
             // Corrected positions carried by this batch feed the track-map learner and each car's
