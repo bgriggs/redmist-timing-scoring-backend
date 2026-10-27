@@ -18,6 +18,7 @@ using RedMist.EventProcessor.EventStatus.PenaltyEnricher;
 using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.EventProcessor.EventStatus.RMonitor;
+using RedMist.EventProcessor.EventStatus.Sectors;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring.Metrics;
 using RedMist.EventProcessor.EventStatus.Video;
@@ -337,7 +338,8 @@ public class EventAggregatorServiceTests
                 new StaleCarEnricher(loggerFactory, SessionContext),
                 new UpdateConsolidator(SessionContext, loggerFactory, new StatusAggregator(hubContext, loggerFactory, SessionContext)),
                 flagtronicsProcessor,
-                telemetrySignalTracker);
+                telemetrySignalTracker,
+                new SectorProcessor(loggerFactory, SessionContext));
 
             _service = new EventAggregatorService(loggerFactory, mux.Object, configuration, mediator.Object,
                 hubContext, pipeline, SessionContext, pitProcessor);

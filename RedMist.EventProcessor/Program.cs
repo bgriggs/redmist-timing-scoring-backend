@@ -23,6 +23,7 @@ using RedMist.EventProcessor.EventStatus.PenaltyEnricher;
 using RedMist.EventProcessor.EventStatus.PipelineBlocks;
 using RedMist.EventProcessor.EventStatus.PositionEnricher;
 using RedMist.EventProcessor.EventStatus.RMonitor;
+using RedMist.EventProcessor.EventStatus.Sectors;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring;
 using RedMist.EventProcessor.EventStatus.SessionMonitoring.Metrics;
 using RedMist.EventProcessor.EventStatus.Video;
@@ -125,6 +126,7 @@ public class Program
         builder.Services.AddSingleton<TrackMapService>();
         builder.Services.AddSingleton<GpsLapPositionEnricher>();
         builder.Services.AddSingleton<StaleCarEnricher>();
+        builder.Services.AddSingleton<SectorProcessor>();
         builder.Services.AddSingleton<DriverEnricher>();
         builder.Services.AddSingleton<UpdateConsolidator>();
         builder.Services.AddSingleton<StatusAggregator>();
