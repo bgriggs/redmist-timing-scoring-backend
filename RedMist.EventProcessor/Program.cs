@@ -127,6 +127,7 @@ public class Program
         builder.Services.AddSingleton<GpsLapPositionEnricher>();
         builder.Services.AddSingleton<StaleCarEnricher>();
         builder.Services.AddSingleton<SectorProcessor>();
+        builder.Services.AddSingleton<X2SectorSource>();
         builder.Services.AddSingleton<DriverEnricher>();
         builder.Services.AddSingleton<UpdateConsolidator>();
         builder.Services.AddSingleton<StatusAggregator>();

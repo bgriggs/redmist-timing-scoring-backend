@@ -133,6 +133,23 @@ namespace RedMist.Database.Migrations
                     b.ToTable("DriverInfo");
                 });
 
+            modelBuilder.Entity("RedMist.Database.Models.EventSectorConfiguration", b =>
+                {
+                    b.Property<int>("EventId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Configuration")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.HasKey("EventId");
+
+                    b.ToTable("EventSectorConfigurations");
+                });
+
             modelBuilder.Entity("RedMist.Database.Models.EventSponsorStatistics", b =>
                 {
                     b.Property<long>("Id")

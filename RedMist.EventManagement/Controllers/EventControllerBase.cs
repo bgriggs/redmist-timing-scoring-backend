@@ -395,6 +395,97 @@ public abstract class EventControllerBase : ControllerBase
     }
 
     /// <summary>
+    /// Loads an event's sector setup: which of its timing loops divide the lap into sectors.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <returns>The setup; an empty one when the event has none.</returns>
+    /// <response code="200">Returns the sector setup.</response>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <response code="404">If the event is not found or does not belong to one of the caller's organizations.</response>
+    [HttpGet]
+    [Produces("application/json", "application/x-msgpack")]
+    [ProducesResponseType<SectorConfiguration>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<ActionResult<SectorConfiguration>> LoadSectorConfiguration(int eventId)
+    {
+        Logger.LogTrace("LoadSectorConfiguration {event}", eventId);
+        using var context = await tsContext.CreateDbContextAsync();
+        var permitted = await CallerOrganizations.ResolveAsync(context, User);
+        if (!await context.Events.AnyAsync(e => e.Id == eventId && permitted.Contains(e.OrganizationId) && !e.IsDeleted))
+            return NotFound("event");
+
+        var record = await context.EventSectorConfigurations.AsNoTracking().FirstOrDefaultAsync(s => s.EventId == eventId);
+        return record?.Configuration ?? new SectorConfiguration();
+    }
+
+    /// <summary>
+    /// Saves an event's sector setup and tells the event's timing processor to pick it up.
+    /// </summary>
+    /// <param name="eventId">The unique identifier of the event.</param>
+    /// <param name="configuration">The setup. An empty list of sectors turns sectors off.</param>
+    /// <returns>200 OK on success.</returns>
+    /// <response code="200">Sector setup saved.</response>
+    /// <response code="400">If the setup does not fit the event's loops; the body says why.</response>
+    /// <response code="401">If the user is not authenticated.</response>
+    /// <response code="404">If the event is not found or does not belong to one of the caller's organizations.</response>
+    /// <remarks>
+    /// Stored apart from the event, so saving the event - from the relay as well as the web - never
+    /// touches it. The loops it names are checked against the event's loop metadata as it stands now.
+    /// </remarks>
+    [HttpPost]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public virtual async Task<IActionResult> SaveSectorConfiguration(int eventId, SectorConfiguration configuration)
+    {
+        Logger.LogTrace("SaveSectorConfiguration {event}", eventId);
+        using var context = await tsContext.CreateDbContextAsync();
+        var permitted = await CallerOrganizations.ResolveAsync(context, User);
+        var dbEvent = await context.Events.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == eventId && permitted.Contains(e.OrganizationId) && !e.IsDeleted);
+        if (dbEvent == null)
+            return NotFound("event");
+
+        var problem = configuration.Validate(dbEvent.LoopsMetadata);
+        if (problem != null)
+            return BadRequest(problem);
+
+        foreach (var sector in configuration.Sectors)
+            sector.Label = sector.Label.Trim();
+
+        var record = await context.EventSectorConfigurations.FirstOrDefaultAsync(s => s.EventId == eventId);
+        if (record == null)
+        {
+            record = new EventSectorConfiguration { EventId = eventId };
+            context.EventSectorConfigurations.Add(record);
+        }
+        record.Configuration = configuration;
+        record.UpdatedUtc = DateTime.UtcNow;
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateException) when (context.Entry(record).State == EntityState.Added)
+        {
+            // Another first save for the same event got there between the read and the insert. The
+            // row exists now, so this one is an update like any later save. With no row, the insert
+            // failed for some other reason, and that is the error to report.
+            context.Entry(record).State = EntityState.Detached;
+            var existing = await context.EventSectorConfigurations.FirstOrDefaultAsync(s => s.EventId == eventId);
+            if (existing == null)
+                throw;
+            existing.Configuration = configuration;
+            existing.UpdatedUtc = DateTime.UtcNow;
+            await context.SaveChangesAsync();
+        }
+
+        await PublishEventConfigurationChangedAsync(eventId);
+        return Ok();
+    }
+
+    /// <summary>
     /// Permanently deletes a completed session and the results, laps and flags recorded against it.
     /// </summary>
     /// <param name="eventId">The event the session belongs to.</param>

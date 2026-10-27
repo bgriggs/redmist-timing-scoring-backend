@@ -339,7 +339,8 @@ public class EventAggregatorServiceTests
                 new UpdateConsolidator(SessionContext, loggerFactory, new StatusAggregator(hubContext, loggerFactory, SessionContext)),
                 flagtronicsProcessor,
                 telemetrySignalTracker,
-                new SectorProcessor(loggerFactory, SessionContext));
+                new SectorProcessor(loggerFactory, SessionContext),
+                new X2SectorSource(dbFactory, loggerFactory, SessionContext, timeProvider));
 
             _service = new EventAggregatorService(loggerFactory, mux.Object, configuration, mediator.Object,
                 hubContext, pipeline, SessionContext, pitProcessor);

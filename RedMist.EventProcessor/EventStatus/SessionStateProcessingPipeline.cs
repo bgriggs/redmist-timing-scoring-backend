@@ -16,6 +16,7 @@ using RedMist.EventProcessor.EventStatus.X2;
 using RedMist.EventProcessor.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Mappers;
+using RedMist.TimingCommon.Models.X2;
 using System.Text.Json;
 
 namespace RedMist.EventProcessor.EventStatus;
@@ -52,6 +53,7 @@ public class SessionStateProcessingPipeline
     private readonly FlagtronicsProcessor flagtronicsProcessor;
     private readonly TelemetrySignalTracker telemetrySignalTracker;
     private readonly SectorProcessor sectorProcessor;
+    private readonly X2SectorSource x2SectorSource;
 
     // Metrics for pipeline performance
     private readonly PipelineMetrics _overallProcessorMetrics = new("sequential_processor");
@@ -148,7 +150,8 @@ public class SessionStateProcessingPipeline
         UpdateConsolidator updateConsolidator,
         FlagtronicsProcessor flagtronicsProcessor,
         TelemetrySignalTracker telemetrySignalTracker,
-        SectorProcessor sectorProcessor)
+        SectorProcessor sectorProcessor,
+        X2SectorSource x2SectorSource)
     {
         sessionContext = context;
         Logger = loggerFactory.CreateLogger(GetType().Name);
@@ -174,6 +177,7 @@ public class SessionStateProcessingPipeline
         this.flagtronicsProcessor = flagtronicsProcessor;
         this.telemetrySignalTracker = telemetrySignalTracker;
         this.sectorProcessor = sectorProcessor;
+        this.x2SectorSource = x2SectorSource;
 
         // Wire up flush of pending laps for mid-race reset handling
         rMonitorDataProcessorV2.FlushPendingLaps = () => lapProcessor.FlushPendingLapsAsync();
@@ -382,6 +386,10 @@ public class SessionStateProcessingPipeline
                         var pitChanges = await ProcessPit(message);
                         if (pitChanges != null)
                             allAppliedChanges.AddRange(pitChanges);
+
+                        var sectorChanges = await ProcessX2Sectors(message);
+                        if (sectorChanges != null)
+                            allAppliedChanges.Add(sectorChanges);
                     }
                     else if (message.Type == Backend.Shared.Consts.FLAGS_TYPE)
                     {
@@ -768,6 +776,104 @@ public class SessionStateProcessingPipeline
             _pipelineErrors.WithLabels("pit", ex.GetType().Name).Inc();
             return null;
         }
+    }
+
+    /// <summary>
+    /// Sector times from X2 loops, by the event's sector setup. A change to the event's configuration
+    /// reloads the setup and republishes the layout; passings become sector crossings. Multiloop and
+    /// an external feed are the timing system's own word on sectors, so while either is the source
+    /// the loops are left alone, as the pit processor leaves them under Multiloop - and if the loops
+    /// were publishing when it took over, their times and columns are taken down once.
+    /// </summary>
+    private async Task<PatchUpdates?> ProcessX2Sectors(TimingMessage message)
+    {
+        try
+        {
+            var isConfigurationChange = message.Type == Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED;
+            if (isConfigurationChange && (!int.TryParse(message.Data, out var changedEventId) || changedEventId != sessionContext.EventId))
+                return null;
+
+            var sectorsChanged = isConfigurationChange
+                ? await x2SectorSource.RefreshAsync(sessionContext.CancellationToken)
+                : await x2SectorSource.EnsureLoadedAsync(sessionContext.CancellationToken);
+
+            if (sessionContext.IsMultiloopActive
+                || sessionContext.SessionState.SectorSource is SectorSource.External or SectorSource.Multiloop)
+            {
+                // Withdrawn once, whether the loops are publishing or only holding times behind a
+                // setup set aside.
+                return sessionContext.SessionState.SectorSource == SectorSource.X2Loops || sectorProcessor.TimesFrom == SectorSource.X2Loops
+                    ? WithdrawX2Sectors()
+                    : null;
+            }
+
+            var sessionPatches = new List<SessionStatePatch>();
+            var carPatches = new List<CarPositionPatch>();
+            PublishX2Setup(sectorsChanged, sessionPatches, carPatches);
+
+            if (!isConfigurationChange && x2SectorSource.IsConfigured)
+            {
+                List<Passing>? passings = null;
+                try
+                {
+                    passings = JsonSerializer.Deserialize<List<Passing>>(message.Data);
+                }
+                catch (JsonException)
+                {
+                }
+
+                if (passings is { Count: > 0 })
+                {
+                    var changes = sectorProcessor.Process(x2SectorSource.Process(passings), SectorSource.X2Loops);
+                    if (changes != null)
+                    {
+                        sessionPatches.AddRange(changes.SessionPatches);
+                        carPatches.AddRange(changes.CarPatches);
+                    }
+                }
+            }
+
+            if (sessionPatches.Count == 0 && carPatches.Count == 0)
+                return null;
+            return new PatchUpdates([.. sessionPatches], [.. carPatches]);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in X2 sector source");
+            _pipelineErrors.WithLabels("x2_sectors", ex.GetType().Name).Inc();
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Brings what clients see in line with the X2 setup as last read. Times taken over sectors that
+    /// have since moved cannot be compared with any taken after, so a change to the sectors themselves
+    /// starts every car's times over; then the setup's layout is published, or, with no usable setup,
+    /// the loops' layout is taken down so clients drop the columns.
+    /// </summary>
+    private void PublishX2Setup(bool sectorsChanged, List<SessionStatePatch> sessionPatches, List<CarPositionPatch> carPatches)
+    {
+        if (sectorsChanged)
+            carPatches.AddRange(sectorProcessor.Clear());
+
+        SessionStatePatch? layoutPatch = null;
+        if (x2SectorSource.IsConfigured)
+            layoutPatch = sectorProcessor.SetLayout(x2SectorSource.Layout, SectorSource.X2Loops);
+        else if (sessionContext.SessionState.SectorSource == SectorSource.X2Loops)
+            layoutPatch = sectorProcessor.SetLayout([], SectorSource.None);
+        if (layoutPatch != null)
+            sessionPatches.Add(layoutPatch);
+    }
+
+    /// <summary>Takes the loops' sector times and columns down when another source takes over.</summary>
+    private PatchUpdates WithdrawX2Sectors()
+    {
+        var cleared = sectorProcessor.Clear();
+        // The layout only when it is the loops'; another source may have published its own by now.
+        var layoutPatch = sessionContext.SessionState.SectorSource == SectorSource.X2Loops
+            ? sectorProcessor.SetLayout([], SectorSource.None)
+            : null;
+        return new PatchUpdates(layoutPatch == null ? [] : [layoutPatch], [.. cleared]);
     }
 
     /// <summary>

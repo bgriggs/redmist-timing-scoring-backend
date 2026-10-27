@@ -184,6 +184,123 @@ public class SectorProcessorTests
         Assert.AreEqual(4, Sector("1", 1).Lap);
     }
 
+    /// <summary>
+    /// With a declared single-sector layout the sector is the lap, ending on the line, so it belongs
+    /// to the lap just completed whether the timing system's lap count ticks before or after it.
+    /// </summary>
+    [TestMethod]
+    public void DeclaredSingleSector_BelongsToTheLapJustCompleted()
+    {
+        _processor.SetLayout([new SectorInfo { Index = 1, Label = "S1" }], SectorSource.X2Loops);
+        Car("1").LastLapCompleted = 4; // ticked before the crossing arrived, with this lap's time
+        Car("1").LastLapTime = "00:01:48.000";
+
+        _processor.Process([new SectorCrossing("1", 1, 108_000)], SectorSource.X2Loops);
+
+        Assert.AreEqual(4, Sector("1", 1).Lap);
+    }
+
+    /// <summary>
+    /// The timing system's lap count and the loop crossing for the same lap arrive in either order,
+    /// lap by lap. Every crossing of a single sector is a new lap all the same.
+    /// </summary>
+    [TestMethod]
+    public void DeclaredSingleSector_CountsLaps_WhicheverArrivesFirst()
+    {
+        _processor.SetLayout([new SectorInfo { Index = 1, Label = "S1" }], SectorSource.X2Loops);
+        var car = Car("1");
+
+        // Lap 4: the lap count ticks first, with this lap's time.
+        car.LastLapCompleted = 4;
+        car.LastLapTime = "00:01:40.000";
+        _processor.Process([new SectorCrossing("1", 1, 100_000)], SectorSource.X2Loops);
+        Assert.AreEqual(4, Sector("1", 1).Lap);
+
+        // Lap 5: the crossing arrives first.
+        _processor.Process([new SectorCrossing("1", 1, 98_000)], SectorSource.X2Loops);
+        Assert.AreEqual(5, Sector("1", 1).Lap);
+        car.LastLapCompleted = 5;
+        car.LastLapTime = "00:01:38.000";
+
+        // Lap 6: the count first again. Lap 6 is read twice as it would be if lap 5's crossing had
+        // been missed: still lap 6, not counted on from a lap that never arrived.
+        car.LastLapCompleted = 6;
+        car.LastLapTime = "00:01:39.000";
+        _processor.Process([new SectorCrossing("1", 1, 99_000)], SectorSource.X2Loops);
+        Assert.AreEqual(6, Sector("1", 1).Lap);
+        Assert.IsTrue(Sector("1", 1).TimeMs == 99_000 && !Sector("1", 1).IsPersonalBest, "Lap 5's 98.0 is still the best");
+    }
+
+    [TestMethod]
+    public void DeclaredSingleSector_FirstCrossingBeforeTheTick_IsTheNextLap()
+    {
+        _processor.SetLayout([new SectorInfo { Index = 1, Label = "S1" }], SectorSource.X2Loops);
+        Car("1").LastLapTime = "00:01:45.000"; // lap 3's
+
+        _processor.Process([new SectorCrossing("1", 1, 100_000)], SectorSource.X2Loops);
+
+        Assert.AreEqual(4, Sector("1", 1).Lap);
+    }
+
+    [TestMethod]
+    public void AnotherSourceTakingOver_StartsTimesOver()
+    {
+        _processor.SetLayout([new SectorInfo { Index = 1, Label = "S1" }, new SectorInfo { Index = 2, Label = "Back" }], SectorSource.X2Loops);
+        _processor.Process([new SectorCrossing("1", 1, 25_000)], SectorSource.X2Loops);
+
+        var updates = Cross(new SectorCrossing("2", 1, 30_000));
+
+        Assert.IsTrue(updates!.CarPatches.Any(p => p.Number == "1" && p.Sectors!.Count == 0));
+        Assert.IsTrue(Sector("2", 1).IsOverallBest);
+        Assert.AreEqual(SectorSource.External, _sessionContext.SessionState.SectorSource);
+        CollectionAssert.AreEqual(new[] { "S1" }, _sessionContext.SessionState.SectorLayout.Select(s => s.Label).ToArray(), "Its own layout, not the loops'");
+    }
+
+    [TestMethod]
+    public void AnotherSource_AfterALayoutWasTakenDown_StillStartsTimesOver()
+    {
+        _processor.SetLayout([new SectorInfo { Index = 1, Label = "S1" }, new SectorInfo { Index = 2, Label = "S2" }], SectorSource.X2Loops);
+        _processor.Process([new SectorCrossing("1", 2, 25_000)], SectorSource.X2Loops);
+        _processor.SetLayout([], SectorSource.None); // the loops' setup set aside, its times kept
+
+        Cross(new SectorCrossing("2", 1, 30_000));
+
+        Assert.AreEqual(0, Car("1").Sectors.Count, "The loops' times do not mix with the feed's");
+        Assert.AreEqual(SectorSource.External, _processor.TimesFrom);
+    }
+
+    [TestMethod]
+    public void UnusableCrossingsFromAnotherSource_LeaveTheTimesAlone()
+    {
+        _processor.Process([new SectorCrossing("1", 1, 25_000)], SectorSource.X2Loops);
+
+        Assert.IsNull(Cross(new SectorCrossing("2", 1, 0)));
+        Assert.AreEqual(1, Car("1").Sectors.Count);
+    }
+
+    [TestMethod]
+    public void SetLayout_PublishesOnlyAChange()
+    {
+        List<SectorInfo> layout = [new() { Index = 1, Label = "S1" }, new() { Index = 2, Label = "Back", LengthMeters = 900 }];
+
+        Assert.IsNotNull(_processor.SetLayout(layout, SectorSource.X2Loops));
+        Assert.IsNull(_processor.SetLayout([.. layout], SectorSource.X2Loops));
+        CollectionAssert.AreEqual(layout, _sessionContext.SessionState.SectorLayout);
+    }
+
+    [TestMethod]
+    public void Clear_ForgetsBestsAndTellsClients()
+    {
+        Cross(new SectorCrossing("1", 1, 25_000));
+
+        var patches = _processor.Clear();
+
+        Assert.AreEqual("1", patches.Single().Number);
+        Assert.AreEqual(0, Car("1").Sectors.Count);
+        Cross(new SectorCrossing("2", 1, 30_000));
+        Assert.IsTrue(Sector("2", 1).IsOverallBest, "The old best is gone");
+    }
+
     [TestMethod]
     public void LapFromTheSource_IsTrusted()
     {
