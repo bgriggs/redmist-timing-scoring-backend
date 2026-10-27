@@ -10,6 +10,7 @@ using RedMist.Backend.Shared.Models;
 using RedMist.Backend.Shared.Services;
 using RedMist.Backend.Shared.Utilities;
 using RedMist.Database;
+using RedMist.Database.Models;
 using RedMist.EventProcessor.EventStatus;
 using RedMist.EventProcessor.EventStatus.DriverInformation;
 using RedMist.EventProcessor.EventStatus.FlagData;
@@ -244,7 +245,8 @@ public class SessionStateProcessingPipelineTests
             _updateConsolidator,
             _flagtronicsProcessor,
             _telemetrySignalTracker,
-            new SectorProcessor(_mockLoggerFactory.Object, _sessionContext)
+            new SectorProcessor(_mockLoggerFactory.Object, _sessionContext),
+            new X2SectorSource(_dbContextFactory, _mockLoggerFactory.Object, _sessionContext, _timeProvider)
         );
     }
 
@@ -427,6 +429,164 @@ public class SessionStateProcessingPipelineTests
         var batch = new RedMist.TimingCommon.Models.ExternalPatchBatch { CarPatches = [.. patches] };
         return new TimingMessage(Backend.Shared.Consts.EXTERNAL_PATCH_TYPE,
             System.Text.Json.JsonSerializer.Serialize(batch), 1, DateTime.UtcNow);
+    }
+
+    private async Task GivenX2SectorSetupAsync()
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync();
+        db.Events.Add(new RedMist.TimingCommon.Models.Configuration.Event
+        {
+            Id = 1,
+            Name = "X2 sectors",
+            LoopsMetadata =
+            [
+                new RedMist.TimingCommon.Models.Configuration.LoopMetadata { Id = 1, EventId = 1, Type = RedMist.TimingCommon.Models.Configuration.LoopType.StartFinish },
+                new RedMist.TimingCommon.Models.Configuration.LoopMetadata { Id = 2, EventId = 1, Type = RedMist.TimingCommon.Models.Configuration.LoopType.Other },
+            ],
+        });
+        db.EventSectorConfigurations.Add(new EventSectorConfiguration
+        {
+            EventId = 1,
+            Configuration = new SectorConfiguration
+            {
+                StartFinishLoopId = 1,
+                Sectors = [new SectorDefinition { EndLoopId = 2 }, new SectorDefinition { Label = "Back" }],
+            },
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static TimingMessage X2Passings(params (uint Transponder, uint Loop, double Seconds)[] passes)
+    {
+        var start = new DateTime(2026, 10, 26, 14, 0, 0, DateTimeKind.Utc);
+        var passings = passes.Select(p => new RedMist.TimingCommon.Models.X2.Passing
+        {
+            TransponderId = p.Transponder,
+            LoopId = p.Loop,
+            TimestampUtc = start.AddSeconds(p.Seconds),
+        }).ToList();
+        return new TimingMessage(Backend.Shared.Consts.X2PASS_TYPE, System.Text.Json.JsonSerializer.Serialize(passings), 1, DateTime.UtcNow);
+    }
+
+    [TestMethod]
+    public async Task X2_Sectors_FromTheEventsSetup_Test()
+    {
+        await GivenX2SectorSetupAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041, LastLapCompleted = 3 }]);
+
+        await _pipeline.PostAsync(X2Passings((1041, 1, 0), (1041, 2, 40.5)));
+
+        var sector = _sessionContext.GetCarByNumber("41")!.Sectors.Single();
+        Assert.AreEqual(1, sector.Index);
+        Assert.AreEqual(40_500, sector.TimeMs);
+        Assert.AreEqual(4, sector.Lap);
+        Assert.IsTrue(sector.IsOverallBest);
+        Assert.AreEqual(SectorSource.X2Loops, _sessionContext.SessionState.SectorSource);
+        CollectionAssert.AreEqual(new[] { "S1", "Back" }, _sessionContext.SessionState.SectorLayout.Select(s => s.Label).ToArray());
+    }
+
+    [TestMethod]
+    public async Task X2_SetupRemoved_TakesTheLayoutAway_Test()
+    {
+        await GivenX2SectorSetupAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041, LastLapCompleted = 3 }]);
+        await _pipeline.PostAsync(X2Passings((1041, 1, 0), (1041, 2, 40.5)));
+
+        await using (var db = await _dbContextFactory.CreateDbContextAsync())
+        {
+            var record = await db.EventSectorConfigurations.SingleAsync();
+            record.Configuration = new SectorConfiguration();
+            await db.SaveChangesAsync();
+        }
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, "1", 1, DateTime.UtcNow));
+
+        Assert.AreEqual(0, _sessionContext.SessionState.SectorLayout.Count);
+        Assert.AreEqual(SectorSource.None, _sessionContext.SessionState.SectorSource);
+        Assert.AreEqual(0, _sessionContext.GetCarByNumber("41")!.Sectors.Count, "Its times go with it");
+    }
+
+    [TestMethod]
+    public async Task X2_BoundaryMoved_StartsTimesOver_Test()
+    {
+        await GivenX2SectorSetupAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041, LastLapCompleted = 3 }]);
+        await _pipeline.PostAsync(X2Passings((1041, 1, 0), (1041, 2, 40.5)));
+
+        await using (var db = await _dbContextFactory.CreateDbContextAsync())
+        {
+            var dbEvent = await db.Events.SingleAsync(e => e.Id == 1);
+            dbEvent.LoopsMetadata = [.. dbEvent.LoopsMetadata, new RedMist.TimingCommon.Models.Configuration.LoopMetadata { Id = 3, EventId = 1, Type = RedMist.TimingCommon.Models.Configuration.LoopType.Other }];
+            var record = await db.EventSectorConfigurations.SingleAsync();
+            record.Configuration = new SectorConfiguration
+            {
+                StartFinishLoopId = 1,
+                Sectors = [new SectorDefinition { EndLoopId = 3 }, new SectorDefinition()],
+            };
+            await db.SaveChangesAsync();
+        }
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, "1", 1, DateTime.UtcNow));
+
+        Assert.AreEqual(0, _sessionContext.GetCarByNumber("41")!.Sectors.Count);
+        Assert.AreEqual(2, _sessionContext.SessionState.SectorLayout.Count);
+    }
+
+    [TestMethod]
+    public async Task X2_ConfigurationChangeForAnotherEvent_IsIgnored_Test()
+    {
+        await GivenX2SectorSetupAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041, LastLapCompleted = 3 }]);
+        await _pipeline.PostAsync(X2Passings((1041, 1, 0), (1041, 2, 40.5)));
+
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, "2", 1, DateTime.UtcNow));
+
+        Assert.AreEqual(1, _sessionContext.GetCarByNumber("41")!.Sectors.Count);
+        Assert.AreEqual(2, _sessionContext.SessionState.SectorLayout.Count);
+    }
+
+    [TestMethod]
+    public async Task X2_MultiloopTakingOver_TakesTheLoopsSectorsDown_Test()
+    {
+        await GivenX2SectorSetupAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041, LastLapCompleted = 3 }]);
+        await _pipeline.PostAsync(X2Passings((1041, 1, 0), (1041, 2, 40.5)));
+
+        _sessionContext.IsMultiloopActive = true;
+        await _pipeline.PostAsync(X2Passings((1041, 1, 108)));
+
+        Assert.AreEqual(0, _sessionContext.SessionState.SectorLayout.Count);
+        Assert.AreEqual(SectorSource.None, _sessionContext.SessionState.SectorSource);
+        Assert.AreEqual(0, _sessionContext.GetCarByNumber("41")!.Sectors.Count);
+    }
+
+    [TestMethod]
+    public async Task X2_Sectors_StayAwayFromAnExternalFeedsSectors_Test()
+    {
+        await GivenX2SectorSetupAsync();
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041, LastLapCompleted = 3 }]);
+        await _pipeline.PostAsync(ExternalBatch(new CarPositionPatch
+        {
+            Number = "41",
+            Sectors = [new SectorTime { Index = 1, Lap = 4, TimeMs = 31_000 }],
+        }));
+
+        await _pipeline.PostAsync(X2Passings((1041, 1, 0), (1041, 2, 40.5)));
+
+        Assert.AreEqual(SectorSource.External, _sessionContext.SessionState.SectorSource);
+        Assert.AreEqual(31_000, _sessionContext.GetCarByNumber("41")!.Sectors.Single().TimeMs);
+    }
+
+    [TestMethod]
+    public async Task X2_Sectors_StayAwayWhileMultiloopIsActive_Test()
+    {
+        await GivenX2SectorSetupAsync();
+        _sessionContext.IsMultiloopActive = true;
+        _sessionContext.UpdateCars([new CarPosition { Number = "41", TransponderId = 1041, LastLapCompleted = 3 }]);
+
+        await _pipeline.PostAsync(new TimingMessage(Backend.Shared.Consts.EVENT_CONFIGURATION_CHANGED, "1", 1, DateTime.UtcNow));
+        await _pipeline.PostAsync(X2Passings((1041, 1, 0), (1041, 2, 40.5)));
+
+        Assert.AreEqual(0, _sessionContext.SessionState.SectorLayout.Count);
+        Assert.AreEqual(0, _sessionContext.GetCarByNumber("41")!.Sectors.Count);
     }
 
     [TestMethod]

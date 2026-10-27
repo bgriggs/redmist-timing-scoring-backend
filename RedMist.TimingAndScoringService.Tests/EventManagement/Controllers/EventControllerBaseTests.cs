@@ -902,6 +902,123 @@ public class EventControllerBaseTests
 
     #endregion
 
+    #region Sector configuration
+
+    private async Task SeedEventWithLoopsAsync()
+    {
+        await SeedOrganizationsAsync();
+        var mine = NewEvent(10, OrgId, "Mine", new DateTime(2026, 1, 1));
+        mine.LoopsMetadata =
+        [
+            new LoopMetadata { Id = 1, EventId = 10, Type = LoopType.StartFinish, Name = "SF" },
+            new LoopMetadata { Id = 2, EventId = 10, Type = LoopType.Other, Name = "T4" },
+            new LoopMetadata { Id = 9, EventId = 10, Type = LoopType.PitIn, Name = "Pit in" },
+        ];
+        _dbContext.Events.AddRange(mine, NewEvent(20, OtherOrgId, "Theirs", new DateTime(2026, 1, 1)));
+        await _dbContext.SaveChangesAsync();
+    }
+
+    private static SectorConfiguration TwoSectors() => new()
+    {
+        StartFinishLoopId = 1,
+        Sectors = [new SectorDefinition { EndLoopId = 2, LengthMeters = 1500 }, new SectorDefinition { Label = "Back" }],
+    };
+
+    [TestMethod]
+    public async Task LoadSectorConfiguration_NoneSaved_ReturnsAnEmptySetup()
+    {
+        await SeedEventWithLoopsAsync();
+
+        var result = (await _controller.LoadSectorConfiguration(10)).Value!;
+
+        Assert.AreEqual(0, result.Sectors.Count);
+        Assert.IsNull(result.StartFinishLoopId);
+    }
+
+    [TestMethod]
+    public async Task SaveSectorConfiguration_ValidSetup_IsStoredAndPublished()
+    {
+        await SeedEventWithLoopsAsync();
+
+        var saved = await _controller.SaveSectorConfiguration(10, TwoSectors());
+
+        Assert.IsInstanceOfType<OkResult>(saved);
+        var loaded = (await _controller.LoadSectorConfiguration(10)).Value!;
+        Assert.AreEqual(1u, loaded.StartFinishLoopId);
+        Assert.AreEqual(2u, loaded.Sectors[0].EndLoopId);
+        Assert.AreEqual(1500, loaded.Sectors[0].LengthMeters);
+        Assert.AreEqual("Back", loaded.Sectors[1].Label);
+        VerifyPublishCount(10, Times.Once());
+    }
+
+    [TestMethod]
+    public async Task SaveSectorConfiguration_SavedAgain_ReplacesTheSetup()
+    {
+        await SeedEventWithLoopsAsync();
+        await _controller.SaveSectorConfiguration(10, TwoSectors());
+
+        await _controller.SaveSectorConfiguration(10, new SectorConfiguration());
+
+        Assert.AreEqual(0, (await _controller.LoadSectorConfiguration(10)).Value!.Sectors.Count);
+    }
+
+    [TestMethod]
+    public async Task SaveSectorConfiguration_PitLoopAsBoundary_IsRefusedWithTheReason()
+    {
+        await SeedEventWithLoopsAsync();
+        var setup = TwoSectors();
+        setup.Sectors[0].EndLoopId = 9;
+
+        var saved = await _controller.SaveSectorConfiguration(10, setup);
+
+        var badRequest = saved as BadRequestObjectResult;
+        Assert.IsNotNull(badRequest);
+        StringAssert.Contains(badRequest.Value as string, "Sector 1");
+        Assert.AreEqual(0, _dbContext.EventSectorConfigurations.Count());
+        VerifyPublishCount(10, Times.Never());
+    }
+
+    [TestMethod]
+    public async Task SectorConfiguration_AnotherOrganizationsEvent_IsNotFound()
+    {
+        await SeedEventWithLoopsAsync();
+
+        Assert.IsInstanceOfType<NotFoundObjectResult>((await _controller.LoadSectorConfiguration(20)).Result);
+        Assert.IsInstanceOfType<NotFoundObjectResult>(await _controller.SaveSectorConfiguration(20, new SectorConfiguration()));
+        Assert.AreEqual(0, _dbContext.EventSectorConfigurations.Count());
+    }
+
+    [TestMethod]
+    public async Task SectorConfiguration_DeletedEvent_IsNotFound()
+    {
+        await SeedEventWithLoopsAsync();
+        var deleted = await _dbContext.Events.SingleAsync(e => e.Id == 10);
+        deleted.IsDeleted = true;
+        await _dbContext.SaveChangesAsync();
+
+        Assert.IsInstanceOfType<NotFoundObjectResult>((await _controller.LoadSectorConfiguration(10)).Result);
+        Assert.IsInstanceOfType<NotFoundObjectResult>(await _controller.SaveSectorConfiguration(10, TwoSectors()));
+    }
+
+    [TestMethod]
+    public async Task SaveSectorConfiguration_LongLabelOrBadLength_IsRefused()
+    {
+        await SeedEventWithLoopsAsync();
+        var longLabel = TwoSectors();
+        longLabel.Sectors[1].Label = "Back straight";
+        var badLength = TwoSectors();
+        badLength.Sectors[0].LengthMeters = 0;
+        var paddedLabel = TwoSectors();
+        paddedLabel.Sectors[1].Label = "  Pit Str ";
+
+        Assert.IsInstanceOfType<BadRequestObjectResult>(await _controller.SaveSectorConfiguration(10, longLabel));
+        Assert.IsInstanceOfType<BadRequestObjectResult>(await _controller.SaveSectorConfiguration(10, badLength));
+        Assert.IsInstanceOfType<OkResult>(await _controller.SaveSectorConfiguration(10, paddedLabel), "Spaces around a label do not count");
+        Assert.AreEqual("Pit Str", (await _controller.LoadSectorConfiguration(10)).Value!.Sectors[1].Label, "Stored trimmed");
+    }
+
+    #endregion
+
     /// <summary>
     /// Concrete controller used for testing. Exposes the protected publish helper and can stand in
     /// for <see cref="EventControllerBase.UpdateEventStatusActive"/> so the active-event reassignment

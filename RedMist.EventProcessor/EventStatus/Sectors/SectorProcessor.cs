@@ -1,3 +1,5 @@
+using RedMist.Backend.Shared.Utilities;
+using RedMist.Database.Models;
 using RedMist.TimingCommon.Models;
 using RedMist.TimingCommon.Models.Mappers;
 
@@ -5,9 +7,10 @@ namespace RedMist.EventProcessor.EventStatus.Sectors;
 
 /// <summary>
 /// Owns every car's sector times for the session: the latest time through each sector, the bests,
-/// and the flags clients color them by. Sources (an external feed today; X2 loops, Multiloop and
+/// and the flags clients color them by. Sources (an external feed and X2 loops today; Multiloop and
 /// in-car GPS to follow) only report <see cref="SectorCrossing"/>s, so the bests and the purple and
-/// green behave the same whichever source the event uses.
+/// green behave the same whichever source the event uses. One source at a time: a different one
+/// taking over starts the times over.
 ///
 /// Only each car's own valid times are kept. Its personal best in a sector is the fastest of them,
 /// and the overall and class bests are worked out from the personal bests whenever flags are built,
@@ -28,7 +31,7 @@ namespace RedMist.EventProcessor.EventStatus.Sectors;
 public class SectorProcessor
 {
     /// <summary>The most sectors a lap may be divided into.</summary>
-    public const int MaxSectors = 8;
+    public const int MaxSectors = SectorConfiguration.MaxSectors;
 
     private readonly SessionContext sessionContext;
     private ILogger Logger { get; }
@@ -37,6 +40,15 @@ public class SectorProcessor
     private long arrivals;
     private readonly Dictionary<string, CarSectors> cars = [];
     private (Dictionary<int, Best> Overall, Dictionary<(string Class, int Index), Best> InClass)? lastHolders;
+
+    /// <summary>
+    /// The source that last declared the layout through <see cref="SetLayout"/>, rather than let it
+    /// grow from crossings. It only counts while that source is still the session's.
+    /// </summary>
+    private SectorSource declaredBy = SectorSource.None;
+
+    /// <summary>The source whose times are held; none once they are cleared.</summary>
+    public SectorSource TimesFrom { get; private set; } = SectorSource.None;
 
     /// <summary>A valid time, and when it arrived, so ties go to whoever set the time first.</summary>
     private readonly record struct Timed(int TimeMs, long Arrival);
@@ -87,6 +99,16 @@ public class SectorProcessor
         if (usable.Count == 0)
             return carPatches.Count == 0 ? null : new PatchUpdates([], [.. carPatches]);
 
+        // Another source's times were taken over its own sectors, which this one's need not match.
+        // Judged by whose times are held rather than by the session's published source, which goes
+        // back to none while a setup is set aside with its times kept.
+        if (TimesFrom != SectorSource.None && TimesFrom != source)
+        {
+            Logger.LogInformation("Sector source changed from {Previous} to {Current}, clearing sector state", TimesFrom, source);
+            carPatches.AddRange(Clear());
+        }
+        TimesFrom = source;
+
         var sessionPatches = new List<SessionStatePatch>();
         var layoutPatch = EnsureLayout(usable.Max(c => c.Index), source);
         if (layoutPatch != null)
@@ -103,7 +125,7 @@ public class SectorProcessor
             if (IsRepeat(state, crossing, lastLapCompleted))
                 continue;
 
-            var lap = crossing.Lap ?? InferLap(state, crossing.Index, lastLapCompleted);
+            var lap = crossing.Lap ?? InferLap(state, crossing, car);
             var recorded = crossing with { Lap = lap };
             state.Latest[crossing.Index] = recorded;
             state.LastIndex = crossing.Index;
@@ -214,28 +236,59 @@ public class SectorProcessor
     /// time and never come back. Once the source has a lap count, then, every sector but the last is
     /// on the lap after the last completed, and the order the sectors arrive in only decides the
     /// last sector, which ends on the line and may belong to the lap just completed.
+    ///
+    /// A declared layout of a single sector is the lap itself, every crossing a new one, where sector
+    /// order says nothing. Each crossing is the lap just completed if the timing system already has
+    /// that lap's time, and the lap after if the lap count has not ticked yet. Judged afresh every
+    /// time, so a read missed or a lap time late puts one lap wrong, not every lap after it.
     /// </summary>
-    private int InferLap(CarSectors state, int index, int lastLapCompleted)
+    private int InferLap(CarSectors state, SectorCrossing crossing, CarPosition? car)
     {
+        var index = crossing.Index;
+        var lastLapCompleted = car?.LastLapCompleted ?? 0;
         var floor = LapFloor(index, lastLapCompleted);
-        var lap = state.LastIndex == 0
-            ? floor
-            : index > state.LastIndex ? state.LastLap
-            // The same sector again with no lap completed in between is a corrected time, not a lap.
-            : index == state.LastIndex && lastLapCompleted == state.LastLapCompletedSeen ? state.LastLap
-            : state.LastLap + 1;
+        int lap;
+        if (IsDeclaredSingleSector())
+        {
+            lap = IsLapJustTimed(car, crossing.TimeMs) ? lastLapCompleted : lastLapCompleted + 1;
+        }
+        else
+        {
+            lap = state.LastIndex == 0
+                ? floor
+                : index > state.LastIndex ? state.LastLap
+                // The same sector again with no lap completed in between is a corrected time, not a lap.
+                : index == state.LastIndex && lastLapCompleted == state.LastLapCompletedSeen ? state.LastLap
+                : state.LastLap + 1;
+        }
 
         return Math.Clamp(lap, floor, Math.Max(lastLapCompleted + 1, floor));
     }
 
     /// <summary>
+    /// Whether the car's last lap time is this one, within the few milliseconds two timing paths
+    /// can differ by: the lap count has then already ticked for it.
+    /// </summary>
+    private static bool IsLapJustTimed(CarPosition? car, int timeMs)
+    {
+        var lastLap = RaceTimeParser.Parse(car?.LastLapTime);
+        return lastLap > TimeSpan.Zero && Math.Abs(lastLap.TotalMilliseconds - timeMs) <= 50;
+    }
+
+    private bool IsDeclaredSingleSector() => IsLayoutDeclared() && sessionContext.SessionState.SectorLayout.Count == 1;
+
+    private bool IsLayoutDeclared() =>
+        declaredBy != SectorSource.None && declaredBy == sessionContext.SessionState.SectorSource;
+
+    /// <summary>
     /// The earliest lap a sector can belong to: the lap after the last one completed, except for the
     /// last sector, which can be the one that just completed it. A layout still growing from its
-    /// first sector says nothing yet about which sector is last.
+    /// first sector says nothing yet about which sector is last; one a source declared does, even
+    /// when it has a single sector.
     /// </summary>
     private int LapFloor(int index, int lastLapCompleted)
     {
-        var isLastSector = index > 1 && index >= sessionContext.SessionState.SectorLayout.Count;
+        var isLastSector = (index > 1 || IsLayoutDeclared()) && index >= sessionContext.SessionState.SectorLayout.Count;
         return Math.Max(isLastSector ? lastLapCompleted : lastLapCompleted + 1, 1);
     }
 
@@ -310,6 +363,27 @@ public class SectorProcessor
         best != null && best.CarNumber == carNumber && best.Lap == sector.Lap && best.TimeMs == sector.TimeMs;
 
     /// <summary>
+    /// Publishes a layout a source declares up front - the organizer's sector setup, with its labels
+    /// and lengths - when it differs from the session's. Returns the session patch, or null when
+    /// nothing changed. Called under the pipeline write lock like everything else here.
+    /// </summary>
+    public SessionStatePatch? SetLayout(IReadOnlyList<SectorInfo> layout, SectorSource source)
+    {
+        declaredBy = layout.Count > 0 ? source : SectorSource.None;
+        var session = sessionContext.SessionState;
+        var sameLayout = session.SectorLayout.SequenceEqual(layout);
+        if (sameLayout && session.SectorSource == source)
+            return null;
+
+        var patch = new SessionStatePatch { SectorSource = source };
+        if (!sameLayout)
+            patch.SectorLayout = [.. layout];
+
+        SessionStateMapper.ApplyPatch(patch, session);
+        return patch;
+    }
+
+    /// <summary>
     /// Publishes a layout covering every sector seen so far. A source that declares its own layout
     /// sends it on the session; this only ever grows it, so a declared layout is left alone.
     /// </summary>
@@ -320,10 +394,12 @@ public class SectorProcessor
         if (session.SectorLayout.Count >= count && session.SectorSource == source)
             return null;
 
+        // A layout another source declared is not this one's to grow; it starts its own.
+        var existing = session.SectorSource == source ? session.SectorLayout : [];
         var patch = new SessionStatePatch { SectorSource = source };
-        if (session.SectorLayout.Count < count)
+        if (existing.Count < count || existing != session.SectorLayout)
         {
-            var layout = new List<SectorInfo>(session.SectorLayout);
+            var layout = new List<SectorInfo>(existing);
             for (int index = layout.Count + 1; index <= count; index++)
                 layout.Add(new SectorInfo { Index = index, Label = $"S{index}" });
             patch.SectorLayout = layout;
@@ -352,6 +428,18 @@ public class SectorProcessor
             return patches;
 
         Logger.LogInformation("Session changed from {Last} to {Current}, clearing sector state", previous, current);
+        return Clear();
+    }
+
+    /// <summary>
+    /// Forgets every sector time and best, and clears the sectors the cars carry, returning the
+    /// patches that clear them for clients. For a new session, and for a change to the sectors
+    /// themselves: a boundary that moved makes every time before it a time through a different
+    /// stretch of track, which no later time can be compared with.
+    /// </summary>
+    public List<CarPositionPatch> Clear()
+    {
+        var patches = new List<CarPositionPatch>();
         foreach (var number in cars.Keys)
         {
             var car = sessionContext.GetCarByNumber(number);
@@ -363,6 +451,7 @@ public class SectorProcessor
         }
         cars.Clear();
         lastHolders = null;
+        TimesFrom = SectorSource.None;
         return patches;
     }
 }

@@ -38,6 +38,7 @@ public class TsContext : DbContext
     public DbSet<EventSponsorStatistics> EventSponsorStatistics { get; set; } = null!;
     public DbSet<SourceSponsorStatistics> SourceSponsorStatistics { get; set; } = null!;
     public DbSet<TrackMapRecord> TrackMaps { get; set; } = null!;
+    public DbSet<EventSectorConfiguration> EventSectorConfigurations { get; set; } = null!;
     public DbSet<SocialPost> SocialPosts { get; set; } = null!;
     public DbSet<SocialPrompt> SocialPrompts { get; set; } = null!;
     public DbSet<EventViewerSession> EventViewerSessions { get; set; } = null!;
@@ -175,6 +176,16 @@ public class TsContext : DbContext
         var trackMapProperty = modelBuilder.Entity<TrackMapRecord>().Property(t => t.Map);
         trackMapProperty.HasConversion(trackMapConverter!);
         trackMapProperty.HasColumnType("jsonb");
+
+        // Sector setup (one per event), stored as JSONB.
+        modelBuilder.Entity<EventSectorConfiguration>().HasKey(s => s.EventId);
+        modelBuilder.Entity<EventSectorConfiguration>().Property(s => s.EventId).ValueGeneratedNever();
+        var sectorConfigurationConverter = new ValueConverter<SectorConfiguration, string>(
+            v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+            v => JsonSerializer.Deserialize<SectorConfiguration>(v, (JsonSerializerOptions?)null) ?? new SectorConfiguration());
+        var sectorConfigurationProperty = modelBuilder.Entity<EventSectorConfiguration>().Property(s => s.Configuration);
+        sectorConfigurationProperty.HasConversion(sectorConfigurationConverter!);
+        sectorConfigurationProperty.HasColumnType("jsonb");
 
         // Sponsor exclusions: one row per (organization, blocked sponsor). Keyed on OrganizationId first so
         // the lookup for "what does this event's organization exclude" is a prefix scan of the PK index.
