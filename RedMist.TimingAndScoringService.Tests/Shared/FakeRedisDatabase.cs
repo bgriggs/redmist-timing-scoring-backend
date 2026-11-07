@@ -29,6 +29,7 @@ public sealed class FakeRedisDatabase
     public List<HashWrite> HashWrites { get; } = [];
     public List<(string Key, string Field)> HashDeletes { get; } = [];
     public List<string> KeyDeletes { get; } = [];
+    public List<string> StringWrites { get; } = [];
     public List<(string Key, string Field, long By)> HashIncrements { get; } = [];
     public List<(string Key, TimeSpan? Expiry)> KeyExpires { get; } = [];
     public List<(string Key, string Value)> SetAdds { get; } = [];
@@ -76,6 +77,21 @@ public sealed class FakeRedisDatabase
                 return Task.FromResult(removed);
             });
 
+        Db.Setup(x => x.HashDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue[]>(), It.IsAny<CommandFlags>()))
+            .Returns((RedisKey key, RedisValue[] fields, CommandFlags flags) =>
+            {
+                long removed = 0;
+                foreach (var field in fields)
+                {
+                    HashDeletes.Add((key.ToString(), field.ToString()));
+                    if (hashes.TryGetValue(key.ToString(), out var h) && h.Remove(field.ToString()))
+                    {
+                        removed++;
+                    }
+                }
+                return Task.FromResult(removed);
+            });
+
         Db.Setup(x => x.HashIncrementAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<long>(), It.IsAny<CommandFlags>()))
             .Returns((RedisKey key, RedisValue field, long by, CommandFlags flags) =>
             {
@@ -94,6 +110,19 @@ public sealed class FakeRedisDatabase
         Db.Setup(x => x.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .Returns((RedisKey key, CommandFlags flags) =>
                 Task.FromResult(strings.TryGetValue(key.ToString(), out var v) ? new RedisValue(v) : RedisValue.Null));
+
+        Db.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<Expiration>(),
+                It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
+            .Returns((RedisKey key, RedisValue value, Expiration expiry, ValueCondition when, CommandFlags flags) =>
+            {
+                StringWrites.Add(key.ToString());
+                strings[key.ToString()] = value.ToString();
+                return Task.FromResult(true);
+            });
+
+        Db.Setup(x => x.KeyExistsAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
+            .Returns((RedisKey key, CommandFlags flags) =>
+                Task.FromResult(strings.ContainsKey(key.ToString()) || hashes.ContainsKey(key.ToString())));
 
         Db.Setup(x => x.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .Returns((RedisKey key, CommandFlags flags) =>
@@ -164,6 +193,17 @@ public sealed class FakeRedisDatabase
     }
 
     public void SeedString(string key, string value) => strings[key] = value;
+
+    /// <summary>Removes a string key, as its expiry would.</summary>
+    public void ExpireString(string key) => strings.Remove(key);
+
+    /// <summary>Makes every string write fail, as an unreachable Redis would.</summary>
+    public void FailStringWrites()
+    {
+        Db.Setup(x => x.StringSetAsync(It.IsAny<RedisKey>(), It.IsAny<RedisValue>(), It.IsAny<Expiration>(),
+                It.IsAny<ValueCondition>(), It.IsAny<CommandFlags>()))
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "cache down"));
+    }
 
     /// <summary>Removes a seeded hash field without recording it as a delete the code under test made.</summary>
     public void SeedHashRemove(string key, string field)

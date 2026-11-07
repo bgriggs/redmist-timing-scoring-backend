@@ -403,6 +403,10 @@ public class Program
         builder.Services.AddSingleton<Controllers.V2.EventsController>();
         builder.Services.AddSingleton<IEventAccessValidator, EventAccessValidator>();
 
+        // Stamps each status hub connection record with this process, and sweeps the records of
+        // processes that were killed before their disconnect handlers could run.
+        builder.Services.AddStatusHubConnectionTracking();
+
         builder.Services.AddMemoryCache();
         builder.Services.AddHttpClient("EventProcessor", client =>
         {

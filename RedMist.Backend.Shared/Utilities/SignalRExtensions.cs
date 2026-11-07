@@ -8,6 +8,22 @@ namespace RedMist.Backend.Shared.Utilities;
 
 public static class SignalRExtensions
 {
+    /// <summary>
+    /// Registers what a host mapping <see cref="Hubs.StatusHub"/> needs to keep its connection
+    /// records honest: the process identity stamped into each record, and the sweeper that removes
+    /// the records of processes killed before their disconnect handlers ran.
+    /// </summary>
+    /// <remarks>
+    /// Both or neither. A hub with no instance writes records with no owner, which the sweeper of any
+    /// other host removes as legacy once they are old enough, whether or not they are still connected.
+    /// </remarks>
+    public static IServiceCollection AddStatusHubConnectionTracking(this IServiceCollection services)
+    {
+        services.AddSingleton<Services.StatusHubInstance>();
+        services.AddHostedService<Services.StatusConnectionSweeper>();
+        return services;
+    }
+
     public static ISignalRServerBuilder AddRedMistSignalR(this IServiceCollection services, string redisConnectionString)
     {
         return services.AddSignalR(o => 
