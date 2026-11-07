@@ -38,6 +38,7 @@ public class StatusHub : Hub
     private readonly IEventAccessValidator accessValidator;
     private readonly TimeProvider timeProvider;
     private readonly IDbContextFactory<TsContext>? tsContext;
+    private readonly StatusHubInstance? instance;
 
     /// <summary>The most events one dashboard may watch at once.</summary>
     /// <remarks>
@@ -59,15 +60,18 @@ public class StatusHub : Hub
     /// <remarks>
     /// <paramref name="timeProvider"/> is optional because hubs are constructed through
     /// <c>ActivatorUtilities</c>, which honors a default rather than requiring a registration.
+    /// <paramref name="instance"/> is optional for the same reason; without it connection records
+    /// carry no owner, and the sweeper treats them as legacy records.
     /// </remarks>
     public StatusHub(ILoggerFactory loggerFactory, IConnectionMultiplexer cacheMux, IEventAccessValidator accessValidator,
-        TimeProvider? timeProvider = null, IDbContextFactory<TsContext>? tsContext = null)
+        TimeProvider? timeProvider = null, IDbContextFactory<TsContext>? tsContext = null, StatusHubInstance? instance = null)
     {
         Logger = loggerFactory.CreateLogger(GetType().Name);
         this.cacheMux = cacheMux;
         this.accessValidator = accessValidator;
         this.timeProvider = timeProvider ?? TimeProvider.System;
         this.tsContext = tsContext;
+        this.instance = instance;
     }
 
     /// <summary>
@@ -225,12 +229,15 @@ public class StatusHub : Hub
         var clientId = GetClientId();
         var clientType = ClientTypeHelper.ResolveClientType(clientId);
 
+        // Before the record exists, so the sweeper can never see this process's record for a
+        // connection it does not know it is serving.
+        instance?.Connected(Context.ConnectionId);
+
         try
         {
             // Save off the connectionId in the cache
             var cache = cacheMux.GetDatabase();
-            var conn = new StatusConnection { ConnectedTimestamp = UtcNow(), ClientId = clientId, SubscribedEventId = 0 };
-            var json = JsonSerializer.Serialize(conn);
+            var json = JsonSerializer.Serialize(NewConnectionRecord(clientId));
             await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, Context.ConnectionId, json);
         }
         catch (Exception ex)
@@ -255,6 +262,9 @@ public class StatusHub : Hub
         var clientId = GetClientId();
         var clientType = ClientTypeHelper.ResolveClientType(clientId);
         StatusConnection? conn = null;
+
+        // First, so whatever the cleanup below fails to remove is the sweeper's to remove.
+        instance?.Disconnected(Context.ConnectionId);
 
         try
         {
@@ -292,6 +302,15 @@ public class StatusHub : Hub
         ClientConnectionsByType.WithLabels(clientType).Dec();
         Logger.LogInformation("Client {id} disconnected: {ConnectionId}", clientId, Context.ConnectionId);
     }
+
+    /// <summary>A fresh connection record, stamped with the process that owns it.</summary>
+    private StatusConnection NewConnectionRecord(string? clientId) => new()
+    {
+        ConnectedTimestamp = UtcNow(),
+        ClientId = clientId,
+        SubscribedEventId = 0,
+        InstanceId = instance?.Id,
+    };
 
     private string? GetClientId()
     {
@@ -718,6 +737,13 @@ public class StatusHub : Hub
         bool isInCar = inCarDriverConnection != null;
         string? carNumber = inCarDriverConnection?.CarNumber;
 
+        // A call still running when its connection dropped would write the records back after the
+        // disconnect removed them. The sweeper catches that too, but there is no reason to make it.
+        if (Context.ConnectionAborted.IsCancellationRequested)
+        {
+            return;
+        }
+
         try
         {
             // Save off the connectionId in the cache for ability to send messages to this client individually
@@ -725,54 +751,60 @@ public class StatusHub : Hub
 
             // Get the cache entry for this connectionId that would have been created in OnConnectedAsync
             var connJson = await cache.HashGetAsync(Consts.STATUS_CONNECTIONS, connectionId);
-            if (!connJson.IsNullOrEmpty)
+            var conn = connJson.IsNullOrEmpty ? null : JsonSerializer.Deserialize<StatusConnection>(connJson.ToString());
+
+            // No record means OnConnectedAsync failed to write one, or it was swept. Without a record
+            // OnDisconnectedAsync cannot find the event to remove this connection from, so the event
+            // hash entry written below would be counted forever. Recreate it instead.
+            if (conn == null && eventId is > 0)
             {
-                var conn = JsonSerializer.Deserialize<StatusConnection>(connJson.ToString());
-                if (conn != null)
+                conn = NewConnectionRecord(GetClientId());
+            }
+
+            if (conn != null)
+            {
+                if (eventId is { } newEventId)
                 {
-                    if (eventId is { } newEventId)
+                    // If the connection was previously subscribed to a different event, remove it from that event's connection cache
+                    if (conn.SubscribedEventId > 0 && conn.SubscribedEventId != newEventId)
                     {
-                        // If the connection was previously subscribed to a different event, remove it from that event's connection cache
-                        if (conn.SubscribedEventId > 0 && conn.SubscribedEventId != newEventId)
-                        {
-                            var oldConnKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, conn.SubscribedEventId);
-                            await cache.HashDeleteAsync(oldConnKey, connectionId, CommandFlags.FireAndForget);
-                            switchedAwayFrom = conn.SubscribedEventId;
-                        }
-
-                        if (conn.SubscribedEventId != newEventId && newEventId > 0)
-                        {
-                            startedWatching = newEventId;
-                        }
-
-                        // Always update SubscribedEventId so OnDisconnectedAsync can clean up the event hash entry
-                        conn.SubscribedEventId = newEventId;
+                        var oldConnKey = string.Format(Consts.STATUS_EVENT_CONNECTIONS, conn.SubscribedEventId);
+                        await cache.HashDeleteAsync(oldConnKey, connectionId, CommandFlags.FireAndForget);
+                        switchedAwayFrom = conn.SubscribedEventId;
                     }
 
-                    if (updateInCarDriver)
+                    if (conn.SubscribedEventId != newEventId && newEventId > 0)
                     {
-                        conn.InCarDriverConnection = inCarDriverConnection;
-                    }
-                    else
-                    {
-                        isInCar = conn.InCarDriverConnection != null;
-                        carNumber = conn.InCarDriverConnection?.CarNumber;
-                        inCarEventId = conn.InCarDriverConnection?.EventId;
+                        startedWatching = newEventId;
                     }
 
-                    if (conn.ClientId != null)
-                    {
-                        clientType = ClientTypeHelper.ResolveClientType(conn.ClientId);
-                    }
-
-                    // The event the connection is on after this update. Not the eventId passed in:
-                    // leaving driver mode passes none, because it must not touch the event
-                    // subscription - but the hash entry for that same event still has to change.
-                    trackedEventId = conn.SubscribedEventId;
-
-                    var updatedJson = JsonSerializer.Serialize(conn);
-                    await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, connectionId, updatedJson);
+                    // Always update SubscribedEventId so OnDisconnectedAsync can clean up the event hash entry
+                    conn.SubscribedEventId = newEventId;
                 }
+
+                if (updateInCarDriver)
+                {
+                    conn.InCarDriverConnection = inCarDriverConnection;
+                }
+                else
+                {
+                    isInCar = conn.InCarDriverConnection != null;
+                    carNumber = conn.InCarDriverConnection?.CarNumber;
+                    inCarEventId = conn.InCarDriverConnection?.EventId;
+                }
+
+                if (conn.ClientId != null)
+                {
+                    clientType = ClientTypeHelper.ResolveClientType(conn.ClientId);
+                }
+
+                // The event the connection is on after this update. Not the eventId passed in:
+                // leaving driver mode passes none, because it must not touch the event
+                // subscription - but the hash entry for that same event still has to change.
+                trackedEventId = conn.SubscribedEventId;
+
+                var updatedJson = JsonSerializer.Serialize(conn);
+                await cache.HashSetAsync(Consts.STATUS_CONNECTIONS, connectionId, updatedJson);
             }
 
             // Save off the connectionId in the event connections cache with its live-count bucket.

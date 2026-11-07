@@ -60,6 +60,12 @@ public class Consts
     public const string RELAY_EVENT_CONNECTIONS = "relay-evt-conns";
     public const string STATUS_EVENT_CONNECTIONS = "st-evt-{0}-conns";
     public const string STATUS_CONNECTIONS = "st-conns";
+
+    /// <summary>
+    /// A status API process's heartbeat, keyed by <see cref="Services.StatusHubInstance.Id"/>. Expires
+    /// when the process stops refreshing it, which is how its connections are known to be orphaned.
+    /// </summary>
+    public const string STATUS_INSTANCE_ALIVE = "st-inst-{0}-alive";
     public const string RELAY_HEARTBEAT = "relay-hb-evt-{0}";
     public const string RELAY_CONNECTION = "relay-connid-{0}";
     public const string CONTROL_LOG = "control-log-evt-{0}";
