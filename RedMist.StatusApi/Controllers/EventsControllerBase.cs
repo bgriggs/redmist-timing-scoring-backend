@@ -425,8 +425,14 @@ public abstract class EventsControllerBase : ControllerBase
     /// <param name="sessionId">The unique identifier of the session.</param>
     /// <returns>A list of car positions representing each completed lap across all cars in the session.</returns>
     /// <response code="200">Returns the list of lap positions for all cars.</response>
+    /// <response code="429">Called again within 10 seconds; the Retry-After header says when to come back.</response>
+    /// <remarks>
+    /// Limited to one call every 10 seconds per caller. This reads the entire session, so a client
+    /// following a live session should load it once and then follow laps over the status hub.
+    /// </remarks>
     [AllowAnonymous]
     [RequireEventAccessCode]
+    [EnableRateLimiting(Program.SessionLapsPolicy)]
     [HttpGet]
     [Produces("application/json", "application/x-msgpack")]
     [ProducesResponseType<List<CarPosition>>(StatusCodes.Status200OK)]
