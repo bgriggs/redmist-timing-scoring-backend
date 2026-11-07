@@ -44,6 +44,12 @@ public class Program
     /// <summary>The cheaper "is there anything to export" probe, kept off the export allowance.</summary>
     internal const string ExportsAvailabilityPolicy = "exports-availability";
 
+    /// <summary>Every completed lap of a whole session, limited on top of the global limiter.</summary>
+    internal const string SessionLapsPolicy = "session-laps";
+
+    /// <summary>How often one caller may load a whole session's laps.</summary>
+    internal static readonly TimeSpan SessionLapsInterval = TimeSpan.FromSeconds(10);
+
     /// <summary>
     /// Policies that stand in for the global limiter rather than stacking on top of it.
     /// </summary>
@@ -208,6 +214,11 @@ public class Program
             // window of one admits the poll and then rejects its own retries, turning a blip into a
             // rejection.
             options.AddPolicy(SessionPollingPolicy, GetSessionPollingPartition);
+
+            // A whole session's laps. One call reads, deserializes and re-serializes every lap of
+            // every car, which for an endurance session is thousands of rows and megabytes of JSON,
+            // so a caller polling it in bursts was enough to OOM-kill a status pod.
+            options.AddPolicy(SessionLapsPolicy, GetSessionLapsPartition);
 
             options.AddPolicy(SponsorTelemetryPolicy, httpContext =>
             {
@@ -633,6 +644,47 @@ public class Program
                 // holding the request costs a connection on a pod whose real job is the live
                 // SignalR feed.
                 QueueLimit = 0,
+            });
+    }
+
+    /// <summary>
+    /// The rate limit partition for loading a whole session's laps: one call per
+    /// <see cref="SessionLapsInterval"/> per caller.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Keyed like the global limiter's authenticated bucket, on the subject and the caller's address
+    /// together. The address alone would put an integration and a viewer on the same network in one
+    /// bucket; the subject alone would put every install of a viewer app in one bucket, because they
+    /// all share a service account (see <see cref="GetCallerKey"/>).
+    /// </para>
+    /// <para>
+    /// Stacks on the global limiter rather than replacing it, so it is deliberately absent from
+    /// <see cref="policiesReplacingTheGlobalLimiter"/>. Nothing queues: a request held for its turn
+    /// still costs its full load when it runs, and holds a connection while it waits.
+    /// </para>
+    /// <para>
+    /// The bucket refills on its own timer, not ten seconds after the last call, so two calls either
+    /// side of a refill can both succeed. At most two loads per interval, which is the bound that
+    /// matters. It caps one caller, not the pod; caching the result is what bounds the total.
+    /// </para>
+    /// </remarks>
+    internal static RateLimitPartition<string> GetSessionLapsPartition(HttpContext httpContext)
+    {
+        var subject = httpContext.User.Identity?.IsAuthenticated == true
+            ? httpContext.User.FindFirst("sub")?.Value ?? httpContext.User.Identity?.Name ?? "authenticated"
+            : "anonymous";
+
+        return RateLimitPartition.GetTokenBucketLimiter(
+            $"session-laps:{subject}:{GetCallerKey(httpContext)}",
+            _ => new TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 1,
+                TokensPerPeriod = 1,
+                ReplenishmentPeriod = SessionLapsInterval,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+                AutoReplenishment = true,
             });
     }
 
