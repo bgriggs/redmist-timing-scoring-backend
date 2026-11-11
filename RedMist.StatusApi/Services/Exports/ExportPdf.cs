@@ -31,12 +31,12 @@ public static class ExportPdf
         // the report renders identically in the pod and on a developer machine, instead of silently
         // picking up whatever happens to be installed - and it is why the runtime image needs no
         // fontconfig package.
-        QuestPDF.Settings.UseEnvironmentFonts = false;
+        QuestPDF.Settings.UseSystemFonts = false;
 
         // Driver and class names are free text from a race entry form and can contain characters the
         // embedded font has no glyph for. Losing a character is a blemish; refusing to generate the
         // report over it is an outage for the whole export.
-        QuestPDF.Settings.CheckIfAllTextGlyphsAreAvailable = false;
+        QuestPDF.Settings.ThrowOnMissingTextGlyphs = false;
     }
 
     /// <summary>
