@@ -10,7 +10,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="RedMist.TimingCommon" Version="1.19.0" />
+		<PackageReference Include="RedMist.TimingCommon" Version="1.19.2" />
 	</ItemGroup>
 
 </Project>
