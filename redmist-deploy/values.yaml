@@ -15,7 +15,7 @@ global:
     "Archive__MainReplicationRegion": "ny"
     "Archive__CdnId": "5058723"
     "Email__Host": "in-v3.mailjet.com"
-    "Email__Port": "587"
+    "Email__Port": "2525"
 
   secrets:
     - env: "REDIS_PW"
