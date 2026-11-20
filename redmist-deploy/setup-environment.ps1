@@ -42,7 +42,12 @@ Write-Host "Checking NGINX Ingress Controller..." -ForegroundColor Yellow
 $ingressInstalled = kubectl get namespace ingress-nginx --ignore-not-found 2>$null
 if ([string]::IsNullOrEmpty($ingressInstalled)) {
     Write-Host "Installing NGINX Ingress Controller..." -ForegroundColor Yellow
-    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/cloud/deploy.yaml
+    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx 2>$null
+    helm repo update ingress-nginx
+    helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx `
+        --namespace ingress-nginx --create-namespace `
+        --version 4.13.3 `
+        -f (Join-Path $PSScriptRoot "infrastructure/ingress-nginx/values.yaml")
     
     Write-Host "Waiting for NGINX Ingress Controller to be ready..." -ForegroundColor Yellow
     kubectl wait --for=condition=available --timeout=300s deployment/ingress-nginx-controller -n ingress-nginx

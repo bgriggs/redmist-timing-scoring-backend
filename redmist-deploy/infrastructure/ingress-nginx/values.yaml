@@ -1,0 +1,19 @@
+# Helm values for the community ingress-nginx chart (release "ingress-nginx",
+# namespace "ingress-nginx", chart 4.13.3 / controller v1.13.3).
+#
+# Apply with:
+#   helm upgrade ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx `
+#     --version 4.13.3 -f infrastructure/ingress-nginx/values.yaml
+#
+# Public traffic arrives only through the Cloudflare tunnel (see
+# infrastructure/cloudflare-tunnel), which connects over plain HTTP/1.1,
+# so the controller does not need a public load balancer.
+controller:
+  service:
+    type: ClusterIP
+  config:
+    # Mitigation for the NGINX HTTP/2 RCE flaws CVE-2026-123633 and
+    # CVE-2026-123007. The community ingress-nginx project is retired and
+    # will not ship a patched NGINX. Nothing here needs HTTP/2 at the
+    # controller: the tunnel speaks HTTP/1.1 and there are no gRPC backends.
+    use-http2: "false"
