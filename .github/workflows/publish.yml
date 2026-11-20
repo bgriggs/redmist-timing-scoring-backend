@@ -3,6 +3,9 @@
 on:
   workflow_dispatch:
   
+permissions:
+  contents: read
+
 jobs:
   extract-version:
     runs-on: ubuntu-latest
