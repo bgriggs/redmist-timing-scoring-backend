@@ -44,6 +44,14 @@ global:
     - env: "Email__Password"
       name: "rmkeys-test"
       key: "emailpassword"
+    - env: "Email__Graph__ClientId"
+      name: "rmkeys-test"
+      key: "emailgraphclientid"
+      optional: true
+    - env: "Email__Graph__ClientSecret"
+      name: "rmkeys-test"
+      key: "emailgraphclientsecret"
+      optional: true
 
 # Override for all subcharts - disable TLS since Cloudflare handles it
 redmist-status-api:

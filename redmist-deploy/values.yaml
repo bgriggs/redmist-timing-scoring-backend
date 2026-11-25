@@ -16,6 +16,12 @@ global:
     "Archive__CdnId": "5058723"
     "Email__Host": "in-v3.mailjet.com"
     "Email__Port": "2525"
+    # Mailjet refuses SMTP from the cluster node IPs, so mail goes out through Microsoft Graph
+    # sendMail over HTTPS as support@redmist.racing. Setting Email__Provider back to "Smtp" uses the
+    # Mailjet settings above again. The Entra app needs the Graph Mail.Send application permission.
+    "Email__Provider": "Graph"
+    "Email__Graph__TenantId": "fb625a86-5a01-4035-94f0-a236cb28e0c3"
+    "Email__Graph__SenderAddress": "support@redmist.racing"
 
   secrets:
     - env: "REDIS_PW"
@@ -45,6 +51,16 @@ global:
     - env: "Email__Password"
       name: "rmkeys"
       key: "emailpassword"
+    # Optional so a release that goes out before these keys exist in rmkeys still starts. Only mail
+    # fails until they are added.
+    - env: "Email__Graph__ClientId"
+      name: "rmkeys"
+      key: "emailgraphclientid"
+      optional: true
+    - env: "Email__Graph__ClientSecret"
+      name: "rmkeys"
+      key: "emailgraphclientsecret"
+      optional: true
 
 # Social post composition.
 #

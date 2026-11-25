@@ -9,6 +9,8 @@ global:
     "Keycloak__AuthServerUrl": "https://auth.redmist.racing"
     "SentinelApiUrl": "https://svs-api.sentinel.racing/api/"
     "Server__ExtTelemUrl": "https://api-dev.redmist.racing/status/v1/ExternalTelemetry"
+    # values.yaml switches mail to Graph, but dev has no Graph secret entries, so keep it on SMTP.
+    "Email__Provider": "Smtp"
 
   secrets:
     - env: "REDIS_PW"
