@@ -70,6 +70,7 @@ spec:
                 secretKeyRef:
                   name: {{ .name }}
                   key: {{ .key }}
+                  optional: {{ .optional | default false }}
           {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

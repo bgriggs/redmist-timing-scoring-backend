@@ -53,6 +53,7 @@ spec:
                     secretKeyRef:
                       name: {{ .name }}
                       key: {{ .key }}
+                      optional: {{ .optional | default false }}
               {{- end }}
               {{/*
               Chart-local secrets, on top of the global ones. The Anthropic API key belongs only in
